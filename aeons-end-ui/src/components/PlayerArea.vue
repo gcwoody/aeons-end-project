@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { getPlayer, toRoman } from '@engine/engine'
 import { getCard } from '@engine/data'
+import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
 import { useGame } from '../game/useGame'
 
@@ -137,11 +138,14 @@ function clickBreach(b: BreachState) {
       <div class="hand">
         <div
           v-for="(cid, i) in player.hand" :key="cid + i"
-          class="card" :class="[typeClass(cid), { selected: state.prepTarget === i }]"
+          class="card" :class="[typeClass(cid), { selected: state.prepTarget === i, 'card-image': cardImageUrl(cid) }]"
           @click="clickHand(i)"
         >
-          <div class="cname">{{ getCard(cid).name }}</div>
-          <div class="cval">{{ cardValue(cid) }}</div>
+          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+          <template v-else>
+            <div class="cname">{{ getCard(cid).name }}</div>
+            <div class="cval">{{ cardValue(cid) }}</div>
+          </template>
         </div>
       </div>
       <div class="discard-pile clickable" @click="openPile('discard')">

@@ -38,3 +38,7 @@ Desktop.ini
 ~$*.pptx
 ~$*.docx
 ~$*.xlsx
+
+# pictures
+*.png
+*.jpg

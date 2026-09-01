@@ -2,7 +2,7 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
-// 直接复用上一级 aeons-end-engine 的引擎源码（CLI 与 UI 共享同一份规则逻辑）
+// Share one rule-engine source between the CLI and UI.
 export default defineConfig({
   plugins: [vue()],
   resolve: {

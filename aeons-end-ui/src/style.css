@@ -330,6 +330,19 @@ body {
 .card.relic { border-top: 3px solid var(--relic); }
 .card.small { min-width: 0; padding: 6px 10px; cursor: pointer; }
 .card.small.clickable:hover { border-color: var(--accent); }
+.card.card-image {
+  width: 122px;
+  min-width: 122px;
+  aspect-ratio: 2 / 3;
+  padding: 0;
+  overflow: hidden;
+}
+.card.card-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
 
 .controls {
   display: flex;
@@ -412,6 +425,18 @@ body {
   background: #151a29;
   font-size: 13px;
   white-space: nowrap;
+}
+.pile-card.pile-card-image {
+  width: 82px;
+  height: 123px;
+  padding: 0;
+  overflow: hidden;
+}
+.pile-card-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 /* ===== Relic modal ===== */
