@@ -7,7 +7,6 @@ import NemesisArea from './components/NemesisArea.vue'
 import PlayerArea from './components/PlayerArea.vue'
 import LogPanel from './components/LogPanel.vue'
 import PileModal from './components/PileModal.vue'
-import RelicModal from './components/RelicModal.vue'
 import DebugPanel from './components/DebugPanel.vue'
 
 const { state, nemesisChooseTarget, undo, toggleDebug } = useGame()
@@ -38,7 +37,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <LogPanel class="log-col" />
 
     <PileModal />
-    <RelicModal />
     <DebugPanel />
 
     <div v-if="state.phase === 'nemesis_target' && state.pendingNemesis" class="overlay">

@@ -1,4 +1,8 @@
 :root {
+  --hand-card-height: 178px;
+  --hand-row-height: 190px;
+  --played-card-height: 82px;
+  --breach-spell-height: 82px;
   --bg: #12151d;
   --panel: #1b2030;
   --panel-2: #232a3d;
@@ -203,9 +207,9 @@ body {
 
 /* ===== Player area ===== */
 .player-area {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: auto auto auto minmax(var(--hand-row-height), 1fr) auto;
   gap: 10px;
   padding: 12px 14px;
   min-height: 0;
@@ -250,12 +254,22 @@ body {
   gap: 2px;
 }
 .breach.open { border-color: var(--gem); }
-.breach.castable { border-color: var(--spell); cursor: pointer; }
-.breach.castable:hover { background: #221a31; }
+.breach.castable { border-color: #e6c84f; cursor: pointer; }
+.breach.castable:hover { background: #2a2718; }
+.breach.castable.must-cast { border-color: var(--danger); }
+.breach.castable.must-cast:hover { background: #2d1b22; }
 .breach.prep-ok { border-color: var(--accent); cursor: pointer; }
 .breach.prep-ok:hover { background: #1c2440; }
 .breach .roman { font-weight: 700; color: var(--muted); }
 .breach .spell { color: var(--spell); font-size: 12px; }
+.breach .spell img {
+  display: block;
+  width: auto;
+  height: var(--breach-spell-height);
+  aspect-ratio: 2 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+}
 .breach .open-label { color: var(--gem); }
 .breach .dir { color: var(--warn); font-size: 12px; }
 .breach .btns { display: flex; gap: 4px; margin-top: 4px; }
@@ -265,7 +279,7 @@ body {
   gap: 8px;
   align-items: center;
   justify-content: center;
-  min-height: 64px;
+  min-height: var(--played-card-height);
   border: 1px dashed var(--border);
   border-radius: 9px;
   padding: 6px 10px;
@@ -283,7 +297,6 @@ body {
   grid-template-columns: 120px 1fr 120px;
   gap: 12px;
   align-items: stretch;
-  flex: 1;
   min-height: 0;
 }
 .deck-pile, .discard-pile {
@@ -321,27 +334,67 @@ body {
   user-select: none;
   text-align: center;
 }
-.card:hover { transform: translateY(-3px); border-color: var(--accent); }
-.card.selected { border-color: var(--spell); box-shadow: 0 0 0 1px var(--spell) inset; }
+.card:hover { transform: translateY(-3px); border-color: var(--border); }
+.hand .card:hover { border-color: var(--border); }
+.hand .card.spell-draggable { cursor: grab; }
+.hand .card.spell-draggable.dragging,
+.hand .card.spell-draggable:active { cursor: grabbing; }
+.hand .card.spell-draggable.dragging { opacity: .35; }
+.hand .card.dragging { border-color: var(--border); box-shadow: none; }
+.card.selected { border-color: var(--border); box-shadow: none; }
 .card .cname { font-weight: 600; font-size: 13px; }
 .card .cval { font-size: 12px; color: var(--muted); margin-top: 2px; }
-.card.gem { border-top: 3px solid var(--gem); }
-.card.spell { border-top: 3px solid var(--spell); }
-.card.relic { border-top: 3px solid var(--relic); }
+.card.gem, .card.spell, .card.relic { border-top: 1px solid var(--border); }
 .card.small { min-width: 0; padding: 6px 10px; cursor: pointer; }
-.card.small.clickable:hover { border-color: var(--accent); }
+.card.small.clickable:hover { border-color: var(--border); }
 .card.card-image {
   width: 122px;
   min-width: 122px;
-  aspect-ratio: 2 / 3;
+  height: var(--hand-card-height);
   padding: 0;
   overflow: hidden;
+}
+.played-row .card.card-image {
+  width: auto;
+  min-width: 0;
+  height: var(--played-card-height);
 }
 .card.card-image img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.card.relic-discardable { border-color: var(--danger); }
+.hand .card.relic-discardable:hover { border-color: var(--danger); }
+.card.relic-discard-selected { border-color: var(--danger); box-shadow: 0 0 0 2px var(--danger) inset; }
+
+.spell-drag-preview {
+  position: fixed;
+  z-index: 100;
+  width: 122px;
+  height: var(--hand-card-height);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  border-radius: 9px;
+  overflow: hidden;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .35);
+  background: #171c2c;
+}
+.spell-drag-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.spell-drag-preview span {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  padding: 10px;
+  text-align: center;
+  font-weight: 600;
 }
 
 .controls {
@@ -352,6 +405,8 @@ body {
   border-top: 1px solid var(--border);
   padding-top: 10px;
 }
+.controls > .btn,
+.controls .btn { height: 32px; }
 .controls .aether { color: var(--gem); font-size: 13px; }
 
 /* ===== Log ===== */

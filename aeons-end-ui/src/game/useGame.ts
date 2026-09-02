@@ -42,7 +42,7 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: 'p1' as 'p1' | 'p2',
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
-  pendingRelic: null as { drawn: string[]; discardCount: number } | null,
+  pendingRelic: null as { drawn: string[]; discardCount: number; selected: number[] } | null,
   viewPile: null as 'deck' | 'discard' | null,
   debugOpen: false,
   hasSave: false,
@@ -105,10 +105,21 @@ function snapshot(): Snapshot {
   }
 }
 
-function beforeAction() {
-  if (!state.game) return
-  undoStack.push(snapshot())
+function beforeAction(): Snapshot | null {
+  if (!state.game) return null
+  const previous = snapshot()
+  undoStack.push(previous)
   if (undoStack.length > MAX_UNDO) undoStack.shift()
+  return previous
+}
+
+function finishAction(previous: Snapshot | null) {
+  if (!previous || !state.game) return
+  const current = snapshot()
+  const unchanged = JSON.stringify(previous.game) === JSON.stringify(current.game)
+    && previous.phase === current.phase
+    && JSON.stringify(previous.pendingNemesis) === JSON.stringify(current.pendingNemesis)
+  if (unchanged) undoStack.pop()
 }
 
 export function undo() {
@@ -117,7 +128,7 @@ export function undo() {
   state.game = reactive(s.game) as GameState
   state.phase = s.phase
   state.pendingNemesis = s.pendingNemesis
-  state.prepTarget = s.prepTarget
+  state.prepTarget = null
   state.discardRemaining = []
   state.pendingRelic = null
   state.viewPile = null
@@ -184,7 +195,9 @@ export function resumeGame(): boolean {
     state.selectedPlayer = data.selectedPlayer ?? 'p1'
     state.pendingNemesis = data.pendingNemesis ?? null
     state.discardRemaining = data.discardRemaining ?? []
-    state.pendingRelic = data.pendingRelic ?? null
+    state.pendingRelic = data.pendingRelic
+      ? { ...data.pendingRelic, selected: data.pendingRelic.selected ?? [] }
+      : null
     state.prepTarget = null
     state.log = []
     undoStack.length = 0
@@ -210,13 +223,14 @@ export function selectPlayer(id: 'p1' | 'p2') {
 }
 
 export function castSpell(breachIndex: number) {
-  beforeAction()
+  const previous = beforeAction()
   const msg = engineCastSpell(state.game!, cp().id, breachIndex)
   if (msg) pushLog(msg, 'ok')
   // The nemesis may have been defeated — end the game immediately.
   if (state.game!.gameOver) {
     pushLog(checkGameOver(state.game!) ?? 'Game over', 'warn')
     state.phase = 'gameover'
+    finishAction(previous)
     return
   }
   // Auto-advance to main phase once no more castable spells remain.
@@ -225,6 +239,7 @@ export function castSpell(breachIndex: number) {
     state.phase = 'main'
     maybeAutoEnd()
   }
+  finishAction(previous)
 }
 
 export function toMainPhase() {
@@ -236,7 +251,7 @@ export function toMainPhase() {
 
 export function playCard(cardIdx: number) {
   const p = cp()
-  beforeAction()
+  const previous = beforeAction()
   const cardId = p.hand[cardIdx]!
   const card = getCard(cardId)
   const msg = enginePlayCard(state.game!, p.id, cardId)
@@ -247,7 +262,8 @@ export function playCard(cardIdx: number) {
     p.deck = result.newDeck
     p.discard = result.newDiscard
     if (result.drawn.length > 0) {
-      state.pendingRelic = { drawn: result.drawn, discardCount: relic.discardCount }
+      p.hand.push(...result.drawn)
+      state.pendingRelic = { drawn: result.drawn, discardCount: relic.discardCount, selected: [] }
       pushLog(`Relic ${relic.name}: drew ${result.drawn.length} — discard ${relic.discardCount}`, 'info')
     } else {
       pushLog(`Relic ${relic.name}: nothing to draw`, 'warn')
@@ -256,6 +272,7 @@ export function playCard(cardIdx: number) {
   } else {
     maybeAutoEnd()
   }
+  finishAction(previous)
 }
 
 /** Discard the chosen drawn relic cards; the rest go to the player's hand. */
@@ -263,12 +280,32 @@ export function relicDiscard(selectedIdx: number[]) {
   if (!state.pendingRelic) return
   const p = cp()
   const { drawn } = state.pendingRelic
-  drawn.forEach((cardId, i) => {
-    if (selectedIdx.includes(i)) p.discard.unshift(cardId)
-    else p.hand.push(cardId)
-  })
+  const drawnStart = p.hand.length - drawn.length
+  for (const i of [...selectedIdx].sort((a, b) => b - a)) {
+    const cardId = drawn[i]
+    if (cardId === undefined) continue
+    p.hand.splice(drawnStart + i, 1)
+    p.discard.unshift(cardId)
+  }
   state.pendingRelic = null
   maybeAutoEnd()
+}
+
+export function toggleRelicDiscard(handIndex: number) {
+  if (!state.pendingRelic) return
+  const p = cp()
+  const drawnStart = p.hand.length - state.pendingRelic.drawn.length
+  const drawnIndex = handIndex - drawnStart
+  if (drawnIndex < 0 || drawnIndex >= state.pendingRelic.drawn.length) return
+  const selected = state.pendingRelic.selected
+  const existing = selected.indexOf(drawnIndex)
+  if (existing !== -1) {
+    selected.splice(existing, 1)
+    return
+  }
+  if (selected.length >= state.pendingRelic.discardCount) return
+  selected.push(drawnIndex)
+  if (selected.length === state.pendingRelic.discardCount) relicDiscard([...selected])
 }
 
 export function openPile(pile: 'deck' | 'discard') {
@@ -282,7 +319,7 @@ export function closePile() {
 export function playAllGems() {
   const g = state.game!
   const p = cp()
-  beforeAction()
+  const previous = beforeAction()
   for (const id of [...p.hand]) {
     if (getCard(id).type === 'gem') {
       const msg = enginePlayCard(g, p.id, id)
@@ -290,50 +327,57 @@ export function playAllGems() {
     }
   }
   maybeAutoEnd()
+  finishAction(previous)
 }
 
 export function prepSpell(cardIdx: number, breachIndex: number) {
   const p = cp()
-  beforeAction()
+  const previous = beforeAction()
   const msg = enginePrepSpell(state.game!, p.id, p.hand[cardIdx]!, breachIndex)
   if (msg) pushLog(msg, 'ok')
   state.prepTarget = null
   maybeAutoEnd()
+  finishAction(previous)
 }
 
 export function buyCard(pileIdx: number) {
-  beforeAction()
+  const previous = beforeAction()
   const msg = engineBuyCard(state.game!, cp().id, pileIdx)
   if (msg) pushLog(msg, 'ok')
   maybeAutoEnd()
+  finishAction(previous)
 }
 
 export function focusBreach(breachIndex: number) {
-  beforeAction()
+  const previous = beforeAction()
   const msg = engineFocusBreach(state.game!, cp().id, breachIndex)
   if (msg) pushLog(msg, 'ok')
   maybeAutoEnd()
+  finishAction(previous)
 }
 
 export function openBreach(breachIndex: number) {
-  beforeAction()
+  const previous = beforeAction()
   const msg = engineOpenBreach(state.game!, cp().id, breachIndex)
   if (msg) pushLog(msg, 'ok')
   maybeAutoEnd()
+  finishAction(previous)
 }
 
 export function gainCharge(amount = 1) {
-  beforeAction()
+  const previous = beforeAction()
   const msg = engineGainCharge(state.game!, cp().id, amount)
   if (msg) pushLog(msg, 'ok')
   maybeAutoEnd()
+  finishAction(previous)
 }
 
 export function activateAbility(target?: string) {
-  beforeAction()
+  const previous = beforeAction()
   const msg = engineActivateAbility(state.game!, cp().id, target)
   if (msg) pushLog(msg, 'ok')
   maybeAutoEnd()
+  finishAction(previous)
 }
 
 // ===== End of turn + discard ordering =====
@@ -394,8 +438,9 @@ function doEndTurn() {
 
 export function endTurn() {
   if (state.phase !== 'main') return
-  beforeAction()
+  const previous = beforeAction()
   doEndTurn()
+  finishAction(previous)
 }
 
 export function clickDiscardCard(cardId: string) {
@@ -430,7 +475,7 @@ export function nemesisChooseTarget(target: 'p1' | 'p2' | 'gravehold') {
   const g = state.game!
   const card = state.pendingNemesis
   if (!card) return
-  beforeAction()
+  const previous = beforeAction()
   const msg = nemesisResolveAttack(g, target, card.damage)
   pushLog(`Nemesis attacks ${target}: ${msg}`, 'warn')
   if (target !== 'gravehold') {
@@ -439,9 +484,15 @@ export function nemesisChooseTarget(target: 'p1' | 'p2' | 'gravehold') {
   }
   state.pendingNemesis = null
   const over = checkGameOver(g)
-  if (over) { pushLog(over, 'warn'); state.phase = 'gameover'; return }
+  if (over) {
+    pushLog(over, 'warn')
+    state.phase = 'gameover'
+    finishAction(previous)
+    return
+  }
   startTurn(g)
   beginTurn()
+  finishAction(previous)
 }
 
 // ===== Derived state =====
@@ -480,7 +531,7 @@ export function useGame() {
     newGame, resumeGame, clearSave, toggleDebug, castSpell, toMainPhase, playCard, playAllGems, prepSpell,
     buyCard, focusBreach, openBreach, gainCharge, activateAbility,
     endTurn, nemesisChooseTarget, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, relicDiscard, openPile, closePile,
+    selectPlayer, clickDiscardCard, relicDiscard, toggleRelicDiscard, openPile, closePile,
     castableSpells, buyables, playerCanAct,
     displayPlayer, isCurrentSelected, canActMain, canCast,
   }

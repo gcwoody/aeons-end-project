@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { getPlayer, toRoman } from '@engine/engine'
+import { computed, onBeforeUnmount, ref } from 'vue'
+import { getPlayer, getCastableSpells, toRoman } from '@engine/engine'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
@@ -10,7 +10,7 @@ const {
   state, displayPlayer, isCurrentSelected, canActMain, canCast,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
   playCard, playAllGems, castSpell, endTurn, toMainPhase,
-  selectPlayer, clickDiscardCard, openPile,
+  selectPlayer, clickDiscardCard, toggleRelicDiscard, openPile,
 } = useGame()
 
 const p1 = computed(() => getPlayer(state.game!, 'p1'))
@@ -21,6 +21,15 @@ const ready = computed(() => player.value.charge >= player.value.chargeThreshold
 const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order')
+const draggingSpell = ref(false)
+const draggedSpellId = ref<string | null>(null)
+const dragPosition = ref({ x: 0, y: 0 })
+let dragPointerId = -1
+let dragStartX = 0
+let dragStartY = 0
+const relicDrawnStart = computed(() =>
+  state.pendingRelic ? player.value.hand.length - state.pendingRelic.drawn.length : -1,
+)
 
 const phaseLabel = computed(() => ({
   setup: 'Setup', casting: 'Casting Phase', main: 'Main Phase',
@@ -30,7 +39,11 @@ const phaseLabel = computed(() => ({
 const DIR: Record<string, string> = { east: '→', south: '↓', west: '←', north: '↑' }
 
 const canPrep = (b: BreachState) =>
-  state.prepTarget !== null && canActMain.value && (b.opened || b.focusedThisTurn)
+  state.prepTarget !== null && canActMain.value && !b.prepSpell && (b.opened || b.focusedThisTurn)
+
+const isMustCastBreach = (b: BreachState) =>
+  canCast.value && !!b.prepSpell && getCastableSpells(state.game!, player.value.id)
+    .some((spell) => spell.breachIndex === b.index && spell.mustCast)
 
 const typeClass = (cid: string) =>
   getCard(cid).type === 'gem' ? 'gem' : getCard(cid).type === 'relic' ? 'relic' : 'spell'
@@ -46,12 +59,69 @@ function cardValue(cid: string): string {
 function clickHand(i: number) {
   if (!canActMain.value) return
   const cid = player.value.hand[i]
+  if (relicDrawnStart.value >= 0 && i >= relicDrawnStart.value) {
+    toggleRelicDiscard(i)
+    return
+  }
+  if (state.pendingRelic) return
   if (getCard(cid).type === 'spell') {
     state.prepTarget = state.prepTarget === i ? null : i
   } else {
     playCard(i)
   }
 }
+
+function startSpellPointerDrag(i: number, event: PointerEvent) {
+  if (event.button !== 0 || !canActMain.value || getCard(player.value.hand[i]).type !== 'spell') return
+  state.prepTarget = i
+  draggedSpellId.value = player.value.hand[i]!
+  dragPosition.value = { x: event.clientX, y: event.clientY }
+  dragPointerId = event.pointerId
+  dragStartX = event.clientX
+  dragStartY = event.clientY
+  window.addEventListener('pointermove', handleSpellPointerMove, { passive: false })
+  window.addEventListener('pointerup', finishSpellPointerDrag, { once: true })
+  window.addEventListener('pointercancel', cancelSpellPointerDrag, { once: true })
+}
+
+function handleSpellPointerMove(event: PointerEvent) {
+  if (event.pointerId !== dragPointerId) return
+  dragPosition.value = { x: event.clientX, y: event.clientY }
+  const distance = Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY)
+  if (distance > 5) draggingSpell.value = true
+  if (draggingSpell.value) event.preventDefault()
+}
+
+function finishSpellPointerDrag(event: PointerEvent) {
+  if (event.pointerId !== dragPointerId) return
+  const wasDragging = draggingSpell.value
+  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-breach-index]')
+  const breachIndex = target ? Number(target.dataset.breachIndex) : NaN
+  removeSpellPointerListeners()
+  draggingSpell.value = false
+  draggedSpellId.value = null
+  if (wasDragging) {
+    const breach = player.value.breaches.find((item) => item.index === breachIndex)
+    if (state.prepTarget !== null && breach && canPrep(breach)) prepSpell(state.prepTarget, breach.index)
+    else state.prepTarget = null
+  }
+}
+
+function cancelSpellPointerDrag() {
+  removeSpellPointerListeners()
+  draggingSpell.value = false
+  draggedSpellId.value = null
+  state.prepTarget = null
+}
+
+function removeSpellPointerListeners() {
+  window.removeEventListener('pointermove', handleSpellPointerMove)
+  window.removeEventListener('pointerup', finishSpellPointerDrag)
+  window.removeEventListener('pointercancel', cancelSpellPointerDrag)
+  dragPointerId = -1
+}
+
+onBeforeUnmount(removeSpellPointerListeners)
 
 function clickBreach(b: BreachState) {
   if (canCast.value && b.prepSpell) { castSpell(b.index); return }
@@ -61,6 +131,19 @@ function clickBreach(b: BreachState) {
 
 <template>
   <div class="player-area">
+    <div
+      v-if="draggingSpell && draggedSpellId"
+      class="spell-drag-preview"
+      :style="{ left: `${dragPosition.x}px`, top: `${dragPosition.y}px` }"
+    >
+      <img
+        v-if="cardImageUrl(draggedSpellId)"
+        :src="cardImageUrl(draggedSpellId)"
+        :alt="getCard(draggedSpellId).name"
+        draggable="false"
+      />
+      <span v-else>{{ getCard(draggedSpellId).name }}</span>
+    </div>
     <div class="char-row">
       <div class="char-select">
         <button
@@ -92,11 +175,21 @@ function clickBreach(b: BreachState) {
       <div
         v-for="b in player.breaches" :key="b.index"
         class="breach"
-        :class="{ open: b.opened, castable: canCast && b.prepSpell, 'prep-ok': canPrep(b) }"
+        :class="{
+          open: b.opened,
+          castable: canCast && b.prepSpell,
+          'must-cast': isMustCastBreach(b),
+          'prep-ok': canPrep(b),
+          'drag-target': draggingSpell && canPrep(b),
+        }"
         @click="clickBreach(b)"
+        :data-breach-index="b.index"
       >
         <div class="roman">{{ toRoman(b.index) }}</div>
-        <div v-if="b.prepSpell" class="spell">[{{ getCard(b.prepSpell).name }}]</div>
+        <div v-if="b.prepSpell" class="spell">
+          <img v-if="cardImageUrl(b.prepSpell)" :src="cardImageUrl(b.prepSpell)" :alt="getCard(b.prepSpell).name" />
+          <span v-else>[{{ getCard(b.prepSpell).name }}]</span>
+        </div>
         <div v-else-if="b.opened" class="spell open-label">Open</div>
         <div v-else class="dir">{{ DIR[b.focusDirection] }} · focus {{ b.focusCost }}a · open {{ b.openCost[b.focusDirection] }}a</div>
         <div v-if="b.index >= 3" class="breach-bonus">Once Opened: +1 Damage on Cast</div>
@@ -112,19 +205,21 @@ function clickBreach(b: BreachState) {
       <template v-if="isDiscard">
         <div
           v-for="(cid, i) in state.discardRemaining" :key="cid + i"
-          class="card small clickable" :class="typeClass(cid)"
+          class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]"
           @click="clickDiscardCard(cid)"
         >
-          <div class="cname">{{ getCard(cid).name }}</div>
+          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+          <div v-else class="cname">{{ getCard(cid).name }}</div>
         </div>
         <span v-if="state.discardRemaining.length === 0" class="empty">— done —</span>
       </template>
       <template v-else>
         <div
           v-for="(cid, i) in player.playedThisTurn" :key="cid + i"
-          class="card small" :class="typeClass(cid)"
+          class="card small" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]"
         >
-          <div class="cname">{{ getCard(cid).name }}</div>
+          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+          <div v-else class="cname">{{ getCard(cid).name }}</div>
         </div>
         <span v-if="player.playedThisTurn.length === 0" class="empty">— none —</span>
       </template>
@@ -138,10 +233,19 @@ function clickBreach(b: BreachState) {
       <div class="hand">
         <div
           v-for="(cid, i) in player.hand" :key="cid + i"
-          class="card" :class="[typeClass(cid), { selected: state.prepTarget === i, 'card-image': cardImageUrl(cid) }]"
+          class="card" :class="[typeClass(cid), {
+            selected: state.prepTarget === i,
+            'card-image': cardImageUrl(cid),
+            'relic-discardable': relicDrawnStart >= 0 && i >= relicDrawnStart,
+            'relic-discard-selected': relicDrawnStart >= 0 && state.pendingRelic?.selected.includes(i - relicDrawnStart),
+            dragging: draggingSpell && state.prepTarget === i,
+            'spell-draggable': canActMain && !state.pendingRelic && getCard(cid).type === 'spell',
+          }]"
           @click="clickHand(i)"
+          draggable="false"
+          @pointerdown="startSpellPointerDrag(i, $event)"
         >
-          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" draggable="false" />
           <template v-else>
             <div class="cname">{{ getCard(cid).name }}</div>
             <div class="cval">{{ cardValue(cid) }}</div>
