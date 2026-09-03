@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
+import CardHoverPreview from './CardHoverPreview.vue'
 
 const { state, displayPlayer, closePile } = useGame()
 
@@ -25,10 +26,12 @@ const columns = computed(() => {
       <div v-if="cards.length === 0" class="empty">— empty —</div>
       <div v-else class="pile-cols">
         <div v-for="(col, ci) in columns" :key="ci" class="pile-col">
-          <div v-for="(cid, i) in col" :key="cid + i" class="pile-card" :class="{ 'pile-card-image': cardImageUrl(cid) }">
-            <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-            <span v-else>{{ getCard(cid).name }}</span>
-          </div>
+          <CardHoverPreview v-for="(cid, i) in col" :key="cid + i" :card-id="cid">
+            <div class="pile-card" :class="{ 'pile-card-image': cardImageUrl(cid) }">
+              <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+              <span v-else>{{ getCard(cid).name }}</span>
+            </div>
+          </CardHoverPreview>
         </div>
       </div>
       <button class="btn" @click="closePile">Close</button>

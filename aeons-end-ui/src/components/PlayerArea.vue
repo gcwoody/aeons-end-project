@@ -5,6 +5,8 @@ import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
 import { useGame } from '../game/useGame'
+import CardHoverPreview from './CardHoverPreview.vue'
+import { breachImageUrl, breachRotation } from '../breach-images'
 
 const {
   state, displayPlayer, isCurrentSelected, canActMain, canCast,
@@ -185,14 +187,36 @@ function clickBreach(b: BreachState) {
         @click="clickBreach(b)"
         :data-breach-index="b.index"
       >
-        <div class="roman">{{ toRoman(b.index) }}</div>
-        <div v-if="b.prepSpell" class="spell">
-          <img v-if="cardImageUrl(b.prepSpell)" :src="cardImageUrl(b.prepSpell)" :alt="getCard(b.prepSpell).name" />
-          <span v-else>[{{ getCard(b.prepSpell).name }}]</span>
+        <div class="breach-token-wrap">
+          <img
+            class="breach-token"
+            :src="breachImageUrl(b)"
+            :alt="`Breach ${toRoman(b.index)} ${b.opened ? 'open' : 'closed'}`"
+            :style="{ transform: `rotate(${breachRotation(b)}deg)` }"
+            draggable="false"
+          />
+          <div
+            v-if="b.prepSpell"
+            class="spell"
+            :class="{
+              'castable-spell': canCast,
+              'must-cast-spell': isMustCastBreach(b),
+            }"
+          >
+            <CardHoverPreview :card-id="b.prepSpell">
+              <div
+                class="breach-spell-card-frame"
+                :class="{
+                  'castable-spell': canCast,
+                  'must-cast-spell': isMustCastBreach(b),
+                }"
+              >
+                <img v-if="cardImageUrl(b.prepSpell)" :src="cardImageUrl(b.prepSpell)" :alt="getCard(b.prepSpell).name" />
+                <span v-else>[{{ getCard(b.prepSpell).name }}]</span>
+              </div>
+            </CardHoverPreview>
+          </div>
         </div>
-        <div v-else-if="b.opened" class="spell open-label">Open</div>
-        <div v-else class="dir">{{ DIR[b.focusDirection] }} · focus {{ b.focusCost }}a · open {{ b.openCost[b.focusDirection] }}a</div>
-        <div v-if="b.index >= 3" class="breach-bonus">Once Opened: +1 Damage on Cast</div>
         <div v-if="canActMain && !b.opened" class="btns" @click.stop>
           <button class="btn small" @click="focusBreach(b.index)">Focus</button>
           <button class="btn small" @click="openBreach(b.index)">Open</button>
@@ -203,24 +227,27 @@ function clickBreach(b: BreachState) {
     <div class="played-row">
       <span class="label">Played</span>
       <template v-if="isDiscard">
-        <div
+        <CardHoverPreview
           v-for="(cid, i) in state.discardRemaining" :key="cid + i"
-          class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]"
-          @click="clickDiscardCard(cid)"
+          :card-id="cid"
         >
-          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-          <div v-else class="cname">{{ getCard(cid).name }}</div>
-        </div>
+          <div class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]" @click="clickDiscardCard(cid)">
+            <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+            <div v-else class="cname">{{ getCard(cid).name }}</div>
+          </div>
+        </CardHoverPreview>
         <span v-if="state.discardRemaining.length === 0" class="empty">— done —</span>
       </template>
       <template v-else>
-        <div
+        <CardHoverPreview
           v-for="(cid, i) in player.playedThisTurn" :key="cid + i"
-          class="card small" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]"
+          :card-id="cid"
         >
-          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-          <div v-else class="cname">{{ getCard(cid).name }}</div>
-        </div>
+          <div class="card small" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]">
+            <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+            <div v-else class="cname">{{ getCard(cid).name }}</div>
+          </div>
+        </CardHoverPreview>
         <span v-if="player.playedThisTurn.length === 0" class="empty">— none —</span>
       </template>
     </div>
@@ -231,9 +258,11 @@ function clickBreach(b: BreachState) {
         <span class="count">{{ player.deck.length }}</span>
       </div>
       <div class="hand">
-        <div
+        <CardHoverPreview
           v-for="(cid, i) in player.hand" :key="cid + i"
-          class="card" :class="[typeClass(cid), {
+          :card-id="cid"
+        >
+          <div class="card" :class="[typeClass(cid), {
             selected: state.prepTarget === i,
             'card-image': cardImageUrl(cid),
             'relic-discardable': relicDrawnStart >= 0 && i >= relicDrawnStart,
@@ -243,14 +272,14 @@ function clickBreach(b: BreachState) {
           }]"
           @click="clickHand(i)"
           draggable="false"
-          @pointerdown="startSpellPointerDrag(i, $event)"
-        >
+          @pointerdown="startSpellPointerDrag(i, $event)">
           <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" draggable="false" />
           <template v-else>
             <div class="cname">{{ getCard(cid).name }}</div>
             <div class="cval">{{ cardValue(cid) }}</div>
           </template>
-        </div>
+          </div>
+        </CardHoverPreview>
       </div>
       <div class="discard-pile clickable" @click="openPile('discard')">
         <span class="label">Discard</span>
