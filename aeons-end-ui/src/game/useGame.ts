@@ -78,6 +78,9 @@ function cp(): PlayerState {
 
 /** Replicates the CLI aether display: regular vs conditional, tracked separately. */
 function aetherInfo(p: PlayerState) {
+  if (state.phase !== 'main') {
+    return { total: 0, available: 0, regularAvail: 0, gemAether: 0, conds: {} }
+  }
   const total = getTotalAether(p)
   let origCond = 0
   for (const id of p.playedThisTurn) {
@@ -91,7 +94,7 @@ function aetherInfo(p: PlayerState) {
   }
   let condAvail = 0
   for (const v of Object.values(conds)) condAvail += v
-  return { total, available: regularAvail + condAvail, regularAvail, conds }
+  return { total, available: regularAvail + condAvail, regularAvail, gemAether: conds['gem'] ?? 0, conds }
 }
 
 // ===== Undo (Ctrl+Z, max 5 steps) =====

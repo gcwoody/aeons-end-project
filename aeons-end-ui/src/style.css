@@ -1,5 +1,5 @@
 :root {
-  --breach-radius: 32px;
+  --breach-radius: 24%;
   --breach-size: clamp(96px, 10vw, 132px);
   --breach-spell-width: 88%;
   --breach-spell-offset-x: 0%;
@@ -9,6 +9,8 @@
   --played-card-height: 82px;
   --played-row-height: 94px;
   --breach-spell-height: 82px;
+  --mage-radius: 24px;
+  --mage-modal-radius: 40px;
   --bg: #12151d;
   --panel: #1b2030;
   --panel-2: #232a3d;
@@ -240,7 +242,7 @@ body {
   padding: 12px 14px;
   min-height: 0;
 }
-.char-row { display: flex; align-items: center; gap: 14px; justify-content: center; }
+.char-row { display: flex; align-items: center; gap: 14px; justify-content: center; min-height: 34px; }
 .char-select { display: flex; gap: 8px; }
 .char-btn {
   display: flex;
@@ -281,6 +283,13 @@ body {
   width: 100%;
   height: var(--breach-size);
   position: relative;
+  border-radius: var(--breach-radius);
+}
+.breach-hover-target {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: block;
   border-radius: var(--breach-radius);
 }
 .breach-token {
@@ -371,11 +380,46 @@ body {
 .played-row .empty { color: var(--muted); font-size: 12px; font-style: italic; }
 
 .hand-row {
+  position: relative;
   display: grid;
-  grid-template-columns: 120px 1fr 120px;
+  grid-template-columns: 270px 120px 1fr 120px;
+  grid-template-rows: var(--hand-row-height);
+  height: var(--hand-row-height);
   gap: 12px;
   align-items: stretch;
   min-height: 0;
+  max-height: var(--hand-row-height);
+}
+.mage-area {
+  height: 100%;
+  min-width: 0;
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mage-area:has(.mage-overlay) { z-index: 10; }
+.mage-image-wrap {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  cursor: pointer;
+  overflow: hidden;
+}
+.mage-image {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: var(--mage-radius);
+}
+.mage-unavailable {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
 }
 .deck-pile, .discard-pile {
   border: 1px solid var(--border);
@@ -387,11 +431,17 @@ body {
   gap: 4px;
   align-items: center;
   justify-content: center;
+  position: relative;
+  z-index: 2;
 }
 .deck-pile .count, .discard-pile .count { font-size: 26px; font-weight: 700; }
 .discard-pile .top { color: var(--spell); font-size: 11px; text-align: center; }
+.discard-pile { grid-column: 4; }
 
 .hand {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
   display: flex;
   gap: 10px;
   justify-content: center;
@@ -399,6 +449,7 @@ body {
   flex-wrap: wrap;
   overflow-y: auto;
   min-height: 0;
+  padding-inline: 270px;
 }
 
 .card {
@@ -487,6 +538,12 @@ body {
   transform: translate(-50%, -50%);
   animation: card-preview-in .12s ease-out;
 }
+.card-hover-preview.breach-preview {
+  border-radius: var(--breach-radius);
+}
+.card-hover-preview.mage-preview {
+  border-radius: 6%;
+}
 .card-hover-preview img {
   display: block;
   width: 100%;
@@ -500,6 +557,22 @@ body {
   padding: 20px;
   text-align: center;
 }
+.mage-modal { padding: 18px; }
+.mage-modal-frame {
+  width: min(80vw, 900px);
+  height: min(62vw, 650px);
+  overflow: hidden;
+  border-radius: var(--mage-modal-radius);
+  background: var(--panel);
+}
+.mage-modal-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--mage-modal-radius);
+}
+.overlay.mage-overlay { z-index: 300; }
 @keyframes card-preview-in {
   from { opacity: 0; transform: translate(-50%, -50%) scale(.96); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
@@ -518,6 +591,27 @@ body {
   padding-bottom: 10px;
   z-index: 4;
 }
+.controls-left {
+  position: absolute;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.controls-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  min-height: 32px;
+}
+.controls-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.controls-status .turn { font-weight: 700; color: var(--accent); text-transform: capitalize; }
+.controls-status .phase { color: var(--warn); }
 .controls > .btn,
 .controls .btn { height: 32px; }
 .controls .aether { color: var(--gem); font-size: 13px; }

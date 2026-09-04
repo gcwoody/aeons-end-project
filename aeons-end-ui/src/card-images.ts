@@ -1,5 +1,5 @@
-import buriedLightUrl from '../../image-database/buried light.jpg'
-import moonstoneShardUrl from '../../image-database/moonstone shard.jpg'
+import buriedLightUrl from '../../image-database/wave1_breach_mages/Buried Light.jpg'
+import moonstoneShardUrl from '../../image-database/wave1_breach_mages/Moonstone Shard.jpg'
 import crystalUrl from '../../image-database/wave1 crystal.jpg'
 import sparkUrl from '../../image-database/wave2 spark.jpg'
 
