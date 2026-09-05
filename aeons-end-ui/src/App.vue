@@ -4,6 +4,7 @@ import { useGame } from './game/useGame'
 import SetupScreen from './components/SetupScreen.vue'
 import TurnOrderBar from './components/TurnOrderBar.vue'
 import NemesisArea from './components/NemesisArea.vue'
+import MarketPanel from './components/MarketPanel.vue'
 import PlayerArea from './components/PlayerArea.vue'
 import LogPanel from './components/LogPanel.vue'
 import PileModal from './components/PileModal.vue'
@@ -31,7 +32,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <div v-else class="app">
     <div class="main-col">
       <TurnOrderBar />
-      <NemesisArea />
+      <div class="top-section">
+        <div class="top-main">
+          <NemesisArea />
+        </div>
+        <MarketPanel class="market-col" />
+      </div>
       <PlayerArea />
     </div>
     <LogPanel class="log-col" />

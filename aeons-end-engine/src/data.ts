@@ -57,41 +57,48 @@ export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
   brama: ['buried_light'],
 }
 
-// ===== Demo Market Cards =====
-export const gem1: GemCard = {
-  id: 'gem_1', name: 'Gem (2/2)', type: 'gem', cost: 2, set: 'demo', aetherValue: 2,
+// ===== Supply Cards (wave 1) =====
+export const vriswoodAmber: GemCard = {
+  id: 'vriswood_amber', name: "V'riswood Amber", type: 'gem', cost: 3, set: 'wave1', aetherValue: 2,
 }
-export const gem2: GemCard = {
-  id: 'gem_2', name: 'Gem (3/2)', type: 'gem', cost: 3, set: 'demo', aetherValue: 2,
+export const diamondCluster: GemCard = {
+  id: 'diamond_cluster', name: 'Diamond Cluster', type: 'gem', cost: 4, set: 'wave1', aetherValue: 3,
 }
-export const gem3: GemCard = {
-  id: 'gem_3', name: 'Gem (4/3)', type: 'gem', cost: 4, set: 'demo', aetherValue: 3,
+export const burningOpal: GemCard = {
+  id: 'burning_opal', name: 'Burning Opal', type: 'gem', cost: 3, set: 'wave1', aetherValue: 2,
 }
-export const relic1: RelicCard = {
-  id: 'relic_1', name: 'Relic (3: draw 2+1)', type: 'relic',
-  cost: 3, set: 'demo', drawCount: 2, discardCount: 1,
+export const flexingDagger: RelicCard = {
+  id: 'flexing_dagger', name: 'Flexing Dagger', type: 'relic',
+  cost: 3, set: 'wave1', drawCount: 1, discardCount: 0,
 }
-export const relic2: RelicCard = {
-  id: 'relic_2', name: 'Relic (5: draw 3+1)', type: 'relic',
-  cost: 5, set: 'demo', drawCount: 3, discardCount: 1,
+export const bottledVortex: RelicCard = {
+  id: 'bottled_vortex', name: 'Bottled Vortex', type: 'relic',
+  cost: 3, set: 'wave1', drawCount: 2, discardCount: 1,
 }
-export const spell1: SpellCard = {
-  id: 'spell_1', name: 'Spell (4/3)', type: 'spell', cost: 4, set: 'demo', damage: 3,
+export const lavaTendril: SpellCard = {
+  id: 'lava_tendril', name: 'Lava Tendril', type: 'spell', cost: 3, set: 'wave1', damage: 3,
 }
-export const spell2: SpellCard = {
-  id: 'spell_2', name: 'Spell (5/4)', type: 'spell', cost: 5, set: 'demo', damage: 4,
+export const essenceTheft: SpellCard = {
+  id: 'essence_theft', name: 'Essence Theft', type: 'spell', cost: 8, set: 'wave1', damage: 2,
 }
-export const spell3: SpellCard = {
-  id: 'spell_3', name: 'Spell (6/5)', type: 'spell', cost: 6, set: 'demo', damage: 5,
+export const planarInsight: SpellCard = {
+  id: 'planar_insight', name: 'Planar Insight', type: 'spell', cost: 5, set: 'wave1',
+  damage: 3, bonusAether: 1,
 }
-export const spell4: SpellCard = {
-  id: 'spell_4', name: 'Spell (7/6)', type: 'spell', cost: 7, set: 'demo', damage: 6,
+export const arcaneNexus: SpellCard = {
+  id: 'arcane_nexus', name: 'Arcane Nexus', type: 'spell', cost: 6, set: 'wave1', damage: 4,
 }
 
 export const MARKET_CARDS: Record<string, CardDef> = {
-  gem_1: gem1, gem_2: gem2, gem_3: gem3,
-  relic_1: relic1, relic_2: relic2,
-  spell_1: spell1, spell_2: spell2, spell_3: spell3, spell_4: spell4,
+  vriswood_amber: vriswoodAmber,
+  diamond_cluster: diamondCluster,
+  burning_opal: burningOpal,
+  flexing_dagger: flexingDagger,
+  bottled_vortex: bottledVortex,
+  lava_tendril: lavaTendril,
+  essence_theft: essenceTheft,
+  planar_insight: planarInsight,
+  arcane_nexus: arcaneNexus,
 }
 
 export function getCard(id: string): CardDef {

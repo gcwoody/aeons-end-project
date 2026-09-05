@@ -2,7 +2,6 @@
 import { computed } from 'vue'
 import { getCard } from '@engine/data'
 import { useGame } from '../game/useGame'
-import MarketPanel from './MarketPanel.vue'
 
 const { state } = useGame()
 
@@ -36,10 +35,6 @@ const discTop = computed(() =>
           <span v-if="c.powerTokens != null"> · Power {{ c.powerTokens }}</span>
         </div>
       </div>
-    </div>
-
-    <div class="market-wrap">
-      <MarketPanel />
     </div>
   </div>
 </template>

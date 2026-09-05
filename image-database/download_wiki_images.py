@@ -1,4 +1,4 @@
-"""Download all images from the Breach Mages section of an Aeon's End wiki page."""
+"""Download images from named sections of an Aeon's End wiki page into per-section folders."""
 
 from __future__ import annotations
 
@@ -14,10 +14,16 @@ from urllib.request import ProxyHandler, Request, build_opener
 
 API_URL = "https://aeonsend.wiki.gg/api.php"
 PAGE_NAME = "Aeon's End (Core Box)"
-SECTION_NAME = "Breach Mages"
 USER_AGENT = "AeonsEndImageDatabase/1.0 (local project)"
 IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".webp"}
 DEFAULT_PROXY = "http://127.0.0.1:7897"
+
+# Wiki section name -> output subfolder (created inside --output).
+SECTIONS: dict[str, str] = {
+    "Supply Gems": "supply_gems",
+    "Supply Relics": "supply_relics",
+    "Supply Spells": "supply_spells",
+}
 
 
 def request_json(opener, params: dict[str, str], retries: int = 3) -> dict:
@@ -34,7 +40,7 @@ def request_json(opener, params: dict[str, str], retries: int = 3) -> dict:
     raise AssertionError("unreachable")
 
 
-def section_index(opener) -> str:
+def section_index(opener, section_name: str) -> str:
     data = request_json(
         opener,
         {
@@ -45,18 +51,18 @@ def section_index(opener) -> str:
         }
     )
     for section in data["parse"]["sections"]:
-        if section.get("line", "").strip().lower() == SECTION_NAME.lower():
+        if section.get("line", "").strip().lower() == section_name.lower():
             return section["index"]
-    raise RuntimeError(f"Could not find section {SECTION_NAME!r} on {PAGE_NAME!r}")
+    raise RuntimeError(f"Could not find section {section_name!r} on {PAGE_NAME!r}")
 
 
-def page_image_names(opener) -> list[str]:
+def page_image_names(opener, section_name: str) -> list[str]:
     data = request_json(
         opener,
         {
             "action": "parse",
             "page": PAGE_NAME,
-            "section": section_index(opener),
+            "section": section_index(opener, section_name),
             "prop": "images",
             "format": "json",
         },
@@ -68,7 +74,7 @@ def page_image_names(opener) -> list[str]:
         if name not in unique_names:
             unique_names.append(name)
     if not unique_names:
-        raise RuntimeError(f"No images found in section {SECTION_NAME!r}")
+        raise RuntimeError(f"No images found in section {section_name!r}")
     return unique_names
 
 
@@ -121,8 +127,8 @@ def main() -> None:
     parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).parent / "breach_mages",
-        help="Directory for downloaded images (default: ./breach_mages)",
+        default=Path(__file__).parent / "wave1_supply_cards",
+        help="Root directory for downloaded images (default: ./wave1_supply_cards)",
     )
     parser.add_argument(
         "--force",
@@ -147,30 +153,41 @@ def main() -> None:
         else ProxyHandler({"http": args.proxy, "https": args.proxy})
     )
     args.output.mkdir(parents=True, exist_ok=True)
-    print(f"Source section: {PAGE_NAME} -> {SECTION_NAME}")
+    print(f"Source page: {PAGE_NAME}")
     print(f"Connection: {'direct' if args.no_proxy else f'proxy {args.proxy}'}")
-    names = page_image_names(opener)
-    urls = image_urls(opener, names)
-    missing = [name for name in names if name not in urls]
-    if missing:
-        print(f"Warning: no original URL returned for {len(missing)} image(s): {', '.join(missing)}")
 
-    downloaded = 0
-    skipped = 0
-    for name in names:
-        url = urls.get(name)
-        if not url:
-            continue
-        destination = args.output / safe_filename(name)
-        if destination.exists() and not args.force:
-            skipped += 1
-            continue
-        download(opener, url, destination)
-        downloaded += 1
-        print(f"Downloaded: {destination.name}")
-        time.sleep(0.2)
+    total_downloaded = 0
+    total_skipped = 0
+    for section_name, folder in SECTIONS.items():
+        destination_dir = args.output / folder
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        print(f"\n== {section_name} -> {destination_dir} ==")
+        names = page_image_names(opener, section_name)
+        urls = image_urls(opener, names)
+        missing = [name for name in names if name not in urls]
+        if missing:
+            print(f"Warning: no original URL returned for {len(missing)} image(s): {', '.join(missing)}")
 
-    print(f"Finished: {downloaded} downloaded, {skipped} skipped, {len(names)} page images selected")
+        downloaded = 0
+        skipped = 0
+        for name in names:
+            url = urls.get(name)
+            if not url:
+                continue
+            destination = destination_dir / safe_filename(name)
+            if destination.exists() and not args.force:
+                skipped += 1
+                continue
+            download(opener, url, destination)
+            downloaded += 1
+            print(f"Downloaded: {destination.name}")
+            time.sleep(0.2)
+
+        print(f"Finished {folder}: {downloaded} downloaded, {skipped} skipped, {len(names)} page images selected")
+        total_downloaded += downloaded
+        total_skipped += skipped
+
+    print(f"\nAll done: {total_downloaded} downloaded, {total_skipped} skipped")
 
 
 if __name__ == "__main__":
