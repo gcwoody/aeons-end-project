@@ -4,25 +4,62 @@ import { getCard } from '@engine/data'
 import type { CardChoice, PendingDecisionAnswer } from '@engine/types'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
+import { chunkCards, groupPileCards, pileRowLabel } from '../game/pile-layout'
 
 const { state, resolveDecision } = useGame()
 const selectedCards = ref<CardChoice[]>([])
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
 
-const cardGroups = computed(() => {
+interface DecisionCardRow {
+  key: string
+  label: string
+  choices: CardChoice[]
+}
+
+interface DecisionCardZone {
+  key: string
+  rows: DecisionCardRow[]
+}
+
+const cardZones = computed(() => {
   if (!decision.value || decision.value.kind !== 'select_cards') return []
-  const groups = new Map<string, CardChoice[]>()
-  for (const choice of decision.value.candidates) {
-    const list = groups.get(choice.zone) ?? []
-    list.push(choice)
-    groups.set(choice.zone, list)
-  }
-  return [...groups.entries()].map(([zone, choices]) => ({
-    zone,
-    label: zone === 'hand' ? 'Hand' : zone === 'discard' ? 'Discard Pile' : 'Played This Turn',
-    choices,
+  const candidates = decision.value.candidates
+  const zones: DecisionCardZone[] = []
+  const hand = candidates.filter(choice => choice.zone === 'hand')
+  const discard = candidates.filter(choice => choice.zone === 'discard')
+  const other = candidates.filter(choice => choice.zone !== 'hand' && choice.zone !== 'discard')
+
+  const handRows = chunkCards(hand).map((choices, index) => ({
+    key: `hand:${index}`, label: 'HAND', choices,
   }))
+  if (handRows.length > 0) {
+    zones.push({ key: 'hand', rows: handRows })
+  }
+
+  const deckCount = state.game?.players.find(player => player.id === decision.value!.playerId)?.deck.length ?? 0
+  const discardGroups = groupPileCards(discard, 'discard', deckCount)
+  let discardOffset = 0
+  const discardRows: DecisionCardRow[] = []
+  for (const [index, choices] of discardGroups.entries()) {
+    discardRows.push({
+      key: `discard:${index}`,
+      label: `DISCARD · ${pileRowLabel('discard', index, discardGroups.length)}`,
+      choices: discard.slice(discardOffset, discardOffset + choices.length),
+    })
+    discardOffset += choices.length
+  }
+  if (discardRows.length > 0) {
+    zones.push({ key: 'discard', rows: discardRows })
+  }
+
+  const otherRows = chunkCards(other).map((choices, index) => ({
+    key: `other:${index}`, label: 'PLAYED THIS TURN', choices,
+  }))
+  if (otherRows.length > 0) {
+    zones.push({ key: 'other', rows: otherRows })
+  }
+  return zones
 })
 
 watch(() => decision.value?.id, () => {
@@ -95,9 +132,14 @@ function answer(kind: PendingDecisionAnswer) {
       </div>
 
       <template v-else-if="decision.kind === 'select_cards'">
-        <div v-for="group in cardGroups" :key="group.zone" class="decision-card-group">
-          <h3>{{ group.label }}</h3>
-          <div class="decision-card-grid">
+        <div v-for="zone in cardZones" :key="zone.key" class="decision-card-zone">
+          <div
+            v-for="group in zone.rows"
+            :key="group.key"
+            class="pile-row pile-row-labeled decision-card-row"
+            :style="{ '--choice-columns': group.choices.length }"
+          >
+            <span class="pile-row-label">{{ group.label }}</span>
             <button
               v-for="choice in group.choices"
               :key="choiceKey(choice)"

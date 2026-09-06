@@ -838,15 +838,23 @@ body {
 .overlay-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 .exit-copy { color: var(--muted); margin: 0; }
 .exit-overlay { z-index: 100; }
+.gameover-title {
+  margin-bottom: 20px !important;
+  font-size: clamp(32px, 5vw, 54px);
+  letter-spacing: 3px;
+  color: var(--accent);
+}
 
 /* ===== Card decision modal ===== */
 .decision-overlay { z-index: 120; }
 .decision-modal {
-  width: min(760px, calc(100vw - 32px));
+  width: fit-content;
+  max-width: calc(100vw - 24px);
   max-height: min(88vh, 720px);
-  overflow-y: auto;
+  box-sizing: border-box;
+  overflow: auto;
 }
-.decision-modal h2 { max-width: 680px; }
+.decision-modal h2 { max-width: 860px; }
 .decision-options {
   display: flex;
   gap: 10px;
@@ -857,6 +865,19 @@ body {
 .decision-option { min-width: 150px; }
 .prepped-spell-option { display: flex; align-items: center; gap: 10px; text-align: left; }
 .prepped-spell-option img { width: 42px; height: 63px; object-fit: cover; border-radius: 4px; }
+.decision-card-zone {
+  /* Keep every source area aligned to a five-card row, even when the last
+     row currently contains fewer cards. */
+  width: 636px;
+  max-width: 100%;
+  box-sizing: border-box;
+  margin: 12px 0;
+  padding: 2px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, .012);
+  overflow-x: auto;
+}
 .decision-card-group h3 {
   margin: 14px 0 6px;
   color: var(--muted);
@@ -864,6 +885,9 @@ body {
   text-align: left;
   text-transform: uppercase;
   letter-spacing: 1px;
+}
+.decision-card-row {
+  margin: 14px 0;
 }
 .decision-card-grid {
   display: grid;
@@ -898,6 +922,26 @@ body {
   box-shadow: 0 0 0 2px var(--accent) inset;
   transform: translateY(-3px);
 }
+
+/* Override the generic pile-row rule below this section. Each row only
+   reserves columns for the cards it actually contains. */
+.decision-card-zone .decision-card-row {
+  width: max-content;
+  grid-template-columns: 150px repeat(var(--choice-columns), minmax(0, 82px));
+}
+
+@media (max-width: 520px) {
+  .decision-modal {
+    width: calc(100vw - 12px);
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+  .decision-card-zone .decision-card-row {
+    min-width: 100%;
+    grid-template-columns: 140px repeat(var(--choice-columns), 82px);
+  }
+}
+
 .decision-footer {
   display: flex;
   align-items: center;
@@ -1034,6 +1078,11 @@ body {
     width: 100%;
     height: auto;
     aspect-ratio: 2 / 3;
+  }
+  .decision-card-zone .decision-card-row {
+    width: max-content;
+    min-width: 100%;
+    grid-template-columns: 140px repeat(5, 82px);
   }
 }
 

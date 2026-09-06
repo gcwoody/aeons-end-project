@@ -12,7 +12,7 @@ import DebugPanel from './components/DebugPanel.vue'
 
 const {
   state, nemesisChooseTarget, undo, toggleDebug,
-  closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving,
+  closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
 } = useGame()
 
 function onKeydown(e: KeyboardEvent) {
@@ -100,9 +100,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 
     <div v-if="state.phase === 'gameover'" class="overlay">
       <div class="overlay-card">
-        <h2>{{ state.game.winner === 'players' ? 'Victory!' : 'Defeat…' }}</h2>
-        <p>Winner: {{ state.game.winner }} · Nemesis {{ state.game.nemesis.hp }}/{{ state.game.nemesis.maxHp }}</p>
-        <button class="btn primary" @click="state.game = null; state.phase = 'setup'">New Game</button>
+        <h2 class="gameover-title">{{ state.game.winner === 'players' ? 'Victory!' : 'Defeat…' }}</h2>
+        <button class="btn primary" @click="returnToMainMenu">Back to Main Menu</button>
       </div>
     </div>
   </div>

@@ -454,6 +454,10 @@ export function exitWithoutSaving() {
   resetToSetup()
 }
 
+export function returnToMainMenu() {
+  resetToSetup()
+}
+
 export function toggleDebug() {
   state.debugOpen = !state.debugOpen
 }
@@ -769,6 +773,7 @@ export function useGame() {
     newGame, resumeGame, clearSave, clearSaves,
     requestDeleteSave, cancelDeleteSave, deleteSave,
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
+    returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     endTurn, nemesisChooseTarget, undo, aetherInfo, toRoman,
