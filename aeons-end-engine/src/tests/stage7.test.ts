@@ -1,18 +1,21 @@
 import {
   buyCard,
   castSpell,
+  activateAbility,
   createGame,
   getBreachActionCosts,
   getPreppedCardActions,
   activatePreppedCardAction,
+  getConditionalAetherByType,
   playCard,
   resolvePendingDecision,
   resolvePreppedEffects,
+  getPreppedSpellChoices,
   resolveDrawPhase,
   gainLife,
 } from '../engine'
-import { arcaneNexus, getCard, MARKET_CARDS } from '../data'
-import type { CardChoice, DamageTargetRef, GameState } from '../types'
+import { arcaneNexus, getCard, INITIAL_CARDS, MARKET_CARDS } from '../data'
+import type { CardChoice, DamageTargetRef, GameState, PendingDecisionAnswer } from '../types'
 
 declare const console: { log(message?: unknown): void }
 
@@ -65,6 +68,13 @@ function testSupplyData(): void {
   assertEqual(getCard('arcane_nexus').effects?.length, 2, 'Arcane Nexus has both effect blocks')
 }
 
+function testAllCurrentPlayerCardsUseTypedEffects(): void {
+  const currentCards = [...Object.values(INITIAL_CARDS), ...Object.values(MARKET_CARDS)]
+  for (const card of currentCards) {
+    assert((card.effects?.length ?? 0) > 0, `${card.name} uses typed effects`)
+  }
+}
+
 function testGainAndSaveShape(): void {
   const game = freshGame()
   const player = game.players[0]!
@@ -114,6 +124,38 @@ function testGemEffects(): void {
   assertEqual(game.pendingDecision, null, 'Burning Opal resolves unique discard and ally automatically')
   assert(player.discard.includes('spark'), 'Burning Opal discards the selected hand card')
   assertEqual(ally.hand[ally.hand.length - 1], 'crystal', 'Ally draws the card')
+}
+
+function testInitialCardEffects(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  player.hand = ['crystal', 'moonstone_shard']
+
+  assert(playCard(game, player.id, 'crystal')?.includes('Played Crystal'), 'Crystal uses typed on-play effect')
+  assertEqual(player.bonusAether, 1, 'Crystal gains one aether through the effect interpreter')
+  assert(playCard(game, player.id, 'moonstone_shard')?.includes('Played Moonstone Shard'), 'Moonstone Shard uses typed on-play effect')
+  assertEqual(player.bonusAether, 2, 'Moonstone Shard gains one regular aether')
+  assertEqual(getConditionalAetherByType(player, 'gem'), 1, 'Moonstone Shard gains gem-only aether')
+  assertEqual(player.conditionalAetherEarned.gem, 1, 'Conditional aether is stored in player turn state')
+
+  const conditionalSpend = freshGame()
+  const conditionalPlayer = conditionalSpend.players[0]!
+  conditionalPlayer.hand = ['moonstone_shard', 'moonstone_shard']
+  playCard(conditionalSpend, conditionalPlayer.id, 'moonstone_shard')
+  playCard(conditionalSpend, conditionalPlayer.id, 'moonstone_shard')
+  conditionalPlayer.regularAetherSpent = 2
+  const relicPile = conditionalSpend.market.piles.findIndex(pile => pile.cardId === 'flexing_dagger')
+  assert(buyCard(conditionalSpend, conditionalPlayer.id, relicPile)?.includes('Need 2 Aether, have 0'),
+    'Gem-only conditional aether cannot buy a relic')
+
+  const spellGame = freshGame()
+  const spellPlayer = spellGame.players[0]!
+  spellPlayer.breaches[0]!.prepSpell = 'buried_light'
+  spellGame.nemesis.hp = 20
+  const message = castSpell(spellGame, spellPlayer.id, 1)
+  assert(message?.includes('gains 1 Aether'), 'Buried Light uses typed on-cast gain')
+  assertEqual(spellGame.nemesis.hp, 19, 'Buried Light uses typed on-cast damage')
+  assertEqual(spellPlayer.bonusAether, 1, 'Buried Light aether is resolved by gain_aether')
 }
 
 function testRelicEffects(): void {
@@ -250,7 +292,7 @@ function testSpellEffects(): void {
   const castingAether = freshGame()
   const brama = castingAether.players[1]!
   brama.breaches[0]!.prepSpell = 'buried_light'
-  assert(castSpell(castingAether, brama.id, 1)?.includes('+1 Aether'), 'Buried Light grants casting-phase aether')
+  assert(castSpell(castingAether, brama.id, 1)?.includes('gains 1 Aether'), 'Buried Light grants casting-phase aether')
   assertEqual(brama.bonusAether, 1, 'Casting-phase aether is stored immediately')
 }
 
@@ -306,16 +348,103 @@ function testTurnReset(): void {
   assertEqual(player.turnEffects.usedPreppedEffects.length, 0, 'Once-per-turn markers reset')
 }
 
+function testMageAbilities(): void {
+  const bramaGame = freshGame()
+  const bramaMage = bramaGame.players[0]!
+  const ally = bramaGame.players[1]!
+  bramaMage.mageType = 'brama'
+  bramaMage.charge = bramaMage.chargeThreshold
+  ally.hp = ally.maxHp - 3
+  assert(activateAbility(bramaGame, bramaMage.id)?.includes('Brink Siphon activated'), 'Brama ability activates')
+  assertEqual(bramaGame.pendingDecision?.kind, 'select_life_target', 'Brama asks for a life target')
+  const bramaAnswer: PendingDecisionAnswer = {
+    kind: 'select_life_target', target: { kind: 'player', playerId: ally.id },
+  }
+  resolvePendingDecision(bramaGame, bramaGame.pendingDecision!.id, bramaAnswer)
+  assertEqual(ally.hp, ally.maxHp, 'Brama restores the selected ally up to maximum life')
+  assertEqual(bramaMage.charge, 0, 'Brama charge is consumed')
+
+  const jianGame = freshGame()
+  const jian = jianGame.players[0]!
+  const allyWithSpell = jianGame.players[1]!
+  jian.charge = jian.chargeThreshold
+  jian.breaches[0]!.prepSpell = 'spark'
+  allyWithSpell.breaches[0]!.prepSpell = 'spark'
+  jianGame.nemesis.hp = 20
+  assertEqual(getPreppedSpellChoices(jianGame).length, 2, 'Jian sees prepped spells from both players')
+  assert(activateAbility(jianGame, jian.id)?.includes('Black Mirror activated'), 'Jian ability activates')
+  assertEqual(jianGame.pendingDecision?.kind, 'select_prepped_spell', 'Jian asks for a prepped spell')
+  resolvePendingDecision(jianGame, jianGame.pendingDecision!.id, {
+    kind: 'select_prepped_spell',
+    choice: {
+      playerId: allyWithSpell.id,
+      breachIndex: 1,
+      cardId: 'spark',
+      cardName: 'Spark',
+    },
+  })
+  assertEqual(jianGame.nemesis.hp, 19, 'Jian performs the first cast without discarding')
+  assertEqual(jianGame.pendingDecision?.kind, 'select_prepped_spell', 'Jian pauses before the second cast')
+  resolvePendingDecision(jianGame, jianGame.pendingDecision!.id, {
+    kind: 'select_prepped_spell',
+    choice: {
+      playerId: allyWithSpell.id,
+      breachIndex: 1,
+      cardId: 'spark',
+      cardName: 'Spark',
+    },
+  })
+  assertEqual(jianGame.nemesis.hp, 18, 'Jian casts the selected spell twice')
+  assertEqual(allyWithSpell.breaches[0]!.prepSpell, null, 'Jian discards the spell after the second cast')
+  assertEqual(allyWithSpell.discard[0], 'spark', 'The second cast puts the spell in its owner discard pile')
+  assertEqual(jian.charge, 0, 'Jian charge is consumed')
+
+  const crossPlayerGame = freshGame()
+  const crossPlayerJian = crossPlayerGame.players[0]!
+  const brama = crossPlayerGame.players[1]!
+  crossPlayerJian.mageType = 'jian'
+  brama.mageType = 'brama'
+  crossPlayerJian.charge = crossPlayerJian.chargeThreshold
+  brama.breaches[0]!.prepSpell = 'buried_light'
+  crossPlayerGame.nemesis.hp = 20
+  assert(activateAbility(crossPlayerGame, crossPlayerJian.id)?.includes('Black Mirror activated'), 'Jian activates across players')
+  resolvePendingDecision(crossPlayerGame, crossPlayerGame.pendingDecision!.id, {
+    kind: 'select_prepped_spell',
+    choice: {
+      playerId: brama.id,
+      breachIndex: 1,
+      cardId: 'buried_light',
+      cardName: 'Buried Light',
+    },
+  })
+  assertEqual(crossPlayerJian.bonusAether, 1, 'Cross-player Buried Light grants Aether to Jian')
+  assertEqual(brama.bonusAether, 0, 'Cross-player Buried Light does not grant Aether to the spell owner')
+  resolvePendingDecision(crossPlayerGame, crossPlayerGame.pendingDecision!.id, {
+    kind: 'select_prepped_spell',
+    choice: {
+      playerId: brama.id,
+      breachIndex: 1,
+      cardId: 'buried_light',
+      cardName: 'Buried Light',
+    },
+  })
+  assertEqual(crossPlayerJian.bonusAether, 2, 'Both cross-player casts grant Aether to Jian')
+  assertEqual(brama.bonusAether, 0, 'Spell owner still receives no cross-player Aether')
+}
+
 function run(): void {
   testSupplyData()
+  testAllCurrentPlayerCardsUseTypedEffects()
   testGainAndSaveShape()
   testGemEffects()
+  testInitialCardEffects()
   testRelicEffects()
   testSpellEffects()
   testPreppedOncePerTurnAndTargets()
   testReturnedGemKeepsPlayCount()
   testTurnReset()
-  console.log('Stage 7 engine regression tests passed (9-card effects + JSON save shape).')
+  testMageAbilities()
+  console.log('Stage 7 engine regression tests passed (typed card effects + JSON save shape).')
 }
 
 run()

@@ -39,4 +39,5 @@ Read it before making changes.
 - Install: `cd aeons-end-ui && npm install`
 - Dev server: `npm run dev`
 - Build: `npm run build`
+- Browser E2E: `npx playwright install chromium`, then `npm run test:e2e`
 - Type-check via editor; `npm run build` uses Vite (no full type-check).

@@ -35,6 +35,12 @@ export type CardEffectTrigger =
       phase: 'casting_phase_end' | 'main_phase'
     }
 
+export type AbilityTrigger =
+  | { kind: 'main_phase' }
+  | { kind: 'casting_phase' }
+  | { kind: 'ally_turn_end' }
+  | { kind: 'nemesis_card_drawn'; cardType: 'attack' | 'power' }
+
 export type PlayerTargetScope = 'self' | 'ally' | 'any_player'
 export type PlayerTargetRef = { kind: 'player'; playerId: string }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
@@ -46,6 +52,13 @@ export type CardGainDestination = 'discard_top' | 'deck_top'
 export interface CardChoice {
   zone: CardZone
   index: number
+  cardId: string
+  cardName: string
+}
+
+export interface PreppedSpellChoice {
+  playerId: string
+  breachIndex: number
   cardId: string
   cardName: string
 }
@@ -85,6 +98,12 @@ export interface PendingEffectResolution {
   spellDamageEffectSeen?: boolean
   /** Phase that created a prepped-spell resolution, when applicable. */
   preppedPhase?: 'casting_phase_end' | 'main_phase'
+  /** The player whose prepped spell is currently being resolved. */
+  effectPlayerId?: string
+  /** The prepped spell selected by an ability and reused by later effects. */
+  selectedPreppedSpell?: PreppedSpellChoice
+  /** Confirms a board click before a prepped-spell cast effect continues. */
+  confirmedPreppedSpell?: PreppedSpellChoice
 }
 
 export interface DecisionOption {
@@ -110,6 +129,10 @@ export type PendingDecision = PendingDecisionBase & (
       max: number
     }
   | {
+      kind: 'select_prepped_spell'
+      candidates: PreppedSpellChoice[]
+    }
+  | {
       kind: 'select_life_target'
       targets: LifeTargetRef[]
     }
@@ -132,6 +155,7 @@ export type PendingDecisionAnswer =
   | { kind: 'choose_one'; optionId: string }
   | { kind: 'choose_optional'; accepted: boolean }
   | { kind: 'select_cards'; choices: CardChoice[] }
+  | { kind: 'select_prepped_spell'; choice: PreppedSpellChoice }
   | { kind: 'select_life_target'; target: LifeTargetRef }
   | { kind: 'select_player_target'; target: PlayerTargetRef }
   | { kind: 'select_damage_target'; target: DamageTargetRef }
@@ -156,6 +180,7 @@ export interface CardEffectOption {
 /** A small, serializable vocabulary for reusable card rules. */
 export type CardEffect =
   | { kind: 'gain_aether'; amount: number }
+  | { kind: 'gain_conditional_aether'; amount: number; condition: string }
   | { kind: 'deal_damage'; amount: EffectAmount; target: DamageTargetScope }
   | { kind: 'draw_cards'; amount: number; target?: PlayerTargetScope }
   /** The engine must clamp the resulting life to the target object's maxHp. */
@@ -192,6 +217,13 @@ export type CardEffect =
       kind: 'return_card_to_hand'
       source: 'played_gem_this_turn'
     }
+  | {
+      kind: 'cast_prepped_spell'
+      source: 'any_prepped_spell' | 'selected_prepped_spell'
+      discard: boolean
+    }
+  /** Internal marker used to finish one cast inside a larger effect sequence. */
+  | { kind: 'resolve_spell_damage_bonus' }
   /** Internal pause used for mandatory effects on prepped cards. */
   | {
       kind: 'confirm_prepped_effect'
@@ -221,24 +253,14 @@ export interface CardDef {
 
 export interface GemCard extends CardDef {
   type: 'gem'
-  aetherValue: number
-  conditionalAether?: {
-    amount: number
-    condition: string
-  }
 }
 
 export interface RelicCard extends CardDef {
   type: 'relic'
-  drawCount: number
-  discardCount: number
 }
 
 export interface SpellCard extends CardDef {
   type: 'spell'
-  damage: number
-  bonusAether?: number
-  whilePrepped?: { description: string }
 }
 
 export interface NemesisCard extends CardDef {
@@ -292,6 +314,8 @@ export interface PlayerState {
   playedThisTurn: string[]
   /** Number of times each card has been played this turn, including cards returned to hand. */
   cardPlayCountsThisTurn: Record<string, number>
+  /** Conditional Aether earned this turn, keyed by its spending condition. */
+  conditionalAetherEarned: Record<string, number>
   regularAetherSpent: number
   condAetherSpent: Record<string, number>
   bonusAether: number

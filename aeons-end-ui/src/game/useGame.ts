@@ -6,7 +6,8 @@ import {
   getBuyableCards, buyCard as engineBuyCard,
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
   gainCharge as engineGainCharge, activateAbility as engineActivateAbility,
-  resolveDrawPhase, drawFromDeck, getTotalAether, getAllRemainingConditional,
+  resolveDrawPhase, getTotalAether, getAllRemainingConditional,
+  getConditionalAetherByType,
   resolvePreppedEffects,
   getPreppedCardActions, activatePreppedCardAction as engineActivatePreppedCardAction,
   resolvePendingDecision as engineResolvePendingDecision,
@@ -15,9 +16,7 @@ import {
   checkGameOver, checkPlayerDeath,
 } from '@engine/engine'
 import { getCard } from '@engine/data'
-import type {
-  CardChoice, GameState, PendingDecisionAnswer, PlayerState, GemCard, RelicCard,
-} from '@engine/types'
+import type { CardChoice, GameState, PendingDecisionAnswer, PlayerState } from '@engine/types'
 
 export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_target' | 'gameover'
 
@@ -54,7 +53,6 @@ interface StoredSave extends SaveSummary {
   selectedPlayer: 'p1' | 'p2'
   pendingNemesis: DrawnCard | null
   discardRemaining: string[]
-  pendingRelic: { drawn: string[]; discardCount: number; selected: number[] } | null
 }
 
 let logId = 0
@@ -67,9 +65,9 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: 'p1' as 'p1' | 'p2',
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
-  pendingRelic: null as { drawn: string[]; discardCount: number; selected: number[] } | null,
   viewPile: null as 'deck' | 'discard' | null,
   debugOpen: false,
+  helpOpen: false,
   hasSave: false,
   saves: [] as SaveSummary[],
   activeSaveId: null as string | null,
@@ -97,6 +95,7 @@ function normalizeSavedGame(game: GameState): GameState {
   game.decisionCounter ??= 0
   for (const player of game.players) {
     player.destroyedCards ??= []
+    player.conditionalAetherEarned ??= {}
     if (!player.cardPlayCountsThisTurn) {
       player.cardPlayCountsThisTurn = {}
       for (const cardId of player.playedThisTurn) {
@@ -155,7 +154,6 @@ function readStoredSaves(): StoredSave[] {
       selectedPlayer: legacy.selectedPlayer ?? 'p1',
       pendingNemesis: legacy.pendingNemesis ?? null,
       discardRemaining: legacy.discardRemaining ?? [],
-      pendingRelic: legacy.pendingRelic ?? null,
     }]
   } catch {
     return []
@@ -187,7 +185,6 @@ function saveCurrentGame() {
       selectedPlayer: state.selectedPlayer,
       pendingNemesis: null,
       discardRemaining: [],
-      pendingRelic: null,
     }
     storedSaves.unshift(save)
     state.activeSaveId = id
@@ -203,9 +200,6 @@ function saveCurrentGame() {
   save.selectedPlayer = state.selectedPlayer
   save.pendingNemesis = state.pendingNemesis ? { ...state.pendingNemesis } : null
   save.discardRemaining = [...state.discardRemaining]
-  save.pendingRelic = state.pendingRelic
-    ? { ...state.pendingRelic, drawn: [...state.pendingRelic.drawn], selected: [...state.pendingRelic.selected] }
-    : null
   persistStoredSaves()
 }
 
@@ -217,7 +211,6 @@ watch(
   () => (state.game ? JSON.stringify({
     game: state.game, phase: state.phase, selectedPlayer: state.selectedPlayer,
     pendingNemesis: state.pendingNemesis, discardRemaining: state.discardRemaining,
-    pendingRelic: state.pendingRelic,
   }) : ''),
   (s) => {
     if (s) saveCurrentGame()
@@ -235,16 +228,18 @@ function cp(): PlayerState {
 /** Tracks the displayed Aether breakdown: regular vs conditional. */
 function aetherInfo(p: PlayerState) {
   const total = getTotalAether(p)
-  let origCond = 0
-  for (const id of p.playedThisTurn) {
-    const c = getCard(id) as GemCard
-    if (c.type === 'gem' && !c.effects?.some(block => block.trigger.kind === 'on_play') && c.conditionalAether) {
-      origCond += c.conditionalAether.amount
-    }
+  const remainingConditional = getAllRemainingConditional(p)
+  const conditionalTypes = new Set([
+    ...Object.keys(remainingConditional),
+    ...Object.keys(p.condAetherSpent),
+  ])
+  let conditionalEarned = 0
+  for (const type of conditionalTypes) {
+    conditionalEarned += getConditionalAetherByType(p, type)
   }
-  const regularAvail = Math.max(0, (total - origCond) - p.regularAetherSpent)
+  const regularAvail = Math.max(0, (total - conditionalEarned) - p.regularAetherSpent)
   const conds: Record<string, number> = {}
-  for (const [k, v] of Object.entries(getAllRemainingConditional(p))) {
+  for (const [k, v] of Object.entries(remainingConditional)) {
     if (v > 0) conds[k] = v
   }
   let condAvail = 0
@@ -288,7 +283,7 @@ export function undo() {
   state.pendingNemesis = s.pendingNemesis
   state.prepTarget = null
   state.discardRemaining = []
-  state.pendingRelic = null
+  state.helpOpen = false
   state.viewPile = null
   pushLog('Undid last action')
 }
@@ -310,6 +305,13 @@ function resolveMainPhasePreppedEffects() {
   for (const message of resolvePreppedEffects(g, p.id, 'main_phase')) pushLog(message, 'info')
 }
 
+function syncEnginePhaseWithUi() {
+  if (!state.game || state.game.currentTurn === 'nemesis') return
+  if (state.phase === 'casting' || state.phase === 'main') {
+    state.game.currentPhase = state.phase
+  }
+}
+
 function enterMainPhase() {
   const g = state.game!
   const p = cp()
@@ -317,6 +319,9 @@ function enterMainPhase() {
   for (const message of messages) pushLog(message, 'info')
   if (g.pendingDecision || g.pendingEffect) return
   state.phase = 'main'
+  // Ability activation is validated by the engine, so persist the phase
+  // transition before main-phase actions become available.
+  syncEnginePhaseWithUi()
   resolveMainPhasePreppedEffects()
   maybeAutoEnd()
 }
@@ -350,7 +355,7 @@ export function newGame(m1: string, m2: string) {
   state.prepTarget = null
   state.selectedPlayer = 'p1'
   state.discardRemaining = []
-  state.pendingRelic = null
+  state.helpOpen = false
   state.viewPile = null
   undoStack.length = 0
   pushLog(`Game started: ${m1.toUpperCase()} + ${m2.toUpperCase()} vs Rageborne`, 'ok')
@@ -367,12 +372,10 @@ export function resumeGame(saveId?: string): boolean {
     state.game = reactive(normalizeSavedGame(JSON.parse(JSON.stringify(save.game)) as GameState)) as GameState
     state.activeSaveId = save.id
     state.phase = save.phase ?? 'main'
+    syncEnginePhaseWithUi()
     state.selectedPlayer = save.selectedPlayer ?? 'p1'
     state.pendingNemesis = save.pendingNemesis ?? null
     state.discardRemaining = save.discardRemaining ?? []
-    state.pendingRelic = save.pendingRelic
-      ? { ...save.pendingRelic, selected: save.pendingRelic.selected ?? [] }
-      : null
     state.prepTarget = null
     state.exitPrompt = false
     state.log = []
@@ -436,7 +439,7 @@ function resetToSetup() {
   state.pendingNemesis = null
   state.prepTarget = null
   state.discardRemaining = []
-  state.pendingRelic = null
+  state.helpOpen = false
   state.viewPile = null
   state.debugOpen = false
   undoStack.length = 0
@@ -455,8 +458,16 @@ export function toggleDebug() {
   state.debugOpen = !state.debugOpen
 }
 
+export function toggleHelp() {
+  state.helpOpen = !state.helpOpen
+}
+
+export function closeHelp() {
+  state.helpOpen = false
+}
+
 export function selectPlayer(id: 'p1' | 'p2') {
-  if (state.game?.pendingDecision) return
+  if (state.game?.pendingDecision && state.game.pendingDecision.kind !== 'select_prepped_spell') return
   state.selectedPlayer = id
   state.prepTarget = null
 }
@@ -513,60 +524,10 @@ export function playCard(cardIdx: number) {
   const p = cp()
   const previous = beforeAction()
   const cardId = p.hand[cardIdx]!
-  const card = getCard(cardId)
   const msg = enginePlayCard(state.game!, p.id, cardId)
   if (msg) pushLog(msg)
-  const hasTypedOnPlay = card.effects?.some(block => block.trigger.kind === 'on_play') ?? false
-  if (card.type === 'relic' && !hasTypedOnPlay) {
-    const relic = card as RelicCard
-    const result = drawFromDeck(p.deck, p.discard, relic.drawCount)
-    p.deck = result.newDeck
-    p.discard = result.newDiscard
-    if (result.drawn.length > 0) {
-      p.hand.push(...result.drawn)
-      state.pendingRelic = { drawn: result.drawn, discardCount: relic.discardCount, selected: [] }
-      pushLog(`Relic ${relic.name}: drew ${result.drawn.length} — discard ${relic.discardCount}`, 'info')
-    } else {
-      pushLog(`Relic ${relic.name}: nothing to draw`, 'warn')
-      maybeAutoEnd()
-    }
-  } else {
-    maybeAutoEnd()
-  }
-  finishAction(previous)
-}
-
-/** Discard the chosen drawn relic cards; the rest go to the player's hand. */
-export function relicDiscard(selectedIdx: number[]) {
-  if (!state.pendingRelic) return
-  const p = cp()
-  const { drawn } = state.pendingRelic
-  const drawnStart = p.hand.length - drawn.length
-  for (const i of [...selectedIdx].sort((a, b) => b - a)) {
-    const cardId = drawn[i]
-    if (cardId === undefined) continue
-    p.hand.splice(drawnStart + i, 1)
-    p.discard.unshift(cardId)
-  }
-  state.pendingRelic = null
   maybeAutoEnd()
-}
-
-export function toggleRelicDiscard(handIndex: number) {
-  if (!state.pendingRelic) return
-  const p = cp()
-  const drawnStart = p.hand.length - state.pendingRelic.drawn.length
-  const drawnIndex = handIndex - drawnStart
-  if (drawnIndex < 0 || drawnIndex >= state.pendingRelic.drawn.length) return
-  const selected = state.pendingRelic.selected
-  const existing = selected.indexOf(drawnIndex)
-  if (existing !== -1) {
-    selected.splice(existing, 1)
-    return
-  }
-  if (selected.length >= state.pendingRelic.discardCount) return
-  selected.push(drawnIndex)
-  if (selected.length === state.pendingRelic.discardCount) relicDiscard([...selected])
+  finishAction(previous)
 }
 
 export function openPile(pile: 'deck' | 'discard') {
@@ -644,9 +605,9 @@ export function gainCharge(amount = 1) {
   finishAction(previous)
 }
 
-export function activateAbility(target?: string) {
+export function activateAbility() {
   const previous = beforeAction()
-  const msg = engineActivateAbility(state.game!, cp().id, target)
+  const msg = engineActivateAbility(state.game!, cp().id)
   if (msg) pushLog(msg, 'ok')
   maybeAutoEnd()
   finishAction(previous)
@@ -808,10 +769,10 @@ export function useGame() {
     newGame, resumeGame, clearSave, clearSaves,
     requestDeleteSave, cancelDeleteSave, deleteSave,
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
-    toggleDebug, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
+    toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     endTurn, nemesisChooseTarget, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, relicDiscard, toggleRelicDiscard, openPile, closePile,
+    selectPlayer, clickDiscardCard, openPile, closePile,
     castableSpells, buyables, playerCanAct,
     displayPlayer, isCurrentSelected, canActMain, canCast, preppedCardActions,
   }

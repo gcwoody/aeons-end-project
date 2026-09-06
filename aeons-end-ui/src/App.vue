@@ -12,7 +12,7 @@ import DebugPanel from './components/DebugPanel.vue'
 
 const {
   state, nemesisChooseTarget, undo, toggleDebug,
-  requestExit, cancelExit, saveAndExit, exitWithoutSaving,
+  closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving,
 } = useGame()
 
 function onKeydown(e: KeyboardEvent) {
@@ -26,6 +26,10 @@ function onKeydown(e: KeyboardEvent) {
   }
   if (e.key === 'Escape' && state.game) {
     e.preventDefault()
+    if (state.helpOpen) {
+      closeHelp()
+      return
+    }
     if (state.exitPrompt) cancelExit()
     else requestExit()
   }
@@ -50,6 +54,25 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <PileModal />
     <CardDecisionModal />
     <DebugPanel />
+
+    <div v-if="state.helpOpen" class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title" @click.self="closeHelp">
+      <div class="overlay-card help-modal">
+        <div class="help-head">
+          <h2 id="help-title">Game Help</h2>
+          <button class="btn small" aria-label="Close game help" @click="closeHelp">Close</button>
+        </div>
+
+        <section class="help-section">
+          <h3>Keyboard Shortcuts</h3>
+          <div class="help-list">
+            <div class="help-row"><kbd>ESC</kbd><span>Open the exit menu. Press it again to close an open dialog.</span></div>
+            <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to five steps.</span></div>
+            <div class="help-row"><kbd>Ctrl + D</kbd><span>Toggle Debug Tools.</span></div>
+          </div>
+        </section>
+
+      </div>
+    </div>
 
     <div v-if="state.exitPrompt" class="overlay exit-overlay">
       <div class="overlay-card">

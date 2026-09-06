@@ -1,56 +1,99 @@
 # 末日决战（Aeon's End）电子化
 
-本地单人 Web 版《末日决战》：2 名裂隙法师 vs 天罚怒煞（Rageborne），可完整游玩一局。
-当前为 **Demo 阶段**（基础版规则 + 占位卡牌数据）。
+本地单人 Web 版《末日决战》：2 名裂隙法师对抗天罚 Nemesis。当前是可操作的
+Demo，基础回合流程、市场、法师区域、存档和一批类型化卡牌效果已经接入。
 
 ## 架构
 
 ```
-aeons-end-engine/  规则引擎（纯 TypeScript，无 Node 依赖，UI 直接共用）
-aeons-end-ui/      Vue 3 + Vite 前端，通过 @engine 别名直接引用引擎源码（不复制）
+aeons-end-engine/  共享规则引擎（纯 TypeScript）
+aeons-end-ui/      Vue 3 + Vite 前端，直接通过 @engine 引用引擎源码
+design/            卡牌效果模型、关键词状态和扩展参考
 ```
 
-- 引擎**原地修改**单个 `GameState` 对象；UI 用 Vue `reactive()` 包装它，变更自动反映到界面。
-- 规则逻辑只改引擎（`engine.ts`）；交互/显示只改 UI。**不要为迁就 UI 改引擎行为。**
+引擎原地修改单个 `GameState`；UI 使用 Vue `reactive()` 追踪状态。规则只在引擎
+实现，UI 只负责显示、交互和提交选择。项目已经删除 CLI，后续统一通过 Web UI、
+调试面板和引擎回归测试开发。
 
 ## 运行
 
 ```powershell
-# 前端（推荐）
 cd aeons-end-ui
 npm install
 npm run dev        # http://localhost:5173
-
 ```
 
-## 玩法速览
+生产构建：
 
-- **开局**：设置页选两位法师（Jian / Brama）→ Start Game；设置页会列出已有存档，可选择对应的 Resume Game。
-- **玩家回合**：施法（点裂隙上已预备法术）→ 主阶段（打宝石/遗物、Prep 法术、购买、Focus/Open 裂隙、充能、激活能力）→ 抽牌回 5 张（牌库空则翻转弃牌堆，**不洗牌**）。
-- **天罚回合**：弹窗显示抽到的卡，选攻击目标（P1 / P2 / Gravehold）。
-- **特殊机制**：
-  - 打出的牌显示在 Played 区；回合结束进入弃牌排序（点选顺序），完全相同则自动弃牌。
-  - 裂隙 III/IV 施放法术伤害 +1（Once Opened）。
-  - 无行动时自动结束回合；**Ctrl+Z** 撤销（最多 5 步）。
-  - 月长石碎片的条件以太只能用于买宝石。
+```powershell
+cd aeons-end-ui
+npm run build
+```
 
-## 调试工具
+引擎测试：
 
-- **Ctrl+D** 开关调试面板（改 HP/充能、加卡、开/关裂隙、导出/导入 JSON）。
-- **自动存档**到浏览器 localStorage；游戏中按 ESC 可选择 Save & Exit，刷新后可从存档列表 Resume。
-- 详见 [dev-guide.md](dev-guide.md)「调试指南」。
+```powershell
+cd aeons-end-engine
+npm test
+```
 
-## 已知限制（Demo 阶段）
+浏览器端 E2E 测试（首次使用需先执行 `npx playwright install chromium`）：
 
-- Jian 的 Black Mirror 能力未实现（引擎占位）
-- 天罚 Minion/Power 卡机制未实现
-- 9 张 Wave 1 市场卡已接入类型化效果；更完整的 Minion/Power 卡机制仍在后续开发
-- 无卡牌图片（后续可复用 TTS 图包）
+```powershell
+cd aeons-end-ui
+npm run test:e2e
+```
 
-## 文档索引（只需看这三份）
+## 当前玩法
+
+- 开局选择两名法师（Jian / Brama）对抗 Rageborne。
+- 玩家回合依次进行 Casting Phase、Main Phase 和抽牌流程。
+- Casting Phase 可选择释放准备好的 Spell；未开启 breach 上的 Spell 必须释放。
+- Spell 可通过点击或拖拽从手牌 Prep 到可用 breach。
+- Main Phase 可打出 Gem/Relic、购买市场卡、Focus/Open breach、充能和激活能力。
+- 抽牌补足到 5 张；牌库耗尽时翻转弃牌堆，不洗牌。
+- Played 区在回合结束时进入弃牌排序；顺序完全相同的牌会自动处理。
+- Nemesis 回合会显示攻击目标选择，支持玩家或 Gravehold。
+- Market 为固定九宫格；牌堆耗尽后保留原位置但不显示卡图，后续牌堆不补位。
+
+## 已接入的卡牌效果
+
+4 张初始玩家卡和 9 张 Wave 1 市场卡已经通过可组合的类型化效果接入：
+
+- Gem：V'riswood Amber、Diamond Cluster、Burning Opal
+- Relic：Flexing Dagger、Bottled Vortex
+- Spell：Lava Tendril、Essence Theft、Planar Insight、Arcane Nexus
+
+初始卡：Spark、Crystal、Moonstone Shard、Buried Light。当前效果系统支持 `gain`、
+`may`、`ally`、`or`、`destroy`、`while prepped`、`cast`、`deal damage`、
+`gain life`、条件 Aether、抽牌、费用减免和返回手牌等模块。第三/第四裂隙的施法增伤、效果
+选择暂停以及存档后恢复也已接入。
+
+新增卡牌时，优先在 `aeons-end-engine/src/data/wave1/` 对应的 `gems.ts`、
+`relics.ts` 或 `spells.ts` 中组合已有 `CardEffect`；`data.ts` 只负责统一出口和
+Breach 配置。只有出现全新的规则词汇时，才扩展 `types.ts` 和引擎解释器。具体组合方式及实现进度见：
+[`design/card-effects-keywords.md`](design/card-effects-keywords.md)。
+
+## 存档与调试
+
+- 游戏会自动保存到浏览器 localStorage。
+- 设置页显示多条存档的法师、Nemesis、轮次和回合，并可 Resume 或删除。
+- 游戏中按 ESC，可选择 `Save & Exit` 或 `Exit Without Saving`。
+- Ctrl+D 打开调试面板：修改 HP/Charge、添加卡牌、开关裂隙、导出/导入 JSON、
+  清除全部存档。
+- Ctrl+Z 撤销最近最多 5 步操作。
+
+## 当前限制
+
+- Jian 的 Black Mirror 和 Brama 的 Brink Siphon 已通过类型化 Ability 效果实现。
+- Nemesis 的 Minion/Power 完整规则尚未完成。
+- 当前玩家卡牌已完全迁移到类型化效果，旧 Gem/Relic/Spell 字段和 demo 专用 Relic
+  结算逻辑已删除。
+- 已配置引擎回归测试和基础浏览器 E2E；复杂 UI 视觉细节仍建议手动验证。
+
+## 文档索引
 
 | 文档 | 用途 |
-|------|------|
-| [README.md](README.md) | 项目说明 + 运行 + 玩法（本文件） |
-| [dev-guide.md](dev-guide.md) | 开发者地图：文件职责、改功能去哪找、调试方法 |
-| [AGENTS.md](AGENTS.md) | AI 协作约定（语言要求、项目结构、UI 约定） |
+| --- | --- |
+| [dev-guide.md](dev-guide.md) | 文件职责、修改入口、调试和新增卡牌流程 |
+| [design/card-effects-keywords.md](design/card-effects-keywords.md) | 类型化模型、关键词状态、卡牌覆盖、扩展方式和进度决策 |

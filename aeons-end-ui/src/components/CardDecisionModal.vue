@@ -70,7 +70,7 @@ function answer(kind: PendingDecisionAnswer) {
 </script>
 
 <template>
-  <div v-if="decision && decision.kind !== 'confirm_prepped_effect'" class="overlay decision-overlay">
+  <div v-if="decision && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell'" class="overlay decision-overlay">
     <div class="overlay-card decision-modal">
       <h2>{{ decision.prompt }}</h2>
 

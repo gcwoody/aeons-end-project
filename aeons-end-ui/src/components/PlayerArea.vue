@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { getPlayer, getCastableSpells, getBreachActionCosts, toRoman } from '@engine/engine'
+import { getPlayer, getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, toRoman } from '@engine/engine'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
@@ -14,7 +14,7 @@ const {
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
   activatePreppedCardAction, preppedCardActions,
   playCard, playAllGems, castSpell, endTurn, toMainPhase,
-  selectPlayer, clickDiscardCard, toggleRelicDiscard, openPile, resolveDecision,
+  selectPlayer, clickDiscardCard, openPile, resolveDecision, toggleHelp,
 } = useGame()
 
 const p1 = computed(() => getPlayer(state.game!, 'p1'))
@@ -22,6 +22,7 @@ const p2 = computed(() => getPlayer(state.game!, 'p2'))
 const player = displayPlayer
 const aether = computed(() => aetherInfo(player.value))
 const ready = computed(() => player.value.charge >= player.value.chargeThreshold)
+const hasPreppedSpell = computed(() => !!state.game && getPreppedSpellChoices(state.game).length > 0)
 const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order')
@@ -31,10 +32,6 @@ const dragPosition = ref({ x: 0, y: 0 })
 let dragPointerId = -1
 let dragStartX = 0
 let dragStartY = 0
-const relicDrawnStart = computed(() =>
-  state.pendingRelic ? player.value.hand.length - state.pendingRelic.drawn.length : -1,
-)
-
 const phaseLabel = computed(() => {
   if (state.phase === 'casting' && state.game?.pendingEffect?.preppedPhase === 'casting_phase_end') {
     return 'End of Casting Phase · End Point'
@@ -68,6 +65,16 @@ const isMandatoryPreppedEffect = (b: BreachState) => {
     && decision.breachIndex === b.index
 }
 
+const abilityPreppedSpellChoice = (b: BreachState) => {
+  const decision = state.game?.pendingDecision
+  if (decision?.kind !== 'select_prepped_spell' || !b.prepSpell) return null
+  return decision.candidates.find(choice =>
+    choice.playerId === player.value.id &&
+    choice.breachIndex === b.index &&
+    choice.cardId === b.prepSpell,
+  ) ?? null
+}
+
 const typeClass = (cid: string) =>
   getCard(cid).type === 'gem' ? 'gem' : getCard(cid).type === 'relic' ? 'relic' : 'spell'
 
@@ -90,22 +97,9 @@ function clickPlayedCard(index: number) {
   })
 }
 
-function cardValue(cid: string): string {
-  const c = getCard(cid)
-  if (c.type === 'gem') return `+${c.aetherValue} aether${c.conditionalAether ? ` (+${c.conditionalAether.amount} for gems)` : ''}`
-  if (c.type === 'spell') return `Deal ${c.damage} damage${c.bonusAether ? ` +${c.bonusAether} aether` : ''}`
-  if (c.type === 'relic') return `Draw ${c.drawCount}, discard ${c.discardCount}`
-  return ''
-}
-
 function clickHand(i: number) {
   if (!canActMain.value) return
   const cid = player.value.hand[i]
-  if (relicDrawnStart.value >= 0 && i >= relicDrawnStart.value) {
-    toggleRelicDiscard(i)
-    return
-  }
-  if (state.pendingRelic) return
   if (getCard(cid).type === 'spell') {
     state.prepTarget = state.prepTarget === i ? null : i
   } else {
@@ -180,6 +174,11 @@ function confirmMandatoryPreppedEffect(b: BreachState) {
 }
 
 function clickSpellFrame(b: BreachState) {
+  const abilityChoice = abilityPreppedSpellChoice(b)
+  if (abilityChoice) {
+    resolveDecision({ kind: 'select_prepped_spell', choice: abilityChoice })
+    return
+  }
   if (isMandatoryPreppedEffect(b)) {
     confirmMandatoryPreppedEffect(b)
     return
@@ -246,6 +245,7 @@ function clickSpellFrame(b: BreachState) {
               'castable-spell': isCastableBreach(b),
               'must-cast-spell': isMustCastBreach(b),
               'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
+              'ability-prepped-spell': !!abilityPreppedSpellChoice(b),
             }"
           >
             <CardHoverPreview :card-id="b.prepSpell">
@@ -256,6 +256,7 @@ function clickSpellFrame(b: BreachState) {
                   'castable-spell': isCastableBreach(b),
                   'must-cast-spell': isMustCastBreach(b),
                   'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
+                  'ability-prepped-spell': !!abilityPreppedSpellChoice(b),
                 }"
               >
                 <img v-if="cardImageUrl(b.prepSpell)" :src="cardImageUrl(b.prepSpell)" :alt="getCard(b.prepSpell).name" />
@@ -317,10 +318,8 @@ function clickSpellFrame(b: BreachState) {
           <div class="card" :class="[typeClass(cid), {
             selected: state.prepTarget === i,
             'card-image': cardImageUrl(cid),
-            'relic-discardable': relicDrawnStart >= 0 && i >= relicDrawnStart,
-            'relic-discard-selected': relicDrawnStart >= 0 && state.pendingRelic?.selected.includes(i - relicDrawnStart),
             dragging: draggingSpell && state.prepTarget === i,
-            'spell-draggable': canActMain && !state.pendingRelic && getCard(cid).type === 'spell',
+            'spell-draggable': canActMain && getCard(cid).type === 'spell',
           }]"
           @click="clickHand(i)"
           draggable="false"
@@ -328,7 +327,6 @@ function clickSpellFrame(b: BreachState) {
           <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" draggable="false" />
           <template v-else>
             <div class="cname">{{ getCard(cid).name }}</div>
-            <div class="cval">{{ cardValue(cid) }}</div>
           </template>
           </div>
         </CardHoverPreview>
@@ -376,11 +374,12 @@ function clickSpellFrame(b: BreachState) {
           <template v-if="isMain">
             <button class="btn small" @click="playAllGems">Play All Gems</button>
             <button class="btn small" :disabled="player.charge >= player.chargeThreshold" @click="gainCharge(1)">Charge</button>
-            <button class="btn small" :disabled="!ready" @click="activateAbility()">Activate Ability</button>
+            <button class="btn small" :disabled="!ready || !hasPreppedSpell" @click="activateAbility()">Activate Ability</button>
             <button class="btn primary" @click="endTurn">End Turn</button>
           </template>
         </template>
       </div>
+      <button class="btn help-button" aria-label="Open game help" title="Game Help" @click="toggleHelp">?</button>
     </div>
   </div>
 </template>
