@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
-import { getPlayer, getCastableSpells, toRoman } from '@engine/engine'
+import { getPlayer, getCastableSpells, getBreachActionCosts, toRoman } from '@engine/engine'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
@@ -12,8 +12,9 @@ import MageBoard from './MageBoard.vue'
 const {
   state, displayPlayer, isCurrentSelected, canActMain, canCast,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
+  activatePreppedCardAction, preppedCardActions,
   playCard, playAllGems, castSpell, endTurn, toMainPhase,
-  selectPlayer, clickDiscardCard, toggleRelicDiscard, openPile,
+  selectPlayer, clickDiscardCard, toggleRelicDiscard, openPile, resolveDecision,
 } = useGame()
 
 const p1 = computed(() => getPlayer(state.game!, 'p1'))
@@ -34,10 +35,19 @@ const relicDrawnStart = computed(() =>
   state.pendingRelic ? player.value.hand.length - state.pendingRelic.drawn.length : -1,
 )
 
-const phaseLabel = computed(() => ({
-  setup: 'Setup', casting: 'Casting Phase', main: 'Main Phase',
-  discard_order: 'Discard Phase', nemesis_target: 'Nemesis Turn', gameover: 'Game Over',
-}[state.phase]))
+const phaseLabel = computed(() => {
+  if (state.phase === 'casting' && state.game?.pendingEffect?.preppedPhase === 'casting_phase_end') {
+    return 'End of Casting Phase · End Point'
+  }
+  return ({
+    setup: 'Setup',
+    casting: 'Casting Phase · Spell Selection',
+    main: 'Main Phase · Action',
+    discard_order: 'Discard Phase · Card Order',
+    nemesis_target: 'Nemesis Turn · Target Selection',
+    gameover: 'Game Over',
+  }[state.phase])
+})
 
 const DIR: Record<string, string> = { east: '→', south: '↓', west: '←', north: '↑' }
 
@@ -45,11 +55,40 @@ const canPrep = (b: BreachState) =>
   state.prepTarget !== null && canActMain.value && !b.prepSpell && (b.opened || b.focusedThisTurn)
 
 const isMustCastBreach = (b: BreachState) =>
-  canCast.value && !!b.prepSpell && getCastableSpells(state.game!, player.value.id)
+  canCast.value && !state.game?.pendingDecision && !!b.prepSpell && getCastableSpells(state.game!, player.value.id)
     .some((spell) => spell.breachIndex === b.index && spell.mustCast)
+
+const isCastableBreach = (b: BreachState) =>
+  canCast.value && !state.game?.pendingDecision && !!b.prepSpell
+
+const isMandatoryPreppedEffect = (b: BreachState) => {
+  const decision = state.game?.pendingDecision
+  return decision?.kind === 'confirm_prepped_effect'
+    && decision.cardId === b.prepSpell
+    && decision.breachIndex === b.index
+}
 
 const typeClass = (cid: string) =>
   getCard(cid).type === 'gem' ? 'gem' : getCard(cid).type === 'relic' ? 'relic' : 'spell'
+
+function breachCosts(b: BreachState) {
+  return getBreachActionCosts(state.game!, player.value.id, b.index) ?? { focus: 0, open: 0 }
+}
+
+function isPreppedActionCard(index: number, cardId: string): boolean {
+  return preppedCardActions.value.some(action =>
+    action.choices.some(choice =>
+      choice.zone === 'played_this_turn' && choice.index === index && choice.cardId === cardId))
+}
+
+function clickPlayedCard(index: number) {
+  if (!canActMain.value) return
+  const cardId = player.value.playedThisTurn[index]
+  if (!cardId || !isPreppedActionCard(index, cardId)) return
+  activatePreppedCardAction({
+    zone: 'played_this_turn', index, cardId, cardName: getCard(cardId).name,
+  })
+}
 
 function cardValue(cid: string): string {
   const c = getCard(cid)
@@ -127,8 +166,25 @@ function removeSpellPointerListeners() {
 onBeforeUnmount(removeSpellPointerListeners)
 
 function clickBreach(b: BreachState) {
-  if (canCast.value && b.prepSpell) { castSpell(b.index); return }
+  if (isMandatoryPreppedEffect(b)) {
+    return
+  }
+  if (state.game?.pendingDecision) return
+  if (isCastableBreach(b)) { castSpell(b.index); return }
   if (canPrep(b)) { prepSpell(state.prepTarget!, b.index) }
+}
+
+function confirmMandatoryPreppedEffect(b: BreachState) {
+  if (!isMandatoryPreppedEffect(b)) return
+  resolveDecision({ kind: 'confirm_prepped_effect', accepted: true })
+}
+
+function clickSpellFrame(b: BreachState) {
+  if (isMandatoryPreppedEffect(b)) {
+    confirmMandatoryPreppedEffect(b)
+    return
+  }
+  if (isCastableBreach(b)) castSpell(b.index)
 }
 </script>
 
@@ -155,10 +211,11 @@ function clickBreach(b: BreachState) {
         class="breach"
         :class="{
           open: b.opened,
-          castable: canCast && b.prepSpell,
+          castable: isCastableBreach(b),
           'must-cast': isMustCastBreach(b),
           'prep-ok': canPrep(b),
           'drag-target': draggingSpell && canPrep(b),
+          'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
         }"
         @click="clickBreach(b)"
         :data-breach-index="b.index"
@@ -186,16 +243,19 @@ function clickBreach(b: BreachState) {
             v-if="b.prepSpell"
             class="spell"
             :class="{
-              'castable-spell': canCast,
+              'castable-spell': isCastableBreach(b),
               'must-cast-spell': isMustCastBreach(b),
+              'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
             }"
           >
             <CardHoverPreview :card-id="b.prepSpell">
               <div
                 class="breach-spell-card-frame"
+                @click.stop="clickSpellFrame(b)"
                 :class="{
-                  'castable-spell': canCast,
+                  'castable-spell': isCastableBreach(b),
                   'must-cast-spell': isMustCastBreach(b),
+                  'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
                 }"
               >
                 <img v-if="cardImageUrl(b.prepSpell)" :src="cardImageUrl(b.prepSpell)" :alt="getCard(b.prepSpell).name" />
@@ -205,8 +265,8 @@ function clickBreach(b: BreachState) {
           </div>
         </div>
         <div v-if="canActMain && !b.opened" class="btns" @click.stop>
-          <button class="btn small" @click="focusBreach(b.index)">Focus</button>
-          <button class="btn small" @click="openBreach(b.index)">Open</button>
+          <button class="btn small" @click="focusBreach(b.index)">Focus {{ breachCosts(b).focus }}</button>
+          <button class="btn small" @click="openBreach(b.index)">Open {{ breachCosts(b).open }}</button>
         </div>
       </div>
     </div>
@@ -230,7 +290,11 @@ function clickBreach(b: BreachState) {
           v-for="(cid, i) in player.playedThisTurn" :key="cid + i"
           :card-id="cid"
         >
-          <div class="card small" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]">
+          <div
+            class="card small"
+            :class="[typeClass(cid), { 'card-image': cardImageUrl(cid), 'prepped-action': isPreppedActionCard(i, cid) }]"
+            @click="clickPlayedCard(i)"
+          >
             <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
             <div v-else class="cname">{{ getCard(cid).name }}</div>
           </div>
@@ -285,7 +349,7 @@ function clickBreach(b: BreachState) {
           >
             <span class="cn">{{ p1.mageType }}</span>
             <span class="chp">HP {{ p1.hp }}</span>
-            <span class="cch">⚡{{ p1.charge }}/{{ p1.chargeThreshold }}</span>
+            <span class="cch">Charge {{ p1.charge }}/{{ p1.chargeThreshold }}</span>
             <span v-if="p1.exhausted" class="cex">EXHAUSTED</span>
           </button>
           <button
@@ -294,7 +358,7 @@ function clickBreach(b: BreachState) {
           >
             <span class="cn">{{ p2.mageType }}</span>
             <span class="chp">HP {{ p2.hp }}</span>
-            <span class="cch">⚡{{ p2.charge }}/{{ p2.chargeThreshold }}</span>
+            <span class="cch">Charge {{ p2.charge }}/{{ p2.chargeThreshold }}</span>
             <span v-if="p2.exhausted" class="cex">EXHAUSTED</span>
           </button>
         </div>

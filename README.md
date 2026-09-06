@@ -6,7 +6,7 @@
 ## 架构
 
 ```
-aeons-end-engine/  规则引擎（纯 TypeScript，无 Node 依赖，CLI 与 UI 共用）
+aeons-end-engine/  规则引擎（纯 TypeScript，无 Node 依赖，UI 直接共用）
 aeons-end-ui/      Vue 3 + Vite 前端，通过 @engine 别名直接引用引擎源码（不复制）
 ```
 
@@ -21,14 +21,11 @@ cd aeons-end-ui
 npm install
 npm run dev        # http://localhost:5173
 
-# 命令行引擎（可选，验证规则用）
-cd aeons-end-engine
-npm run dev
 ```
 
 ## 玩法速览
 
-- **开局**：设置页选两位法师（Jian / Brama）→ Start Game；有存档时可 Resume Game。
+- **开局**：设置页选两位法师（Jian / Brama）→ Start Game；设置页会列出已有存档，可选择对应的 Resume Game。
 - **玩家回合**：施法（点裂隙上已预备法术）→ 主阶段（打宝石/遗物、Prep 法术、购买、Focus/Open 裂隙、充能、激活能力）→ 抽牌回 5 张（牌库空则翻转弃牌堆，**不洗牌**）。
 - **天罚回合**：弹窗显示抽到的卡，选攻击目标（P1 / P2 / Gravehold）。
 - **特殊机制**：
@@ -40,14 +37,14 @@ npm run dev
 ## 调试工具
 
 - **Ctrl+D** 开关调试面板（改 HP/充能、加卡、开/关裂隙、导出/导入 JSON）。
-- **自动存档**到浏览器 localStorage，刷新后设置页可 Resume。
+- **自动存档**到浏览器 localStorage；游戏中按 ESC 可选择 Save & Exit，刷新后可从存档列表 Resume。
 - 详见 [dev-guide.md](dev-guide.md)「调试指南」。
 
 ## 已知限制（Demo 阶段）
 
 - Jian 的 Black Mirror 能力未实现（引擎占位）
-- Fury Token 只计数、无实际效果；天罚 Minion/Power 卡机制未实现
-- 市场卡为占位数据（Gem/Relic/Spell 简易效果）
+- 天罚 Minion/Power 卡机制未实现
+- 9 张 Wave 1 市场卡已接入类型化效果；更完整的 Minion/Power 卡机制仍在后续开发
 - 无卡牌图片（后续可复用 TTS 图包）
 
 ## 文档索引（只需看这三份）

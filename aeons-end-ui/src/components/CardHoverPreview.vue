@@ -10,6 +10,7 @@ const props = defineProps<{
   imageRotation?: number
   previewWidth?: number
   previewHeight?: number
+  previewDelay?: number
   imageObjectFit?: 'cover' | 'contain' | 'fill'
   previewClass?: string
 }>()
@@ -49,11 +50,7 @@ function startPreview(event: MouseEvent) {
   showTimer = setTimeout(() => {
     visible.value = true
     window.addEventListener('wheel', resizePreview, { passive: false })
-  }, 500)
-}
-
-function cancelOnMove() {
-  if (visible.value) stopPreview()
+  }, props.previewDelay ?? 500)
 }
 
 function resizePreview(event: WheelEvent) {
@@ -80,7 +77,6 @@ onBeforeUnmount(stopPreview)
   <span
     class="card-hover-wrap"
     @mouseenter="startPreview"
-    @mousemove="cancelOnMove"
     @mouseleave="stopPreview"
   >
     <slot />

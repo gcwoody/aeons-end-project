@@ -28,6 +28,10 @@ function calcOpenCosts(startDir: Direction, focusCost: number): Record<Direction
 // Spark and Crystal are shared by all mages
 export const spark: SpellCard = {
   id: 'spark', name: 'Spark', type: 'spell', cost: 0, set: 'base', damage: 1,
+  effects: [{
+    trigger: { kind: 'on_cast' },
+    effects: [{ kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' }],
+  }],
 }
 
 export const crystal: GemCard = {
@@ -60,33 +64,158 @@ export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
 // ===== Supply Cards (wave 1) =====
 export const vriswoodAmber: GemCard = {
   id: 'vriswood_amber', name: "V'riswood Amber", type: 'gem', cost: 3, set: 'wave1', aetherValue: 2,
+  effects: [
+    {
+      trigger: { kind: 'on_play' },
+      effects: [{ kind: 'gain_aether', amount: 2 }],
+    },
+    {
+      trigger: { kind: 'on_gain' },
+      effects: [{
+        kind: 'choose_optional',
+        prompt: 'Place V\'riswood Amber on top of your deck?',
+        effects: [{ kind: 'move_gained_card', destination: 'deck_top' }],
+      }],
+    },
+  ],
 }
 export const diamondCluster: GemCard = {
-  id: 'diamond_cluster', name: 'Diamond Cluster', type: 'gem', cost: 4, set: 'wave1', aetherValue: 3,
+  id: 'diamond_cluster', name: 'Diamond Cluster', type: 'gem', cost: 4, set: 'wave1', aetherValue: 2,
+  effects: [
+    {
+      trigger: { kind: 'on_play' },
+      effects: [{ kind: 'gain_aether', amount: 2 }],
+    },
+    {
+      trigger: { kind: 'on_play' },
+      condition: {
+        kind: 'card_play_count_this_turn',
+        cardId: 'diamond_cluster',
+        comparison: 'equals',
+        count: 2,
+      },
+      effects: [{ kind: 'gain_aether', amount: 2 }],
+    },
+  ],
 }
 export const burningOpal: GemCard = {
-  id: 'burning_opal', name: 'Burning Opal', type: 'gem', cost: 3, set: 'wave1', aetherValue: 2,
+  id: 'burning_opal', name: 'Burning Opal', type: 'gem', cost: 5, set: 'wave1', aetherValue: 3,
+  effects: [
+    {
+      trigger: { kind: 'on_play' },
+      effects: [
+        { kind: 'gain_aether', amount: 3 },
+        {
+          kind: 'choose_optional',
+          prompt: 'Discard a card to let an ally draw a card?',
+          effects: [
+            { kind: 'discard_cards', source: 'hand', amount: 1 },
+            { kind: 'draw_cards', amount: 1, target: 'ally' },
+          ],
+        },
+      ],
+    },
+  ],
 }
 export const flexingDagger: RelicCard = {
   id: 'flexing_dagger', name: 'Flexing Dagger', type: 'relic',
-  cost: 3, set: 'wave1', drawCount: 1, discardCount: 0,
+  cost: 2, set: 'wave1', drawCount: 0, discardCount: 0,
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [{
+      kind: 'choose_one',
+      prompt: 'Choose a Flexing Dagger effect',
+      options: [
+        {
+          id: 'reduce_breach_cost',
+          label: 'Reduce the next focus or open cost by 3',
+          effects: [{ kind: 'modify_next_breach_cost', amount: 3, actions: ['focus', 'open'] }],
+        },
+        {
+          id: 'destroy_for_damage',
+          label: 'Destroy this to deal 1 damage',
+          effects: [
+            { kind: 'destroy_cards', source: 'self' },
+            { kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' },
+          ],
+        },
+      ],
+    }],
+  }],
 }
 export const bottledVortex: RelicCard = {
   id: 'bottled_vortex', name: 'Bottled Vortex', type: 'relic',
-  cost: 3, set: 'wave1', drawCount: 2, discardCount: 1,
+  cost: 3, set: 'wave1', drawCount: 0, discardCount: 0,
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [
+      { kind: 'destroy_cards', source: 'self' },
+      { kind: 'destroy_cards', source: 'hand_or_discard', maxAmount: 2 },
+      { kind: 'draw_cards', amount: 1 },
+    ],
+  }],
 }
 export const lavaTendril: SpellCard = {
-  id: 'lava_tendril', name: 'Lava Tendril', type: 'spell', cost: 3, set: 'wave1', damage: 3,
+  id: 'lava_tendril', name: 'Lava Tendril', type: 'spell', cost: 4, set: 'wave1', damage: 3,
+  effects: [
+    {
+      trigger: { kind: 'while_prepped', phase: 'casting_phase_end' },
+      oncePerTurn: true,
+      requiresConfirmation: true,
+      effects: [{ kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' }],
+    },
+    {
+      trigger: { kind: 'on_cast' },
+      effects: [{ kind: 'deal_damage', amount: 3, target: 'nemesis_or_minion' }],
+    },
+  ],
 }
 export const essenceTheft: SpellCard = {
-  id: 'essence_theft', name: 'Essence Theft', type: 'spell', cost: 8, set: 'wave1', damage: 2,
+  id: 'essence_theft', name: 'Essence Theft', type: 'spell', cost: 5, set: 'wave1', damage: 3,
+  effects: [{
+    trigger: { kind: 'on_cast' },
+    effects: [
+      { kind: 'deal_damage', amount: 3, target: 'nemesis_or_minion' },
+      {
+        kind: 'choose_optional',
+        prompt: 'Discard a card so any player gains 1 life?',
+        effects: [
+          { kind: 'discard_cards', source: 'hand', amount: 1 },
+          { kind: 'gain_life', amount: 1, target: 'any_player' },
+        ],
+      },
+    ],
+  }],
 }
 export const planarInsight: SpellCard = {
-  id: 'planar_insight', name: 'Planar Insight', type: 'spell', cost: 5, set: 'wave1',
-  damage: 3, bonusAether: 1,
+  id: 'planar_insight', name: 'Planar Insight', type: 'spell', cost: 6, set: 'wave1',
+  damage: 2,
+  effects: [{
+    trigger: { kind: 'on_cast' },
+    effects: [{
+      kind: 'deal_damage',
+      amount: { kind: 'per_open_breach', base: 2, amountPerBreach: 1 },
+      target: 'nemesis_or_minion',
+    }],
+  }],
 }
 export const arcaneNexus: SpellCard = {
-  id: 'arcane_nexus', name: 'Arcane Nexus', type: 'spell', cost: 6, set: 'wave1', damage: 4,
+  id: 'arcane_nexus', name: 'Arcane Nexus', type: 'spell', cost: 7, set: 'wave1', damage: 4,
+  effects: [
+    {
+      trigger: { kind: 'while_prepped', phase: 'main_phase' },
+      oncePerTurn: true,
+      effects: [{
+        kind: 'choose_optional',
+        prompt: 'Return a gem played this turn to your hand?',
+        effects: [{ kind: 'return_card_to_hand', source: 'played_gem_this_turn' }],
+      }],
+    },
+    {
+      trigger: { kind: 'on_cast' },
+      effects: [{ kind: 'deal_damage', amount: 4, target: 'nemesis_or_minion' }],
+    },
+  ],
 }
 
 export const MARKET_CARDS: Record<string, CardDef> = {
@@ -206,6 +335,5 @@ const nemesisDeck: string[] = [
 export const rageborne = {
   type: 'rageborne',
   hp: 70,
-  unleashDescription: 'Rageborne gains one Fury token',
   deck: [...nemesisDeck],
 }

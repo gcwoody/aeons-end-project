@@ -5,7 +5,7 @@ import { getCard, INITIAL_CARDS, MARKET_CARDS } from '@engine/data'
 import type { GameState } from '@engine/types'
 import { useGame } from '../game/useGame'
 
-const { state, toggleDebug, clearSave } = useGame()
+const { state, toggleDebug, clearSaves } = useGame()
 
 const g = computed(() => state.game!)
 const p1 = computed(() => getPlayer(state.game!, 'p1'))
@@ -112,7 +112,7 @@ function copyJson() {
     </div>
 
     <div class="debug-section">
-      <button class="btn small" @click="clearSave()">Clear Save</button>
+      <button class="btn small" @click="clearSaves()">Clear Saves</button>
     </div>
   </div>
 </template>

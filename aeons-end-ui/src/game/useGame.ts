@@ -7,12 +7,17 @@ import {
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
   gainCharge as engineGainCharge, activateAbility as engineActivateAbility,
   resolveDrawPhase, drawFromDeck, getTotalAether, getAllRemainingConditional,
+  resolvePreppedEffects,
+  getPreppedCardActions, activatePreppedCardAction as engineActivatePreppedCardAction,
+  resolvePendingDecision as engineResolvePendingDecision,
   canPlayerAct, toRoman,
   nemesisDrawCard, nemesisResolveAttack,
   checkGameOver, checkPlayerDeath,
 } from '@engine/engine'
 import { getCard } from '@engine/data'
-import type { GameState, PlayerState, GemCard, RelicCard } from '@engine/types'
+import type {
+  CardChoice, GameState, PendingDecisionAnswer, PlayerState, GemCard, RelicCard,
+} from '@engine/types'
 
 export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_target' | 'gameover'
 
@@ -32,6 +37,26 @@ interface Snapshot {
   prepTarget: number | null
 }
 
+export interface SaveSummary {
+  id: string
+  players: string[]
+  nemesisType: string
+  round: number
+  turn: number
+  currentTurn: string
+  updatedAt: number
+}
+
+interface StoredSave extends SaveSummary {
+  createdAt: number
+  game: GameState
+  phase: UiPhase
+  selectedPlayer: 'p1' | 'p2'
+  pendingNemesis: DrawnCard | null
+  discardRemaining: string[]
+  pendingRelic: { drawn: string[]; discardCount: number; selected: number[] } | null
+}
+
 let logId = 0
 
 const state = reactive({
@@ -46,15 +71,146 @@ const state = reactive({
   viewPile: null as 'deck' | 'discard' | null,
   debugOpen: false,
   hasSave: false,
+  saves: [] as SaveSummary[],
+  activeSaveId: null as string | null,
+  deleteSaveId: null as string | null,
+  exitPrompt: false,
   mage1: 'jian',
   mage2: 'brama',
 })
 
-const SAVE_KEY = 'aeons-end-save-v1'
-state.hasSave = !!localStorage.getItem(SAVE_KEY)
+const SAVE_KEY = 'aeons-end-saves-v2'
+const LEGACY_SAVE_KEY = 'aeons-end-save-v1'
+let storedSaves: StoredSave[] = []
+
+function displayName(id: string): string {
+  return id ? id.charAt(0).toUpperCase() + id.slice(1) : id
+}
 
 const undoStack: Snapshot[] = []
 const MAX_UNDO = 5
+
+/** Fill fields introduced by newer engine versions when loading an older save. */
+function normalizeSavedGame(game: GameState): GameState {
+  game.pendingDecision ??= null
+  game.pendingEffect ??= null
+  game.decisionCounter ??= 0
+  for (const player of game.players) {
+    player.destroyedCards ??= []
+    if (!player.cardPlayCountsThisTurn) {
+      player.cardPlayCountsThisTurn = {}
+      for (const cardId of player.playedThisTurn) {
+        player.cardPlayCountsThisTurn[cardId] = (player.cardPlayCountsThisTurn[cardId] ?? 0) + 1
+      }
+    }
+    player.turnEffects ??= { nextBreachCostReductions: [], usedPreppedEffects: [] }
+    player.turnEffects.nextBreachCostReductions ??= []
+    player.turnEffects.usedPreppedEffects ??= []
+  }
+  return game
+}
+
+function saveSummary(save: StoredSave): SaveSummary {
+  return {
+    id: save.id,
+    players: save.players.map(displayName),
+    nemesisType: displayName(save.nemesisType),
+    round: save.round,
+    turn: save.turn,
+    currentTurn: save.currentTurn,
+    updatedAt: save.updatedAt,
+  }
+}
+
+function syncSaveList() {
+  storedSaves.sort((a, b) => b.updatedAt - a.updatedAt)
+  state.saves = storedSaves.map(saveSummary)
+  state.hasSave = storedSaves.length > 0
+}
+
+function readStoredSaves(): StoredSave[] {
+  try {
+    const current = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null')
+    if (Array.isArray(current)) return current.filter(save => save?.game && save?.id)
+  } catch {
+    // Fall back to the legacy single-save format.
+  }
+
+  try {
+    const legacy = JSON.parse(localStorage.getItem(LEGACY_SAVE_KEY) ?? 'null')
+    if (!legacy?.game) return []
+    const game = normalizeSavedGame(legacy.game as GameState)
+    const now = Date.now()
+    return [{
+      id: `legacy-${game.timestamp || now}`,
+      createdAt: now,
+      updatedAt: now,
+      players: game.players.map(player => player.mageType),
+      nemesisType: game.nemesis.type,
+      round: game.round,
+      turn: game.turnOrderDiscard.length,
+      currentTurn: game.currentTurn,
+      game,
+      phase: legacy.phase ?? 'main',
+      selectedPlayer: legacy.selectedPlayer ?? 'p1',
+      pendingNemesis: legacy.pendingNemesis ?? null,
+      discardRemaining: legacy.discardRemaining ?? [],
+      pendingRelic: legacy.pendingRelic ?? null,
+    }]
+  } catch {
+    return []
+  }
+}
+
+function persistStoredSaves() {
+  localStorage.setItem(SAVE_KEY, JSON.stringify(storedSaves))
+  syncSaveList()
+}
+
+function saveCurrentGame() {
+  if (!state.game) return
+  const now = Date.now()
+  let save = storedSaves.find(candidate => candidate.id === state.activeSaveId)
+  if (!save) {
+    const id = `save-${now}-${storedSaves.length + 1}`
+    save = {
+      id,
+      createdAt: now,
+      updatedAt: now,
+      players: [],
+      nemesisType: '',
+      round: 0,
+      turn: 0,
+      currentTurn: '',
+      game: state.game,
+      phase: state.phase,
+      selectedPlayer: state.selectedPlayer,
+      pendingNemesis: null,
+      discardRemaining: [],
+      pendingRelic: null,
+    }
+    storedSaves.unshift(save)
+    state.activeSaveId = id
+  }
+  save.updatedAt = now
+  save.players = state.game.players.map(player => displayName(player.mageType))
+  save.nemesisType = displayName(state.game.nemesis.type)
+  save.round = state.game.round
+  save.turn = state.game.turnOrderDiscard.length
+  save.currentTurn = state.game.currentTurn
+  save.game = JSON.parse(JSON.stringify(state.game)) as GameState
+  save.phase = state.phase
+  save.selectedPlayer = state.selectedPlayer
+  save.pendingNemesis = state.pendingNemesis ? { ...state.pendingNemesis } : null
+  save.discardRemaining = [...state.discardRemaining]
+  save.pendingRelic = state.pendingRelic
+    ? { ...state.pendingRelic, drawn: [...state.pendingRelic.drawn], selected: [...state.pendingRelic.selected] }
+    : null
+  persistStoredSaves()
+}
+
+storedSaves = readStoredSaves()
+syncSaveList()
 
 // Auto-persist the game (and UI context) to localStorage on any change.
 watch(
@@ -64,7 +220,7 @@ watch(
     pendingRelic: state.pendingRelic,
   }) : ''),
   (s) => {
-    if (s) { localStorage.setItem(SAVE_KEY, s); state.hasSave = true }
+    if (s) saveCurrentGame()
   },
 )
 
@@ -76,16 +232,15 @@ function cp(): PlayerState {
   return getPlayer(state.game!, state.game!.currentTurn)
 }
 
-/** Replicates the CLI aether display: regular vs conditional, tracked separately. */
+/** Tracks the displayed Aether breakdown: regular vs conditional. */
 function aetherInfo(p: PlayerState) {
-  if (state.phase !== 'main') {
-    return { total: 0, available: 0, regularAvail: 0, gemAether: 0, conds: {} }
-  }
   const total = getTotalAether(p)
   let origCond = 0
   for (const id of p.playedThisTurn) {
     const c = getCard(id) as GemCard
-    if (c.type === 'gem' && c.conditionalAether) origCond += c.conditionalAether.amount
+    if (c.type === 'gem' && !c.effects?.some(block => block.trigger.kind === 'on_play') && c.conditionalAether) {
+      origCond += c.conditionalAether.amount
+    }
   }
   const regularAvail = Math.max(0, (total - origCond) - p.regularAetherSpent)
   const conds: Record<string, number> = {}
@@ -142,10 +297,28 @@ export function undo() {
 
 function maybeAutoEnd() {
   if (state.phase !== 'main' || !state.game) return
+  if (state.game.pendingDecision) return
   if (!playerCanAct.value) {
     pushLog('No actions available — turn ends automatically', 'info')
     doEndTurn()
   }
+}
+
+function resolveMainPhasePreppedEffects() {
+  const g = state.game!
+  const p = cp()
+  for (const message of resolvePreppedEffects(g, p.id, 'main_phase')) pushLog(message, 'info')
+}
+
+function enterMainPhase() {
+  const g = state.game!
+  const p = cp()
+  const messages = resolvePreppedEffects(g, p.id, 'casting_phase_end')
+  for (const message of messages) pushLog(message, 'info')
+  if (g.pendingDecision || g.pendingEffect) return
+  state.phase = 'main'
+  resolveMainPhasePreppedEffects()
+  maybeAutoEnd()
 }
 
 // ===== Flow =====
@@ -162,15 +335,14 @@ function beginTurn() {
     const p = getPlayer(g, g.currentTurn)
     pushLog(`Turn ${turnNum} — ${g.currentTurn.toUpperCase()} (${p.mageType}) begins`, 'info')
     state.selectedPlayer = g.currentTurn as 'p1' | 'p2'
-    state.phase = getCastableSpells(g, g.currentTurn).length > 0 ? 'casting' : 'main'
-    if (state.phase === 'main' && !playerCanAct.value) {
-      pushLog('No actions available — turn ends automatically', 'info')
-      doEndTurn()
-    }
+    if (getCastableSpells(g, g.currentTurn).length > 0) state.phase = 'casting'
+    else enterMainPhase()
   }
 }
 
 export function newGame(m1: string, m2: string) {
+  state.activeSaveId = null
+  state.exitPrompt = false
   const g = reactive(createGame(m1, m2)) as GameState
   state.game = g
   state.log = []
@@ -186,22 +358,23 @@ export function newGame(m1: string, m2: string) {
   beginTurn()
 }
 
-/** Restore a previously saved game from localStorage. */
-export function resumeGame(): boolean {
-  const raw = localStorage.getItem(SAVE_KEY)
-  if (!raw) return false
+/** Restore a selected saved game from localStorage. */
+export function resumeGame(saveId?: string): boolean {
+  const save = storedSaves.find(candidate => candidate.id === saveId)
+    ?? storedSaves[0]
+  if (!save) return false
   try {
-    const data = JSON.parse(raw)
-    if (!data?.game) return false
-    state.game = reactive(data.game) as GameState
-    state.phase = data.phase ?? 'main'
-    state.selectedPlayer = data.selectedPlayer ?? 'p1'
-    state.pendingNemesis = data.pendingNemesis ?? null
-    state.discardRemaining = data.discardRemaining ?? []
-    state.pendingRelic = data.pendingRelic
-      ? { ...data.pendingRelic, selected: data.pendingRelic.selected ?? [] }
+    state.game = reactive(normalizeSavedGame(JSON.parse(JSON.stringify(save.game)) as GameState)) as GameState
+    state.activeSaveId = save.id
+    state.phase = save.phase ?? 'main'
+    state.selectedPlayer = save.selectedPlayer ?? 'p1'
+    state.pendingNemesis = save.pendingNemesis ?? null
+    state.discardRemaining = save.discardRemaining ?? []
+    state.pendingRelic = save.pendingRelic
+      ? { ...save.pendingRelic, selected: save.pendingRelic.selected ?? [] }
       : null
     state.prepTarget = null
+    state.exitPrompt = false
     state.log = []
     undoStack.length = 0
     pushLog('Game resumed', 'ok')
@@ -211,9 +384,71 @@ export function resumeGame(): boolean {
   }
 }
 
-export function clearSave() {
+export function clearSaves() {
+  storedSaves = []
   localStorage.removeItem(SAVE_KEY)
-  state.hasSave = false
+  localStorage.removeItem(LEGACY_SAVE_KEY)
+  state.activeSaveId = null
+  state.deleteSaveId = null
+  syncSaveList()
+}
+
+/** Backward-compatible alias for the debug panel. */
+export function clearSave() {
+  clearSaves()
+}
+
+export function requestDeleteSave(saveId: string) {
+  if (storedSaves.some(save => save.id === saveId)) state.deleteSaveId = saveId
+}
+
+export function cancelDeleteSave() {
+  state.deleteSaveId = null
+}
+
+export function deleteSave(saveId: string) {
+  if (state.deleteSaveId !== saveId) return
+  storedSaves = storedSaves.filter(save => save.id !== saveId)
+  if (storedSaves.length === 0) {
+    localStorage.removeItem(SAVE_KEY)
+    localStorage.removeItem(LEGACY_SAVE_KEY)
+  } else {
+    persistStoredSaves()
+  }
+  syncSaveList()
+  state.deleteSaveId = null
+}
+
+export function requestExit() {
+  if (state.game) state.exitPrompt = true
+}
+
+export function cancelExit() {
+  state.exitPrompt = false
+}
+
+function resetToSetup() {
+  state.game = null
+  state.phase = 'setup'
+  state.activeSaveId = null
+  state.deleteSaveId = null
+  state.exitPrompt = false
+  state.pendingNemesis = null
+  state.prepTarget = null
+  state.discardRemaining = []
+  state.pendingRelic = null
+  state.viewPile = null
+  state.debugOpen = false
+  undoStack.length = 0
+}
+
+export function saveAndExit() {
+  saveCurrentGame()
+  resetToSetup()
+}
+
+export function exitWithoutSaving() {
+  resetToSetup()
 }
 
 export function toggleDebug() {
@@ -221,6 +456,7 @@ export function toggleDebug() {
 }
 
 export function selectPlayer(id: 'p1' | 'p2') {
+  if (state.game?.pendingDecision) return
   state.selectedPlayer = id
   state.prepTarget = null
 }
@@ -239,8 +475,7 @@ export function castSpell(breachIndex: number) {
   // Auto-advance to main phase once no more castable spells remain.
   if (getCastableSpells(state.game!, cp().id).length === 0) {
     pushLog('No more spells to cast — moving to main phase', 'info')
-    state.phase = 'main'
-    maybeAutoEnd()
+    enterMainPhase()
   }
   finishAction(previous)
 }
@@ -248,8 +483,30 @@ export function castSpell(breachIndex: number) {
 export function toMainPhase() {
   const must = getCastableSpells(state.game!, cp().id).filter(s => s.mustCast)
   if (must.length > 0) { pushLog('You must cast the [MUST] spell(s) first', 'warn'); return }
-  state.phase = 'main'
-  maybeAutoEnd()
+  enterMainPhase()
+}
+
+export function resolveDecision(answer: PendingDecisionAnswer) {
+  if (!state.game?.pendingDecision) return
+  const wasCasting = state.phase === 'casting'
+  const wasCastingPhaseEnd = state.game.pendingEffect?.preppedPhase === 'casting_phase_end'
+  const previous = beforeAction()
+  const messages = engineResolvePendingDecision(state.game, state.game.pendingDecision.id, answer)
+  for (const message of messages) {
+    const warning = message.startsWith('Invalid') || message.startsWith('Stale') || message.startsWith('Choose ') || message.startsWith('Decision ')
+    pushLog(message, warning ? 'warn' : 'info')
+  }
+  if (state.game.gameOver) {
+    pushLog(checkGameOver(state.game) ?? 'Game over', 'warn')
+    state.phase = 'gameover'
+  } else if (!state.game.pendingDecision && wasCasting) {
+    const noSpellsRemain = getCastableSpells(state.game, cp().id).length === 0
+    if (wasCastingPhaseEnd || noSpellsRemain) enterMainPhase()
+  } else if (!state.game.pendingDecision && state.phase === 'main') {
+    resolveMainPhasePreppedEffects()
+    maybeAutoEnd()
+  }
+  finishAction(previous)
 }
 
 export function playCard(cardIdx: number) {
@@ -259,7 +516,8 @@ export function playCard(cardIdx: number) {
   const card = getCard(cardId)
   const msg = enginePlayCard(state.game!, p.id, cardId)
   if (msg) pushLog(msg)
-  if (card.type === 'relic') {
+  const hasTypedOnPlay = card.effects?.some(block => block.trigger.kind === 'on_play') ?? false
+  if (card.type === 'relic' && !hasTypedOnPlay) {
     const relic = card as RelicCard
     const result = drawFromDeck(p.deck, p.discard, relic.drawCount)
     p.deck = result.newDeck
@@ -327,6 +585,7 @@ export function playAllGems() {
     if (getCard(id).type === 'gem') {
       const msg = enginePlayCard(g, p.id, id)
       if (msg) pushLog(msg)
+      if (g.pendingDecision) break
     }
   }
   maybeAutoEnd()
@@ -339,6 +598,16 @@ export function prepSpell(cardIdx: number, breachIndex: number) {
   const msg = enginePrepSpell(state.game!, p.id, p.hand[cardIdx]!, breachIndex)
   if (msg) pushLog(msg, 'ok')
   state.prepTarget = null
+  if (!msg && state.phase === 'main') resolveMainPhasePreppedEffects()
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
+export function activatePreppedCardAction(choice: CardChoice) {
+  if (!state.game || !canActMain.value) return
+  const previous = beforeAction()
+  const msg = engineActivatePreppedCardAction(state.game, cp().id, choice)
+  if (msg) pushLog(msg, msg.startsWith('Returned ') ? 'ok' : 'warn')
   maybeAutoEnd()
   finishAction(previous)
 }
@@ -528,15 +797,23 @@ export const playerCanAct = computed(() => {
   return canPlayerAct(state.game, state.game.currentTurn)
 })
 
+export const preppedCardActions = computed(() => {
+  if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis') return []
+  return getPreppedCardActions(state.game, state.game.currentTurn)
+})
+
 export function useGame() {
   return {
     state,
-    newGame, resumeGame, clearSave, toggleDebug, castSpell, toMainPhase, playCard, playAllGems, prepSpell,
-    buyCard, focusBreach, openBreach, gainCharge, activateAbility,
+    newGame, resumeGame, clearSave, clearSaves,
+    requestDeleteSave, cancelDeleteSave, deleteSave,
+    requestExit, cancelExit, saveAndExit, exitWithoutSaving,
+    toggleDebug, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
+    buyCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     endTurn, nemesisChooseTarget, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, relicDiscard, toggleRelicDiscard, openPile, closePile,
     castableSpells, buyables, playerCanAct,
-    displayPlayer, isCurrentSelected, canActMain, canCast,
+    displayPlayer, isCurrentSelected, canActMain, canCast, preppedCardActions,
   }
 }
 

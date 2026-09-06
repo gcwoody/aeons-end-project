@@ -2,15 +2,18 @@
 import { onMounted, onBeforeUnmount } from 'vue'
 import { useGame } from './game/useGame'
 import SetupScreen from './components/SetupScreen.vue'
-import TurnOrderBar from './components/TurnOrderBar.vue'
-import NemesisArea from './components/NemesisArea.vue'
+import GameTopArea from './components/GameTopArea.vue'
 import MarketPanel from './components/MarketPanel.vue'
 import PlayerArea from './components/PlayerArea.vue'
 import LogPanel from './components/LogPanel.vue'
 import PileModal from './components/PileModal.vue'
+import CardDecisionModal from './components/CardDecisionModal.vue'
 import DebugPanel from './components/DebugPanel.vue'
 
-const { state, nemesisChooseTarget, undo, toggleDebug } = useGame()
+const {
+  state, nemesisChooseTarget, undo, toggleDebug,
+  requestExit, cancelExit, saveAndExit, exitWithoutSaving,
+} = useGame()
 
 function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -20,6 +23,11 @@ function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
     e.preventDefault()
     toggleDebug()
+  }
+  if (e.key === 'Escape' && state.game) {
+    e.preventDefault()
+    if (state.exitPrompt) cancelExit()
+    else requestExit()
   }
 }
 
@@ -31,11 +39,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
   <SetupScreen v-if="!state.game" />
   <div v-else class="app">
     <div class="main-col">
-      <TurnOrderBar />
       <div class="top-section">
-        <div class="top-main">
-          <NemesisArea />
-        </div>
+        <GameTopArea class="top-main" />
         <MarketPanel class="market-col" />
       </div>
       <PlayerArea />
@@ -43,7 +48,20 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <LogPanel class="log-col" />
 
     <PileModal />
+    <CardDecisionModal />
     <DebugPanel />
+
+    <div v-if="state.exitPrompt" class="overlay exit-overlay">
+      <div class="overlay-card">
+        <h2>Exit Game?</h2>
+        <p class="exit-copy">Are you sure you want to exit this game?</p>
+        <div class="overlay-actions">
+          <button class="btn" @click="exitWithoutSaving">Exit Without Saving</button>
+          <button class="btn primary" @click="saveAndExit">Save &amp; Exit</button>
+          <button class="btn" @click="cancelExit">Cancel</button>
+        </div>
+      </div>
+    </div>
 
     <div v-if="state.phase === 'nemesis_target' && state.pendingNemesis" class="overlay">
       <div class="overlay-card">

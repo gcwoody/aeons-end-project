@@ -3,6 +3,7 @@
 
 # Build output and TypeScript caches
 **/dist/
+**/.stage7-dist/
 **/.vite/
 **/*.tsbuildinfo
 

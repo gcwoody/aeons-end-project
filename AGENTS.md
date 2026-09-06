@@ -12,8 +12,7 @@ Read it before making changes.
 
 ## Project structure
 - `aeons-end-engine/` — shared rule engine (pure TypeScript, no Node.js dependencies
-  in `engine.ts`/`data.ts`/`types.ts`). CLI lives in `src/cli.ts` (uses readline/fs).
-  Run the CLI: `npm run dev` inside that folder.
+  in `engine.ts`/`data.ts`/`types.ts`). It is consumed directly by the UI.
 - `aeons-end-ui/` — Vue 3 + Vite frontend. Imports the engine source via the
   `@engine` alias → `../aeons-end-engine/src` (no copy, no duplication).
   Run: `cd aeons-end-ui && npm run dev` (dev server at http://localhost:5173).
@@ -21,7 +20,7 @@ Read it before making changes.
 ## Engine rules to respect
 - The engine mutates a single `GameState` object in place. The UI wraps it in Vue
   `reactive()` so mutations are tracked.
-- Engine logic is shared with the CLI. Do NOT change engine behavior to fit the UI;
+- The UI consumes the engine directly. Do NOT change engine behavior to fit the UI;
   fix the UI layer (composables/components) instead.
 
 ## UI conventions

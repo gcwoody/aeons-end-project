@@ -9,6 +9,10 @@
   --played-card-height: 82px;
   --played-row-height: 94px;
   --breach-spell-height: 82px;
+  --breach-action-space: 36px;
+  /* Three rows of 5:7 cards plus their grid chrome, sized from the
+     available viewport height on larger displays. */
+  --market-width: max(368px, calc((100vh - 600px) * .714 - 3px));
   --mage-radius: 24px;
   --mage-modal-radius: 40px;
   --bg: #12151d;
@@ -29,6 +33,25 @@
 }
 
 * { box-sizing: border-box; }
+
+/* The game uses pointer interactions instead of native text/image dragging. */
+html, body, #app { user-select: none; }
+input, textarea, [contenteditable="true"] { user-select: text; }
+img { -webkit-user-drag: none; }
+
+/* Keep every scrollable surface consistent with the dark game palette. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) var(--bg);
+}
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: var(--bg); }
+*::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border: 2px solid var(--bg);
+  border-radius: 999px;
+}
+*::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 
 html, body, #app {
   margin: 0;
@@ -114,6 +137,8 @@ body {
 .btn:hover:not(:disabled) { border-color: var(--accent); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.primary { background: var(--accent); color: #0b1020; border-color: var(--accent); font-weight: 600; }
+.btn.danger { color: var(--danger); border-color: rgba(247, 118, 142, .55); }
+.btn.danger:hover:not(:disabled) { border-color: var(--danger); background: rgba(247, 118, 142, .1); }
 .btn.small { padding: 3px 9px; font-size: 12px; }
 
 .badge {
@@ -142,14 +167,45 @@ body {
 
 /* ===== Turn order bar ===== */
 .turn-order-bar {
+  --turn-slots-half: 194px;
+  --turn-content-shift: calc(var(--market-width) / 2);
+  position: relative;
+  width: 100%;
+  align-self: stretch;
   display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 16px;
+  min-height: 56px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
-.slots { display: flex; gap: 8px; }
+.turn-status-content {
+  position: relative;
+  width: 100%;
+  height: 36px;
+  transform: translateX(var(--turn-content-shift));
+}
+.turn-side {
+  position: absolute;
+  top: 50%;
+  display: flex;
+  align-items: center;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+.turn-side-left { right: calc(50% + var(--turn-slots-half) + 14px); }
+.turn-side-right { left: calc(50% + var(--turn-slots-half) + 14px); gap: 14px; }
+.slots { display: flex; gap: 8px; justify-content: center; }
+.turn-round {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  color: var(--muted);
+  font-size: 13px;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
 .slot {
   width: 58px;
   height: 34px;
@@ -167,18 +223,56 @@ body {
 .slot.nemesis { color: var(--danger); border-color: var(--danger); }
 .slot.current { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-.turn-hp { display: flex; gap: 18px; align-items: center; flex: 1; }
 .hp-block { display: flex; align-items: center; gap: 8px; }
 .hp-name { color: var(--muted); font-size: 12px; font-weight: 700; }
 .hp-num { font-size: 13px; color: var(--muted); }
 .hp-num b { color: var(--text); }
-.hp-extra { color: var(--warn); font-size: 12px; }
-.hp-block.round { color: var(--muted); font-size: 13px; margin-left: auto; }
+.hp-block.round { color: var(--muted); font-size: 13px; }
+
+@media (max-width: 900px) {
+  :root { --market-width: 280px; }
+  .turn-order-bar {
+    padding-inline: 8px;
+  }
+  .turn-order-bar { --turn-content-shift: 92px; }
+  .turn-side { font-size: 12px; }
+  .turn-side-right { gap: 6px; }
+  .turn-side .hp-block { gap: 4px; }
+  .turn-side .hpbar { min-width: 28px; }
+  .turn-side .hp-name, .turn-side .hp-num { font-size: 11px; }
+  .turn-round { font-size: 11px; }
+}
+
+/* Keep the centered turn slots and the right-edge round label readable on
+   compact desktop viewports where the Market leaves less horizontal room. */
+@media (min-width: 901px) and (max-width: 1400px) {
+  .turn-order-bar {
+    --turn-slots-half: 101px;
+  }
+  .turn-order-bar .slot {
+    width: 32px;
+    height: 30px;
+    font-size: 11px;
+    letter-spacing: 0;
+  }
+  .turn-order-bar .slots { gap: 2px; }
+  .turn-side .hpbar { min-width: 20px; flex: 0 0 20px; }
+  .turn-side .hp-block { gap: 3px; }
+  .turn-side .hp-name, .turn-side .hp-num { font-size: 10px; }
+  .turn-side-left { right: calc(50% + var(--turn-slots-half) + 8px); }
+  .turn-side-right {
+    left: calc(50% + var(--turn-slots-half) + 8px);
+    transform: translateY(-50%) scale(.8);
+    transform-origin: left center;
+  }
+  .turn-round { font-size: 10px; }
+}
 
 /* ===== Nemesis area ===== */
 .top-section {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 0 max(518px, calc(100vh - 600px));
+  height: max(518px, calc(100vh - 600px));
   min-height: 0;
   border-bottom: 1px solid var(--border);
 }
@@ -187,7 +281,9 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  min-height: 0;
 }
+.game-top-area { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .nemesis-area {
   display: flex;
   gap: 12px;
@@ -222,8 +318,11 @@ body {
 .play-card { border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; background: #151a29; }
 
 .market-col {
-  flex: 0 0 clamp(280px, 30%, 390px);
+  flex: 0 1 var(--market-width);
+  max-width: calc(100% - 240px);
   min-width: 0;
+  height: 100%;
+  align-self: stretch;
   display: flex;
   flex-direction: column;
   border-radius: 0;
@@ -241,19 +340,20 @@ body {
   align-content: start;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
+  overflow: visible;
 }
 .pile {
   position: relative;
-  aspect-ratio: 2 / 3;
+  aspect-ratio: 5 / 7;
   width: 100%;
-  border: 1px solid var(--border);
+  border: 0;
   border-radius: 8px;
   background: #171c2c;
   overflow: hidden;
   cursor: pointer;
   padding: 0;
   color: inherit;
+  appearance: none;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -268,20 +368,20 @@ body {
 }
 .pile.can-buy:hover,
 .pile.can-buy:focus-visible {
-  z-index: 2;
-  border-color: var(--accent);
-  transform: scale(1.08);
-  box-shadow: 0 8px 18px rgba(0, 0, 0, .45);
+  position: relative;
+  z-index: 10;
+  transform: translateY(-3px);
 }
 .pile:not(.can-buy) { opacity: .5; cursor: default; }
-.pile.gem { border-color: var(--gem); }
-.pile.relic { border-color: var(--relic); }
-.pile.spell { border-color: var(--spell); }
+.pile.pile-empty {
+  visibility: hidden;
+  pointer-events: none;
+}
 .pile .cname { font-size: 12px; font-weight: 600; padding: 4px; text-align: center; position: relative; }
 .pile .remaining {
   position: absolute;
   top: 4px;
-  right: 6px;
+  left: 6px;
   min-width: 20px;
   text-align: center;
   font-size: 12px;
@@ -326,12 +426,18 @@ body {
 .phase-line .turn { font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
 .phase-line .phase { color: var(--warn); }
 
-.breaches { display: flex; gap: 14px; justify-content: center; }
+.breaches {
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  min-height: calc(var(--breach-size) + var(--breach-action-space));
+}
 .breach {
   flex: 0 1 var(--breach-size);
   width: var(--breach-size);
   height: auto;
   min-width: 0;
+  min-height: calc(var(--breach-size) + var(--breach-action-space));
   text-align: center;
   position: relative;
   overflow: visible;
@@ -391,6 +497,12 @@ body {
 }
 .breach-spell-card-frame.castable-spell { border: 2px solid #e6c84f; }
 .breach-spell-card-frame.must-cast-spell { border: 2px solid var(--must-cast); }
+.breach.mandatory-prepped-effect { cursor: default; }
+.breach-spell-card-frame.mandatory-prepped-effect {
+  border: 2px solid var(--must-cast);
+  box-shadow: 0 0 0 1px rgba(255, 48, 48, .35) inset;
+  cursor: pointer;
+}
 .breach-spell-card-frame span {
   display: grid;
   width: 100%;
@@ -420,6 +532,8 @@ body {
 }
 
 .played-row {
+  position: relative;
+  z-index: 6;
   display: flex;
   gap: 8px;
   align-items: center;
@@ -427,7 +541,7 @@ body {
   height: var(--played-row-height);
   min-height: var(--played-row-height);
   max-height: var(--played-row-height);
-  overflow: hidden;
+  overflow: visible;
   border: 1px dashed var(--border);
   border-radius: 9px;
   padding: 6px 10px;
@@ -438,6 +552,7 @@ body {
   text-transform: uppercase;
   letter-spacing: 1px;
 }
+.played-row:has(.card:hover) { z-index: 20; }
 .played-row .empty { color: var(--muted); font-size: 12px; font-style: italic; }
 
 .hand-row {
@@ -512,6 +627,7 @@ body {
   min-height: 0;
   padding-inline: 270px;
 }
+.hand:has(.card:hover) { z-index: 8; }
 
 .card {
   border: 1px solid var(--border);
@@ -524,7 +640,12 @@ body {
   user-select: none;
   text-align: center;
 }
-.card:hover { transform: translateY(-3px); border-color: var(--border); }
+.card:hover {
+  position: relative;
+  z-index: 10;
+  transform: translateY(-3px);
+  border-color: var(--border);
+}
 .hand .card:hover { border-color: var(--border); }
 .hand .card.spell-draggable { cursor: grab; }
 .hand .card.spell-draggable.dragging,
@@ -537,6 +658,11 @@ body {
 .card.gem, .card.spell, .card.relic { border-top: 1px solid var(--border); }
 .card.small { min-width: 0; padding: 6px 10px; cursor: pointer; }
 .card.small.clickable:hover { border-color: var(--border); }
+.played-row .card.prepped-action {
+  border: 2px solid var(--ok);
+  box-shadow: 0 0 0 1px rgba(97, 218, 151, .35) inset;
+}
+.played-row .card.prepped-action:hover { border-color: var(--ok); }
 .card-hover-wrap { display: contents; }
 .card.card-image {
   width: 122px;
@@ -650,7 +776,9 @@ body {
   background: var(--panel);
   padding-top: 10px;
   padding-bottom: 10px;
-  z-index: 4;
+  /* Stay above the hand and played-card hover layers while remaining below
+     modal dialogs and the full-size card preview. */
+  z-index: 30;
 }
 .controls-left {
   position: absolute;
@@ -702,6 +830,74 @@ body {
 }
 .overlay-card h2 { margin: 0 0 8px; }
 .overlay-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+.exit-copy { color: var(--muted); margin: 0; }
+.exit-overlay { z-index: 100; }
+
+/* ===== Card decision modal ===== */
+.decision-overlay { z-index: 120; }
+.decision-modal {
+  width: min(760px, calc(100vw - 32px));
+  max-height: min(88vh, 720px);
+  overflow-y: auto;
+}
+.decision-modal h2 { max-width: 680px; }
+.decision-options {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 18px;
+}
+.decision-option { min-width: 150px; }
+.decision-card-group h3 {
+  margin: 14px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: left;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.decision-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(82px, 82px));
+  justify-content: center;
+  gap: 10px;
+  margin: 18px 0;
+  overflow: visible;
+}
+.decision-card-choice {
+  position: relative;
+  width: 82px;
+  height: 123px;
+  justify-self: center;
+  padding: 0;
+  overflow: visible;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  cursor: pointer;
+}
+.decision-card-choice img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.decision-card-choice.selected {
+  z-index: 10;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent) inset;
+  transform: translateY(-3px);
+}
+.decision-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-top: 12px;
+}
+.decision-footer-actions { display: flex; gap: 8px; }
 
 /* ===== Setup ===== */
 .setup {
@@ -714,6 +910,30 @@ body {
 }
 .setup h1 { letter-spacing: 2px; }
 .setup .row { display: flex; gap: 24px; }
+.save-list {
+  width: min(720px, calc(100vw - 32px));
+  max-height: 42vh;
+  overflow-y: auto;
+  margin-top: 4px;
+}
+.save-list h2 { margin: 0 0 8px; font-size: 15px; text-align: left; }
+.save-list .muted { color: var(--muted); margin: 0; }
+.save-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 12px;
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  text-align: left;
+}
+.save-entry strong { display: block; }
+.save-details { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
+.save-actions { display: flex; flex-shrink: 0; gap: 8px; }
+.save-delete-overlay { z-index: 140; }
 .setup label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
 .setup select {
   background: var(--panel-2);
@@ -739,8 +959,40 @@ body {
 /* ===== Pile viewer modal ===== */
 .pile-modal .muted { color: var(--muted); font-weight: 400; font-size: 12px; }
 .pile-modal .empty { color: var(--muted); font-style: italic; padding: 10px 0; }
-.pile-cols { display: flex; gap: 10px; justify-content: center; margin: 12px 0; }
-.pile-col { display: flex; flex-direction: column; gap: 6px; }
+.pile-modal {
+  width: min(640px, calc(100vw - 32px));
+  max-height: min(88vh, 720px);
+  overflow-y: auto;
+}
+.pile-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0;
+}
+.pile-row {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 82px));
+  justify-content: center;
+  gap: 10px;
+}
+.pile-row-labeled {
+  width: 100%;
+  grid-template-columns: 92px repeat(5, minmax(0, 82px));
+  justify-content: start;
+}
+.pile-row-label {
+  align-self: center;
+  justify-self: start;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+}
 .pile-card {
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -760,6 +1012,21 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+@media (max-width: 520px) {
+  .pile-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .pile-row-labeled {
+    grid-template-columns: 78px repeat(5, minmax(0, 1fr));
+  }
+  .pile-card.pile-card-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 2 / 3;
+  }
 }
 
 /* ===== Relic modal ===== */
