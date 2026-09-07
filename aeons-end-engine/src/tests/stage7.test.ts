@@ -430,6 +430,74 @@ function testMageAbilities(): void {
   })
   assertEqual(crossPlayerJian.bonusAether, 2, 'Both cross-player casts grant Aether to Jian')
   assertEqual(brama.bonusAether, 0, 'Spell owner still receives no cross-player Aether')
+
+  const xaxosGame = createGame('xaxos', 'brama')
+  const xaxos = xaxosGame.players[0]!
+  const xaxosAlly = xaxosGame.players[1]!
+  assertEqual(xaxos.hand.join(','), 'flare,crystal,crystal,crystal,crystal', 'Xaxos starting hand')
+  assertEqual(xaxos.deck.join(','), 'crystal,crystal,crystal,crystal,spark', 'Xaxos starting deck')
+  assert(xaxos.breaches[0]!.opened, 'Xaxos first breach starts open')
+  assertEqual(xaxos.breaches[1]!.focusDirection, 'east', 'Xaxos second breach points right')
+  assertEqual(xaxos.breaches[2]!.focusDirection, 'east', 'Xaxos third breach points right')
+  assertEqual(xaxos.breaches[3]!.focusDirection, 'south', 'Xaxos fourth breach points down')
+  xaxosGame.currentTurn = xaxosAlly.id
+  xaxosGame.currentPhase = 'main'
+  xaxos.charge = xaxos.chargeThreshold
+  xaxosGame.turnOrderDeck = ['p1', 'nemesis', 'p2']
+  assert(activateAbility(xaxosGame, xaxos.id)?.includes('Metaphysical Link activated'), 'Xaxos activates during an ally main phase')
+  assertEqual(xaxos.charge, 0, 'Xaxos charge is consumed')
+  assertEqual(xaxosAlly.charge, 4, 'Xaxos allies collectively gain four charges')
+  assertEqual(xaxosGame.pendingDecision?.kind, 'reorder_turn_order', 'Xaxos can review the remaining turn-order deck')
+  resolvePendingDecision(xaxosGame, xaxosGame.pendingDecision!.id, {
+    kind: 'reorder_turn_order', order: [2, 0, 1],
+  })
+  assertEqual(xaxosGame.turnOrderDeck.join(','), 'p2,p1,nemesis', 'Xaxos returns reviewed cards in the chosen order')
+
+  const flareGame = createGame('xaxos', 'brama')
+  const flareMage = flareGame.players[0]!
+  flareMage.breaches[0]!.prepSpell = 'flare'
+  flareGame.currentTurn = flareMage.id
+  flareGame.currentPhase = 'casting'
+  flareGame.turnOrderDeck = ['p2']
+  flareGame.nemesis.hp = 20
+  castSpell(flareGame, flareMage.id, 1)
+  assertEqual(flareGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Flare pauses to confirm its revealed card')
+  resolvePendingDecision(flareGame, flareGame.pendingDecision!.id, {
+    kind: 'confirm_turn_order_reveal', accepted: true,
+  })
+  assertEqual(flareGame.nemesis.hp, 17, 'Flare deals three damage for a revealed player turn-order card')
+  assertEqual(flareGame.turnOrderDeck[0], 'p2', 'Flare leaves the revealed turn-order card on top')
+
+  const finalTurnFlareGame = createGame('xaxos', 'brama')
+  const finalTurnFlareMage = finalTurnFlareGame.players[0]!
+  finalTurnFlareMage.breaches[0]!.prepSpell = 'flare'
+  finalTurnFlareGame.currentTurn = finalTurnFlareMage.id
+  finalTurnFlareGame.currentPhase = 'casting'
+  finalTurnFlareGame.turnOrderDeck = []
+  finalTurnFlareGame.turnOrderDiscard = ['p2']
+  finalTurnFlareGame.nemesis.hp = 20
+  castSpell(finalTurnFlareGame, finalTurnFlareMage.id, 1)
+  assertEqual(finalTurnFlareGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Flare pauses after recycling the turn-order discard')
+  resolvePendingDecision(finalTurnFlareGame, finalTurnFlareGame.pendingDecision!.id, {
+    kind: 'confirm_turn_order_reveal', accepted: true,
+  })
+  assertEqual(finalTurnFlareGame.nemesis.hp, 17, 'Flare recycles the turn-order discard before revealing on an empty deck')
+  assertEqual(finalTurnFlareGame.turnOrderDeck[0], 'p2', 'Recycled turn-order card remains on top after Flare')
+  assertEqual(finalTurnFlareGame.turnOrderDiscard.length, 0, 'Recycling clears the previous round turn-order bar')
+
+  const nemesisFlareGame = createGame('xaxos', 'brama')
+  const nemesisFlareMage = nemesisFlareGame.players[0]!
+  nemesisFlareMage.breaches[0]!.prepSpell = 'flare'
+  nemesisFlareGame.currentTurn = nemesisFlareMage.id
+  nemesisFlareGame.currentPhase = 'casting'
+  nemesisFlareGame.turnOrderDeck = ['nemesis']
+  nemesisFlareGame.nemesis.hp = 20
+  castSpell(nemesisFlareGame, nemesisFlareMage.id, 1)
+  assertEqual(nemesisFlareGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Flare pauses before resolving Nemesis reveal damage')
+  resolvePendingDecision(nemesisFlareGame, nemesisFlareGame.pendingDecision!.id, {
+    kind: 'confirm_turn_order_reveal', accepted: true,
+  })
+  assertEqual(nemesisFlareGame.nemesis.hp, 19, 'Flare deals one damage for a revealed Nemesis turn-order card')
 }
 
 function run(): void {

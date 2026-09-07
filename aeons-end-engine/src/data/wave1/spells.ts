@@ -21,6 +21,19 @@ export const buriedLight: SpellCard = {
   }],
 }
 
+// Flare reveals the top unrevealed turn-order card without changing its position.
+export const flare: SpellCard = {
+  id: 'flare', name: 'Flare', type: 'spell', cost: 0, set: 'base',
+  effects: [{
+    trigger: { kind: 'on_cast' },
+    effects: [{
+      kind: 'reveal_turn_order_card',
+      playerEffects: [{ kind: 'deal_damage', amount: 3, target: 'nemesis_or_minion' }],
+      nemesisEffects: [{ kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' }],
+    }],
+  }],
+}
+
 export const lavaTendril: SpellCard = {
   id: 'lava_tendril', name: 'Lava Tendril', type: 'spell', cost: 4, set: 'wave1',
   effects: [
@@ -89,6 +102,7 @@ export const arcaneNexus: SpellCard = {
 export const INITIAL_SPELL_CARDS: Record<string, CardDef> = {
   spark,
   buried_light: buriedLight,
+  flare,
 }
 
 export const MARKET_SPELL_CARDS: Record<string, CardDef> = {

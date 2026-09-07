@@ -507,6 +507,18 @@ function drawCardsForPlayer(g: GameState, playerId: string, amount: number): num
   return result.drawn.length
 }
 
+/** Ensure the turn-order deck has cards available for a reveal effect. */
+function replenishTurnOrderDeckForReveal(g: GameState, amount: number): void {
+  if (g.turnOrderDeck.length >= amount || g.turnOrderDiscard.length === 0) return
+
+  // A reveal can happen after the final card of a round. Recycle the turn-order
+  // discard as a new shuffled deck and clear the bar for the upcoming round.
+  const recycled = shuffle(g.turnOrderDiscard)
+  g.turnOrderDeck.push(...recycled)
+  g.turnOrderDiscard = []
+  g.round++
+}
+
 function runEffectResolution(
   g: GameState, resolution: PendingEffectResolution,
 ): string[] {
@@ -536,6 +548,62 @@ function runEffectResolution(
       p.bonusAether += amount
       messages.push(`${p.mageType} gains ${amount} Aether`)
       continue
+    }
+
+    if (effect.kind === 'gain_charge') {
+      const amount = Math.max(0, effect.amount)
+      const targets = effect.target === 'self'
+        ? [p]
+        : g.players.filter(player => player.id !== resolution.playerId)
+      let remaining = amount
+      for (const target of targets) {
+        const gained = Math.min(remaining, Math.max(0, target.chargeThreshold - target.charge))
+        target.charge += gained
+        remaining -= gained
+        if (gained > 0) {
+          messages.push(`${target.mageType} gains ${gained} charge (${target.charge}/${target.chargeThreshold})`)
+        }
+        if (remaining === 0) break
+      }
+      if (remaining > 0) messages.push(`${remaining} charge cannot be gained`)
+      continue
+    }
+
+    if (effect.kind === 'review_turn_order_deck') {
+      if (g.turnOrderDeck.length === 0) {
+        messages.push('Turn order deck is empty')
+        continue
+      }
+      const cards = g.turnOrderDeck.map((cardId, index) => ({ index, cardId }))
+      const decision = createDecision(
+        g,
+        resolution.playerId,
+        'Review the turn order deck and choose its order',
+        'reorder_turn_order',
+        { cards },
+        resolution.sourceCardId,
+      )
+      messages.push(...pauseEffect(g, resolution, effect, decision))
+      return messages
+    }
+
+    if (effect.kind === 'reveal_turn_order_card') {
+      replenishTurnOrderDeckForReveal(g, 1)
+      const top = g.turnOrderDeck[0]
+      if (!top) {
+        messages.push('Turn order deck is empty')
+        continue
+      }
+      const decision = createDecision(
+        g,
+        resolution.playerId,
+        `Reveal ${top === 'nemesis' ? 'Nemesis' : 'Player'} turn order card and continue?`,
+        'confirm_turn_order_reveal',
+        { cardId: top },
+        resolution.sourceCardId,
+      )
+      messages.push(...pauseEffect(g, resolution, effect, decision))
+      return messages
     }
 
     if (effect.kind === 'gain_conditional_aether') {
@@ -1152,6 +1220,38 @@ export function resolvePendingDecision(
     }
     const message = gainLife(g, target, effect.amount)
     return [ ...(message ? [message] : []), ...runEffectResolution(g, resolution) ]
+  } else if (answer.kind === 'reorder_turn_order') {
+    if (decision.kind !== 'reorder_turn_order' || effect.kind !== 'review_turn_order_deck') {
+      restore()
+      return ['Decision answer has the wrong type']
+    }
+    const validIndexes = decision.cards.map(card => card.index)
+    const selectedIndexes = answer.order
+    if (
+      selectedIndexes.length !== validIndexes.length ||
+      new Set(selectedIndexes).size !== validIndexes.length ||
+      selectedIndexes.some(index => !validIndexes.includes(index))
+    ) {
+      restore()
+      return ['Turn order must include every reviewed card exactly once']
+    }
+    g.turnOrderDeck = selectedIndexes.map(index => decision.cards.find(card => card.index === index)!.cardId)
+    return ['Turn order deck reordered', ...runEffectResolution(g, resolution)]
+  } else if (answer.kind === 'confirm_turn_order_reveal') {
+    if (decision.kind !== 'confirm_turn_order_reveal' || effect.kind !== 'reveal_turn_order_card') {
+      restore()
+      return ['Decision answer has the wrong type']
+    }
+    const top = g.turnOrderDeck[0]
+    if (!top || top !== decision.cardId) {
+      restore()
+      return ['The revealed turn order card is no longer available']
+    }
+    addRemainingEffects(
+      resolution,
+      top === 'nemesis' ? effect.nemesisEffects : effect.playerEffects,
+    )
+    return [`Revealed ${top === 'nemesis' ? 'Nemesis' : 'Player'} turn order card`, ...runEffectResolution(g, resolution)]
   } else {
     if (decision.kind !== 'select_damage_target' || effect.kind !== 'deal_damage') {
       restore()
@@ -1451,7 +1551,7 @@ export function activateAbility(
 ): string | null {
   const blocked = pendingActionMessage(g)
   if (blocked) return blocked
-  if (g.currentTurn !== playerId || g.currentPhase !== 'main') {
+  if (!canActivateAbilityDuringMain(g, playerId)) {
     return 'Abilities can only be activated during your main phase'
   }
   const p = getPlayer(g, playerId)
@@ -1467,6 +1567,16 @@ export function activateAbility(
   const messages = [`${def.abilityName} activated`]
   messages.push(...resolveEffects(g, playerId, def.abilityEffects, `ability:${def.abilityName}`))
   return messages.join('; ')
+}
+
+/** Whether this mage may offer its main-phase ability button in the current turn. */
+export function canActivateAbilityDuringMain(g: GameState, playerId: string): boolean {
+  if (g.currentPhase !== 'main' || g.currentTurn === 'nemesis' || g.pendingDecision || g.pendingEffect) return false
+  const player = g.players.find(candidate => candidate.id === playerId)
+  if (!player || player.exhausted) return false
+  const def = MAGES[player.mageType]
+  if (!def || def.abilityTrigger.kind !== 'main_phase') return false
+  return def.abilityTrigger.scope === 'any_player' || g.currentTurn === playerId
 }
 
 // ===== Draw Phase =====
@@ -1625,9 +1735,12 @@ export function canPlayerAct(g: GameState, playerId: string): boolean {
   // Can gain charge
   if (aether >= 2 && p.charge < p.chargeThreshold) return true
 
-  // Can activate ability
-  if (p.charge >= p.chargeThreshold) {
-    const def = MAGES[p.mageType]
+  // A charged mage may activate its ability. Some abilities are available
+  // during any player's main phase, so they must also prevent auto-ending
+  // the current player's turn.
+  for (const candidate of g.players) {
+    if (candidate.charge < candidate.chargeThreshold || !canActivateAbilityDuringMain(g, candidate.id)) continue
+    const def = MAGES[candidate.mageType]
     if (!def?.abilityEffects.some(effect => effect.kind === 'cast_prepped_spell') || getPreppedSpellChoices(g).length > 0) {
       return true
     }

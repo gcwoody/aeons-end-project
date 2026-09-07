@@ -30,6 +30,13 @@
   --danger: #f7768e;
   --ok: #9ece6a;
   --warn: #e0af68;
+  /* Global backdrop used by every modal overlay. Lower alpha shows more of the board. */
+  --overlay-backdrop: rgba(8, 10, 16, .38);
+  --overlay-in-duration: 0.12s;
+  --modal-in-duration: 0.22s;
+  --modal-start-scale: .88;
+  --modal-start-offset-y: 16px;
+  --modal-start-blur: 6px;
 }
 
 * { box-sizing: border-box; }
@@ -821,11 +828,12 @@ body {
 .overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 10, 16, .78);
+  background: var(--overlay-backdrop);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 50;
+  animation: overlay-fade-in var(--overlay-in-duration) ease-out both;
 }
 .overlay-card {
   background: var(--panel);
@@ -833,11 +841,16 @@ body {
   border-radius: 12px;
   padding: 26px 32px;
   text-align: center;
+  transform-origin: center center;
+  will-change: opacity, transform, filter;
+  animation: modal-pop-in var(--modal-in-duration) cubic-bezier(.2, .8, .2, 1) both;
 }
 .overlay-card h2 { margin: 0 0 8px; }
+.draggable-modal { position: relative; cursor: grab; }
+.draggable-modal.dragging { cursor: grabbing; user-select: none; }
 .overlay-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 .exit-copy { color: var(--muted); margin: 0; }
-.exit-overlay { z-index: 100; }
+.exit-overlay { z-index: 1000; }
 .gameover-title {
   margin-bottom: 20px !important;
   font-size: clamp(32px, 5vw, 54px);
@@ -847,6 +860,23 @@ body {
 
 /* ===== Card decision modal ===== */
 .decision-overlay { z-index: 120; }
+
+@keyframes overlay-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes modal-pop-in {
+  from {
+    opacity: 0;
+    transform: scale(var(--modal-start-scale)) translateY(var(--modal-start-offset-y));
+    filter: blur(var(--modal-start-blur));
+  }
+  to { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .overlay, .overlay-card { animation: none; }
+}
+
 .decision-modal {
   width: fit-content;
   max-width: calc(100vw - 24px);
@@ -950,6 +980,52 @@ body {
   margin-top: 12px;
 }
 .decision-footer-actions { display: flex; gap: 8px; }
+.decision-hint { color: var(--muted); margin: 0 0 12px; text-align: center; }
+.turn-order-review-cards {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  max-width: min(620px, calc(100vw - 64px));
+  margin: 16px auto;
+}
+.turn-order-review-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 82px;
+  height: 64px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 700;
+}
+.turn-order-review-card:hover { border-color: var(--accent); }
+.turn-order-review-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(122, 162, 255, .2) inset; }
+.turn-order-review-card.nemesis { color: var(--danger); }
+.turn-order-review-index { color: var(--accent); font-size: 12px; }
+.turn-order-review-order { color: var(--muted); text-align: center; min-height: 20px; margin: 10px 0; }
+.turn-order-reveal-card {
+  display: grid;
+  place-items: center;
+  width: 128px;
+  height: 82px;
+  margin: 24px auto 14px;
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  background: var(--panel-2);
+  color: var(--accent);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+.turn-order-reveal-card.nemesis { border-color: var(--danger); color: var(--danger); }
+.turn-order-reveal-note { color: var(--muted); text-align: center; margin: 0; }
 
 /* ===== Setup ===== */
 .setup {

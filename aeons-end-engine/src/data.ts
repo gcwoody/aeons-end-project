@@ -11,7 +11,7 @@ import {
 } from './data/wave1/relics'
 import {
   INITIAL_SPELL_CARDS, MARKET_SPELL_CARDS,
-  spark, buriedLight, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
+  spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
 } from './data/wave1/spells'
 import { createMages, MAGE_UNIQUE_CARDS } from './data/wave1/mage'
 import { NEMESIS_CARDS, rageborne } from './data/wave1/nemesis'
@@ -20,7 +20,7 @@ import { NEMESIS_CARDS, rageborne } from './data/wave1/nemesis'
 export {
   crystal, moonstoneShard, vriswoodAmber, diamondCluster, burningOpal,
   flexingDagger, bottledVortex,
-  spark, buriedLight, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
+  spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
   MAGE_UNIQUE_CARDS,
   NEMESIS_CARDS, rageborne,
 }
@@ -88,4 +88,5 @@ export function makeBreach(
 const wave1Mages = createMages(makeBreach)
 export const jian = wave1Mages.jian
 export const brama = wave1Mages.brama
+export const xaxos = wave1Mages.xaxos
 export const MAGES = wave1Mages

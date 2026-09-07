@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { getPlayer, getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, toRoman } from '@engine/engine'
-import { getCard } from '@engine/data'
+import { getCard, MAGES } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
 import { useGame } from '../game/useGame'
@@ -11,6 +11,7 @@ import MageBoard from './MageBoard.vue'
 
 const {
   state, displayPlayer, isCurrentSelected, canActMain, canCast,
+  canActivateAbilityInMain,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
   activatePreppedCardAction, preppedCardActions,
   playCard, playAllGems, castSpell, endTurn, toMainPhase,
@@ -23,6 +24,9 @@ const player = displayPlayer
 const aether = computed(() => aetherInfo(player.value))
 const ready = computed(() => player.value.charge >= player.value.chargeThreshold)
 const hasPreppedSpell = computed(() => !!state.game && getPreppedSpellChoices(state.game).length > 0)
+const abilityNeedsPreppedSpell = computed(() =>
+  MAGES[player.value?.mageType ?? '']?.abilityEffects.some(effect => effect.kind === 'cast_prepped_spell') ?? false,
+)
 const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order')
@@ -374,10 +378,15 @@ function clickSpellFrame(b: BreachState) {
           <template v-if="isMain">
             <button class="btn small" @click="playAllGems">Play All Gems</button>
             <button class="btn small" :disabled="player.charge >= player.chargeThreshold" @click="gainCharge(1)">Charge</button>
-            <button class="btn small" :disabled="!ready || !hasPreppedSpell" @click="activateAbility()">Activate Ability</button>
             <button class="btn primary" @click="endTurn">End Turn</button>
           </template>
         </template>
+        <button
+          v-if="isMain && canActivateAbilityInMain"
+          class="btn small"
+          :disabled="!ready || (abilityNeedsPreppedSpell && !hasPreppedSpell)"
+          @click="activateAbility()"
+        >Activate Ability</button>
       </div>
       <button class="btn help-button" aria-label="Open game help" title="Game Help" @click="toggleHelp">?</button>
     </div>

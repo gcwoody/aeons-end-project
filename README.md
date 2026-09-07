@@ -46,7 +46,7 @@ npm run test:e2e
 
 ## 当前玩法
 
-- 开局选择两名法师（Jian / Brama）对抗 Rageborne。
+- 开局选择两名法师（Jian / Brama / Xaxos）对抗 Rageborne。
 - 玩家回合依次进行 Casting Phase、Main Phase 和抽牌流程。
 - Casting Phase 可选择释放准备好的 Spell；未开启 breach 上的 Spell 必须释放。
 - Spell 可通过点击或拖拽从手牌 Prep 到可用 breach。
@@ -58,13 +58,13 @@ npm run test:e2e
 
 ## 已接入的卡牌效果
 
-4 张初始玩家卡和 9 张 Wave 1 市场卡已经通过可组合的类型化效果接入：
+5 张初始玩家卡和 9 张 Wave 1 市场卡已经通过可组合的类型化效果接入：
 
 - Gem：V'riswood Amber、Diamond Cluster、Burning Opal
 - Relic：Flexing Dagger、Bottled Vortex
 - Spell：Lava Tendril、Essence Theft、Planar Insight、Arcane Nexus
 
-初始卡：Spark、Crystal、Moonstone Shard、Buried Light。当前效果系统支持 `gain`、
+初始卡：Spark、Flare、Crystal、Moonstone Shard、Buried Light。当前效果系统支持 `gain`、
 `may`、`ally`、`or`、`destroy`、`while prepped`、`cast`、`deal damage`、
 `gain life`、条件 Aether、抽牌、费用减免和返回手牌等模块。第三/第四裂隙的施法增伤、效果
 选择暂停以及存档后恢复也已接入。
@@ -76,7 +76,7 @@ Breach 配置。只有出现全新的规则词汇时，才扩展 `types.ts` 和�
 
 ## 存档与调试
 
-- 游戏会自动保存到浏览器 localStorage。
+- 已有存档在继续游玩时会自动同步到浏览器 localStorage；新游戏只有选择 `Save & Exit` 后才会创建存档记录。
 - 设置页显示多条存档的法师、Nemesis、轮次和回合，并可 Resume 或删除。
 - 游戏中按 ESC，可选择 `Save & Exit` 或 `Exit Without Saving`。
 - Ctrl+D 打开调试面板：修改 HP/Charge、添加卡牌、开关裂隙、导出/导入 JSON、
@@ -85,7 +85,7 @@ Breach 配置。只有出现全新的规则词汇时，才扩展 `types.ts` 和�
 
 ## 当前限制
 
-- Jian 的 Black Mirror 和 Brama 的 Brink Siphon 已通过类型化 Ability 效果实现。
+- Jian 的 Black Mirror、Brama 的 Brink Siphon 和 Xaxos 的 Metaphysical Link 已通过类型化 Ability 效果实现。
 - Nemesis 的 Minion/Power 完整规则尚未完成。
 - 当前玩家卡牌已完全迁移到类型化效果，旧 Gem/Relic/Spell 字段和 demo 专用 Relic
   结算逻辑已删除。

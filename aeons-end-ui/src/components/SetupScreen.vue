@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { useGame } from '../game/useGame'
+import { useModalDrag } from '../game/useModalDrag'
 
 const {
   state, newGame, resumeGame,
   requestDeleteSave, cancelDeleteSave, deleteSave,
 } = useGame()
+const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
 function saveTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString()
@@ -25,6 +27,7 @@ function turnLabel(turn: string): string {
         <select v-model="state.mage1">
           <option value="jian">Jian (Black Mirror)</option>
           <option value="brama">Brama (Brink Siphon)</option>
+          <option value="xaxos">Xaxos (Metaphysical Link)</option>
         </select>
       </label>
       <label>
@@ -32,6 +35,7 @@ function turnLabel(turn: string): string {
         <select v-model="state.mage2">
           <option value="jian">Jian (Black Mirror)</option>
           <option value="brama">Brama (Brink Siphon)</option>
+          <option value="xaxos">Xaxos (Metaphysical Link)</option>
         </select>
       </label>
     </div>
@@ -58,7 +62,7 @@ function turnLabel(turn: string): string {
     </section>
 
     <div v-if="state.deleteSaveId" class="overlay save-delete-overlay">
-      <div class="overlay-card">
+      <div ref="modalEl" class="overlay-card draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
         <h2>Delete Saved Game?</h2>
         <p class="exit-copy">Are you sure you want to delete this saved game?</p>
         <div class="overlay-actions">

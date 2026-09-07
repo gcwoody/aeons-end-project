@@ -19,13 +19,14 @@ type BreachFactory = (
 export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
   jian: ['moonstone_shard'],
   brama: ['buried_light'],
+  xaxos: ['flare'],
 }
 
 export function createMages(makeBreach: BreachFactory): Record<string, MageDef> {
   const jian: MageDef = {
     type: 'jian',
     abilityName: 'Black Mirror',
-    abilityTrigger: { kind: 'main_phase' },
+    abilityTrigger: { kind: 'main_phase', scope: 'current_player' },
     abilityEffects: [
       { kind: 'cast_prepped_spell', source: 'any_prepped_spell', discard: false },
       { kind: 'cast_prepped_spell', source: 'selected_prepped_spell', discard: true },
@@ -45,7 +46,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   const brama: MageDef = {
     type: 'brama',
     abilityName: 'Brink Siphon',
-    abilityTrigger: { kind: 'main_phase' },
+    abilityTrigger: { kind: 'main_phase', scope: 'current_player' },
     abilityEffects: [{ kind: 'gain_life', amount: 4, target: 'any_player' }],
     hp: 10,
     chargeThreshold: 5,
@@ -59,5 +60,25 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
     ],
   }
 
-  return { jian, brama }
+  const xaxos: MageDef = {
+    type: 'xaxos',
+    abilityName: 'Metaphysical Link',
+    abilityTrigger: { kind: 'main_phase', scope: 'any_player' },
+    abilityEffects: [
+      { kind: 'gain_charge', amount: 4, target: 'allies_collectively' },
+      { kind: 'review_turn_order_deck' },
+    ],
+    hp: 10,
+    chargeThreshold: 5,
+    startHand: ['flare', 'crystal', 'crystal', 'crystal', 'crystal'],
+    startDeck: ['crystal', 'crystal', 'crystal', 'crystal', 'spark'],
+    breaches: [
+      makeBreach(1, true, null, 0),
+      makeBreach(2, false, 'east', 2),
+      makeBreach(3, false, 'east', 2),
+      makeBreach(4, false, 'south', 2),
+    ],
+  }
+
+  return { jian, brama, xaxos }
 }

@@ -11,9 +11,9 @@
 | 层 | 当前实现数量 | 说明 |
 | --- | ---: | --- |
 | 触发时机 `CardEffectTrigger` | 4 类 | `on_gain`、`on_play`、`on_cast`、`while_prepped` |
-| 公开效果模块 `CardEffect` | 14 类 | 可直接在新卡牌或 Ability `effects` 中组合 |
+| 公开效果模块 `CardEffect` | 17 类 | 可直接在新卡牌或 Ability `effects` 中组合 |
 | 条件模块 `CardEffectCondition` | 2 类 | 本回合打出次数、开放 breach 数量 |
-| 玩家决策 `PendingDecision` | 7 类 + 1 内部确认 | 统一由引擎暂停、UI 展示并恢复 |
+| 玩家决策 `PendingDecision` | 9 类 + 1 内部确认 | 统一由引擎暂停、UI 展示并恢复 |
 
 `confirm_prepped_effect` 是引擎内部的控制效果，不建议卡牌数据直接使用；卡牌
 数据应使用 `CardEffectBlock.requiresConfirmation: true` 触发它。
@@ -23,6 +23,9 @@
 | 规则关键词 | 当前状态 | 数据模块/引擎入口 | 当前语义 |
 | --- | --- | --- | --- |
 | `gain` | 已实现 | `gain_card`、`gainCard()` | 默认把卡牌放入自己的弃牌堆顶；支持市场/指定卡牌和牌库顶目的地 |
+| 充能 | 已实现 | `gain_charge` | 支持自己或所有 Ally 共享一个充能总量，并受各自充能上限限制 |
+| 查看回合顺序牌 | 已实现 | `review_turn_order_deck`、`reorder_turn_order` | 暂停并查看所有未翻开的回合顺序牌，再按玩家选择的顺序放回牌库 |
+| 展示回合顺序牌 | 已实现 | `reveal_turn_order_card` + `confirm_turn_order_reveal` | 弹窗展示牌库顶的玩家/Nemesis 类型，确认后执行对应效果；牌仍留在牌库顶，牌库不足时先回收并洗牌弃牌堆 |
 | 条件 Aether | 已实现 | `gain_conditional_aether` | 将指定条件资源写入本回合状态，只能由对应资源类型消费 |
 | `may` | 已实现 | `choose_optional`、`pendingDecision` | 创建 Yes/No 决策；选择 No 时跳过嵌套效果 |
 | `ally` | 已实现 | `PlayerTargetScope = 'ally'` | 排除效果来源玩家的其他玩家；多个 Ally 时要求选择 |
@@ -46,6 +49,7 @@
 | --- | --- | --- |
 | Brama — Brink Siphon | `main_phase` | `gain_life(amount: 4, target: any_player)` |
 | Jian — Black Mirror | `main_phase` | 选择预备法术；第一次 `cast_prepped_spell(discard: false)`，第二次 `discard: true` |
+| Xaxos — Metaphysical Link | `main_phase (any_player)` | `gain_charge(amount: 4, target: allies_collectively)` + `review_turn_order_deck` |
 
 `AbilityTrigger` 已为 `casting_phase`、`ally_turn_end` 和 Nemesis 抽牌等未来时机
 预留类型，但目前只有 `main_phase` 有主动触发入口。
@@ -111,6 +115,7 @@ Cluster 仍然能正确识别本回合的历史次数。
 | 卡牌 | 类型化效果组合 |
 | --- | --- |
 | Spark | `on_cast` + `deal_damage` |
+| Flare | `on_cast` + `reveal_turn_order_card` + 条件伤害；空牌库时回收并洗牌 Turn Order Discard |
 | Crystal | `on_play` + `gain_aether` |
 | Moonstone Shard | `on_play` + `gain_aether` + `gain_conditional_aether(gem)` |
 | V'riswood Amber | `on_play` + `gain_aether`；`on_gain` + `choose_optional` + `move_gained_card` |
@@ -123,7 +128,7 @@ Cluster 仍然能正确识别本回合的历史次数。
 | Planar Insight | `on_cast` + `per_open_breach` 动态伤害 |
 | Arcane Nexus | `while_prepped/main_phase` + 可选返回 Gem；`on_cast` + 伤害 |
 
-当前所有初始 Gem/Spell（Spark、Crystal、Moonstone Shard、Buried Light）都已经
+当前所有初始 Gem/Spell（Spark、Flare、Crystal、Moonstone Shard、Buried Light）都已经
 使用类型化效果。旧 Gem/Spell/Relic 字段和 demo 专用 Relic 抽牌弃牌逻辑已经删除；
 当前玩家卡牌的结算只经过类型化效果解释器。
 
@@ -201,7 +206,7 @@ export const exampleSpell: SpellCard = {
 2. **类型化模型**：建立可序列化的 `CardEffect`、触发时机、条件、目标和决策类型。
 3. **引擎基础**：统一处理 gain、牌区操作、销毁、生命上限和可恢复的 Pending Decision。
 4. **通用解释器**：在 `engine.ts` 中按效果序列执行规则，不按卡牌 ID 写分支。
-5. **卡牌接入**：4 张初始玩家卡和 9 张 Wave 1 市场卡全部迁移到类型化 `effects`。
+5. **卡牌接入**：5 张初始玩家卡和 9 张 Wave 1 市场卡全部迁移到类型化 `effects`。
 6. **Web UI**：通过统一的 `CardDecisionModal` 展示选择，并支持存档恢复和撤销。
 7. **回归验证**：引擎测试覆盖当前玩家卡、关键词、边界、JSON 暂停恢复和存档形状。
 

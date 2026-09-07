@@ -36,7 +36,7 @@ export type CardEffectTrigger =
     }
 
 export type AbilityTrigger =
-  | { kind: 'main_phase' }
+  | { kind: 'main_phase'; scope: 'current_player' | 'any_player' }
   | { kind: 'casting_phase' }
   | { kind: 'ally_turn_end' }
   | { kind: 'nemesis_card_drawn'; cardType: 'attack' | 'power' }
@@ -61,6 +61,11 @@ export interface PreppedSpellChoice {
   breachIndex: number
   cardId: string
   cardName: string
+}
+
+export interface TurnOrderCardChoice {
+  index: number
+  cardId: string
 }
 
 export type LifeTargetRef =
@@ -145,6 +150,14 @@ export type PendingDecision = PendingDecisionBase & (
       targets: DamageTargetRef[]
     }
   | {
+      kind: 'reorder_turn_order'
+      cards: TurnOrderCardChoice[]
+    }
+  | {
+      kind: 'confirm_turn_order_reveal'
+      cardId: string
+    }
+  | {
       kind: 'confirm_prepped_effect'
       cardId: string
       breachIndex: number
@@ -159,6 +172,8 @@ export type PendingDecisionAnswer =
   | { kind: 'select_life_target'; target: LifeTargetRef }
   | { kind: 'select_player_target'; target: PlayerTargetRef }
   | { kind: 'select_damage_target'; target: DamageTargetRef }
+  | { kind: 'reorder_turn_order'; order: number[] }
+  | { kind: 'confirm_turn_order_reveal'; accepted: true }
   | { kind: 'confirm_prepped_effect'; accepted: true }
 
 export interface BreachCostReduction {
@@ -180,6 +195,13 @@ export interface CardEffectOption {
 /** A small, serializable vocabulary for reusable card rules. */
 export type CardEffect =
   | { kind: 'gain_aether'; amount: number }
+  | { kind: 'gain_charge'; amount: number; target: 'self' | 'allies_collectively' }
+  | { kind: 'review_turn_order_deck' }
+  | {
+      kind: 'reveal_turn_order_card'
+      playerEffects: CardEffect[]
+      nemesisEffects: CardEffect[]
+    }
   | { kind: 'gain_conditional_aether'; amount: number; condition: string }
   | { kind: 'deal_damage'; amount: EffectAmount; target: DamageTargetScope }
   | { kind: 'draw_cards'; amount: number; target?: PlayerTargetScope }

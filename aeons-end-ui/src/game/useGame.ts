@@ -11,7 +11,7 @@ import {
   resolvePreppedEffects,
   getPreppedCardActions, activatePreppedCardAction as engineActivatePreppedCardAction,
   resolvePendingDecision as engineResolvePendingDecision,
-  canPlayerAct, toRoman,
+  canPlayerAct, canActivateAbilityDuringMain, toRoman,
   nemesisDrawCard, nemesisResolveAttack,
   checkGameOver, checkPlayerDeath,
 } from '@engine/engine'
@@ -80,6 +80,9 @@ const state = reactive({
 const SAVE_KEY = 'aeons-end-saves-v2'
 const LEGACY_SAVE_KEY = 'aeons-end-save-v1'
 let storedSaves: StoredSave[] = []
+// A newly started game must not become a save record until the player chooses
+// Save & Exit. Resumed games keep the existing auto-save behavior.
+let autoSaveEnabled = false
 
 function displayName(id: string): string {
   return id ? id.charAt(0).toUpperCase() + id.slice(1) : id
@@ -165,8 +168,8 @@ function persistStoredSaves() {
   syncSaveList()
 }
 
-function saveCurrentGame() {
-  if (!state.game) return
+function saveCurrentGame(force = false) {
+  if (!state.game || (!force && !autoSaveEnabled)) return
   const now = Date.now()
   let save = storedSaves.find(candidate => candidate.id === state.activeSaveId)
   if (!save) {
@@ -206,7 +209,7 @@ function saveCurrentGame() {
 storedSaves = readStoredSaves()
 syncSaveList()
 
-// Auto-persist the game (and UI context) to localStorage on any change.
+// Persist resumed games (and UI context) to localStorage on any change.
 watch(
   () => (state.game ? JSON.stringify({
     game: state.game, phase: state.phase, selectedPlayer: state.selectedPlayer,
@@ -347,6 +350,7 @@ function beginTurn() {
 
 export function newGame(m1: string, m2: string) {
   state.activeSaveId = null
+  autoSaveEnabled = false
   state.exitPrompt = false
   const g = reactive(createGame(m1, m2)) as GameState
   state.game = g
@@ -371,6 +375,7 @@ export function resumeGame(saveId?: string): boolean {
   try {
     state.game = reactive(normalizeSavedGame(JSON.parse(JSON.stringify(save.game)) as GameState)) as GameState
     state.activeSaveId = save.id
+    autoSaveEnabled = true
     state.phase = save.phase ?? 'main'
     syncEnginePhaseWithUi()
     state.selectedPlayer = save.selectedPlayer ?? 'p1'
@@ -434,6 +439,7 @@ function resetToSetup() {
   state.game = null
   state.phase = 'setup'
   state.activeSaveId = null
+  autoSaveEnabled = false
   state.deleteSaveId = null
   state.exitPrompt = false
   state.pendingNemesis = null
@@ -446,7 +452,7 @@ function resetToSetup() {
 }
 
 export function saveAndExit() {
-  saveCurrentGame()
+  saveCurrentGame(true)
   resetToSetup()
 }
 
@@ -611,7 +617,9 @@ export function gainCharge(amount = 1) {
 
 export function activateAbility() {
   const previous = beforeAction()
-  const msg = engineActivateAbility(state.game!, cp().id)
+  // An ability may belong to the selected mage rather than the mage whose
+  // turn is currently active (for example, Xaxos during Brama's main phase).
+  const msg = engineActivateAbility(state.game!, state.selectedPlayer)
   if (msg) pushLog(msg, 'ok')
   maybeAutoEnd()
   finishAction(previous)
@@ -747,6 +755,10 @@ export const canActMain = computed(() =>
   isCurrentSelected.value && state.phase === 'main',
 )
 
+export const canActivateAbilityInMain = computed(() =>
+  !!state.game && state.phase === 'main' && canActivateAbilityDuringMain(state.game, state.selectedPlayer),
+)
+
 export const canCast = computed(() =>
   isCurrentSelected.value && state.phase === 'casting',
 )
@@ -780,6 +792,7 @@ export function useGame() {
     selectPlayer, clickDiscardCard, openPile, closePile,
     castableSpells, buyables, playerCanAct,
     displayPlayer, isCurrentSelected, canActMain, canCast, preppedCardActions,
+    canActivateAbilityInMain,
   }
 }
 

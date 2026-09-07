@@ -9,11 +9,17 @@ import LogPanel from './components/LogPanel.vue'
 import PileModal from './components/PileModal.vue'
 import CardDecisionModal from './components/CardDecisionModal.vue'
 import DebugPanel from './components/DebugPanel.vue'
+import { useModalDrag } from './game/useModalDrag'
 
 const {
   state, nemesisChooseTarget, undo, toggleDebug,
   closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
 } = useGame()
+
+const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
+const { modalEl: exitModalEl, modalStyle: exitModalStyle, dragging: exitDragging, startDrag: startExitDrag } = useModalDrag()
+const { modalEl: nemesisModalEl, modalStyle: nemesisModalStyle, dragging: nemesisDragging, startDrag: startNemesisDrag } = useModalDrag()
+const { modalEl: gameoverModalEl, modalStyle: gameoverModalStyle, dragging: gameoverDragging, startDrag: startGameoverDrag } = useModalDrag()
 
 function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -56,7 +62,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <DebugPanel />
 
     <div v-if="state.helpOpen" class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title" @click.self="closeHelp">
-      <div class="overlay-card help-modal">
+      <div ref="helpModalEl" class="overlay-card help-modal draggable-modal" :class="{ dragging: helpDragging }" :style="helpModalStyle" @pointerdown="startHelpDrag">
         <div class="help-head">
           <h2 id="help-title">Game Help</h2>
           <button class="btn small" aria-label="Close game help" @click="closeHelp">Close</button>
@@ -75,7 +81,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     </div>
 
     <div v-if="state.exitPrompt" class="overlay exit-overlay">
-      <div class="overlay-card">
+      <div ref="exitModalEl" class="overlay-card draggable-modal" :class="{ dragging: exitDragging }" :style="exitModalStyle" @pointerdown="startExitDrag">
         <h2>Exit Game?</h2>
         <p class="exit-copy">Are you sure you want to exit this game?</p>
         <div class="overlay-actions">
@@ -87,7 +93,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     </div>
 
     <div v-if="state.phase === 'nemesis_target' && state.pendingNemesis" class="overlay">
-      <div class="overlay-card">
+      <div ref="nemesisModalEl" class="overlay-card draggable-modal" :class="{ dragging: nemesisDragging }" :style="nemesisModalStyle" @pointerdown="startNemesisDrag">
         <h2>Nemesis Attack</h2>
         <p>Drew: {{ state.pendingNemesis.cardName }} ({{ state.pendingNemesis.damage }} dmg)</p>
         <div class="overlay-actions">
@@ -99,7 +105,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     </div>
 
     <div v-if="state.phase === 'gameover'" class="overlay">
-      <div class="overlay-card">
+      <div ref="gameoverModalEl" class="overlay-card draggable-modal" :class="{ dragging: gameoverDragging }" :style="gameoverModalStyle" @pointerdown="startGameoverDrag">
         <h2 class="gameover-title">{{ state.game.winner === 'players' ? 'Victory!' : 'Defeat…' }}</h2>
         <button class="btn primary" @click="returnToMainMenu">Back to Main Menu</button>
       </div>

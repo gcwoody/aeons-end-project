@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useGame } from '../game/useGame'
+import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
 
 const { state } = useGame()
 
@@ -16,7 +17,8 @@ const slots = computed(() => {
   return arr
 })
 const currentIdx = computed(() => taken.value.length - 1)
-const actorLabel = (a: string) => (a === 'nemesis' ? 'NEM' : a.toUpperCase())
+const playerLabels = computed(() => createTurnOrderLabels(game.value.players))
+const actorLabel = (a: string) => turnOrderActorLabel(a, playerLabels.value)
 const pct = (v: number) => `${Math.max(0, Math.min(1, v)) * 100}%`
 </script>
 

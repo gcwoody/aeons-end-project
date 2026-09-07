@@ -5,8 +5,10 @@ import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import { groupPileCards, pileRowLabel } from '../game/pile-layout'
+import { useModalDrag } from '../game/useModalDrag'
 
 const { state, displayPlayer, closePile } = useGame()
+const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
 const title = computed(() => (state.viewPile === 'deck' ? 'Deck' : 'Discard'))
 const cards = computed(() =>
@@ -26,7 +28,7 @@ function rowLabel(groupIndex: number): string {
 
 <template>
   <div v-if="state.viewPile" class="overlay" @click.self="closePile">
-    <div class="overlay-card pile-modal">
+    <div ref="modalEl" class="overlay-card pile-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
       <h3>
         {{ title }}
         <span class="muted">(top → bottom)</span>

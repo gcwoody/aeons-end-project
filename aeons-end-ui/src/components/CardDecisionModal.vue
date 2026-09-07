@@ -1,13 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
-import type { CardChoice, PendingDecisionAnswer } from '@engine/types'
+import type { CardChoice, PendingDecisionAnswer, TurnOrderCardChoice } from '@engine/types'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import { chunkCards, groupPileCards, pileRowLabel } from '../game/pile-layout'
+import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
+import { useModalDrag } from '../game/useModalDrag'
 
 const { state, resolveDecision } = useGame()
+const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 const selectedCards = ref<CardChoice[]>([])
+const selectedTurnOrder = ref<number[]>([])
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
 
@@ -64,7 +68,46 @@ const cardZones = computed(() => {
 
 watch(() => decision.value?.id, () => {
   selectedCards.value = []
+  selectedTurnOrder.value = []
 })
+
+const turnOrderLabels = computed(() => createTurnOrderLabels(state.game?.players ?? []))
+
+function turnOrderCardLabel(cardId: string): string {
+  return turnOrderActorLabel(cardId, turnOrderLabels.value)
+}
+
+function turnOrderCardPosition(index: number): number | null {
+  const position = selectedTurnOrder.value.indexOf(index)
+  return position < 0 ? null : position + 1
+}
+
+function toggleTurnOrderCard(card: TurnOrderCardChoice) {
+  const position = selectedTurnOrder.value.indexOf(card.index)
+  if (position >= 0) {
+    selectedTurnOrder.value = selectedTurnOrder.value.filter(index => index !== card.index)
+  } else {
+    selectedTurnOrder.value = [...selectedTurnOrder.value, card.index]
+  }
+}
+
+function confirmTurnOrder() {
+  if (!decision.value || decision.value.kind !== 'reorder_turn_order') return
+  if (selectedTurnOrder.value.length !== decision.value.cards.length) return
+  answer({ kind: 'reorder_turn_order', order: [...selectedTurnOrder.value] })
+}
+
+function resetTurnOrder() {
+  selectedTurnOrder.value = []
+}
+
+function selectedTurnOrderLabel(): string {
+  const currentDecision = decision.value
+  if (!currentDecision || currentDecision.kind !== 'reorder_turn_order') return ''
+  return selectedTurnOrder.value
+    .map(index => turnOrderCardLabel(currentDecision.cards.find(card => card.index === index)?.cardId ?? ''))
+    .join(' → ')
+}
 
 function choiceKey(choice: CardChoice): string {
   return `${choice.zone}:${choice.index}:${choice.cardId}`
@@ -108,7 +151,7 @@ function answer(kind: PendingDecisionAnswer) {
 
 <template>
   <div v-if="decision && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell'" class="overlay decision-overlay">
-    <div class="overlay-card decision-modal">
+    <div ref="modalEl" class="overlay-card decision-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
       <h2>{{ decision.prompt }}</h2>
 
       <div v-if="decision.kind === 'choose_one'" class="decision-options">
@@ -166,6 +209,56 @@ function answer(kind: PendingDecisionAnswer) {
               Confirm
             </button>
           </div>
+        </div>
+      </template>
+
+      <template v-else-if="decision.kind === 'reorder_turn_order'">
+        <p class="decision-hint">Choose the order of the reviewed cards from top to bottom.</p>
+        <div class="turn-order-review-cards">
+          <button
+            v-for="card in decision.cards"
+            :key="card.index"
+            class="turn-order-review-card"
+            :class="{ selected: turnOrderCardPosition(card.index) !== null, nemesis: card.cardId === 'nemesis' }"
+            @click="toggleTurnOrderCard(card)"
+          >
+            <span class="turn-order-review-index">{{ turnOrderCardPosition(card.index) ?? '—' }}</span>
+            <span>{{ turnOrderCardLabel(card.cardId) }}</span>
+          </button>
+        </div>
+        <p class="turn-order-review-order">
+          Top →
+          <template v-if="selectedTurnOrder.length > 0">
+            {{ selectedTurnOrderLabel() }}
+          </template>
+          <span v-else> choose cards </span>
+          → Bottom
+        </p>
+        <div class="decision-footer">
+          <span class="stat">Order {{ selectedTurnOrder.length }} / {{ decision.cards.length }}</span>
+          <div class="decision-footer-actions">
+            <button class="btn" @click="resetTurnOrder">Reset</button>
+            <button
+              class="btn primary"
+              :disabled="selectedTurnOrder.length !== decision.cards.length"
+              @click="confirmTurnOrder"
+            >
+              Return Cards
+            </button>
+          </div>
+        </div>
+      </template>
+
+      <template v-else-if="decision.kind === 'confirm_turn_order_reveal'">
+        <p class="decision-hint">Flare revealed the top card of the turn order deck.</p>
+        <div class="turn-order-reveal-card" :class="{ nemesis: decision.cardId === 'nemesis' }">
+          {{ turnOrderCardLabel(decision.cardId) }}
+        </div>
+        <p class="turn-order-reveal-note">The card will remain on top of the turn order deck.</p>
+        <div class="decision-footer">
+          <button class="btn primary" @click="answer({ kind: 'confirm_turn_order_reveal', accepted: true })">
+            Continue
+          </button>
         </div>
       </template>
 

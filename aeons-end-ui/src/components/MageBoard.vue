@@ -2,12 +2,14 @@
 import { computed, ref } from 'vue'
 import { mageImageUrls } from '../mage-images'
 import CardHoverPreview from './CardHoverPreview.vue'
+import { useModalDrag } from '../game/useModalDrag'
 
 const props = defineProps<{ mageType: string }>()
 
 const images = computed(() => mageImageUrls(props.mageType))
 const showModal = ref(false)
 const showBack = ref(false)
+const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
 function openModal() {
   if (!images.value) return
@@ -37,7 +39,7 @@ function closeModal() {
     <div v-else class="mage-unavailable">No mage board</div>
 
     <div v-if="showModal && images" class="overlay mage-overlay" @click.self="closeModal">
-      <div class="overlay-card mage-modal">
+      <div ref="modalEl" class="overlay-card mage-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
         <div class="mage-modal-frame" :class="{ flipped: showBack }">
           <img
             class="mage-modal-image"

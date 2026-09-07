@@ -39,7 +39,7 @@ Vue `reactive()` 包装 GameState，把点击、选择和阶段操作交给引�
 | `components/TurnOrderBar.vue` | 六个回合槽、Nemesis/Gravehold HP、Round |
 | `components/PlayerArea.vue` | 法师选择、裂隙、施法、Played、手牌、牌库和控制栏 |
 | `components/MarketPanel.vue` | 九个固定位置的市场牌堆；耗尽后保留不可见空槽 |
-| `components/CardDecisionModal.vue` | 通用分支、Yes/No、牌卡、玩家和伤害目标选择 UI |
+| `components/CardDecisionModal.vue` | 通用分支、Yes/No、牌卡、玩家、伤害目标和回合顺序重排 UI |
 | `components/CardHoverPreview.vue` | 卡牌/裂隙悬停预览 |
 | `components/PileModal.vue` | 牌库、弃牌堆查看和抽牌分组注释 |
 | `components/SetupScreen.vue` | 新游戏、多存档 Resume 和删除存档 |
@@ -132,11 +132,13 @@ export const exampleSpell: SpellCard = {
 
 ## 已实现的核心机制
 
-- Gem、Relic、Spell 的类型化效果、4 张初始玩家卡和 9 张 Wave 1 市场卡。
+- Gem、Relic、Spell 的类型化效果、5 张初始玩家卡和 9 张 Wave 1 市场卡。
 - `gain` 默认进入弃牌堆顶，也支持效果移动到牌库顶。
 - `may`、`or`、卡牌/玩家/伤害目标选择和可序列化中断恢复。
 - 永久销毁卡牌，并记录到 `destroyedCards`。
 - Nemesis、Minion、Gravehold 和玩家的伤害/生命目标边界处理。
+- Xaxos 的 `Metaphysical Link`：任意玩家的主阶段均可激活；Ally 获得充能并查看、重排未翻开的回合顺序牌。
+- Turn Order UI 使用法师名称的最短不歧义前缀显示玩家牌，Nemesis 仍显示为 `NEM`。
 - 第三、第四裂隙施放法术时，每个独立伤害实例增加 1 点；无显式伤害的类型化
   Spell 会获得一次补充伤害。
 - Arcane Nexus 的主阶段非阻塞动作和 Lava Tendril 的 casting phase 结束确认。
@@ -173,7 +175,8 @@ Playwright 配置位于 `aeons-end-ui/playwright.config.ts`，测试位于
 悬停层级和整体布局等视觉细节仍建议结合浏览器人工检查。
 
 调试面板支持修改 HP/Charge、添加卡牌、开关裂隙、导出/导入 JSON 和清除全部
-存档。浏览器端 localStorage 是当前唯一的存档介质；存档列表支持多条记录、
+存档。已有存档在继续游玩时会自动同步到浏览器 localStorage；新游戏只有选择
+`Save & Exit` 后才会创建存档记录。浏览器端 localStorage 是当前唯一的存档介质；存档列表支持多条记录、
 删除确认和按条目 Resume。
 
 ## 常见坑
@@ -189,7 +192,7 @@ Playwright 配置位于 `aeons-end-ui/playwright.config.ts`，测试位于
 
 ## 当前缺口
 
-1. Jian 的 Black Mirror 和 Brama 的 Brink Siphon 已接入类型化 Ability 效果；更多
+1. Jian 的 Black Mirror、Brama 的 Brink Siphon 和 Xaxos 的 Metaphysical Link 已接入类型化 Ability 效果；更多
    Ability 触发时机仍需继续扩展。
 2. Nemesis 的 Minion/Power 完整规则和效果结算仍未完成。
 3. 当前已配置引擎回归测试和基础浏览器 E2E；复杂 UI 视觉细节仍需要浏览器手动验证。

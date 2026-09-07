@@ -1,4 +1,5 @@
 import buriedLightUrl from '../../image-database/cards/wave1/mages/Buried Light.jpg'
+import flareUrl from '../../image-database/cards/wave1/mages/Flare.jpg'
 import moonstoneShardUrl from '../../image-database/cards/wave1/mages/Moonstone Shard.jpg'
 import crystalUrl from '../../image-database/cards/wave1/gems/Crystal (Aeon\'s End) Front.jpg'
 import sparkUrl from '../../image-database/cards/wave1/spells/Spark (Aeon\'s End).jpg'
@@ -14,6 +15,7 @@ import arcaneNexusUrl from '../../image-database/cards/wave1/spells/Arcane Nexus
 
 const CARD_IMAGES: Record<string, string> = {
   buried_light: buriedLightUrl,
+  flare: flareUrl,
   moonstone_shard: moonstoneShardUrl,
   crystal: crystalUrl,
   spark: sparkUrl,
