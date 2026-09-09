@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getPlayer, getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, toRoman } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
 import { cardImageUrl } from '../card-images'
@@ -31,7 +31,10 @@ const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order')
 const draggingSpell = ref(false)
+const handElement = ref<HTMLElement | null>(null)
+const handOffset = ref(0)
 const draggedSpellId = ref<string | null>(null)
+const draggedSpellIndex = ref<number | null>(null)
 const dragPosition = ref({ x: 0, y: 0 })
 let dragPointerId = -1
 let dragStartX = 0
@@ -53,29 +56,33 @@ const phaseLabel = computed(() => {
 const DIR: Record<string, string> = { east: '→', south: '↓', west: '←', north: '↑' }
 
 const canPrep = (b: BreachState) =>
-  state.prepTarget !== null && canActMain.value && !b.prepSpell && (b.opened || b.focusedThisTurn)
+  b.present !== false && canActMain.value
+    && b.prepSpells.length < player.value.turnEffects.prepSpellLimit
+    && (b.opened || b.focusedThisTurn)
 
 const isMustCastBreach = (b: BreachState) =>
-  canCast.value && !state.game?.pendingDecision && !!b.prepSpell && getCastableSpells(state.game!, player.value.id)
+  canCast.value && !state.game?.pendingDecision && b.prepSpells.length > 0 && getCastableSpells(state.game!, player.value.id)
     .some((spell) => spell.breachIndex === b.index && spell.mustCast)
 
 const isCastableBreach = (b: BreachState) =>
-  canCast.value && !state.game?.pendingDecision && !!b.prepSpell
+  canCast.value && !state.game?.pendingDecision && b.prepSpells.length > 0
 
-const isMandatoryPreppedEffect = (b: BreachState) => {
+const isMandatoryPreppedEffect = (b: BreachState, spellIndex = 0) => {
   const decision = state.game?.pendingDecision
   return decision?.kind === 'confirm_prepped_effect'
-    && decision.cardId === b.prepSpell
+    && decision.cardId === b.prepSpells[spellIndex]
     && decision.breachIndex === b.index
+    && decision.spellIndex === spellIndex
 }
 
-const abilityPreppedSpellChoice = (b: BreachState) => {
+const abilityPreppedSpellChoice = (b: BreachState, spellIndex = 0) => {
   const decision = state.game?.pendingDecision
-  if (decision?.kind !== 'select_prepped_spell' || !b.prepSpell) return null
+  if (decision?.kind !== 'select_prepped_spell' || !b.prepSpells[spellIndex]) return null
   return decision.candidates.find(choice =>
     choice.playerId === player.value.id &&
     choice.breachIndex === b.index &&
-    choice.cardId === b.prepSpell,
+    choice.spellIndex === spellIndex &&
+    choice.cardId === b.prepSpells[spellIndex],
   ) ?? null
 }
 
@@ -104,17 +111,73 @@ function clickPlayedCard(index: number) {
 function clickHand(i: number) {
   if (!canActMain.value) return
   const cid = player.value.hand[i]
-  if (getCard(cid).type === 'spell') {
-    state.prepTarget = state.prepTarget === i ? null : i
-  } else {
-    playCard(i)
+  // Spells are prepared exclusively by dragging them onto a breach.
+  if (getCard(cid).type !== 'spell') playCard(i)
+}
+
+let handScrollTarget = 0
+let handScrollFrame: number | null = null
+
+function animateHandScroll() {
+  const hand = handElement.value
+  if (!hand) {
+    handScrollFrame = null
+    return
   }
+  const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
+  handScrollTarget = Math.min(Math.max(0, handScrollTarget), maxScroll)
+  const distance = handScrollTarget - hand.scrollLeft
+  if (Math.abs(distance) < 0.5) {
+    hand.scrollLeft = handScrollTarget
+    handScrollFrame = null
+    return
+  }
+  // Ease toward the latest wheel target so consecutive wheel events feel like
+  // one continuous horizontal movement instead of a series of hard jumps.
+  hand.scrollLeft += distance * 0.2
+  handScrollFrame = requestAnimationFrame(animateHandScroll)
+}
+
+function handleHandWheel(event: WheelEvent) {
+  const target = event.target
+  const hand = target instanceof Element ? target.closest<HTMLElement>('.hand') : null
+  if (hand !== handElement.value || hand.scrollWidth <= hand.clientWidth || event.deltaY === 0) return
+  event.preventDefault()
+  event.stopPropagation()
+  // The hand intentionally maps vertical mouse-wheel movement to horizontal
+  // scrolling: wheel up moves toward the left, wheel down toward the right.
+  if (handScrollFrame === null) handScrollTarget = hand.scrollLeft
+  const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
+  handScrollTarget = Math.min(Math.max(0, handScrollTarget + event.deltaY * 1.1), maxScroll)
+  if (handScrollFrame === null) handScrollFrame = requestAnimationFrame(animateHandScroll)
+}
+
+let handAlignmentFrame: number | null = null
+let handResizeObserver: ResizeObserver | null = null
+
+function updateHandAlignment() {
+  if (handAlignmentFrame !== null) cancelAnimationFrame(handAlignmentFrame)
+  handAlignmentFrame = requestAnimationFrame(() => {
+    handAlignmentFrame = null
+    const hand = handElement.value
+    if (!hand || typeof window === 'undefined') return
+    const cards = [...hand.querySelectorAll<HTMLElement>('.card')]
+    const gap = Number.parseFloat(getComputedStyle(hand).gap) || 0
+    const cardWidth = cards.reduce((total, card) => total + card.getBoundingClientRect().width, 0)
+    const contentWidth = cardWidth + Math.max(0, cards.length - 1) * gap
+    const rightPadding = Number.parseFloat(getComputedStyle(hand).paddingRight) || 0
+    const handRect = hand.getBoundingClientRect()
+    const desiredOffset = window.innerWidth / 2 - handRect.left - contentWidth / 2
+    const maxOffset = Math.max(0, hand.clientWidth - rightPadding - contentWidth)
+    handOffset.value = Math.round(Math.min(Math.max(0, desiredOffset), maxOffset))
+  })
 }
 
 function startSpellPointerDrag(i: number, event: PointerEvent) {
   if (event.button !== 0 || !canActMain.value || getCard(player.value.hand[i]).type !== 'spell') return
-  state.prepTarget = i
+  state.prepTarget = null
   draggedSpellId.value = player.value.hand[i]!
+  draggedSpellIndex.value = i
   dragPosition.value = { x: event.clientX, y: event.clientY }
   dragPointerId = event.pointerId
   dragStartX = event.clientX
@@ -128,22 +191,33 @@ function handleSpellPointerMove(event: PointerEvent) {
   if (event.pointerId !== dragPointerId) return
   dragPosition.value = { x: event.clientX, y: event.clientY }
   const distance = Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY)
-  if (distance > 5) draggingSpell.value = true
+  if (distance > 5) {
+    draggingSpell.value = true
+  }
   if (draggingSpell.value) event.preventDefault()
 }
 
 function finishSpellPointerDrag(event: PointerEvent) {
   if (event.pointerId !== dragPointerId) return
   const wasDragging = draggingSpell.value
-  const target = document.elementFromPoint(event.clientX, event.clientY)?.closest<HTMLElement>('[data-breach-index]')
+  const spellIndex = draggedSpellIndex.value
+  // The breach hover preview is rendered in a top-level layer and can cover
+  // the actual breach at release time. Use the breach rectangles directly so
+  // the drag target remains reliable regardless of the preview z-index.
+  const target = [...document.querySelectorAll<HTMLElement>('[data-breach-index]')]
+    .find((element) => {
+      const rect = element.getBoundingClientRect()
+      return event.clientX >= rect.left && event.clientX <= rect.right
+        && event.clientY >= rect.top && event.clientY <= rect.bottom
+    })
   const breachIndex = target ? Number(target.dataset.breachIndex) : NaN
   removeSpellPointerListeners()
   draggingSpell.value = false
   draggedSpellId.value = null
+  draggedSpellIndex.value = null
   if (wasDragging) {
     const breach = player.value.breaches.find((item) => item.index === breachIndex)
-    if (state.prepTarget !== null && breach && canPrep(breach)) prepSpell(state.prepTarget, breach.index)
-    else state.prepTarget = null
+    if (spellIndex !== null && breach && canPrep(breach)) prepSpell(spellIndex, breach.index)
   }
 }
 
@@ -151,6 +225,7 @@ function cancelSpellPointerDrag() {
   removeSpellPointerListeners()
   draggingSpell.value = false
   draggedSpellId.value = null
+  draggedSpellIndex.value = null
   state.prepTarget = null
 }
 
@@ -162,32 +237,52 @@ function removeSpellPointerListeners() {
 }
 
 onBeforeUnmount(removeSpellPointerListeners)
+onMounted(() => {
+  window.addEventListener('wheel', handleHandWheel, { capture: true, passive: false })
+  window.addEventListener('resize', updateHandAlignment)
+  if (handElement.value && typeof ResizeObserver !== 'undefined') {
+    handResizeObserver = new ResizeObserver(updateHandAlignment)
+    handResizeObserver.observe(handElement.value)
+  }
+  nextTick(updateHandAlignment)
+})
+watch(() => player.value?.hand.length, () => nextTick(updateHandAlignment))
+watch(() => state.selectedPlayer, () => nextTick(updateHandAlignment))
+onBeforeUnmount(() => window.removeEventListener('wheel', handleHandWheel, true))
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', updateHandAlignment)
+  handResizeObserver?.disconnect()
+  if (handAlignmentFrame !== null) cancelAnimationFrame(handAlignmentFrame)
+  if (handScrollFrame !== null) cancelAnimationFrame(handScrollFrame)
+})
 
 function clickBreach(b: BreachState) {
+  if (b.present === false) return
   if (isMandatoryPreppedEffect(b)) {
     return
   }
   if (state.game?.pendingDecision) return
   if (isCastableBreach(b)) { castSpell(b.index); return }
-  if (canPrep(b)) { prepSpell(state.prepTarget!, b.index) }
 }
 
 function confirmMandatoryPreppedEffect(b: BreachState) {
+  if (b.present === false) return
   if (!isMandatoryPreppedEffect(b)) return
   resolveDecision({ kind: 'confirm_prepped_effect', accepted: true })
 }
 
-function clickSpellFrame(b: BreachState) {
-  const abilityChoice = abilityPreppedSpellChoice(b)
+function clickSpellFrame(b: BreachState, spellIndex: number) {
+  if (b.present === false) return
+  const abilityChoice = abilityPreppedSpellChoice(b, spellIndex)
   if (abilityChoice) {
     resolveDecision({ kind: 'select_prepped_spell', choice: abilityChoice })
     return
   }
-  if (isMandatoryPreppedEffect(b)) {
+  if (isMandatoryPreppedEffect(b, spellIndex)) {
     confirmMandatoryPreppedEffect(b)
     return
   }
-  if (isCastableBreach(b)) castSpell(b.index)
+  if (isCastableBreach(b)) castSpell(b.index, spellIndex)
 }
 </script>
 
@@ -213,16 +308,17 @@ function clickSpellFrame(b: BreachState) {
         v-for="b in player.breaches" :key="b.index"
         class="breach"
         :class="{
+          absent: b.present === false,
           open: b.opened,
           castable: isCastableBreach(b),
           'must-cast': isMustCastBreach(b),
-          'prep-ok': canPrep(b),
           'drag-target': draggingSpell && canPrep(b),
           'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
         }"
         @click="clickBreach(b)"
         :data-breach-index="b.index"
       >
+        <template v-if="b.present !== false">
         <div class="breach-token-wrap">
           <img
             class="breach-token"
@@ -243,28 +339,30 @@ function clickSpellFrame(b: BreachState) {
             <span class="breach-hover-target" aria-hidden="true"></span>
           </CardHoverPreview>
           <div
-            v-if="b.prepSpell"
+            v-for="(spellId, spellIndex) in b.prepSpells"
+            :key="`${spellId}:${spellIndex}`"
             class="spell"
+            :style="{ '--spell-stack-index': spellIndex, zIndex: spellIndex + 3 }"
             :class="{
               'castable-spell': isCastableBreach(b),
               'must-cast-spell': isMustCastBreach(b),
-              'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
-              'ability-prepped-spell': !!abilityPreppedSpellChoice(b),
+              'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
+              'ability-prepped-spell': !!abilityPreppedSpellChoice(b, spellIndex),
             }"
           >
-            <CardHoverPreview :card-id="b.prepSpell">
+            <CardHoverPreview :card-id="spellId">
               <div
                 class="breach-spell-card-frame"
-                @click.stop="clickSpellFrame(b)"
+                @click.stop="clickSpellFrame(b, spellIndex)"
                 :class="{
                   'castable-spell': isCastableBreach(b),
                   'must-cast-spell': isMustCastBreach(b),
-                  'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
-                  'ability-prepped-spell': !!abilityPreppedSpellChoice(b),
+                  'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
+                  'ability-prepped-spell': !!abilityPreppedSpellChoice(b, spellIndex),
                 }"
               >
-                <img v-if="cardImageUrl(b.prepSpell)" :src="cardImageUrl(b.prepSpell)" :alt="getCard(b.prepSpell).name" />
-                <span v-else>[{{ getCard(b.prepSpell).name }}]</span>
+                <img v-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />
+                <span v-else>[{{ getCard(spellId).name }}]</span>
               </div>
             </CardHoverPreview>
           </div>
@@ -273,6 +371,7 @@ function clickSpellFrame(b: BreachState) {
           <button class="btn small" @click="focusBreach(b.index)">Focus {{ breachCosts(b).focus }}</button>
           <button class="btn small" @click="openBreach(b.index)">Open {{ breachCosts(b).open }}</button>
         </div>
+        </template>
       </div>
     </div>
 
@@ -314,15 +413,14 @@ function clickSpellFrame(b: BreachState) {
         <span class="label">Deck</span>
         <span class="count">{{ player.deck.length }}</span>
       </div>
-      <div class="hand">
+      <div ref="handElement" class="hand" :style="{ '--hand-offset': `${handOffset}px` }">
         <CardHoverPreview
           v-for="(cid, i) in player.hand" :key="cid + i"
           :card-id="cid"
         >
           <div class="card" :class="[typeClass(cid), {
-            selected: state.prepTarget === i,
             'card-image': cardImageUrl(cid),
-            dragging: draggingSpell && state.prepTarget === i,
+            dragging: draggingSpell && draggedSpellIndex === i,
             'spell-draggable': canActMain && getCard(cid).type === 'spell',
           }]"
           @click="clickHand(i)"

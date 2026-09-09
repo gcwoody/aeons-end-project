@@ -1,6 +1,6 @@
 # 卡牌效果关键词实现状态与扩展参考
 
-> 更新时间：2026-09-06
+> 更新时间：2026-09-09
 > 范围：`aeons-end-engine/src/types.ts`、`engine.ts`、`data.ts` 和 Web UI
 
 这份文档是规则文本、类型化卡牌数据、引擎解释器和 UI 决策流程之间的共同词汇表。
@@ -11,9 +11,9 @@
 | 层 | 当前实现数量 | 说明 |
 | --- | ---: | --- |
 | 触发时机 `CardEffectTrigger` | 4 类 | `on_gain`、`on_play`、`on_cast`、`while_prepped` |
-| 公开效果模块 `CardEffect` | 17 类 | 可直接在新卡牌或 Ability `effects` 中组合 |
+| `CardEffect` | 25 个可序列化变体 | 可直接在新卡牌或 Ability `effects` 中组合；其中少数是引擎控制标记 |
 | 条件模块 `CardEffectCondition` | 2 类 | 本回合打出次数、开放 breach 数量 |
-| 玩家决策 `PendingDecision` | 9 类 + 1 内部确认 | 统一由引擎暂停、UI 展示并恢复 |
+| 玩家决策 `PendingDecision` | 12 类 | 统一由引擎暂停、UI 展示并恢复 |
 
 `confirm_prepped_effect` 是引擎内部的控制效果，不建议卡牌数据直接使用；卡牌
 数据应使用 `CardEffectBlock.requiresConfirmation: true` 触发它。
@@ -34,10 +34,13 @@
 | `while prepped` | 已实现 | `while_prepped`、`resolvePreppedEffects()` | 根据 casting phase 结束或 main phase 触发；主阶段可做非阻塞动作 |
 | `cast` | 已实现 | `on_cast`、`castSpell()` | Spell 被施放后执行对应效果块 |
 | `deal X damage` | 已实现 | `deal_damage`、`dealDamage()` | 支持 Nemesis、Minion、Gravehold 和 Nemesis/Minion 目标选择 |
+| 对玩家造成伤害 | 已实现 | `deal_player_damage`、`sufferPlayerDamage()` | 支持自己、Ally、任意玩家，并遵守死亡检查 |
 | `gain X life` | 已实现 | `gain_life`、`gainLife()` | 支持玩家、Nemesis、Gravehold；各自不超过 `maxHp` |
 | `draw` | 已实现 | `draw_cards`、`drawCardsForPlayer()` | 支持自己、Ally、任意玩家；多个目标时暂停选择 |
 | `focus/open` 减免 | 已实现 | `modify_next_breach_cost` | 保存本回合下一次 focus/open 的费用减免并在使用时消耗 |
-| 返回手牌 | 已实现 | `return_card_to_hand` | 当前支持本回合打出的 Gem，Arcane Nexus 使用此模块 |
+| 返回手牌 | 已实现 | `return_card_to_hand`、`return_cards_to_hand` | 分别支持本回合打出的 Gem，以及从弃牌堆返回最多指定数量的 Spell |
+| 准备数量上限 | 已实现 | `set_prep_limit`、`prepSpellLimit` | Kadir 可在本回合将每个开启 Breach 的准备上限提高到 2，下一次抽牌阶段重置 |
+| 回合顺序牌放回位置 | 已实现 | `place_revealed_turn_order_card`、`choose_turn_order_position` | 查看/展示后选择放回牌顶或牌底 |
 | 复制施放预备法术 | 已实现 | `cast_prepped_spell` | 支持选择任意玩家的预备法术，并控制本次施放是否弃牌；由触发能力的玩家作为施法者承接该法术的玩家增益 |
 
 ## Ability
@@ -50,9 +53,14 @@
 | Brama — Brink Siphon | `main_phase` | `gain_life(amount: 4, target: any_player)` |
 | Jian — Black Mirror | `main_phase` | 选择预备法术；第一次 `cast_prepped_spell(discard: false)`，第二次 `discard: true` |
 | Xaxos — Metaphysical Link | `main_phase (any_player)` | `gain_charge(amount: 4, target: allies_collectively)` + `review_turn_order_deck` |
+| Kadir — Otherworldly Gate | `main_phase (any_player)` | `return_cards_to_hand(discard, up to 3)` + `set_prep_limit(2)` |
+| Mist — Divine Augury | `main_phase` | `draw_cards(amount: 4, target: ally)` |
+| Lash — Quicken Thought | `main_phase (any_player)` | 选择玩家回合顺序弃牌并洗回牌库，再让该牌所属玩家承受 1 点伤害 |
+| Phaedraxa — Auspex Rune | `turn_order_card_drawn` | `prevent_damage_this_turn` |
 
 `AbilityTrigger` 已为 `casting_phase`、`ally_turn_end` 和 Nemesis 抽牌等未来时机
-预留类型，但目前只有 `main_phase` 有主动触发入口。
+预留类型；目前已有 `main_phase` 主动触发入口，以及 `turn_order_card_drawn` 的自动
+触发入口。Adelheim 的 Nemesis draw phase 具体结算仍等待 Nemesis 抽牌流程完善。
 
 ## 触发时机
 
@@ -103,6 +111,10 @@ Cluster 仍然能正确识别本回合的历史次数。
 - 生命目标：`self`、`ally`、`any_player`、`nemesis`、`gravehold`。
 - 伤害目标：`nemesis`、`minion`、`gravehold`、`nemesis_or_minion`。
 - 卡牌选择来源：`hand`、`discard`、`hand_or_discard`、`played_gem_this_turn`。
+- 卡牌选择布局：`simple` 用于普通牌组选取，按牌区原顺序从左到右、每行 5 张显示；
+  `pile` 仅用于需要理解抽牌顺序的牌区选择，例如 Bottled Vortex 的 Hand/Discard
+  组合。Kadir 的“从弃牌堆返回 Spell”明确使用 `simple`，不显示 `NEXT DRAW` 或
+  `FUTURE DRAW` 注释。
 - `gain_card` 来源：`market` 或 `specific`。
 - `gain_card` 目的地：`discard_top` 或 `deck_top`。
 
@@ -127,8 +139,14 @@ Cluster 仍然能正确识别本回合的历史次数。
 | Essence Theft | `on_cast` + 伤害 + `choose_optional` + 弃牌 + `gain_life` |
 | Planar Insight | `on_cast` + `per_open_breach` 动态伤害 |
 | Arcane Nexus | `while_prepped/main_phase` + 可选返回 Gem；`on_cast` + 伤害 |
+| Amethyst Shard | `on_play` + `gain_aether` + 可选 Ally `draw_cards` 后 `discard_cards` |
+| Emerald Shard | `on_play` + `choose_one`：`gain_aether` 或任意玩家 `gain_life` |
+| Quartz Shard | `on_play` + `gain_aether` + 展示/放回回合顺序牌 + 玩家牌条件 Aether |
+| Garnet Shard | `on_play` + `choose_one`：`gain_aether` 或 `cast_prepped_spell` |
+| Tourmaline Shard | `on_play` + `gain_aether` + 可选 Ally 伤害后 `destroy_cards(hand)` |
 
-当前所有初始 Gem/Spell（Spark、Flare、Crystal、Moonstone Shard、Buried Light）都已经
+当前所有初始 Gem/Spell（Spark、Flare、Crystal、Moonstone Shard、Buried Light）以及
+5 张 Mage 独特卡牌都已经
 使用类型化效果。旧 Gem/Spell/Relic 字段和 demo 专用 Relic 抽牌弃牌逻辑已经删除；
 当前玩家卡牌的结算只经过类型化效果解释器。
 
@@ -190,7 +208,7 @@ export const exampleSpell: SpellCard = {
 
 ## 当前未实现或仅部分实现的范围
 
-- 更多角色 Ability 触发时机，以及更复杂的复制施法规则。
+- 更多角色 Ability 触发时机，以及更复杂的复制施法规则。当前已加入 `main_phase`、`turn_order_card_drawn` 和 `nemesis_draw_phase` 的 Ability 触发框架；Adelheim 的具体 Nemesis 效果仍待 Nemesis 抽牌流程完善。
 - Nemesis Minion/Power 的完整持续效果和规则文本解释。
 - 更复杂的“每个/所有/直到”等集合操作和通用计数表达式。
 - 更广泛的任意牌区移动、获得多张牌和复杂嵌套目标规则。

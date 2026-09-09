@@ -21,6 +21,94 @@ export const moonstoneShard: GemCard = {
   }],
 }
 
+// Wave 1 Mage-specific cards. Their complete reusable effects are added in
+// the card-effect implementation phase; these definitions are registered now
+// so Mage setup, saves, and the UI can resolve their card metadata safely.
+export const amethystShard: GemCard = {
+  id: 'amethyst_shard', name: 'Amethyst Shard', type: 'gem', cost: 0, set: 'base',
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [
+      { kind: 'gain_aether', amount: 1 },
+      {
+        kind: 'choose_optional',
+        prompt: 'Let an ally draw a card, then discard a card?',
+        effects: [
+          { kind: 'draw_cards', amount: 1, target: 'ally' },
+          { kind: 'discard_cards', source: 'hand', amount: 1 },
+        ],
+      },
+    ],
+  }],
+}
+
+export const emeraldShard: GemCard = {
+  id: 'emerald_shard', name: 'Emerald Shard', type: 'gem', cost: 0, set: 'base',
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [{
+      kind: 'choose_one',
+      prompt: 'Choose an Emerald Shard effect',
+      options: [
+        { id: 'gain_aether', label: 'Gain 1 Aether', effects: [{ kind: 'gain_aether', amount: 1 }] },
+        { id: 'gain_life', label: 'Let any player gain 1 Life', effects: [{ kind: 'gain_life', amount: 1, target: 'any_player' }] },
+      ],
+    }],
+  }],
+}
+
+export const quartzShard: GemCard = {
+  id: 'quartz_shard', name: 'Quartz Shard', type: 'gem', cost: 0, set: 'base',
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [
+      { kind: 'gain_aether', amount: 1 },
+      {
+        kind: 'reveal_turn_order_card',
+        returnChoice: true,
+        playerEffects: [{ kind: 'gain_aether', amount: 1 }],
+        nemesisEffects: [],
+      },
+    ],
+  }],
+}
+
+export const garnetShard: GemCard = {
+  id: 'garnet_shard', name: 'Garnet Shard', type: 'gem', cost: 0, set: 'base',
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [{
+      kind: 'choose_one',
+      prompt: 'Choose a Garnet Shard effect',
+      options: [
+        { id: 'gain_aether', label: 'Gain 1 Aether', effects: [{ kind: 'gain_aether', amount: 1 }] },
+        {
+          id: 'cast_prepped_spell', label: "Cast any player's prepped spell",
+          effects: [{ kind: 'cast_prepped_spell', source: 'any_prepped_spell', discard: true }],
+        },
+      ],
+    }],
+  }],
+}
+
+export const tourmalineShard: GemCard = {
+  id: 'tourmaline_shard', name: 'Tourmaline Shard', type: 'gem', cost: 0, set: 'base',
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [
+      { kind: 'gain_aether', amount: 1 },
+      {
+        kind: 'choose_optional',
+        prompt: 'Let an ally suffer 1 damage to destroy a card in hand?',
+        effects: [
+          { kind: 'deal_player_damage', amount: 1, target: 'ally' },
+          { kind: 'destroy_cards', source: 'hand', minAmount: 1, maxAmount: 1 },
+        ],
+      },
+    ],
+  }],
+}
+
 export const vriswoodAmber: GemCard = {
   id: 'vriswood_amber', name: "V'riswood Amber", type: 'gem', cost: 3, set: 'wave1',
   effects: [
@@ -80,6 +168,11 @@ export const burningOpal: GemCard = {
 export const INITIAL_GEM_CARDS: Record<string, CardDef> = {
   crystal,
   moonstone_shard: moonstoneShard,
+  amethyst_shard: amethystShard,
+  emerald_shard: emeraldShard,
+  quartz_shard: quartzShard,
+  garnet_shard: garnetShard,
+  tourmaline_shard: tourmalineShard,
 }
 
 export const MARKET_GEM_CARDS: Record<string, CardDef> = {

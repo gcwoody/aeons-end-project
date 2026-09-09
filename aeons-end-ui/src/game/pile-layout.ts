@@ -14,8 +14,16 @@ export function groupPileCards<T>(cards: T[], pile: PileKind, deckCount: number)
   // The bottom discard cards complete the next five-card draw after recycling.
   const deckRemainder = deckCount % 5
   const lastGroupSize = Math.min(cards.length, 5 - deckRemainder)
-  const splitAt = cards.length - lastGroupSize
-  return [...chunkCards(cards.slice(0, splitAt)), cards.slice(splitAt)]
+  const futureCards = cards.slice(0, cards.length - lastGroupSize)
+  const nextDraw = cards.slice(cards.length - lastGroupSize)
+
+  // Keep the discard pile ordered from top to bottom, but pack future rows
+  // from the bottom upward so a short row remains at the top of the modal.
+  const firstRowSize = futureCards.length % 5 || (futureCards.length > 0 ? 5 : 0)
+  const futureRows = futureCards.length > 0
+    ? [futureCards.slice(0, firstRowSize), ...chunkCards(futureCards.slice(firstRowSize))]
+    : []
+  return [...futureRows, nextDraw]
 }
 
 export function pileRowLabel(pile: PileKind, index: number, rowCount: number): string {

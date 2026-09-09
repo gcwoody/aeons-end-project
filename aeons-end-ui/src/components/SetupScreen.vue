@@ -28,6 +28,11 @@ function turnLabel(turn: string): string {
           <option value="jian">Jian (Black Mirror)</option>
           <option value="brama">Brama (Brink Siphon)</option>
           <option value="xaxos">Xaxos (Metaphysical Link)</option>
+          <option value="adelheim">Adelheim (Aethereal Ward)</option>
+          <option value="kadir">Kadir (Otherworldly Gate)</option>
+          <option value="lash">Lash (Quicken Thought)</option>
+          <option value="mist">Mist (Divine Augury)</option>
+          <option value="phaedraxa">Phaedraxa (Auspex Rune)</option>
         </select>
       </label>
       <label>
@@ -36,6 +41,11 @@ function turnLabel(turn: string): string {
           <option value="jian">Jian (Black Mirror)</option>
           <option value="brama">Brama (Brink Siphon)</option>
           <option value="xaxos">Xaxos (Metaphysical Link)</option>
+          <option value="adelheim">Adelheim (Aethereal Ward)</option>
+          <option value="kadir">Kadir (Otherworldly Gate)</option>
+          <option value="lash">Lash (Quicken Thought)</option>
+          <option value="mist">Mist (Divine Augury)</option>
+          <option value="phaedraxa">Phaedraxa (Auspex Rune)</option>
         </select>
       </label>
     </div>

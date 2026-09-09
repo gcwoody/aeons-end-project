@@ -11,10 +11,15 @@ import {
   resolvePendingDecision,
   resolvePreppedEffects,
   getPreppedSpellChoices,
+  getCastableSpells,
+  prepSpell,
   resolveDrawPhase,
   gainLife,
+  startTurn,
+  canActivateAbilityDuringMain,
+  nemesisResolveAttack,
 } from '../engine'
-import { arcaneNexus, getCard, INITIAL_CARDS, MARKET_CARDS } from '../data'
+import { arcaneNexus, getCard, INITIAL_CARDS, MARKET_CARDS, MAGES } from '../data'
 import type { CardChoice, DamageTargetRef, GameState, PendingDecisionAnswer } from '../types'
 
 declare const console: { log(message?: unknown): void }
@@ -70,9 +75,145 @@ function testSupplyData(): void {
 
 function testAllCurrentPlayerCardsUseTypedEffects(): void {
   const currentCards = [...Object.values(INITIAL_CARDS), ...Object.values(MARKET_CARDS)]
+  const pendingMageCards = new Set([
+    'amethyst_shard', 'emerald_shard', 'quartz_shard', 'garnet_shard', 'tourmaline_shard',
+  ])
   for (const card of currentCards) {
-    assert((card.effects?.length ?? 0) > 0, `${card.name} uses typed effects`)
+    if (pendingMageCards.has(card.id)) {
+      assert(Array.isArray(card.effects), `${card.name} has a typed-effects placeholder`)
+    } else {
+      assert((card.effects?.length ?? 0) > 0, `${card.name} uses typed effects`)
+    }
   }
+}
+
+function testWave1MageStaticData(): void {
+  const expected: Record<string, {
+    hand: string[]
+    deck: string[]
+    directions: Array<string | null>
+    present: boolean[]
+  }> = {
+    adelheim: {
+      hand: ['amethyst_shard', 'crystal', 'crystal', 'spark', 'spark'],
+      deck: ['crystal', 'crystal', 'crystal', 'crystal', 'crystal'],
+      directions: ['north', 'west', 'east', 'south'],
+      present: [true, true, true, true],
+    },
+    kadir: {
+      hand: ['emerald_shard', 'crystal', 'crystal', 'crystal', 'spark'],
+      deck: ['crystal', 'crystal', 'crystal', 'spark', 'spark'],
+      directions: ['north', 'west', 'south', 'west'],
+      present: [true, true, true, true],
+    },
+    lash: {
+      hand: ['quartz_shard', 'crystal', 'crystal', 'crystal', 'spark'],
+      deck: ['crystal', 'crystal', 'crystal', 'spark', 'spark'],
+      directions: ['north', 'west', 'east', 'west'],
+      present: [true, true, true, true],
+    },
+    mist: {
+      hand: ['garnet_shard', 'crystal', 'crystal', 'crystal', 'spark'],
+      deck: ['crystal', 'crystal', 'crystal', 'spark', 'spark'],
+      directions: ['north', 'west', 'south', 'south'],
+      present: [true, true, true, true],
+    },
+    phaedraxa: {
+      hand: ['tourmaline_shard', 'crystal', 'crystal', 'crystal', 'spark'],
+      deck: ['crystal', 'crystal', 'crystal', 'crystal', 'spark'],
+      directions: ['north', 'north', 'south', 'west'],
+      present: [false, true, true, true],
+    },
+  }
+
+  for (const [mageType, setup] of Object.entries(expected)) {
+    const game = createGame(mageType, 'jian')
+    const player = game.players[0]!
+    assertEqual(player.mageType, mageType, `${mageType} type`)
+    assertEqual(player.hp, 10, `${mageType} starting HP`)
+    assertEqual(player.chargeThreshold, 5, `${mageType} charge threshold`)
+    assertEqual(player.hand.join(','), setup.hand.join(','), `${mageType} starting hand`)
+    assertEqual(player.deck.join(','), setup.deck.join(','), `${mageType} starting deck`)
+    assertEqual(player.breaches.map(b => b.focusDirection).join(','), setup.directions.join(','), `${mageType} breach directions`)
+    assertEqual(player.breaches.map(b => b.present !== false).join(','), setup.present.join(','), `${mageType} breach presence`)
+  }
+}
+
+function testCommonBreachCosts(): void {
+  const expected: Record<number, { focus: number; open: Record<string, number> }> = {
+    2: { focus: 2, open: { east: 5, south: 4, west: 3, north: 2 } },
+    3: { focus: 3, open: { east: 9, south: 7, west: 5, north: 3 } },
+    4: { focus: 4, open: { east: 13, south: 10, west: 7, north: 4 } },
+  }
+
+  for (const mageType of Object.keys(MAGES)) {
+    const game = createGame(mageType, 'jian')
+    const player = game.players[0]!
+    for (const breach of player.breaches) {
+      if (breach.present === false || breach.opened) continue
+      const costs = expected[breach.index]
+      assert(costs, `${mageType} has a supported common breach index`)
+      assertEqual(breach.focusCost, costs.focus, `${mageType} Breach ${breach.index} focus cost`)
+      for (const [direction, amount] of Object.entries(costs.open)) {
+        assertEqual(breach.openCost[direction as keyof typeof breach.openCost], amount,
+          `${mageType} Breach ${breach.index} ${direction} open cost`)
+      }
+    }
+  }
+}
+
+function testStage3AbilityTriggers(): void {
+  const mistGame = createGame('mist', 'brama')
+  const mist = mistGame.players[0]!
+  const mistAlly = mistGame.players[1]!
+  mistGame.currentTurn = mist.id
+  mistGame.currentPhase = 'main'
+  mist.charge = mist.chargeThreshold
+  const allyHandBefore = mistAlly.hand.length
+  assert(canActivateAbilityDuringMain(mistGame, mist.id), 'Mist ability is available during its main phase')
+  activateAbility(mistGame, mist.id)
+  assertEqual(mist.charge, 0, 'Mist charge is consumed')
+  assertEqual(mistAlly.hand.length, allyHandBefore + 4, 'Mist ally draws four cards')
+
+  const lashGame = createGame('lash', 'brama')
+  const lash = lashGame.players[0]!
+  lashGame.currentTurn = lash.id
+  lashGame.currentPhase = 'main'
+  lash.charge = lash.chargeThreshold
+  lashGame.turnOrderDiscard = ['nemesis']
+  assert(!canActivateAbilityDuringMain(lashGame, lash.id), 'Lash is blocked without a player turn-order card')
+  lashGame.turnOrderDiscard = ['p2', 'nemesis']
+  assert(canActivateAbilityDuringMain(lashGame, lash.id), 'Lash activates when a player card is available')
+  activateAbility(lashGame, lash.id)
+  assertEqual(lashGame.pendingDecision?.kind, 'select_turn_order_card', 'Lash asks which player turn-order card to shuffle')
+  const p2Before = lashGame.players[1]!.hp
+  resolvePendingDecision(lashGame, lashGame.pendingDecision!.id, {
+    kind: 'select_turn_order_card', choice: { index: 0, cardId: 'p2' },
+  })
+  assertEqual(lashGame.players[1]!.hp, p2Before - 1, 'Lash damages the owner of the selected turn-order card')
+  assert(!lashGame.turnOrderDiscard.includes('p2'), 'Lash removes the selected card from the turn-order discard')
+  assert(lashGame.turnOrderDeck.includes('p2'), 'Lash shuffles the selected card into the turn-order deck')
+
+  const phaedraxaGame = createGame('phaedraxa', 'brama')
+  const phaedraxa = phaedraxaGame.players[0]!
+  phaedraxa.charge = phaedraxa.chargeThreshold
+  phaedraxaGame.turnOrderDeck = ['p1']
+  startTurn(phaedraxaGame)
+  assertEqual(phaedraxaGame.pendingDecision?.kind, 'choose_optional', 'Phaedraxa prompts after a turn-order card is drawn')
+  resolvePendingDecision(phaedraxaGame, phaedraxaGame.pendingDecision!.id, {
+    kind: 'choose_optional', accepted: true,
+  })
+  assertEqual(phaedraxa.charge, 0, 'Phaedraxa charge is consumed on activation')
+  assert(phaedraxaGame.damagePrevention, 'Phaedraxa protection lasts through the current turn')
+  const protectedHp = phaedraxa.hp
+  const protectedGravehold = phaedraxaGame.gravehold.hp
+  nemesisResolveAttack(phaedraxaGame, phaedraxa.id as 'p1', 3)
+  nemesisResolveAttack(phaedraxaGame, 'gravehold', 3)
+  assertEqual(phaedraxa.hp, protectedHp, 'Phaedraxa prevents player damage')
+  assertEqual(phaedraxaGame.gravehold.hp, protectedGravehold, 'Phaedraxa prevents Gravehold damage')
+  phaedraxaGame.turnOrderDeck = ['p2']
+  startTurn(phaedraxaGame)
+  assert(!phaedraxaGame.damagePrevention, 'Phaedraxa protection resets at the next turn')
 }
 
 function testGainAndSaveShape(): void {
@@ -150,7 +291,7 @@ function testInitialCardEffects(): void {
 
   const spellGame = freshGame()
   const spellPlayer = spellGame.players[0]!
-  spellPlayer.breaches[0]!.prepSpell = 'buried_light'
+  spellPlayer.breaches[0]!.prepSpells = ['buried_light']
   spellGame.nemesis.hp = 20
   const message = castSpell(spellGame, spellPlayer.id, 1)
   assert(message?.includes('gains 1 Aether'), 'Buried Light uses typed on-cast gain')
@@ -171,6 +312,8 @@ function testRelicEffects(): void {
   player.discard = ['moonstone_shard']
   assert(playCard(game, player.id, 'bottled_vortex')?.includes('Played Bottled Vortex'), 'Bottled Vortex plays')
   assertEqual(game.pendingDecision?.kind, 'select_cards', 'Bottled Vortex asks for cards to destroy')
+  assert(game.pendingDecision?.kind === 'select_cards', 'Bottled Vortex decision exposes its card layout')
+  assertEqual(game.pendingDecision.layout, 'pile', 'Bottled Vortex keeps the hand/discard pile layout')
   const selected = [handChoice(game, player.id, 'spark'), handChoice(game, player.id, 'crystal')]
   resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'select_cards', choices: selected })
   assert(player.destroyedCards.includes('spark') && player.destroyedCards.includes('crystal'), 'Cards are permanently destroyed')
@@ -188,7 +331,7 @@ function testSpellEffects(): void {
   const game = freshGame()
   const player = game.players[0]!
   game.nemesis.hp = 20
-  player.breaches[0]!.prepSpell = 'lava_tendril'
+  player.breaches[0]!.prepSpells = ['lava_tendril']
   const lavaMessages = resolvePreppedEffects(game, player.id, 'casting_phase_end')
   assert(lavaMessages.some(message => message.includes('Decision required')), 'Lava Tendril pauses for confirmation')
   assertEqual(game.pendingDecision?.kind, 'confirm_prepped_effect', 'Lava Tendril requires confirmation')
@@ -198,7 +341,7 @@ function testSpellEffects(): void {
   assertEqual(resolvePreppedEffects(game, player.id, 'casting_phase_end').length, 0, 'Lava Tendril resolves once per turn')
   const castGame = freshGame()
   const caster = castGame.players[0]!
-  caster.breaches[0]!.prepSpell = 'essence_theft'
+  caster.breaches[0]!.prepSpells = ['essence_theft']
   caster.hand = ['spark']
   castGame.nemesis.hp = 20
   assert(castSpell(castGame, caster.id, 1)?.includes('Cast Essence Theft'), 'Essence Theft casts')
@@ -222,7 +365,7 @@ function testSpellEffects(): void {
   assertEqual(lifeCaps.gravehold.hp, lifeCaps.gravehold.maxHp, 'Gravehold life is capped at its maximum')
 
   const targeted = freshGame()
-  targeted.players[0]!.breaches[0]!.prepSpell = 'lava_tendril'
+  targeted.players[0]!.breaches[0]!.prepSpells = ['lava_tendril']
   targeted.nemesis.playArea = [{
     cardId: 'attack_t1_1', cardType: 'minion', placedAt: 1, lifeTokens: 3,
   }]
@@ -235,7 +378,7 @@ function testSpellEffects(): void {
   assertEqual(targeted.nemesis.playArea.length, 0, 'Selected minion is defeated by damage')
 
   const planar = freshGame()
-  planar.players[0]!.breaches[0]!.prepSpell = 'planar_insight'
+  planar.players[0]!.breaches[0]!.prepSpells = ['planar_insight']
   planar.players[0]!.breaches[1]!.opened = true
   planar.nemesis.hp = 20
   assert(castSpell(planar, 'p1', 1)?.includes('Cast Planar Insight'), 'Planar Insight casts')
@@ -244,7 +387,7 @@ function testSpellEffects(): void {
   const thirdBreachBonus = freshGame()
   const thirdBreachCaster = thirdBreachBonus.players[0]!
   thirdBreachCaster.breaches[2]!.opened = true
-  thirdBreachCaster.breaches[2]!.prepSpell = 'planar_insight'
+  thirdBreachCaster.breaches[2]!.prepSpells = ['planar_insight']
   thirdBreachBonus.nemesis.hp = 20
   assert(castSpell(thirdBreachBonus, 'p1', 3)?.includes('Cast Planar Insight'), 'Planar Insight casts from breach III')
   assertEqual(thirdBreachBonus.nemesis.hp, 14, 'Breach III adds one damage to typed spell effects')
@@ -252,7 +395,7 @@ function testSpellEffects(): void {
   const sparkBreachBonus = freshGame()
   const sparkCaster = sparkBreachBonus.players[0]!
   sparkCaster.breaches[2]!.opened = true
-  sparkCaster.breaches[2]!.prepSpell = 'spark'
+  sparkCaster.breaches[2]!.prepSpells = ['spark']
   sparkBreachBonus.nemesis.hp = 20
   castSpell(sparkBreachBonus, 'p1', 3)
   assertEqual(sparkBreachBonus.nemesis.hp, 18, 'Spark uses typed cast damage and breach bonus')
@@ -266,7 +409,7 @@ function testSpellEffects(): void {
     const noDamageSpell = freshGame()
     const noDamageCaster = noDamageSpell.players[0]!
     noDamageCaster.breaches[2]!.opened = true
-    noDamageCaster.breaches[2]!.prepSpell = 'arcane_nexus'
+    noDamageCaster.breaches[2]!.prepSpells = ['arcane_nexus']
     noDamageSpell.nemesis.hp = 20
     const noDamageMessage = castSpell(noDamageSpell, 'p1', 3)
     assertEqual(noDamageSpell.nemesis.hp, 19, `Breach III adds damage when a spell has no damage effect (${noDamageMessage})`)
@@ -281,7 +424,7 @@ function testSpellEffects(): void {
     const twoDamageInstances = freshGame()
     const twoDamageCaster = twoDamageInstances.players[0]!
     twoDamageCaster.breaches[2]!.opened = true
-    twoDamageCaster.breaches[2]!.prepSpell = 'arcane_nexus'
+    twoDamageCaster.breaches[2]!.prepSpells = ['arcane_nexus']
     twoDamageInstances.nemesis.hp = 20
     castSpell(twoDamageInstances, 'p1', 3)
     assertEqual(twoDamageInstances.nemesis.hp, 16, 'Breach III boosts each damage instance')
@@ -291,7 +434,7 @@ function testSpellEffects(): void {
 
   const castingAether = freshGame()
   const brama = castingAether.players[1]!
-  brama.breaches[0]!.prepSpell = 'buried_light'
+  brama.breaches[0]!.prepSpells = ['buried_light']
   assert(castSpell(castingAether, brama.id, 1)?.includes('gains 1 Aether'), 'Buried Light grants casting-phase aether')
   assertEqual(brama.bonusAether, 1, 'Casting-phase aether is stored immediately')
 }
@@ -299,7 +442,7 @@ function testSpellEffects(): void {
 function testPreppedOncePerTurnAndTargets(): void {
   const game = freshGame()
   const player = game.players[0]!
-  player.breaches[0]!.prepSpell = 'arcane_nexus'
+  player.breaches[0]!.prepSpells = ['arcane_nexus']
   player.playedThisTurn = ['crystal']
   player.hand = []
   resolvePreppedEffects(game, player.id, 'main_phase')
@@ -312,7 +455,7 @@ function testPreppedOncePerTurnAndTargets(): void {
 
   const afterPrep = freshGame()
   const afterPrepPlayer = afterPrep.players[0]!
-  afterPrepPlayer.breaches[0]!.prepSpell = 'arcane_nexus'
+  afterPrepPlayer.breaches[0]!.prepSpells = ['arcane_nexus']
   assertEqual(getPreppedCardActions(afterPrep, afterPrepPlayer.id).length, 0, 'No gem is selectable before it is played')
   afterPrepPlayer.hand = ['crystal']
   assert(playCard(afterPrep, afterPrepPlayer.id, 'crystal')?.includes('Played Crystal'), 'Crystal can be played after prep')
@@ -323,7 +466,7 @@ function testPreppedOncePerTurnAndTargets(): void {
 function testReturnedGemKeepsPlayCount(): void {
   const game = freshGame()
   const player = game.players[0]!
-  player.breaches[0]!.prepSpell = 'arcane_nexus'
+  player.breaches[0]!.prepSpells = ['arcane_nexus']
   player.hand = ['diamond_cluster', 'diamond_cluster']
 
   assert(playCard(game, player.id, 'diamond_cluster')?.includes('Played Diamond Cluster'), 'First Diamond Cluster plays')
@@ -348,6 +491,20 @@ function testTurnReset(): void {
   assertEqual(player.turnEffects.usedPreppedEffects.length, 0, 'Once-per-turn markers reset')
 }
 
+function testPlayerDeckRecycle(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  player.hand = []
+  player.deck = ['crystal']
+  player.discard = ['spark', 'crystal', 'crystal', 'crystal']
+
+  resolveDrawPhase(game, player.id)
+
+  assertEqual(player.hand.length, 5, 'Draw phase fills hand after recycling the discard pile')
+  assertEqual(player.deck.length, 0, 'Recycled deck is exhausted exactly at the hand limit')
+  assertEqual(player.discard.length, 0, 'Recycled discard pile is moved into the deck')
+}
+
 function testMageAbilities(): void {
   const bramaGame = freshGame()
   const bramaMage = bramaGame.players[0]!
@@ -368,8 +525,8 @@ function testMageAbilities(): void {
   const jian = jianGame.players[0]!
   const allyWithSpell = jianGame.players[1]!
   jian.charge = jian.chargeThreshold
-  jian.breaches[0]!.prepSpell = 'spark'
-  allyWithSpell.breaches[0]!.prepSpell = 'spark'
+  jian.breaches[0]!.prepSpells = ['spark']
+  allyWithSpell.breaches[0]!.prepSpells = ['spark']
   jianGame.nemesis.hp = 20
   assertEqual(getPreppedSpellChoices(jianGame).length, 2, 'Jian sees prepped spells from both players')
   assert(activateAbility(jianGame, jian.id)?.includes('Black Mirror activated'), 'Jian ability activates')
@@ -379,6 +536,7 @@ function testMageAbilities(): void {
     choice: {
       playerId: allyWithSpell.id,
       breachIndex: 1,
+      spellIndex: 0,
       cardId: 'spark',
       cardName: 'Spark',
     },
@@ -390,12 +548,13 @@ function testMageAbilities(): void {
     choice: {
       playerId: allyWithSpell.id,
       breachIndex: 1,
+      spellIndex: 0,
       cardId: 'spark',
       cardName: 'Spark',
     },
   })
   assertEqual(jianGame.nemesis.hp, 18, 'Jian casts the selected spell twice')
-  assertEqual(allyWithSpell.breaches[0]!.prepSpell, null, 'Jian discards the spell after the second cast')
+  assertEqual(allyWithSpell.breaches[0]!.prepSpells.length, 0, 'Jian discards the spell after the second cast')
   assertEqual(allyWithSpell.discard[0], 'spark', 'The second cast puts the spell in its owner discard pile')
   assertEqual(jian.charge, 0, 'Jian charge is consumed')
 
@@ -405,7 +564,7 @@ function testMageAbilities(): void {
   crossPlayerJian.mageType = 'jian'
   brama.mageType = 'brama'
   crossPlayerJian.charge = crossPlayerJian.chargeThreshold
-  brama.breaches[0]!.prepSpell = 'buried_light'
+  brama.breaches[0]!.prepSpells = ['buried_light']
   crossPlayerGame.nemesis.hp = 20
   assert(activateAbility(crossPlayerGame, crossPlayerJian.id)?.includes('Black Mirror activated'), 'Jian activates across players')
   resolvePendingDecision(crossPlayerGame, crossPlayerGame.pendingDecision!.id, {
@@ -413,6 +572,7 @@ function testMageAbilities(): void {
     choice: {
       playerId: brama.id,
       breachIndex: 1,
+      spellIndex: 0,
       cardId: 'buried_light',
       cardName: 'Buried Light',
     },
@@ -424,6 +584,7 @@ function testMageAbilities(): void {
     choice: {
       playerId: brama.id,
       breachIndex: 1,
+      spellIndex: 0,
       cardId: 'buried_light',
       cardName: 'Buried Light',
     },
@@ -455,7 +616,7 @@ function testMageAbilities(): void {
 
   const flareGame = createGame('xaxos', 'brama')
   const flareMage = flareGame.players[0]!
-  flareMage.breaches[0]!.prepSpell = 'flare'
+  flareMage.breaches[0]!.prepSpells = ['flare']
   flareGame.currentTurn = flareMage.id
   flareGame.currentPhase = 'casting'
   flareGame.turnOrderDeck = ['p2']
@@ -470,7 +631,7 @@ function testMageAbilities(): void {
 
   const finalTurnFlareGame = createGame('xaxos', 'brama')
   const finalTurnFlareMage = finalTurnFlareGame.players[0]!
-  finalTurnFlareMage.breaches[0]!.prepSpell = 'flare'
+  finalTurnFlareMage.breaches[0]!.prepSpells = ['flare']
   finalTurnFlareGame.currentTurn = finalTurnFlareMage.id
   finalTurnFlareGame.currentPhase = 'casting'
   finalTurnFlareGame.turnOrderDeck = []
@@ -487,7 +648,7 @@ function testMageAbilities(): void {
 
   const nemesisFlareGame = createGame('xaxos', 'brama')
   const nemesisFlareMage = nemesisFlareGame.players[0]!
-  nemesisFlareMage.breaches[0]!.prepSpell = 'flare'
+  nemesisFlareMage.breaches[0]!.prepSpells = ['flare']
   nemesisFlareGame.currentTurn = nemesisFlareMage.id
   nemesisFlareGame.currentPhase = 'casting'
   nemesisFlareGame.turnOrderDeck = ['nemesis']
@@ -500,9 +661,135 @@ function testMageAbilities(): void {
   assertEqual(nemesisFlareGame.nemesis.hp, 19, 'Flare deals one damage for a revealed Nemesis turn-order card')
 }
 
+function testKadirMultiSpellPreparation(): void {
+  const game = createGame('kadir', 'brama')
+  const kadir = game.players[0]!
+  const activePlayer = game.players[1]!
+  game.currentTurn = activePlayer.id
+  game.currentPhase = 'main'
+  kadir.charge = kadir.chargeThreshold
+  activePlayer.hand = []
+  activePlayer.discard = ['spark', 'buried_light', 'crystal']
+
+  assert(activateAbility(game, kadir.id)?.includes('Otherworldly Gate activated'), 'Kadir activates during an ally main phase')
+  assertEqual(game.pendingDecision?.kind, 'select_cards', 'Kadir asks which discard spells to return')
+  assertEqual(game.pendingDecision?.playerId, activePlayer.id, 'Kadir gives the choice to the active player')
+  const returnDecision = game.pendingDecision!
+  assert(returnDecision.kind === 'select_cards', 'Kadir return decision has card choices')
+  assertEqual(returnDecision.layout, 'simple', 'Kadir uses a plain discard selection layout')
+  resolvePendingDecision(game, returnDecision.id, {
+    kind: 'select_cards', choices: returnDecision.candidates.filter(choice => choice.cardId !== 'crystal'),
+  })
+  assertEqual(game.pendingDecision, null, 'Kadir ability finishes after returning cards')
+  assertEqual(activePlayer.hand.join(','), 'spark,buried_light', 'Kadir returns only discard spells')
+  assertEqual(activePlayer.turnEffects.prepSpellLimit, 2, 'Kadir increases preparation capacity for the turn')
+
+  assert(prepSpell(game, activePlayer.id, 'spark', 1)?.includes('Prepped Spark'), 'Kadir prepares the first spell')
+  assert(prepSpell(game, activePlayer.id, 'buried_light', 1)?.includes('Prepped Buried Light'), 'Kadir prepares a second spell on one breach')
+  assertEqual(activePlayer.breaches[0]!.prepSpells.join(','), 'spark,buried_light', 'Breach keeps both spells in order')
+  assertEqual(getCastableSpells(game, activePlayer.id).length, 2, 'Both spells are available during casting')
+
+  game.currentPhase = 'casting'
+  castSpell(game, activePlayer.id, 1, 1)
+  assertEqual(activePlayer.breaches[0]!.prepSpells.join(','), 'spark', 'Casting the second spell leaves the first spell visible')
+  assertEqual(activePlayer.discard[0], 'buried_light', 'The selected spell enters its owner discard pile')
+  castSpell(game, activePlayer.id, 1, 0)
+  assertEqual(activePlayer.breaches[0]!.prepSpells.length, 0, 'The remaining spell can be cast normally')
+
+  const saved = JSON.parse(JSON.stringify(game)) as GameState
+  assertEqual(saved.players[1]!.breaches[0]!.prepSpells.length, 0, 'Multi-spell state remains serializable')
+  resolveDrawPhase(game, activePlayer.id)
+  assertEqual(activePlayer.turnEffects.prepSpellLimit, 1, 'Kadir preparation capacity resets next turn')
+}
+
+function testMageUniqueCardEffects(): void {
+  const amethystGame = createGame('adelheim', 'brama')
+  const adelheim = amethystGame.players[0]!
+  const brama = amethystGame.players[1]!
+  adelheim.hand = ['amethyst_shard']
+  brama.deck = ['spark']
+  brama.hand = ['crystal']
+  assert(playCard(amethystGame, adelheim.id, 'amethyst_shard')?.includes('Played Amethyst Shard'), 'Amethyst Shard plays')
+  assertEqual(amethystGame.pendingDecision?.kind, 'choose_optional', 'Amethyst Shard offers the ally draw effect')
+  resolvePendingDecision(amethystGame, amethystGame.pendingDecision!.id, { kind: 'choose_optional', accepted: true })
+  assertEqual(amethystGame.pendingDecision?.kind, 'select_cards', 'Amethyst Shard asks the ally to discard after drawing')
+  const amethystDiscard = amethystGame.pendingDecision!
+  assert(amethystDiscard.kind === 'select_cards', 'Amethyst discard decision is a card selection')
+  resolvePendingDecision(amethystGame, amethystDiscard.id, {
+    kind: 'select_cards', choices: [amethystDiscard.candidates[0]!],
+  })
+  assertEqual(adelheim.bonusAether, 1, 'Amethyst Shard grants one aether')
+  assertEqual(brama.hand.length, 1, 'Ally draws before discarding')
+
+  const emeraldGame = createGame('kadir', 'brama')
+  const emeraldPlayer = emeraldGame.players[0]!
+  const emeraldAlly = emeraldGame.players[1]!
+  emeraldPlayer.hand = ['emerald_shard']
+  emeraldAlly.hp = emeraldAlly.maxHp - 1
+  assert(playCard(emeraldGame, emeraldPlayer.id, 'emerald_shard')?.includes('Played Emerald Shard'), 'Emerald Shard plays')
+  resolvePendingDecision(emeraldGame, emeraldGame.pendingDecision!.id, { kind: 'choose_one', optionId: 'gain_life' })
+  assertEqual(emeraldGame.pendingDecision?.kind, 'select_life_target', 'Emerald Shard asks for a life target')
+  resolvePendingDecision(emeraldGame, emeraldGame.pendingDecision!.id, {
+    kind: 'select_life_target', target: { kind: 'player', playerId: emeraldAlly.id },
+  })
+  assertEqual(emeraldAlly.hp, emeraldAlly.maxHp, 'Emerald Shard restores the selected player')
+
+  const quartzGame = createGame('lash', 'brama')
+  const quartzPlayer = quartzGame.players[0]!
+  quartzPlayer.hand = ['quartz_shard']
+  quartzGame.turnOrderDeck = ['p2', 'nemesis']
+  assert(playCard(quartzGame, quartzPlayer.id, 'quartz_shard')?.includes('Played Quartz Shard'), 'Quartz Shard plays')
+  assertEqual(quartzGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Quartz Shard pauses for the reveal')
+  resolvePendingDecision(quartzGame, quartzGame.pendingDecision!.id, {
+    kind: 'confirm_turn_order_reveal', accepted: true,
+  })
+  assertEqual(quartzGame.pendingDecision?.kind, 'choose_turn_order_position', 'Quartz Shard asks where to place the revealed card')
+  resolvePendingDecision(quartzGame, quartzGame.pendingDecision!.id, {
+    kind: 'choose_turn_order_position', position: 'bottom',
+  })
+  assertEqual(quartzPlayer.bonusAether, 2, 'Quartz Shard grants an extra aether for a player card')
+  assertEqual(quartzGame.turnOrderDeck.join(','), 'nemesis,p2', 'Quartz Shard can place the revealed card on the bottom')
+
+  const garnetGame = createGame('mist', 'brama')
+  const garnetPlayer = garnetGame.players[0]!
+  const garnetAlly = garnetGame.players[1]!
+  garnetPlayer.hand = ['garnet_shard']
+  garnetAlly.breaches[0]!.prepSpells = ['spark']
+  assert(playCard(garnetGame, garnetPlayer.id, 'garnet_shard')?.includes('Played Garnet Shard'), 'Garnet Shard plays')
+  resolvePendingDecision(garnetGame, garnetGame.pendingDecision!.id, { kind: 'choose_one', optionId: 'cast_prepped_spell' })
+  assertEqual(garnetGame.pendingDecision?.kind, 'select_prepped_spell', 'Garnet Shard asks for a prepped spell')
+  resolvePendingDecision(garnetGame, garnetGame.pendingDecision!.id, {
+    kind: 'select_prepped_spell', choice: {
+      playerId: garnetAlly.id, breachIndex: 1, spellIndex: 0, cardId: 'spark', cardName: 'Spark',
+    },
+  })
+  assertEqual(garnetAlly.breaches[0]!.prepSpells.length, 0, 'Garnet Shard casts and discards the selected spell')
+  assertEqual(garnetAlly.discard[0], 'spark', 'Garnet Shard puts the cast spell in its owner discard pile')
+
+  const tourmalineGame = createGame('phaedraxa', 'brama')
+  const tourmalinePlayer = tourmalineGame.players[0]!
+  const tourmalineAlly = tourmalineGame.players[1]!
+  tourmalinePlayer.hand = ['tourmaline_shard']
+  tourmalineAlly.hand = ['crystal']
+  assert(playCard(tourmalineGame, tourmalinePlayer.id, 'tourmaline_shard')?.includes('Played Tourmaline Shard'), 'Tourmaline Shard plays')
+  resolvePendingDecision(tourmalineGame, tourmalineGame.pendingDecision!.id, { kind: 'choose_optional', accepted: true })
+  assertEqual(tourmalineAlly.hp, tourmalineAlly.maxHp - 1, 'Tourmaline Shard damages the selected ally')
+  assertEqual(tourmalineGame.pendingDecision?.kind, 'select_cards', 'Tourmaline Shard asks the damaged ally to destroy a card')
+  const destroyDecision = tourmalineGame.pendingDecision!
+  assert(destroyDecision.kind === 'select_cards', 'Tourmaline destroy decision is a card selection')
+  resolvePendingDecision(tourmalineGame, destroyDecision.id, {
+    kind: 'select_cards', choices: [destroyDecision.candidates[0]!],
+  })
+  assert(tourmalineAlly.destroyedCards.includes('crystal'), 'Tourmaline Shard destroys the selected ally card')
+  assertEqual(tourmalinePlayer.bonusAether, 1, 'Tourmaline Shard grants one aether')
+}
+
 function run(): void {
   testSupplyData()
   testAllCurrentPlayerCardsUseTypedEffects()
+  testWave1MageStaticData()
+  testCommonBreachCosts()
+  testStage3AbilityTriggers()
   testGainAndSaveShape()
   testGemEffects()
   testInitialCardEffects()
@@ -511,7 +798,10 @@ function run(): void {
   testPreppedOncePerTurnAndTargets()
   testReturnedGemKeepsPlayCount()
   testTurnReset()
+  testPlayerDeckRecycle()
   testMageAbilities()
+  testKadirMultiSpellPreparation()
+  testMageUniqueCardEffects()
   console.log('Stage 7 engine regression tests passed (typed card effects + JSON save shape).')
 }
 

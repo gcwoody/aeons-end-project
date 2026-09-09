@@ -41,14 +41,15 @@ const cardZones = computed(() => {
     zones.push({ key: 'hand', rows: handRows })
   }
 
+  const usePileLayout = decision.value.layout === 'pile' || decision.value.source === 'hand_or_discard'
   const deckCount = state.game?.players.find(player => player.id === decision.value!.playerId)?.deck.length ?? 0
-  const discardGroups = groupPileCards(discard, 'discard', deckCount)
+  const discardGroups = usePileLayout ? groupPileCards(discard, 'discard', deckCount) : chunkCards(discard)
   let discardOffset = 0
   const discardRows: DecisionCardRow[] = []
   for (const [index, choices] of discardGroups.entries()) {
     discardRows.push({
       key: `discard:${index}`,
-      label: `DISCARD · ${pileRowLabel('discard', index, discardGroups.length)}`,
+      label: usePileLayout ? `DISCARD · ${pileRowLabel('discard', index, discardGroups.length)}` : 'DISCARD PILE',
       choices: discard.slice(discardOffset, discardOffset + choices.length),
     })
     discardOffset += choices.length
@@ -246,6 +247,32 @@ function answer(kind: PendingDecisionAnswer) {
               Return Cards
             </button>
           </div>
+        </div>
+      </template>
+
+      <template v-else-if="decision.kind === 'select_turn_order_card'">
+        <p class="decision-hint">Choose a player's turn order card from the discard pile.</p>
+        <div class="turn-order-review-cards">
+          <button
+            v-for="card in decision.cards"
+            :key="card.index"
+            class="turn-order-review-card"
+            @click="answer({ kind: 'select_turn_order_card', choice: card })"
+          >
+            {{ turnOrderCardLabel(card.cardId) }}
+          </button>
+        </div>
+      </template>
+
+      <template v-else-if="decision.kind === 'choose_turn_order_position'">
+        <p class="decision-hint">Choose where to place the revealed turn order card.</p>
+        <div class="decision-options">
+          <button class="btn primary decision-option" @click="answer({ kind: 'choose_turn_order_position', position: 'top' })">
+            Place on Top
+          </button>
+          <button class="btn decision-option" @click="answer({ kind: 'choose_turn_order_position', position: 'bottom' })">
+            Place on Bottom
+          </button>
         </div>
       </template>
 

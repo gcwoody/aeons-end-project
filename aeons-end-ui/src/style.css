@@ -9,6 +9,7 @@
   --played-card-height: 82px;
   --played-row-height: 94px;
   --breach-spell-height: 82px;
+  --breach-spell-stack-step: 41px;
   --breach-action-space: 36px;
   /* Three rows of 5:7 cards plus their grid chrome, sized from the
      available viewport height on larger displays. */
@@ -37,6 +38,24 @@
   --modal-start-scale: .88;
   --modal-start-offset-y: 16px;
   --modal-start-blur: 6px;
+  /* Global stacking order. Local card layers (0-20) stay below board-level
+     controls; modal layers are intentionally separated for easy tuning. */
+  --z-board-token: 0;
+  --z-board-interaction: 2;
+  --z-board-spell: 3;
+  --z-played: 6;
+  --z-local-hover: 10;
+  --z-controls: 30;
+  --z-hand-row: 40;
+  --z-overlay: 50;
+  --z-drag-preview: 100;
+  --z-help: 110;
+  --z-decision: 120;
+  --z-save-confirm: 140;
+  --z-card-preview: 200;
+  --z-debug: 250;
+  --z-mage-modal: 300;
+  --z-exit: 1000;
 }
 
 * { box-sizing: border-box; }
@@ -376,7 +395,7 @@ body {
 .pile.can-buy:hover,
 .pile.can-buy:focus-visible {
   position: relative;
-  z-index: 10;
+  z-index: var(--z-local-hover);
   transform: translateY(-3px);
 }
 .pile:not(.can-buy) { opacity: .5; cursor: default; }
@@ -453,6 +472,7 @@ body {
   align-items: center;
   gap: 6px;
 }
+.breach.absent { pointer-events: none; }
 .breach-token-wrap {
   width: 100%;
   height: var(--breach-size);
@@ -462,14 +482,14 @@ body {
 .breach-hover-target {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: var(--z-board-interaction);
   display: block;
   border-radius: var(--breach-radius);
 }
 .breach-token {
   position: absolute;
   inset: 0;
-  z-index: 0;
+  z-index: var(--z-board-token);
   width: 100%;
   height: 100%;
   object-fit: fill;
@@ -521,9 +541,9 @@ body {
 }
 .breach .spell:has(img) {
   position: absolute;
-  top: calc(50% + var(--breach-spell-offset-y));
+  top: calc(50% + var(--breach-spell-offset-y) - (var(--spell-stack-index, 0) * var(--breach-spell-stack-step)));
   left: 50%;
-  z-index: 3;
+  z-index: var(--z-board-spell);
   transform: translate(calc(-50% + var(--breach-spell-offset-x)), -50%);
   width: 100%;
 }
@@ -541,7 +561,7 @@ body {
 
 .played-row {
   position: relative;
-  z-index: 6;
+  z-index: var(--z-played);
   display: flex;
   gap: 8px;
   align-items: center;
@@ -560,11 +580,13 @@ body {
   text-transform: uppercase;
   letter-spacing: 1px;
 }
-.played-row:has(.card:hover) { z-index: 20; }
+.played-row:has(.card:hover) { z-index: var(--z-local-hover); }
 .played-row .empty { color: var(--muted); font-size: 12px; font-style: italic; }
 
 .hand-row {
   position: relative;
+  /* Keep lifted hand cards above the played row and bottom controls. */
+  z-index: var(--z-hand-row);
   display: grid;
   grid-template-columns: 270px 120px 1fr 120px;
   grid-template-rows: var(--hand-row-height);
@@ -578,12 +600,12 @@ body {
   height: 100%;
   min-width: 0;
   position: relative;
-  z-index: 2;
+  z-index: var(--z-board-interaction);
   display: flex;
   align-items: center;
   justify-content: center;
 }
-.mage-area:has(.mage-overlay) { z-index: 10; }
+.mage-area:has(.mage-overlay) { z-index: var(--z-mage-modal); }
 .mage-image-wrap {
   display: block;
   width: auto;
@@ -616,26 +638,37 @@ body {
   align-items: center;
   justify-content: center;
   position: relative;
-  z-index: 2;
+  z-index: var(--z-board-interaction);
 }
 .deck-pile .count, .discard-pile .count { font-size: 26px; font-weight: 700; }
 .discard-pile .top { color: var(--spell); font-size: 11px; text-align: center; }
 .discard-pile { grid-column: 4; }
 
 .hand {
-  position: absolute;
-  inset: 0;
-  z-index: 1;
+  grid-column: 3;
+  grid-row: 1;
+  position: relative;
+  z-index: calc(var(--z-hand-row) + 1);
   display: flex;
   gap: 10px;
-  justify-content: center;
+  justify-content: flex-start;
   align-items: center;
-  flex-wrap: wrap;
-  overflow-y: auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Reserve the horizontal scrollbar gutter before overflow begins. On
+     Chromium/Windows the scrollbar otherwise reduces the card viewport and
+     clips the hover lift at the top edge. */
+  scrollbar-gutter: stable;
   min-height: 0;
-  padding-inline: 270px;
+  min-width: 0;
+  max-width: 100%;
+  /* Reserve a few pixels above the cards so their hover lift is not clipped. */
+  padding: 4px 2px 0 var(--hand-offset, 0px);
 }
-.hand:has(.card:hover) { z-index: 8; }
+.hand:has(.card:hover) { z-index: var(--z-overlay); }
+.hand .card { flex: 0 0 auto; }
+.hand::-webkit-scrollbar { height: 8px; }
 
 .card {
   border: 1px solid var(--border);
@@ -650,7 +683,7 @@ body {
 }
 .card:hover {
   position: relative;
-  z-index: 10;
+  z-index: calc(var(--z-overlay) + 10);
   transform: translateY(-3px);
   border-color: var(--border);
 }
@@ -692,7 +725,7 @@ body {
 
 .spell-drag-preview {
   position: fixed;
-  z-index: 100;
+  z-index: var(--z-drag-preview);
   width: 122px;
   height: var(--hand-card-height);
   transform: translate(-50%, -50%);
@@ -720,7 +753,7 @@ body {
 
 .card-hover-preview {
   position: fixed;
-  z-index: 200;
+  z-index: var(--z-card-preview);
   overflow: hidden;
   border-radius: 10px;
   background: #171c2c;
@@ -763,7 +796,7 @@ body {
   object-fit: cover;
   border-radius: var(--mage-modal-radius);
 }
-.overlay.mage-overlay { z-index: 300; }
+.overlay.mage-overlay { z-index: var(--z-mage-modal); }
 @keyframes card-preview-in {
   from { opacity: 0; transform: translate(-50%, -50%) scale(.96); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
@@ -780,9 +813,9 @@ body {
   background: var(--panel);
   padding-top: 10px;
   padding-bottom: 10px;
-  /* Stay above the hand and played-card hover layers while remaining below
-     modal dialogs and the full-size card preview. */
-  z-index: 30;
+  /* Stay above ordinary board content while hand hover cards remain above it;
+     modal dialogs and the full-size card preview still sit higher. */
+  z-index: var(--z-controls);
 }
 .controls-left {
   position: absolute;
@@ -832,7 +865,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 50;
+  z-index: var(--z-overlay);
   animation: overlay-fade-in var(--overlay-in-duration) ease-out both;
 }
 .overlay-card {
@@ -850,7 +883,7 @@ body {
 .draggable-modal.dragging { cursor: grabbing; user-select: none; }
 .overlay-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
 .exit-copy { color: var(--muted); margin: 0; }
-.exit-overlay { z-index: 1000; }
+.exit-overlay { z-index: var(--z-exit); }
 .gameover-title {
   margin-bottom: 20px !important;
   font-size: clamp(32px, 5vw, 54px);
@@ -859,7 +892,7 @@ body {
 }
 
 /* ===== Card decision modal ===== */
-.decision-overlay { z-index: 120; }
+.decision-overlay { z-index: var(--z-decision); }
 
 @keyframes overlay-fade-in {
   from { opacity: 0; }
@@ -947,7 +980,7 @@ body {
   object-fit: cover;
 }
 .decision-card-choice.selected {
-  z-index: 10;
+  z-index: var(--z-local-hover);
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent) inset;
   transform: translateY(-3px);
@@ -1061,7 +1094,7 @@ body {
 .save-entry strong { display: block; }
 .save-details { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
 .save-actions { display: flex; flex-shrink: 0; gap: 8px; }
-.save-delete-overlay { z-index: 140; }
+.save-delete-overlay { z-index: var(--z-save-confirm); }
 .setup label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
 .setup select {
   background: var(--panel-2);
@@ -1165,7 +1198,7 @@ body {
 .card.small.selected { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger) inset; }
 
 /* ===== Help modal ===== */
-.help-overlay { z-index: 110; }
+.help-overlay { z-index: var(--z-help); }
 .help-modal {
   width: min(720px, calc(100vw - 32px));
   max-height: min(760px, calc(100vh - 32px));
@@ -1224,7 +1257,7 @@ body {
   border-radius: 10px;
   padding: 14px;
   box-shadow: 0 18px 44px rgba(0, 0, 0, .5), 0 0 0 1px rgba(122, 162, 255, .16);
-  z-index: 250;
+  z-index: var(--z-debug);
   font-size: 13px;
 }
 .debug-panel.interacting { user-select: none; }

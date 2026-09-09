@@ -96,6 +96,7 @@ function normalizeSavedGame(game: GameState): GameState {
   game.pendingDecision ??= null
   game.pendingEffect ??= null
   game.decisionCounter ??= 0
+  game.damagePrevention ??= false
   for (const player of game.players) {
     player.destroyedCards ??= []
     player.conditionalAetherEarned ??= {}
@@ -105,9 +106,15 @@ function normalizeSavedGame(game: GameState): GameState {
         player.cardPlayCountsThisTurn[cardId] = (player.cardPlayCountsThisTurn[cardId] ?? 0) + 1
       }
     }
-    player.turnEffects ??= { nextBreachCostReductions: [], usedPreppedEffects: [] }
+    player.turnEffects ??= { nextBreachCostReductions: [], usedPreppedEffects: [], prepSpellLimit: 1 }
     player.turnEffects.nextBreachCostReductions ??= []
     player.turnEffects.usedPreppedEffects ??= []
+    player.turnEffects.prepSpellLimit ??= 1
+    for (const breach of player.breaches) {
+      const legacy = breach as typeof breach & { prepSpell?: string | null }
+      breach.prepSpells ??= legacy.prepSpell ? [legacy.prepSpell] : []
+      delete legacy.prepSpell
+    }
   }
   return game
 }
@@ -338,12 +345,12 @@ function beginTurn() {
   if (g.currentTurn === 'nemesis') {
     pushLog(`Turn ${turnNum} — RAGEBORNE begins`, 'warn')
     state.phase = 'nemesis_target'
-    nemesisReveal()
+    if (!g.pendingDecision) nemesisReveal()
   } else {
     const p = getPlayer(g, g.currentTurn)
     pushLog(`Turn ${turnNum} — ${g.currentTurn.toUpperCase()} (${p.mageType}) begins`, 'info')
     state.selectedPlayer = g.currentTurn as 'p1' | 'p2'
-    if (getCastableSpells(g, g.currentTurn).length > 0) state.phase = 'casting'
+    if (g.pendingDecision || getCastableSpells(g, g.currentTurn).length > 0) state.phase = 'casting'
     else enterMainPhase()
   }
 }
@@ -482,9 +489,9 @@ export function selectPlayer(id: 'p1' | 'p2') {
   state.prepTarget = null
 }
 
-export function castSpell(breachIndex: number) {
+export function castSpell(breachIndex: number, spellIndex = 0) {
   const previous = beforeAction()
-  const msg = engineCastSpell(state.game!, cp().id, breachIndex)
+  const msg = engineCastSpell(state.game!, cp().id, breachIndex, spellIndex)
   if (msg) pushLog(msg, 'ok')
   // The nemesis may have been defeated — end the game immediately.
   if (state.game!.gameOver) {
@@ -511,6 +518,9 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
   if (!state.game?.pendingDecision) return
   const wasCasting = state.phase === 'casting'
   const wasCastingPhaseEnd = state.game.pendingEffect?.preppedPhase === 'casting_phase_end'
+  const wasNemesisTurnWaiting = state.phase === 'nemesis_target'
+    && state.game.currentTurn === 'nemesis'
+    && !state.pendingNemesis
   const previous = beforeAction()
   const messages = engineResolvePendingDecision(state.game, state.game.pendingDecision.id, answer)
   for (const message of messages) {
@@ -526,6 +536,8 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
   } else if (!state.game.pendingDecision && state.phase === 'main') {
     resolveMainPhasePreppedEffects()
     maybeAutoEnd()
+  } else if (!state.game.pendingDecision && wasNemesisTurnWaiting) {
+    nemesisReveal()
   }
   finishAction(previous)
 }

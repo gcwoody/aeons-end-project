@@ -39,13 +39,16 @@ export type AbilityTrigger =
   | { kind: 'main_phase'; scope: 'current_player' | 'any_player' }
   | { kind: 'casting_phase' }
   | { kind: 'ally_turn_end' }
-  | { kind: 'nemesis_card_drawn'; cardType: 'attack' | 'power' }
+  | { kind: 'nemesis_card_drawn'; cardType: 'attack' | 'power' | 'attack_or_power' }
+  | { kind: 'nemesis_draw_phase' }
+  | { kind: 'turn_order_card_drawn' }
 
 export type PlayerTargetScope = 'self' | 'ally' | 'any_player'
 export type PlayerTargetRef = { kind: 'player'; playerId: string }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'gravehold' | 'nemesis_or_minion'
 export type CardSelectionSource = 'hand' | 'discard' | 'hand_or_discard' | 'played_gem_this_turn'
+export type CardSelectionLayout = 'simple' | 'pile'
 export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn'
 export type CardGainDestination = 'discard_top' | 'deck_top'
 
@@ -59,6 +62,7 @@ export interface CardChoice {
 export interface PreppedSpellChoice {
   playerId: string
   breachIndex: number
+  spellIndex: number
   cardId: string
   cardName: string
 }
@@ -132,6 +136,7 @@ export type PendingDecision = PendingDecisionBase & (
       candidates: CardChoice[]
       min: number
       max: number
+      layout?: CardSelectionLayout
     }
   | {
       kind: 'select_prepped_spell'
@@ -154,14 +159,23 @@ export type PendingDecision = PendingDecisionBase & (
       cards: TurnOrderCardChoice[]
     }
   | {
+      kind: 'select_turn_order_card'
+      cards: TurnOrderCardChoice[]
+    }
+  | {
       kind: 'confirm_turn_order_reveal'
+      cardId: string
+    }
+  | {
+      kind: 'choose_turn_order_position'
       cardId: string
     }
   | {
       kind: 'confirm_prepped_effect'
       cardId: string
       breachIndex: number
-  }
+      spellIndex?: number
+    }
 )
 
 export type PendingDecisionAnswer =
@@ -173,7 +187,9 @@ export type PendingDecisionAnswer =
   | { kind: 'select_player_target'; target: PlayerTargetRef }
   | { kind: 'select_damage_target'; target: DamageTargetRef }
   | { kind: 'reorder_turn_order'; order: number[] }
+  | { kind: 'select_turn_order_card'; choice: TurnOrderCardChoice }
   | { kind: 'confirm_turn_order_reveal'; accepted: true }
+  | { kind: 'choose_turn_order_position'; position: 'top' | 'bottom' }
   | { kind: 'confirm_prepped_effect'; accepted: true }
 
 export interface BreachCostReduction {
@@ -184,6 +200,7 @@ export interface BreachCostReduction {
 export interface PlayerTurnEffects {
   nextBreachCostReductions: BreachCostReduction[]
   usedPreppedEffects: string[]
+  prepSpellLimit: number
 }
 
 export interface CardEffectOption {
@@ -201,9 +218,11 @@ export type CardEffect =
       kind: 'reveal_turn_order_card'
       playerEffects: CardEffect[]
       nemesisEffects: CardEffect[]
+      returnChoice?: boolean
     }
   | { kind: 'gain_conditional_aether'; amount: number; condition: string }
   | { kind: 'deal_damage'; amount: EffectAmount; target: DamageTargetScope }
+  | { kind: 'deal_player_damage'; amount: number; target: PlayerTargetScope }
   | { kind: 'draw_cards'; amount: number; target?: PlayerTargetScope }
   /** The engine must clamp the resulting life to the target object's maxHp. */
   | { kind: 'gain_life'; amount: number; target: LifeTargetScope }
@@ -218,6 +237,7 @@ export type CardEffect =
   | {
       kind: 'destroy_cards'
       source: 'self' | CardSelectionSource
+      minAmount?: number
       maxAmount?: number
     }
   | {
@@ -239,11 +259,20 @@ export type CardEffect =
       kind: 'return_card_to_hand'
       source: 'played_gem_this_turn'
     }
+  | { kind: 'return_cards_to_hand'; source: 'discard'; amount: number }
+  | { kind: 'set_prep_limit'; amount: number }
+  | { kind: 'place_revealed_turn_order_card' }
   | {
       kind: 'cast_prepped_spell'
       source: 'any_prepped_spell' | 'selected_prepped_spell'
       discard: boolean
     }
+  /** Shuffle a selected player turn-order card back into the deck and damage its owner. */
+  | { kind: 'shuffle_turn_order_card'; damage: number }
+  /** Internal effect used when a triggered Ability asks whether to activate. */
+  | { kind: 'activate_ability'; mageId: string }
+  /** Prevent player and Gravehold damage until the current turn ends. */
+  | { kind: 'prevent_damage_this_turn' }
   /** Internal marker used to finish one cast inside a larger effect sequence. */
   | { kind: 'resolve_spell_damage_bonus' }
   /** Internal pause used for mandatory effects on prepped cards. */
@@ -252,6 +281,7 @@ export type CardEffect =
       prompt: string
       cardId: string
       breachIndex: number
+      spellIndex: number
       effects: CardEffect[]
     }
 
@@ -300,8 +330,10 @@ export type Direction = 'east' | 'south' | 'west' | 'north'
 
 export interface BreachState {
   index: number
+  /** Whether this breach exists for the Mage. Older saves omit this and mean true. */
+  present?: boolean
   opened: boolean
-  prepSpell: string | null
+  prepSpells: string[]
   focusDirection: Direction
   focusCost: number
   focusCount: number
@@ -395,4 +427,6 @@ export interface GameState {
   pendingDecision: PendingDecision | null
   pendingEffect: PendingEffectResolution | null
   decisionCounter: number
+  /** Phaedraxa-style protection active for the current turn. */
+  damagePrevention: boolean
 }

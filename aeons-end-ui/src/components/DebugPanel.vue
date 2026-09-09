@@ -198,9 +198,9 @@ onBeforeUnmount(() => {
         </div>
         <div class="debug-breaches">
           <button
-            v-for="b in p.breaches" :key="b.index"
+            v-for="b in p.breaches.filter(item => item.present !== false)" :key="b.index"
             class="btn small" :class="{ on: b.opened }"
-            @click="b.opened = !b.opened; b.prepSpell = null"
+            @click="b.opened = !b.opened; b.prepSpells = []"
           >{{ toRoman(b.index) }}</button>
         </div>
         <button class="btn small" @click="giveAether(p.id)">+3 bonus aether</button>

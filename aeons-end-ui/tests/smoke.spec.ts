@@ -11,6 +11,25 @@ test('loads setup and starts a game', async ({ page }) => {
   await expect(page.getByText('Market', { exact: true })).toBeVisible()
   await expect(page.getByText(/Round \d+/)).toBeVisible()
 
+  for (let attempt = 0; attempt < 8; attempt++) {
+    const skip = page.getByRole('button', { name: 'Skip', exact: true })
+    if (await skip.isVisible().catch(() => false)) {
+      await skip.click()
+      continue
+    }
+    const confirm = page.getByRole('button', { name: 'Confirm', exact: true })
+    if (await confirm.isVisible().catch(() => false)) {
+      await confirm.click()
+      continue
+    }
+    const attack = page.getByRole('button', { name: /^Attack (P1|P2|Gravehold)$/ }).first()
+    if (await attack.isVisible().catch(() => false)) {
+      await attack.click()
+      continue
+    }
+    break
+  }
+
   await page.getByRole('button', { name: 'Open game help' }).click()
   await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeVisible()
   await expect(page.getByText('Ctrl + Z', { exact: true })).toBeVisible()
@@ -28,7 +47,7 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
   // The turn-order deck is shuffled. Resolve any nemesis turn until a player
   // turn is available, then move past casting when there are no spells to cast.
   for (let attempt = 0; attempt < 8; attempt++) {
-    const attackButton = page.getByRole('button', { name: 'Attack Gravehold' })
+    const attackButton = page.getByRole('button', { name: /^Attack (P1|P2|Gravehold)$/ }).first()
     if (await attackButton.isVisible().catch(() => false)) {
       await attackButton.click()
       continue
@@ -44,21 +63,31 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
   await page.keyboard.press('Control+d')
   await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
 
+  const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
   for (const playerId of ['p1', 'p2']) {
     const section = page.locator('.debug-section').filter({ hasText: `jian (${playerId})` })
     await section.locator('input[type="number"]').nth(1).fill('4')
-    await section.locator('select').nth(0).selectOption('spark')
-    await section.locator('select').nth(1).selectOption(playerId)
-    await section.locator('select').nth(2).selectOption('hand')
-    await section.getByRole('button', { name: 'Add', exact: true }).click()
+    await addCardSection.locator('select').nth(0).selectOption('spark')
+    await addCardSection.locator('select').nth(1).selectOption(playerId)
+    await addCardSection.locator('select').nth(2).selectOption('hand')
+    await addCardSection.getByRole('button', { name: 'Add', exact: true }).click()
   }
 
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
   // The current player is the selected player. Put one of the added Sparks on
   // the first open breach, then activate Jian's ability.
-  await page.locator('.hand img[alt="Spark"]').last().click()
-  await page.locator('.breach[data-breach-index="1"]').click()
+  const sparkInHand = page.locator('.hand .card').filter({ has: page.locator('img[alt="Spark"]') }).last()
+  await sparkInHand.scrollIntoViewIfNeeded()
+  const sparkBox = await sparkInHand.boundingBox()
+  const breachBox = await page.locator('.breach[data-breach-index="1"]').boundingBox()
+  expect(sparkBox).not.toBeNull()
+  expect(breachBox).not.toBeNull()
+  await page.mouse.move(sparkBox!.x + sparkBox!.width / 2, sparkBox!.y + sparkBox!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(breachBox!.x + breachBox!.width / 2, breachBox!.y + breachBox!.height / 2, { steps: 8 })
+  await page.mouse.up()
+  await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(1)
   const abilityButton = page.getByRole('button', { name: 'Activate Ability' })
   await expect(abilityButton).toBeEnabled()
   await abilityButton.click()
