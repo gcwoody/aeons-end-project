@@ -1,5 +1,5 @@
 // ===== Card Types =====
-export type CardType = 'gem' | 'relic' | 'spell' | 'attack' | 'minion' | 'power'
+export type CardType = 'gem' | 'relic' | 'spell' | 'attack' | 'minion' | 'power' | 'strike'
 
 // ===== Typed Card Effects =====
 
@@ -10,6 +10,18 @@ export type EffectAmount =
       base: number
       amountPerBreach: number
     }
+  | {
+      kind: 'per_nemesis_counter'
+      counter: string
+      base: number
+      amountPerCounter: number
+    }
+  | {
+      kind: 'per_prepped_spell'
+      base: number
+      amountPerSpell: number
+    }
+  | { kind: 'current_minion_life' }
 
 export type EffectComparison = 'equals' | 'at_least'
 
@@ -22,6 +34,11 @@ export type CardEffectCondition =
     }
   | {
       kind: 'open_breach_count'
+      comparison: EffectComparison
+      count: number
+    }
+  | {
+      kind: 'nemesis_turn_order_discard_count'
       comparison: EffectComparison
       count: number
     }
@@ -44,9 +61,14 @@ export type AbilityTrigger =
   | { kind: 'turn_order_card_drawn' }
 
 export type PlayerTargetScope = 'self' | 'ally' | 'any_player'
+export type PlayerSelectionRule =
+  | 'most_prepped_spells'
+  | 'lowest_hp'
+  | 'most_charges'
+  | 'most_opened_breaches'
 export type PlayerTargetRef = { kind: 'player'; playerId: string }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
-export type DamageTargetScope = 'nemesis' | 'minion' | 'gravehold' | 'nemesis_or_minion'
+export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
 export type CardSelectionSource = 'hand' | 'discard' | 'hand_or_discard' | 'played_gem_this_turn'
 export type CardSelectionLayout = 'simple' | 'pile'
 export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn'
@@ -57,6 +79,11 @@ export interface CardChoice {
   index: number
   cardId: string
   cardName: string
+}
+
+export interface CollectiveCardChoice {
+  playerId: string
+  choice: CardChoice
 }
 
 export interface PreppedSpellChoice {
@@ -113,6 +140,32 @@ export interface PendingEffectResolution {
   selectedPreppedSpell?: PreppedSpellChoice
   /** Confirms a board click before a prepped-spell cast effect continues. */
   confirmedPreppedSpell?: PreppedSpellChoice
+  /** Resume the Nemesis state machine when this effect frame finishes. */
+  nemesisResume?: boolean
+  /** Auxiliary Nemesis card already removed from its deck and awaiting reveal confirmation. */
+  revealedStrikeCardId?: string
+  /** Spell cast that remains on its breach until the cast effect sequence finishes. */
+  pendingSpellCast?: PendingSpellCast
+}
+
+export interface PendingSpellCast {
+  playerId: string
+  breachIndex: number
+  spellIndex: number
+  cardId: string
+  discard: boolean
+}
+
+/** A serializable continuation for a Power card's optional To Discard action. */
+export interface PendingNemesisDiscard {
+  playerId: string
+  cardInstanceId: string
+  costs: NemesisDiscardCost[]
+  nextCostIndex: number
+  selectedCards: CardChoice[]
+  selectedPreppedSpells: PreppedSpellChoice[]
+  selectedCardPayments: Array<{ costIndex: number; choices: CardChoice[] }>
+  selectedPreppedSpellPayments: Array<{ costIndex: number; choices: PreppedSpellChoice[] }>
 }
 
 export interface DecisionOption {
@@ -143,6 +196,18 @@ export type PendingDecision = PendingDecisionBase & (
       candidates: PreppedSpellChoice[]
     }
   | {
+      kind: 'select_prepped_spells'
+      candidates: PreppedSpellChoice[]
+      min: number
+      max: number
+    }
+  | {
+      kind: 'select_collective_cards'
+      candidates: CollectiveCardChoice[]
+      min: number
+      max: number
+    }
+  | {
       kind: 'select_life_target'
       targets: LifeTargetRef[]
     }
@@ -167,6 +232,17 @@ export type PendingDecision = PendingDecisionBase & (
       cardId: string
     }
   | {
+      kind: 'confirm_nemesis_draw'
+      cardId: string
+      source?: 'nemesis_deck' | 'specific_deck'
+    }
+  | {
+      kind: 'confirm_nemesis_effect'
+      cardId: string
+      instanceId: string
+      trigger: NemesisEffectTrigger
+    }
+  | {
       kind: 'choose_turn_order_position'
       cardId: string
     }
@@ -183,12 +259,16 @@ export type PendingDecisionAnswer =
   | { kind: 'choose_optional'; accepted: boolean }
   | { kind: 'select_cards'; choices: CardChoice[] }
   | { kind: 'select_prepped_spell'; choice: PreppedSpellChoice }
+  | { kind: 'select_prepped_spells'; choices: PreppedSpellChoice[] }
+  | { kind: 'select_collective_cards'; choices: CollectiveCardChoice[] }
   | { kind: 'select_life_target'; target: LifeTargetRef }
   | { kind: 'select_player_target'; target: PlayerTargetRef }
   | { kind: 'select_damage_target'; target: DamageTargetRef }
   | { kind: 'reorder_turn_order'; order: number[] }
   | { kind: 'select_turn_order_card'; choice: TurnOrderCardChoice }
   | { kind: 'confirm_turn_order_reveal'; accepted: true }
+  | { kind: 'confirm_nemesis_draw'; accepted: true }
+  | { kind: 'confirm_nemesis_effect'; accepted: true }
   | { kind: 'choose_turn_order_position'; position: 'top' | 'bottom' }
   | { kind: 'confirm_prepped_effect'; accepted: true }
 
@@ -222,8 +302,18 @@ export type CardEffect =
     }
   | { kind: 'gain_conditional_aether'; amount: number; condition: string }
   | { kind: 'deal_damage'; amount: EffectAmount; target: DamageTargetScope }
-  | { kind: 'deal_player_damage'; amount: number; target: PlayerTargetScope }
-  | { kind: 'draw_cards'; amount: number; target?: PlayerTargetScope }
+  | {
+      kind: 'deal_player_damage'
+      amount: EffectAmount
+      target: PlayerTargetScope
+      selection?: PlayerSelectionRule
+    }
+  | {
+      kind: 'draw_cards'
+      amount: number
+      target?: PlayerTargetScope
+      selection?: PlayerSelectionRule
+    }
   /** The engine must clamp the resulting life to the target object's maxHp. */
   | { kind: 'gain_life'; amount: number; target: LifeTargetScope }
   | {
@@ -233,7 +323,33 @@ export type CardEffect =
       destination?: 'discard_top' | 'deck_top'
     }
   | { kind: 'move_gained_card'; destination: 'deck_top' }
-  | { kind: 'discard_cards'; source: 'hand'; amount: number }
+  | {
+      kind: 'discard_cards'
+      source: 'hand'
+      amount: number
+      target?: PlayerTargetScope
+      selection?: PlayerSelectionRule
+    }
+  | {
+      kind: 'discard_prepped_spells'
+      amount: number
+      minCost?: number
+      target?: PlayerTargetScope
+      selection?: PlayerSelectionRule
+      mostExpensive?: boolean
+    }
+  | { kind: 'shuffle_discard_into_deck'; target?: PlayerTargetScope }
+  | { kind: 'destroy_top_cards'; amount: number; target?: PlayerTargetScope }
+  | { kind: 'discard_cards_collectively'; amount: EffectAmount; source: 'hand' }
+  | {
+      kind: 'deal_gravehold_damage_with_gem_discard'
+      amount: number
+      maxGems: number
+      reductionPerGem: number
+    }
+  | { kind: 'lose_all_charge'; target: PlayerTargetScope }
+  | { kind: 'return_last_discarded_minion' }
+  | { kind: 'shuffle_nemesis_turn_order_cards' }
   | {
       kind: 'destroy_cards'
       source: 'self' | CardSelectionSource
@@ -275,6 +391,18 @@ export type CardEffect =
   | { kind: 'prevent_damage_this_turn' }
   /** Internal marker used to finish one cast inside a larger effect sequence. */
   | { kind: 'resolve_spell_damage_bonus' }
+  /** Internal marker used to move a cast spell to its discard pile after resolution. */
+  | { kind: 'finalize_spell_cast' }
+  /** Increase the active Nemesis' configured Unleash counter/effects. */
+  | { kind: 'unleash'; amount?: number }
+  /** Generic Nemesis counter operations used by reusable Nemesis effects. */
+  | { kind: 'gain_nemesis_counter'; counter: string; amount: number }
+  | { kind: 'lose_nemesis_counter'; counter: string; amount: number }
+  /** Draw and resolve one card from the Nemesis' auxiliary Strike deck. */
+  | { kind: 'resolve_strike'; count?: number }
+  | { kind: 'return_strike_card'; cardId: string }
+  /** Cancel the currently revealed Attack/Power before it resolves. */
+  | { kind: 'discard_current_nemesis_card' }
   /** Internal pause used for mandatory effects on prepped cards. */
   | {
       kind: 'confirm_prepped_effect'
@@ -315,14 +443,66 @@ export interface SpellCard extends CardDef {
   type: 'spell'
 }
 
-export interface NemesisCard extends CardDef {
-  type: 'attack' | 'minion' | 'power'
+export type NemesisCardType = 'attack' | 'minion' | 'power'
+
+export interface NemesisCardDef extends CardDef {
+  type: NemesisCardType
   tier: 1 | 2 | 3
-  damage?: number
-  lifeTokens?: number
-  persistentEffect?: string
-  powerTokens?: number
-  powerEffect?: string
+  life?: number
+  power?: number
+  nemesisEffects?: NemesisEffectBlock[]
+  toDiscard?: NemesisToDiscard
+  /** Optional passive rule applied to each damage instance dealt to this Minion. */
+  damagePerInstance?: number
+}
+
+export type NemesisDiscardCost =
+  | { kind: 'spend_aether'; amount: number }
+  | { kind: 'lose_charge'; amount: number }
+  | {
+      kind: 'destroy_cards'
+      source: 'hand' | 'discard' | 'hand_or_discard'
+      amount: number
+      minCost?: number
+    }
+  | { kind: 'discard_cards'; source: 'hand'; amount: number }
+  | { kind: 'destroy_prepped_spells'; amount: number; minCost?: number }
+
+export interface NemesisToDiscard {
+  costs: NemesisDiscardCost[]
+}
+
+/** @deprecated Use NemesisCardDef in new code. */
+export type NemesisCard = NemesisCardDef
+
+export interface StrikeCardDef extends CardDef {
+  type: 'strike'
+  set: 'rageborne'
+}
+
+export type NemesisEffectTrigger = 'immediately' | 'persistent' | 'power_resolved'
+
+export interface NemesisEffectBlock {
+  trigger: NemesisEffectTrigger
+  effects: CardEffect[]
+  condition?: CardEffectCondition
+}
+
+export type NemesisDifficulty = 'standard' | 'increased'
+
+export interface NemesisDef {
+  type: string
+  name: string
+  hp: number
+  difficultyLevel: number
+  uniqueCardIdsByTier: Record<1 | 2 | 3, string[]>
+  basicCardsPerTier: Record<1 | 2 | 3, number>
+  strikeCardIds: string[]
+  startingCounters: Record<string, number>
+  standardRules: Record<string, number>
+  increasedDifficultyRules: Record<string, number>
+  /** Typed effect sequence executed whenever this Nemesis unleashes. */
+  unleashEffects?: CardEffect[]
 }
 
 // ===== Breach =====
@@ -348,6 +528,8 @@ export interface NemesisCardInPlay {
   cardId: string
   cardType: 'minion' | 'power'
   placedAt: number
+  instanceId?: string
+  enteredOnNemesisTurn?: number
   lifeTokens?: number
   powerTokens?: number
 }
@@ -389,11 +571,22 @@ export interface GraveholdState {
 }
 
 export interface NemesisState {
+  definitionId: string
+  name: string
   type: string
   hp: number
   maxHp: number
+  difficultyLevel: number
+  difficulty: NemesisDifficulty
   deck: string[]
   discard: string[]
+  strikeDeck: string[]
+  strikeDiscard: string[]
+  counters: Record<string, number>
+  /** Number of Nemesis turns that have started for this game. */
+  nemesisTurnNumber?: number
+  /** Monotonic ID source for cards entering the Nemesis play area. */
+  cardInstanceCounter?: number
   playArea: NemesisCardInPlay[]
   tierAnnounced: boolean[]
 }
@@ -411,6 +604,28 @@ export type PlayerPhase = 'casting' | 'main' | 'draw'
 export type NemesisPhase = 'nemesis_main' | 'nemesis_draw'
 export type Phase = PlayerPhase | NemesisPhase
 
+export type NemesisResolutionStep = 'main' | 'draw' | 'complete'
+
+/** Serializable progress for one Nemesis turn. */
+export interface NemesisResolutionState {
+  step: NemesisResolutionStep
+  mainQueue: string[]
+  mainIndex: number
+  activeCardInstanceId?: string
+  activeCardId?: string
+  activeTrigger?: NemesisEffectTrigger
+  drawnCardId?: string
+  drawnCardProcessed?: boolean
+  /** The UI has shown the drawn Nemesis card and the player confirmed it. */
+  drawnCardRevealed?: boolean
+  drawnCardResponseHandled?: boolean
+  drawnCardCancelled?: boolean
+  /** Player who owns the Nemesis response controls when a decision is needed. */
+  controllerPlayerId?: string
+  /** The current Main Phase card has been visibly confirmed by the player. */
+  mainEffectConfirmed?: boolean
+}
+
 export interface GameState {
   players: PlayerState[]
   nemesis: NemesisState
@@ -426,6 +641,8 @@ export interface GameState {
   timestamp: number
   pendingDecision: PendingDecision | null
   pendingEffect: PendingEffectResolution | null
+  pendingNemesisDiscard?: PendingNemesisDiscard | null
+  nemesisResolution?: NemesisResolutionState | null
   decisionCounter: number
   /** Phaedraxa-style protection active for the current turn. */
   damagePrevention: boolean

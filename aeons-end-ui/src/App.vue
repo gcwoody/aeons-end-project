@@ -12,13 +12,12 @@ import DebugPanel from './components/DebugPanel.vue'
 import { useModalDrag } from './game/useModalDrag'
 
 const {
-  state, nemesisChooseTarget, undo, toggleDebug,
+  state, undo, toggleDebug,
   closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
 } = useGame()
 
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
 const { modalEl: exitModalEl, modalStyle: exitModalStyle, dragging: exitDragging, startDrag: startExitDrag } = useModalDrag()
-const { modalEl: nemesisModalEl, modalStyle: nemesisModalStyle, dragging: nemesisDragging, startDrag: startNemesisDrag } = useModalDrag()
 const { modalEl: gameoverModalEl, modalStyle: gameoverModalStyle, dragging: gameoverDragging, startDrag: startGameoverDrag } = useModalDrag()
 
 function onKeydown(e: KeyboardEvent) {
@@ -88,18 +87,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <button class="btn" @click="exitWithoutSaving">Exit Without Saving</button>
           <button class="btn primary" @click="saveAndExit">Save &amp; Exit</button>
           <button class="btn" @click="cancelExit">Cancel</button>
-        </div>
-      </div>
-    </div>
-
-    <div v-if="state.phase === 'nemesis_target' && state.pendingNemesis" class="overlay">
-      <div ref="nemesisModalEl" class="overlay-card draggable-modal" :class="{ dragging: nemesisDragging }" :style="nemesisModalStyle" @pointerdown="startNemesisDrag">
-        <h2>Nemesis Attack</h2>
-        <p>Drew: {{ state.pendingNemesis.cardName }} ({{ state.pendingNemesis.damage }} dmg)</p>
-        <div class="overlay-actions">
-          <button class="btn" @click="nemesisChooseTarget('p1')">Attack P1</button>
-          <button class="btn" @click="nemesisChooseTarget('p2')">Attack P2</button>
-          <button class="btn" @click="nemesisChooseTarget('gravehold')">Attack Gravehold</button>
         </div>
       </div>
     </div>

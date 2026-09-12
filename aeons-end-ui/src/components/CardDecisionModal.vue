@@ -7,8 +7,9 @@ import { useGame } from '../game/useGame'
 import { chunkCards, groupPileCards, pileRowLabel } from '../game/pile-layout'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
 import { useModalDrag } from '../game/useModalDrag'
+import CardHoverPreview from './CardHoverPreview.vue'
 
-const { state, resolveDecision } = useGame()
+const { state, resolveDecision, confirmPendingPreppedSpells } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 const selectedCards = ref<CardChoice[]>([])
 const selectedTurnOrder = ref<number[]>([])
@@ -65,6 +66,11 @@ const cardZones = computed(() => {
     zones.push({ key: 'other', rows: otherRows })
   }
   return zones
+})
+
+const decisionColumns = computed(() => {
+  if (!decision.value || decision.value.kind !== 'select_cards') return 5
+  return Math.max(1, Math.min(5, Math.max(0, ...cardZones.value.flatMap(zone => zone.rows.map(row => row.choices.length)))))
 })
 
 watch(() => decision.value?.id, () => {
@@ -140,6 +146,13 @@ function playerName(playerId: string): string {
   return player ? `${player.mageType} (${player.id.toUpperCase()})` : playerId
 }
 
+function playerTargetLabel(playerId: string): string {
+  if (decision.value?.kind === 'select_player_target' && decision.value.prompt === 'Choose a player to suffer damage') {
+    return `Attack ${playerId.toUpperCase()}`
+  }
+  return playerName(playerId)
+}
+
 function lifeTargetName(target: { kind: string; playerId?: string }): string {
   if (target.kind === 'player') return playerName(target.playerId ?? '')
   return target.kind === 'gravehold' ? 'Gravehold' : 'Nemesis'
@@ -148,11 +161,55 @@ function lifeTargetName(target: { kind: string; playerId?: string }): string {
 function answer(kind: PendingDecisionAnswer) {
   resolveDecision(kind)
 }
+
+function confirmNemesisDraw() {
+  if (!decision.value || decision.value.kind !== 'confirm_nemesis_draw') return
+  answer({ kind: 'confirm_nemesis_draw', accepted: true })
+}
 </script>
 
 <template>
-  <div v-if="decision && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell'" class="overlay decision-overlay">
-    <div ref="modalEl" class="overlay-card decision-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+  <div v-if="decision?.kind === 'confirm_nemesis_draw'" class="overlay decision-overlay nemesis-reveal-overlay">
+    <div ref="modalEl" class="overlay-card nemesis-reveal-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @click.stop @pointerdown="startDrag">
+      <h2>{{ decision.source === 'specific_deck' ? 'Nemesis Specific Deck Draw' : 'Nemesis Draw' }}</h2>
+      <p class="decision-hint">
+        {{ decision.source === 'specific_deck'
+          ? 'A card was drawn from the Nemesis specific deck. Review it, then click Confirm to resolve it.'
+          : 'A Nemesis card was drawn. Review it, then click Confirm to continue.' }}
+      </p>
+      <CardHoverPreview :card-id="decision.cardId" :preview-width="252" :preview-height="378">
+        <div class="nemesis-reveal-card">
+          <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
+          <span v-else>{{ getCard(decision.cardId).name }}</span>
+        </div>
+      </CardHoverPreview>
+      <div class="overlay-actions">
+        <button class="btn primary" @click="confirmNemesisDraw">
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="decision?.kind === 'select_prepped_spells'" class="decision-overlay non-blocking-decision-overlay">
+    <div ref="modalEl" class="overlay-card decision-modal non-blocking-prepped-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+      <h2>{{ decision.prompt }}</h2>
+      <p class="decision-hint">Select prepped spells directly on the player boards. You can switch players while this panel remains open.</p>
+      <div class="decision-footer">
+        <span class="stat">{{ state.pendingPreppedSpells.length }}/{{ decision.max }} chosen prepped spells</span>
+        <button
+          class="btn primary"
+          :disabled="state.pendingPreppedSpells.length < decision.min || state.pendingPreppedSpells.length > decision.max"
+          @click="confirmPendingPreppedSpells"
+        >
+          Confirm
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="decision && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'" class="overlay decision-overlay">
+    <div ref="modalEl" class="overlay-card decision-modal draggable-modal" :class="{ dragging }" :style="{ ...modalStyle, '--decision-columns': decisionColumns }" @pointerdown="startDrag">
       <h2>{{ decision.prompt }}</h2>
 
       <div v-if="decision.kind === 'choose_one'" class="decision-options">
@@ -296,7 +353,7 @@ function answer(kind: PendingDecisionAnswer) {
           class="btn primary decision-option"
           @click="answer({ kind: 'select_player_target', target })"
         >
-          {{ playerName(target.playerId) }}
+          {{ playerTargetLabel(target.playerId) }}
         </button>
       </div>
 

@@ -15,7 +15,12 @@ import {
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
 } from './data/wave1/spells'
 import { createMages, MAGE_UNIQUE_CARDS } from './data/wave1/mage'
-import { NEMESIS_CARDS, rageborne } from './data/wave1/nemesis'
+import {
+  NEMESIS_CARDS, rageborne,
+  BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
+  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER,
+  buildRageborneDeck, buildRageborneStrikeDeck,
+} from './data/wave1/nemesis'
 
 // Re-export the Wave 1 catalog so existing engine and UI imports stay stable.
 export {
@@ -25,6 +30,9 @@ export {
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
   MAGE_UNIQUE_CARDS,
   NEMESIS_CARDS, rageborne,
+  BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
+  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER,
+  buildRageborneDeck, buildRageborneStrikeDeck,
 }
 export type { MageDef } from './data/wave1/mage'
 

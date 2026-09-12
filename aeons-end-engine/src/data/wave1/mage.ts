@@ -89,10 +89,8 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   const adelheim: MageDef = {
     type: 'adelheim',
     abilityName: 'Aethereal Ward',
-    abilityTrigger: { kind: 'nemesis_draw_phase' },
-    // Nemesis draw and resolution are not implemented yet. Keep the trigger and
-    // name available without exposing a non-functional ability button.
-    abilityEffects: [],
+    abilityTrigger: { kind: 'nemesis_card_drawn', cardType: 'attack_or_power' },
+    abilityEffects: [{ kind: 'discard_current_nemesis_card' }],
     hp: 10,
     chargeThreshold: 5,
     startHand: ['amethyst_shard', 'crystal', 'crystal', 'spark', 'spark'],

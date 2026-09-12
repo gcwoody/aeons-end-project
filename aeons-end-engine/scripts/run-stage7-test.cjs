@@ -35,4 +35,8 @@ if (emitResult.emitSkipped) {
   console.error('Stage 7 test compilation was skipped.')
   process.exit(1)
 }
+require(path.join(outputDir, 'tests', 'stage1.test.js'))
+require(path.join(outputDir, 'tests', 'stage2.test.js'))
+require(path.join(outputDir, 'tests', 'stage3.test.js'))
+require(path.join(outputDir, 'tests', 'stage4.test.js'))
 require(path.join(outputDir, 'tests', 'stage7.test.js'))

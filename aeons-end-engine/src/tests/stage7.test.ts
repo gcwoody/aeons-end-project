@@ -367,15 +367,18 @@ function testSpellEffects(): void {
   const targeted = freshGame()
   targeted.players[0]!.breaches[0]!.prepSpells = ['lava_tendril']
   targeted.nemesis.playArea = [{
-    cardId: 'attack_t1_1', cardType: 'minion', placedAt: 1, lifeTokens: 3,
+    cardId: 'bane_sire', cardType: 'minion', placedAt: 1, lifeTokens: 3,
   }]
   assert(castSpell(targeted, 'p1', 1)?.includes('Cast Lava Tendril'), 'Lava Tendril can target a minion')
   assertEqual(targeted.pendingDecision?.kind, 'select_damage_target', 'Damage target selection is exposed')
+  assertEqual(targeted.players[0]!.breaches[0]!.prepSpells[0], 'lava_tendril', 'A targeted spell remains visible on its breach while awaiting its target')
   resolvePendingDecision(targeted, targeted.pendingDecision!.id, {
     kind: 'select_damage_target',
-    target: { kind: 'minion', id: 'minion:1', placedAt: 1, cardId: 'attack_t1_1', label: 'Attack T1 1' },
+    target: { kind: 'minion', id: 'minion:1', placedAt: 1, cardId: 'bane_sire', label: 'Bane Sire' },
   })
   assertEqual(targeted.nemesis.playArea.length, 0, 'Selected minion is defeated by damage')
+  assertEqual(targeted.players[0]!.breaches[0]!.prepSpells.length, 0, 'The spell leaves its breach only after the target is confirmed')
+  assertEqual(targeted.players[0]!.discard[0], 'lava_tendril', 'The resolved spell enters discard after target confirmation')
 
   const planar = freshGame()
   planar.players[0]!.breaches[0]!.prepSpells = ['planar_insight']
@@ -506,6 +509,12 @@ function testPlayerDeckRecycle(): void {
 }
 
 function testMageAbilities(): void {
+  const duplicateSpellGame = freshGame()
+  const duplicateSpellPlayer = duplicateSpellGame.players[0]!
+  duplicateSpellPlayer.hand = ['spark', 'crystal', 'crystal', 'crystal', 'spark']
+  assert(prepSpell(duplicateSpellGame, duplicateSpellPlayer.id, 'spark', 1, 4)?.includes('Prepped Spark'), 'Preparing a duplicate spell uses the selected hand index')
+  assertEqual(duplicateSpellPlayer.hand.join(','), 'spark,crystal,crystal,crystal', 'Preparing the rightmost duplicate preserves the remaining hand order')
+
   const bramaGame = freshGame()
   const bramaMage = bramaGame.players[0]!
   const ally = bramaGame.players[1]!

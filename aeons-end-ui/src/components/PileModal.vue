@@ -21,6 +21,8 @@ const groups = computed(() => {
   return state.viewPile ? groupPileCards(cards.value, state.viewPile, deckCount.value) : []
 })
 
+const columns = computed(() => Math.max(1, Math.min(5, Math.max(0, ...groups.value.map(group => group.length)))))
+
 function rowLabel(groupIndex: number): string {
   return state.viewPile ? pileRowLabel(state.viewPile, groupIndex, groups.value.length) : ''
 }
@@ -28,7 +30,7 @@ function rowLabel(groupIndex: number): string {
 
 <template>
   <div v-if="state.viewPile" class="overlay" @click.self="closePile">
-    <div ref="modalEl" class="overlay-card pile-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+    <div ref="modalEl" class="overlay-card pile-modal pile-modal-with-labels draggable-modal" :class="{ dragging }" :style="{ ...modalStyle, '--pile-columns': columns }" @pointerdown="startDrag">
       <h3>
         {{ title }}
         <span class="muted">(top → bottom)</span>

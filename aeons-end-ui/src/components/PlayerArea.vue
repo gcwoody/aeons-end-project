@@ -14,6 +14,7 @@ const {
   canActivateAbilityInMain,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
   activatePreppedCardAction, preppedCardActions,
+  isPendingPreppedSpellSelected, togglePendingPreppedSpell,
   playCard, playAllGems, castSpell, endTurn, toMainPhase,
   selectPlayer, clickDiscardCard, openPile, resolveDecision, toggleHelp,
 } = useGame()
@@ -48,6 +49,8 @@ const phaseLabel = computed(() => {
     casting: 'Casting Phase · Spell Selection',
     main: 'Main Phase · Action',
     discard_order: 'Discard Phase · Card Order',
+    nemesis_main: 'Nemesis Main Phase',
+    nemesis_draw: 'Nemesis Draw Phase',
     nemesis_target: 'Nemesis Turn · Target Selection',
     gameover: 'Game Over',
   }[state.phase])
@@ -84,6 +87,26 @@ const abilityPreppedSpellChoice = (b: BreachState, spellIndex = 0) => {
     choice.spellIndex === spellIndex &&
     choice.cardId === b.prepSpells[spellIndex],
   ) ?? null
+}
+
+const pendingPreppedSpellChoice = (b: BreachState, spellIndex = 0) => {
+  const decision = state.game?.pendingDecision
+  if (decision?.kind !== 'select_prepped_spells' || !b.prepSpells[spellIndex]) return null
+  return decision.candidates.find(choice =>
+    choice.playerId === player.value.id &&
+    choice.breachIndex === b.index &&
+    choice.spellIndex === spellIndex &&
+    choice.cardId === b.prepSpells[spellIndex],
+  ) ?? null
+}
+
+const pendingCastSpell = (b: BreachState, spellIndex = 0) => {
+  const pending = state.game?.pendingEffect?.pendingSpellCast
+  if (!pending || !state.game?.pendingDecision || !b.prepSpells[spellIndex]) return false
+  return pending.playerId === player.value.id
+    && pending.breachIndex === b.index
+    && pending.spellIndex === spellIndex
+    && pending.cardId === b.prepSpells[spellIndex]
 }
 
 const typeClass = (cid: string) =>
@@ -238,7 +261,6 @@ function removeSpellPointerListeners() {
 
 onBeforeUnmount(removeSpellPointerListeners)
 onMounted(() => {
-  window.addEventListener('wheel', handleHandWheel, { capture: true, passive: false })
   window.addEventListener('resize', updateHandAlignment)
   if (handElement.value && typeof ResizeObserver !== 'undefined') {
     handResizeObserver = new ResizeObserver(updateHandAlignment)
@@ -248,7 +270,6 @@ onMounted(() => {
 })
 watch(() => player.value?.hand.length, () => nextTick(updateHandAlignment))
 watch(() => state.selectedPlayer, () => nextTick(updateHandAlignment))
-onBeforeUnmount(() => window.removeEventListener('wheel', handleHandWheel, true))
 onBeforeUnmount(() => {
   window.removeEventListener('resize', updateHandAlignment)
   handResizeObserver?.disconnect()
@@ -273,6 +294,11 @@ function confirmMandatoryPreppedEffect(b: BreachState) {
 
 function clickSpellFrame(b: BreachState, spellIndex: number) {
   if (b.present === false) return
+  const pendingChoice = pendingPreppedSpellChoice(b, spellIndex)
+  if (pendingChoice) {
+    togglePendingPreppedSpell(pendingChoice)
+    return
+  }
   const abilityChoice = abilityPreppedSpellChoice(b, spellIndex)
   if (abilityChoice) {
     resolveDecision({ kind: 'select_prepped_spell', choice: abilityChoice })
@@ -348,6 +374,9 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
               'must-cast-spell': isMustCastBreach(b),
               'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
               'ability-prepped-spell': !!abilityPreppedSpellChoice(b, spellIndex),
+              'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
+              'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
+              'pending-cast-spell': pendingCastSpell(b, spellIndex),
             }"
           >
             <CardHoverPreview :card-id="spellId">
@@ -359,6 +388,9 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                   'must-cast-spell': isMustCastBreach(b),
                   'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
                   'ability-prepped-spell': !!abilityPreppedSpellChoice(b, spellIndex),
+                  'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
+                  'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
+                  'pending-cast-spell': pendingCastSpell(b, spellIndex),
                 }"
               >
                 <img v-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />
@@ -413,7 +445,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         <span class="label">Deck</span>
         <span class="count">{{ player.deck.length }}</span>
       </div>
-      <div ref="handElement" class="hand" :style="{ '--hand-offset': `${handOffset}px` }">
+      <div ref="handElement" class="hand" :style="{ '--hand-offset': `${handOffset}px` }" @wheel="handleHandWheel">
         <CardHoverPreview
           v-for="(cid, i) in player.hand" :key="cid + i"
           :card-id="cid"
@@ -436,7 +468,6 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       <div class="discard-pile clickable" @click="openPile('discard')">
         <span class="label">Discard</span>
         <span class="count">{{ player.discard.length }}</span>
-        <span v-if="player.discard[0]" class="top">{{ getCard(player.discard[0]).name }}</span>
       </div>
     </div>
 
@@ -474,8 +505,8 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         <template v-if="isCurrentSelected">
           <button v-if="isCasting" class="btn" @click="toMainPhase">Start Main Phase →</button>
           <template v-if="isMain">
-            <button class="btn small" @click="playAllGems">Play All Gems</button>
             <button class="btn small" :disabled="player.charge >= player.chargeThreshold" @click="gainCharge(1)">Charge</button>
+            <button class="btn small" @click="playAllGems">Play All Gems</button>
             <button class="btn primary" @click="endTurn">End Turn</button>
           </template>
         </template>

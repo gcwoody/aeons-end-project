@@ -10,8 +10,17 @@ test('loads setup and starts a game', async ({ page }) => {
 
   await expect(page.getByText('Market', { exact: true })).toBeVisible()
   await expect(page.getByText(/Round \d+/)).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Nemesis Mainboard' })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Rageborne mat' })).toBeVisible()
+  await expect(page.getByText('Strike Deck', { exact: true })).toBeVisible()
+  await expect(page.locator('.nemesis-play')).toBeVisible()
 
   for (let attempt = 0; attempt < 8; attempt++) {
+    const continueDraw = page.getByRole('button', { name: 'Continue', exact: true })
+    if (await continueDraw.isVisible().catch(() => false)) {
+      await continueDraw.click()
+      continue
+    }
     const skip = page.getByRole('button', { name: 'Skip', exact: true })
     if (await skip.isVisible().catch(() => false)) {
       await skip.click()
@@ -47,6 +56,11 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
   // The turn-order deck is shuffled. Resolve any nemesis turn until a player
   // turn is available, then move past casting when there are no spells to cast.
   for (let attempt = 0; attempt < 8; attempt++) {
+    const continueDraw = page.getByRole('button', { name: 'Continue', exact: true })
+    if (await continueDraw.isVisible().catch(() => false)) {
+      await continueDraw.click()
+      continue
+    }
     const attackButton = page.getByRole('button', { name: /^Attack (P1|P2|Gravehold)$/ }).first()
     if (await attackButton.isVisible().catch(() => false)) {
       await attackButton.click()

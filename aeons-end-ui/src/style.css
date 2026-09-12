@@ -45,7 +45,7 @@
   --z-board-spell: 3;
   --z-played: 6;
   --z-local-hover: 10;
-  --z-controls: 30;
+  --z-controls: 500;
   --z-hand-row: 40;
   --z-overlay: 50;
   --z-drag-preview: 100;
@@ -193,47 +193,46 @@ body {
 
 /* ===== Turn order bar ===== */
 .turn-order-bar {
-  --turn-slots-half: 194px;
-  --turn-content-shift: calc(var(--market-width) / 2);
   position: relative;
   width: 100%;
   align-self: stretch;
   display: flex;
-  justify-content: center;
   align-items: center;
+  gap: 16px;
   min-height: 56px;
   padding: 10px 14px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
 .turn-status-content {
-  position: relative;
-  width: 100%;
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, var(--turn-left-width)) max-content minmax(0, 1fr);
+  gap: 24px;
+  align-items: center;
   height: 36px;
-  transform: translateX(var(--turn-content-shift));
 }
 .turn-side {
-  position: absolute;
-  top: 50%;
   display: flex;
   align-items: center;
-  transform: translateY(-50%);
+  min-width: 0;
   white-space: nowrap;
 }
-.turn-side-left { right: calc(50% + var(--turn-slots-half) + 14px); }
-.turn-side-right { left: calc(50% + var(--turn-slots-half) + 14px); gap: 14px; }
-.slots { display: flex; gap: 8px; justify-content: center; }
+.turn-side .hp-block { width: 100%; min-width: 0; }
+.turn-side .hpbar { min-width: 20px; flex: 1 1 0; }
+.turn-side.compact-hp .hp-block { display: grid; grid-template-columns: minmax(20px, 1fr) auto; gap: 2px 6px; }
+.turn-side.compact-hp .hp-name { grid-column: 1 / -1; }
+.turn-side.compact-hp .hp-num { font-size: 10px; }
+.slots { display: flex; gap: 4px; justify-content: center; }
 .turn-round {
-  position: absolute;
-  top: 50%;
-  right: 10px;
+  flex: 0 0 auto;
   color: var(--muted);
   font-size: 13px;
-  transform: translateY(-50%);
   white-space: nowrap;
 }
 .slot {
-  width: 58px;
+  width: var(--turn-slot-width, 58px);
   height: 34px;
   display: flex;
   align-items: center;
@@ -257,40 +256,18 @@ body {
 
 @media (max-width: 900px) {
   :root { --market-width: 280px; }
-  .turn-order-bar {
-    padding-inline: 8px;
-  }
-  .turn-order-bar { --turn-content-shift: 92px; }
-  .turn-side { font-size: 12px; }
-  .turn-side-right { gap: 6px; }
-  .turn-side .hp-block { gap: 4px; }
-  .turn-side .hpbar { min-width: 28px; }
-  .turn-side .hp-name, .turn-side .hp-num { font-size: 11px; }
-  .turn-round { font-size: 11px; }
 }
 
 /* Keep the centered turn slots and the right-edge round label readable on
    compact desktop viewports where the Market leaves less horizontal room. */
-@media (min-width: 901px) and (max-width: 1400px) {
-  .turn-order-bar {
-    --turn-slots-half: 101px;
-  }
+@media (max-width: 1400px) {
   .turn-order-bar .slot {
-    width: 32px;
     height: 30px;
     font-size: 11px;
     letter-spacing: 0;
   }
-  .turn-order-bar .slots { gap: 2px; }
-  .turn-side .hpbar { min-width: 20px; flex: 0 0 20px; }
-  .turn-side .hp-block { gap: 3px; }
+  .turn-side .hp-block { gap: 6px; }
   .turn-side .hp-name, .turn-side .hp-num { font-size: 10px; }
-  .turn-side-left { right: calc(50% + var(--turn-slots-half) + 8px); }
-  .turn-side-right {
-    left: calc(50% + var(--turn-slots-half) + 8px);
-    transform: translateY(-50%) scale(.8);
-    transform-origin: left center;
-  }
   .turn-round { font-size: 10px; }
 }
 
@@ -312,18 +289,99 @@ body {
 .game-top-area { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
 .nemesis-area {
   display: flex;
-  gap: 12px;
+  gap: 14px;
   padding: 10px 14px;
   background: var(--panel);
   flex: 1;
   min-height: 190px;
+  overflow: hidden;
+  container-type: size;
 }
-.nemesis-piles {
+.nemesis-mat-column {
+  flex: 0 0 calc(100cqh * var(--nemesis-mat-ratio));
+  display: flex;
+  min-height: 0;
+}
+.nemesis-mat-column > .card-hover-wrap { display: block; width: 100%; height: 100%; }
+.nemesis-section-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.nemesis-mat-wrap {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: #151a29;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.nemesis-mat-wrap.damage-target { border: 2px solid #e6c84f; box-shadow: 0 0 0 1px rgba(230, 200, 79, .35); }
+.nemesis-mat-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.nemesis-mat-fallback, .nemesis-card-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  text-align: center;
+}
+.nemesis-sub-board {
+  flex: 0 0 calc(100cqh * var(--sub-board-ratio));
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.nemesis-sub-board img { width: 100%; height: 100%; object-fit: contain; }
+.nemesis-content-column {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(120px, 1fr) minmax(210px, 1fr);
+  gap: 10px;
+}
+.nemesis-assets-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.nemesis-asset {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #151a29;
+  padding: 10px 6px;
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 8px;
-  width: 150px;
+  color: inherit;
+  font: inherit;
 }
+.nemesis-asset .nemesis-section-title { font-size: clamp(9px, 1cqw, 11px); letter-spacing: .5px; overflow-wrap: anywhere; }
+.nemesis-asset .asset-subtext { max-width: 100%; overflow-wrap: anywhere; }
+.nemesis-token { display: flex; flex-direction: column; align-items: center; gap: 4px; text-transform: capitalize; }
+.nemesis-asset.is-unavailable { background: rgba(21, 26, 41, .45); }
+.nemesis-discard-button { cursor: pointer; }
+.nemesis-discard-button:hover, .nemesis-discard-button:focus-visible { border-color: var(--accent); }
+.nemesis-asset strong { font-size: 20px; color: var(--text); }
+.nemesis-asset { align-items: center; text-align: center; }
+.asset-subtext { color: var(--muted); font-size: 11px; }
+.fury-asset strong { color: var(--warn); }
 .pile-box {
   flex: 1;
   border: 1px solid var(--border);
@@ -338,10 +396,22 @@ body {
 .pile-count { font-size: 22px; font-weight: 700; }
 .pile-top { color: var(--spell); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.nemesis-play { flex: 1; border: 1px dashed var(--border); border-radius: 8px; padding: 8px 10px; }
+.nemesis-play { min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; overflow: visible; }
+.nemesis-play-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.nemesis-play-order { color: var(--muted); font-size: 10px; }
 .nemesis-play .empty { color: var(--muted); font-size: 12px; font-style: italic; }
-.play-cards { display: flex; gap: 8px; flex-wrap: wrap; }
-.play-card { border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 12px; background: #151a29; }
+/* Lower this inset to enlarge Nemesis Play Area cards; increase it to leave more vertical breathing room. */
+.nemesis-card-scroll { --nemesis-card-height-inset: 2px; flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; align-items: stretch; overflow-x: auto; overflow-y: visible; scrollbar-gutter: stable; padding: 4px 2px; }
+.nemesis-card-track { min-width: 100%; height: 100%; min-height: 0; display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: max-content; }
+.nemesis-play-card { position: relative; flex: 0 0 auto; width: auto; height: calc(100% - var(--nemesis-card-height-inset)); aspect-ratio: 108 / 158; min-height: 0; max-height: 100%; border: 1px solid var(--border); border-radius: 7px; background: #151a29; overflow: visible; transition: transform .1s, border-color .12s; z-index: 1; cursor: pointer; }
+.nemesis-play-card:hover { transform: translateY(-3px); z-index: var(--z-local-hover); }
+.nemesis-play-card.discardable { border-color: var(--warn); box-shadow: 0 0 0 1px rgba(224, 175, 104, .35) inset; }
+.nemesis-play-card.damage-target { border: 2px solid #e6c84f; box-shadow: 0 0 0 1px rgba(230, 200, 79, .35); }
+.nemesis-play-card.effect-target { border: 2px solid var(--must-cast); box-shadow: 0 0 0 1px rgba(255, 48, 48, .35); }
+.nemesis-play-card > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+.nemesis-card-meta { position: absolute; right: 3px; bottom: 3px; left: 3px; display: flex; justify-content: space-between; align-items: center; gap: 3px; pointer-events: none; }
+.nemesis-card-meta > span { padding: 2px 4px; border-radius: 4px; background: rgba(18, 21, 29, .9); color: var(--text); font-size: 10px; }
+.nemesis-card-meta .btn { pointer-events: auto; height: 24px; padding: 2px 5px; font-size: 10px; }
 
 .market-col {
   flex: 0 1 var(--market-width);
@@ -524,6 +594,16 @@ body {
 }
 .breach-spell-card-frame.castable-spell { border: 2px solid #e6c84f; }
 .breach-spell-card-frame.ability-prepped-spell { border: 2px solid #e6c84f; cursor: pointer; }
+.breach-spell-card-frame.pending-prepped-spell { border: 2px solid #e6c84f; cursor: pointer; }
+.breach-spell-card-frame.pending-prepped-spell-selected {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px rgba(104, 214, 151, .35);
+  transform: translateY(-3px);
+}
+.breach-spell-card-frame.pending-cast-spell {
+  border: 2px solid var(--ok);
+  box-shadow: 0 0 0 2px rgba(158, 206, 106, .35);
+}
 .breach-spell-card-frame.must-cast-spell { border: 2px solid var(--must-cast); }
 .breach.mandatory-prepped-effect { cursor: default; }
 .breach-spell-card-frame.mandatory-prepped-effect {
@@ -797,6 +877,27 @@ body {
   border-radius: var(--mage-modal-radius);
 }
 .overlay.mage-overlay { z-index: var(--z-mage-modal); }
+.nemesis-mat-preview { border-radius: 8px; }
+.nemesis-mat-modal-frame {
+  height: min(74vh, 800px);
+  width: auto;
+  max-width: 84vw;
+  aspect-ratio: var(--nemesis-mat-ratio);
+  border-radius: 9px;
+}
+.nemesis-mat-modal-frame .mage-modal-image { object-fit: contain; border-radius: 9px; }
+.nemesis-reveal-overlay { z-index: var(--z-decision); }
+.nemesis-reveal-modal { min-width: min(360px, calc(100vw - 24px)); }
+.nemesis-reveal-card {
+  width: min(252px, 58vw);
+  height: min(378px, 68vh);
+  margin: 14px auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #151a29;
+}
+.nemesis-reveal-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
 @keyframes card-preview-in {
   from { opacity: 0; transform: translate(-50%, -50%) scale(.96); }
   to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
@@ -892,7 +993,22 @@ body {
 }
 
 /* ===== Card decision modal ===== */
-.decision-overlay { z-index: var(--z-decision); }
+.decision-overlay { z-index: var(--z-decision); pointer-events: none; }
+.decision-overlay > .overlay-card { pointer-events: auto; }
+.non-blocking-decision-overlay {
+  background: transparent;
+  pointer-events: none;
+  align-items: flex-start;
+  justify-content: center;
+  padding: clamp(72px, 10vh, 140px) 12px 0;
+}
+.non-blocking-prepped-modal {
+  pointer-events: auto;
+  max-width: min(720px, calc(100vw - 24px));
+  padding: 14px 20px;
+}
+.non-blocking-prepped-modal h2 { margin-bottom: 4px; font-size: 18px; }
+.non-blocking-prepped-modal .decision-hint { margin-bottom: 6px; font-size: 12px; }
 
 @keyframes overlay-fade-in {
   from { opacity: 0; }
@@ -931,7 +1047,7 @@ body {
 .decision-card-zone {
   /* Keep every source area aligned to a five-card row, even when the last
      row currently contains fewer cards. */
-  width: 636px;
+  width: calc(var(--decision-columns, 5) * 92px + 130px);
   max-width: 100%;
   box-sizing: border-box;
   margin: 12px 0;
@@ -981,8 +1097,8 @@ body {
 }
 .decision-card-choice.selected {
   z-index: var(--z-local-hover);
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px var(--accent) inset;
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px var(--ok) inset;
   transform: translateY(-3px);
 }
 
@@ -990,7 +1106,7 @@ body {
    reserves columns for the cards it actually contains. */
 .decision-card-zone .decision-card-row {
   width: max-content;
-  grid-template-columns: 150px repeat(var(--choice-columns), minmax(0, 82px));
+  grid-template-columns: 92px repeat(var(--choice-columns), minmax(0, 82px));
 }
 
 @media (max-width: 520px) {
@@ -1001,7 +1117,7 @@ body {
   }
   .decision-card-zone .decision-card-row {
     min-width: 100%;
-    grid-template-columns: 140px repeat(var(--choice-columns), 82px);
+    grid-template-columns: 92px repeat(var(--choice-columns), 82px);
   }
 }
 
@@ -1039,7 +1155,7 @@ body {
   font-weight: 700;
 }
 .turn-order-review-card:hover { border-color: var(--accent); }
-.turn-order-review-card.selected { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(122, 162, 255, .2) inset; }
+.turn-order-review-card.selected { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(158, 206, 106, .35) inset; }
 .turn-order-review-card.nemesis { color: var(--danger); }
 .turn-order-review-index { color: var(--accent); font-size: 12px; }
 .turn-order-review-order { color: var(--muted); text-align: center; min-height: 20px; margin: 10px 0; }
@@ -1121,9 +1237,12 @@ body {
 .pile-modal .muted { color: var(--muted); font-weight: 400; font-size: 12px; }
 .pile-modal .empty { color: var(--muted); font-style: italic; padding: 10px 0; }
 .pile-modal {
-  width: min(640px, calc(100vw - 32px));
+  width: min(calc(var(--pile-columns, 5) * 92px + 188px), calc(100vw - 32px));
   max-height: min(88vh, 720px);
   overflow-y: auto;
+}
+.pile-modal:not(.pile-modal-with-labels) {
+  width: min(calc(var(--pile-columns, 5) * 92px + 64px), calc(100vw - 32px));
 }
 .pile-rows {
   display: flex;
@@ -1134,13 +1253,13 @@ body {
 }
 .pile-row {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 82px));
+  grid-template-columns: repeat(var(--pile-columns, 5), minmax(0, 82px));
   justify-content: center;
   gap: 10px;
 }
 .pile-row-labeled {
   width: 100%;
-  grid-template-columns: 92px repeat(5, minmax(0, 82px));
+  grid-template-columns: 92px repeat(var(--pile-columns, 5), minmax(0, 82px));
   justify-content: start;
 }
 .pile-row-label {
@@ -1181,7 +1300,7 @@ body {
     gap: 5px;
   }
   .pile-row-labeled {
-    grid-template-columns: 78px repeat(5, minmax(0, 1fr));
+    grid-template-columns: 78px repeat(var(--pile-columns, 5), minmax(0, 1fr));
   }
   .pile-card.pile-card-image {
     width: 100%;
@@ -1191,11 +1310,11 @@ body {
   .decision-card-zone .decision-card-row {
     width: max-content;
     min-width: 100%;
-    grid-template-columns: 140px repeat(5, 82px);
+    grid-template-columns: 92px repeat(5, 82px);
   }
 }
 
-.card.small.selected { border-color: var(--danger); box-shadow: 0 0 0 1px var(--danger) inset; }
+.card.small.selected { border-color: var(--ok); box-shadow: 0 0 0 1px var(--ok) inset; }
 
 /* ===== Help modal ===== */
 .help-overlay { z-index: var(--z-help); }

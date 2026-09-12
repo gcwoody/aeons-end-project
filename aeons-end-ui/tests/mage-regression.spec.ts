@@ -17,7 +17,17 @@ async function resolveAttackIfNeeded(page: Page) {
 }
 
 async function resolveStartupInterrupts(page: Page) {
-  for (let attempt = 0; attempt < 8; attempt++) {
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const continueDraw = page.getByRole('button', { name: 'Continue', exact: true })
+    if (await continueDraw.isVisible().catch(() => false)) {
+      await continueDraw.click()
+      continue
+    }
+    const resolveCard = page.getByRole('button', { name: 'Resolve Card', exact: true })
+    if (await resolveCard.isVisible().catch(() => false)) {
+      await resolveCard.click()
+      continue
+    }
     const skip = page.getByRole('button', { name: 'Skip', exact: true })
     if (await skip.isVisible().catch(() => false)) {
       await skip.click()
@@ -112,6 +122,7 @@ test('Kadir can stack two spells on one Breach in the UI', async ({ page }) => {
   await page.getByLabel('Player 1').selectOption('kadir')
   await page.getByLabel('Player 2').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
 
   await page.keyboard.press('Control+d')
   await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
@@ -154,6 +165,87 @@ test('Kadir can stack two spells on one Breach in the UI', async ({ page }) => {
   }
 
   await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(2)
+})
+
+test('a spell stays highlighted until its damage target is confirmed', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'casting'
+  debugState.selectedPlayer = 'p1'
+  debugState.game.currentTurn = 'p1'
+  debugState.game.currentPhase = 'casting'
+  debugState.game.players[0].breaches[0].prepSpells = ['lava_tendril']
+  debugState.game.nemesis.playArea = [{
+    instanceId: 'target-minion:1', cardId: 'bane_sire', cardType: 'minion', placedAt: 1, lifeTokens: 3,
+  }]
+  debugState.game.pendingDecision = {
+    id: 'target-1', playerId: 'p1', prompt: 'Choose a damage target', kind: 'select_damage_target',
+    targets: [
+      { kind: 'nemesis', id: 'nemesis', label: 'Nemesis' },
+      { kind: 'minion', id: 'minion:1', placedAt: 1, cardId: 'bane_sire', label: 'Bane Sire' },
+    ],
+  }
+  debugState.game.pendingEffect = {
+    playerId: 'p1', sourceCardId: 'lava_tendril', remainingEffects: [],
+    awaiting: { kind: 'deal_damage', amount: 3, target: 'nemesis_or_minion' },
+    pendingSpellCast: { playerId: 'p1', breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', discard: true },
+    spellDamageEffectSeen: true,
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const pendingSpell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  await expect(pendingSpell).toHaveClass(/pending-cast-spell/)
+  await expect(page.locator('.nemesis-play-card.damage-target')).toBeVisible()
+
+  await page.locator('.char-btn').nth(1).click()
+  await page.locator('.deck-pile.clickable').click()
+  await expect(page.locator('.pile-modal')).toBeVisible()
+  await page.locator('.pile-modal').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.locator('.char-btn').first().click()
+
+  await page.locator('.nemesis-play-card.damage-target').click()
+  await expect(pendingSpell).toHaveCount(0)
+})
+
+test('preparing a spell preserves the remaining hand order', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'main'
+  debugState.selectedPlayer = 'p1'
+  debugState.game.currentTurn = 'p1'
+  debugState.game.currentPhase = 'main'
+  debugState.game.players[0].hand = ['spark', 'crystal', 'crystal', 'crystal', 'spark']
+  debugState.game.players[0].breaches[0].opened = true
+  debugState.game.players[0].breaches[0].prepSpells = []
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await expect.poll(() => page.locator('.hand img').evaluateAll(images => images.map(image => image.alt))).toEqual([
+    'Spark', 'Crystal', 'Crystal', 'Crystal', 'Spark',
+  ])
+  await dragSpellToBreach(page, page.locator('.hand .card').last(), 1)
+  await expect.poll(() => page.locator('.hand img').evaluateAll(images => images.map(image => image.alt))).toEqual([
+    'Spark', 'Crystal', 'Crystal', 'Crystal',
+  ])
 })
 
 test('Save & Exit creates a resumable game record', async ({ page }) => {

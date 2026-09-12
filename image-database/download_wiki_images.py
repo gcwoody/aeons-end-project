@@ -25,6 +25,21 @@ SECTIONS: dict[str, str] = {
     "Supply Spells": "supply_spells",
 }
 
+NEMESIS_SECTIONS: dict[str, str] = {
+    name: name
+    for name in ("Carapace Queen", "Crooked Mask", "Prince of Gluttons", "Rageborne")
+}
+
+BASIC_NEMESIS_SECTIONS: dict[str, str] = {
+    f"Tier {tier} Cards": f"Tier {tier}" for tier in range(1, 4)
+}
+
+COLLECTIONS = {
+    "supply": (SECTIONS, "wave1_supply_cards"),
+    "nemesis": (NEMESIS_SECTIONS, "cards/wave1/nemesis"),
+    "basic-nemesis": (BASIC_NEMESIS_SECTIONS, "cards/wave1/nemesis/basic nemesis cards"),
+}
+
 
 def request_json(opener, params: dict[str, str], retries: int = 3) -> dict:
     url = f"{API_URL}?{urlencode(params)}"
@@ -114,7 +129,12 @@ def download(opener, url: str, destination: Path, retries: int = 3) -> None:
     for attempt in range(retries):
         try:
             with opener.open(request, timeout=60) as response:
-                destination.write_bytes(response.read())
+                if not response.headers.get_content_type().startswith("image/"):
+                    raise RuntimeError(f"Expected an image from {url}")
+                content = response.read()
+                if not content:
+                    raise RuntimeError(f"Empty image response from {url}")
+                destination.write_bytes(content)
             return
         except (HTTPError, URLError, TimeoutError) as error:
             if attempt == retries - 1:
@@ -125,10 +145,15 @@ def download(opener, url: str, destination: Path, retries: int = 3) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
+        "--collection",
+        choices=tuple(COLLECTIONS),
+        default="supply",
+        help="Download supply cards, core-box nemeses, or basic nemesis cards by tier",
+    )
+    parser.add_argument(
         "--output",
         type=Path,
-        default=Path(__file__).parent / "wave1_supply_cards",
-        help="Root directory for downloaded images (default: ./wave1_supply_cards)",
+        help="Override the collection's default output directory",
     )
     parser.add_argument(
         "--force",
@@ -146,6 +171,9 @@ def main() -> None:
         help="Connect directly without using a proxy",
     )
     args = parser.parse_args()
+    sections, default_output = COLLECTIONS[args.collection]
+    if args.output is None:
+        args.output = Path(__file__).parent / default_output
 
     opener = build_opener(
         ProxyHandler({})
@@ -158,7 +186,7 @@ def main() -> None:
 
     total_downloaded = 0
     total_skipped = 0
-    for section_name, folder in SECTIONS.items():
+    for section_name, folder in sections.items():
         destination_dir = args.output / folder
         destination_dir.mkdir(parents=True, exist_ok=True)
         print(f"\n== {section_name} -> {destination_dir} ==")
@@ -166,7 +194,7 @@ def main() -> None:
         urls = image_urls(opener, names)
         missing = [name for name in names if name not in urls]
         if missing:
-            print(f"Warning: no original URL returned for {len(missing)} image(s): {', '.join(missing)}")
+            raise RuntimeError(f"No original URL returned for: {', '.join(missing)}")
 
         downloaded = 0
         skipped = 0
@@ -175,7 +203,7 @@ def main() -> None:
             if not url:
                 continue
             destination = destination_dir / safe_filename(name)
-            if destination.exists() and not args.force:
+            if destination.exists() and destination.stat().st_size > 0 and not args.force:
                 skipped += 1
                 continue
             download(opener, url, destination)

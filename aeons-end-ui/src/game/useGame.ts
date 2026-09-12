@@ -12,13 +12,14 @@ import {
   getPreppedCardActions, activatePreppedCardAction as engineActivatePreppedCardAction,
   resolvePendingDecision as engineResolvePendingDecision,
   canPlayerAct, canActivateAbilityDuringMain, toRoman,
+  advanceNemesisTurn, getNemesisDiscardActions, discardNemesisPower,
   nemesisDrawCard, nemesisResolveAttack,
   checkGameOver, checkPlayerDeath,
 } from '@engine/engine'
 import { getCard } from '@engine/data'
-import type { CardChoice, GameState, PendingDecisionAnswer, PlayerState } from '@engine/types'
+import type { CardChoice, GameState, PendingDecisionAnswer, PlayerState, PreppedSpellChoice } from '@engine/types'
 
-export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_target' | 'gameover'
+export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'nemesis_target' | 'gameover'
 
 export interface LogEntry { id: number; text: string; kind: 'info' | 'ok' | 'warn' }
 
@@ -72,6 +73,7 @@ const state = reactive({
   saves: [] as SaveSummary[],
   activeSaveId: null as string | null,
   deleteSaveId: null as string | null,
+  pendingPreppedSpells: [] as PreppedSpellChoice[],
   exitPrompt: false,
   mage1: 'jian',
   mage2: 'brama',
@@ -135,6 +137,37 @@ function syncSaveList() {
   storedSaves.sort((a, b) => b.updatedAt - a.updatedAt)
   state.saves = storedSaves.map(saveSummary)
   state.hasSave = storedSaves.length > 0
+}
+
+function preppedSpellChoiceKey(choice: PreppedSpellChoice): string {
+  return `${choice.playerId}:${choice.breachIndex}:${choice.spellIndex}:${choice.cardId}`
+}
+
+export function isPendingPreppedSpellSelected(choice: PreppedSpellChoice): boolean {
+  return state.pendingPreppedSpells.some(selected =>
+    preppedSpellChoiceKey(selected) === preppedSpellChoiceKey(choice))
+}
+
+export function togglePendingPreppedSpell(choice: PreppedSpellChoice): void {
+  const decision = state.game?.pendingDecision
+  if (decision?.kind !== 'select_prepped_spells') return
+  const candidate = decision.candidates.find(item =>
+    preppedSpellChoiceKey(item) === preppedSpellChoiceKey(choice))
+  if (!candidate) return
+  if (isPendingPreppedSpellSelected(candidate)) {
+    state.pendingPreppedSpells = state.pendingPreppedSpells.filter(selected =>
+      preppedSpellChoiceKey(selected) !== preppedSpellChoiceKey(candidate))
+    return
+  }
+  if (state.pendingPreppedSpells.length >= decision.max) return
+  state.pendingPreppedSpells.push(candidate)
+}
+
+export function confirmPendingPreppedSpells(): void {
+  const decision = state.game?.pendingDecision
+  if (decision?.kind !== 'select_prepped_spells') return
+  if (state.pendingPreppedSpells.length < decision.min || state.pendingPreppedSpells.length > decision.max) return
+  resolveDecision({ kind: 'select_prepped_spells', choices: [...state.pendingPreppedSpells] })
 }
 
 function readStoredSaves(): StoredSave[] {
@@ -227,6 +260,11 @@ watch(
   },
 )
 
+watch(
+  () => state.game?.pendingDecision?.id,
+  () => { state.pendingPreppedSpells = [] },
+)
+
 function pushLog(text: string, kind: LogEntry['kind'] = 'info') {
   state.log.push({ id: ++logId, text, kind })
 }
@@ -291,6 +329,7 @@ export function undo() {
   state.game = reactive(s.game) as GameState
   state.phase = s.phase
   state.pendingNemesis = s.pendingNemesis
+  state.pendingPreppedSpells = []
   state.prepTarget = null
   state.discardRemaining = []
   state.helpOpen = false
@@ -344,8 +383,8 @@ function beginTurn() {
   const turnNum = g.turnOrderDiscard.length
   if (g.currentTurn === 'nemesis') {
     pushLog(`Turn ${turnNum} — RAGEBORNE begins`, 'warn')
-    state.phase = 'nemesis_target'
-    if (!g.pendingDecision) nemesisReveal()
+    state.phase = g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
+    continueNemesisTurn()
   } else {
     const p = getPlayer(g, g.currentTurn)
     pushLog(`Turn ${turnNum} — ${g.currentTurn.toUpperCase()} (${p.mageType}) begins`, 'info')
@@ -363,6 +402,7 @@ export function newGame(m1: string, m2: string) {
   state.game = g
   state.log = []
   state.pendingNemesis = null
+  state.pendingPreppedSpells = []
   state.prepTarget = null
   state.selectedPlayer = 'p1'
   state.discardRemaining = []
@@ -387,6 +427,7 @@ export function resumeGame(saveId?: string): boolean {
     syncEnginePhaseWithUi()
     state.selectedPlayer = save.selectedPlayer ?? 'p1'
     state.pendingNemesis = save.pendingNemesis ?? null
+    state.pendingPreppedSpells = []
     state.discardRemaining = save.discardRemaining ?? []
     state.prepTarget = null
     state.exitPrompt = false
@@ -450,6 +491,7 @@ function resetToSetup() {
   state.deleteSaveId = null
   state.exitPrompt = false
   state.pendingNemesis = null
+  state.pendingPreppedSpells = []
   state.prepTarget = null
   state.discardRemaining = []
   state.helpOpen = false
@@ -484,7 +526,6 @@ export function closeHelp() {
 }
 
 export function selectPlayer(id: 'p1' | 'p2') {
-  if (state.game?.pendingDecision && state.game.pendingDecision.kind !== 'select_prepped_spell') return
   state.selectedPlayer = id
   state.prepTarget = null
 }
@@ -518,9 +559,7 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
   if (!state.game?.pendingDecision) return
   const wasCasting = state.phase === 'casting'
   const wasCastingPhaseEnd = state.game.pendingEffect?.preppedPhase === 'casting_phase_end'
-  const wasNemesisTurnWaiting = state.phase === 'nemesis_target'
-    && state.game.currentTurn === 'nemesis'
-    && !state.pendingNemesis
+  const wasNemesisTurnWaiting = state.game.currentTurn === 'nemesis'
   const previous = beforeAction()
   const messages = engineResolvePendingDecision(state.game, state.game.pendingDecision.id, answer)
   for (const message of messages) {
@@ -537,7 +576,7 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
     resolveMainPhasePreppedEffects()
     maybeAutoEnd()
   } else if (!state.game.pendingDecision && wasNemesisTurnWaiting) {
-    nemesisReveal()
+    continueNemesisTurn()
   }
   finishAction(previous)
 }
@@ -578,7 +617,7 @@ export function playAllGems() {
 export function prepSpell(cardIdx: number, breachIndex: number) {
   const p = cp()
   const previous = beforeAction()
-  const msg = enginePrepSpell(state.game!, p.id, p.hand[cardIdx]!, breachIndex)
+  const msg = enginePrepSpell(state.game!, p.id, p.hand[cardIdx]!, breachIndex, cardIdx)
   if (msg) pushLog(msg, 'ok')
   state.prepTarget = null
   if (!msg && state.phase === 'main') resolveMainPhasePreppedEffects()
@@ -728,6 +767,35 @@ function nemesisReveal() {
   state.pendingNemesis = card
 }
 
+/** Continue the serializable Nemesis state machine after a UI decision. */
+function continueNemesisTurn() {
+  const g = state.game
+  if (!g || g.currentTurn !== 'nemesis' || g.pendingDecision || g.pendingEffect) return
+  // A completed effect frame may have already finished this Nemesis turn.
+  // startTurn() owns creation of the next serializable Nemesis resolution.
+  if (!g.nemesisResolution) {
+    startTurn(g)
+    beginTurn()
+    return
+  }
+  const messages = advanceNemesisTurn(g)
+  for (const message of messages) pushLog(message, 'warn')
+  if (g.pendingDecision || g.pendingEffect) {
+    state.phase = g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
+    return
+  }
+  if (g.gameOver) {
+    state.phase = 'gameover'
+    return
+  }
+  if (!g.nemesisResolution) {
+    startTurn(g)
+    beginTurn()
+  } else {
+    state.phase = g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
+  }
+}
+
 export function nemesisChooseTarget(target: 'p1' | 'p2' | 'gravehold') {
   const g = state.game!
   const card = state.pendingNemesis
@@ -791,6 +859,20 @@ export const preppedCardActions = computed(() => {
   return getPreppedCardActions(state.game, state.game.currentTurn)
 })
 
+export const nemesisDiscardActions = computed(() => {
+  if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis') return []
+  return getNemesisDiscardActions(state.game, state.game.currentTurn)
+})
+
+export function discardNemesisCard(instanceId: string) {
+  if (!state.game || state.phase !== 'main') return
+  const previous = beforeAction()
+  const messages = discardNemesisPower(state.game, state.game.currentTurn, instanceId)
+  for (const message of messages) pushLog(message, message.startsWith('Discarded') ? 'ok' : 'warn')
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
 export function useGame() {
   return {
     state,
@@ -800,10 +882,11 @@ export function useGame() {
     returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
-    endTurn, nemesisChooseTarget, undo, aetherInfo, toRoman,
+    endTurn, nemesisChooseTarget, discardNemesisCard, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, openPile, closePile,
+    isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     castableSpells, buyables, playerCanAct,
-    displayPlayer, isCurrentSelected, canActMain, canCast, preppedCardActions,
+    displayPlayer, isCurrentSelected, canActMain, canCast, preppedCardActions, nemesisDiscardActions,
     canActivateAbilityInMain,
   }
 }

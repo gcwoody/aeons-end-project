@@ -35,7 +35,8 @@ Vue `reactive()` 包装 GameState，把点击、选择和阶段操作交给引�
 | `game/useGame.ts` | 响应式状态封装、UI 阶段流转、操作入口、自动存档、撤销 |
 | `App.vue` | 全屏布局、快捷键、退出提示、Nemesis 目标和胜负弹窗 |
 | `components/GameTopArea.vue` | 顶部 Nemesis 区域和 Turn Order Bar 的组合 |
-| `components/NemesisArea.vue` | Nemesis 牌库、弃牌堆和场上区域 |
+| `components/NemesisArea.vue` | 全高 Mat、可选子版图、上排五分区、场上卡牌及 Mat/弃牌弹窗 |
+| `game/nemesis-presentation.ts` | 各 Nemesis 的子版图、专属牌堆、专属弃牌区显示配置 |
 | `components/TurnOrderBar.vue` | 六个回合槽、Nemesis/Gravehold HP、Round |
 | `components/PlayerArea.vue` | 法师选择、裂隙、施法、Played、手牌、牌库和控制栏 |
 | `components/MarketPanel.vue` | 九个固定位置的市场牌堆；耗尽后保留不可见空槽 |
