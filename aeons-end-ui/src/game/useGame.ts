@@ -4,7 +4,6 @@ import {
   getCastableSpells, castSpell as engineCastSpell,
   playCard as enginePlayCard, prepSpell as enginePrepSpell,
   movePreppedSpell as engineMovePreppedSpell,
-  replacePreppedSpell as engineReplacePreppedSpell,
   returnPreppedSpellToHand as engineReturnPreppedSpellToHand,
   getBuyableCards, buyCard as engineBuyCard,
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
@@ -687,26 +686,12 @@ export function prepSpell(cardIdx: number, breachIndex: number) {
 export function movePreppedSpell(
   sourceBreachIndex: number, sourceSpellIndex: number, targetBreachIndex: number, targetSpellIndex?: number,
 ) {
-  if (!state.game || !canActMain.value) return
+  if (!state.game || !canRepositionPrepped.value) return
   const previous = beforeAction()
   const msg = engineMovePreppedSpell(
     state.game, cp().id, sourceBreachIndex, sourceSpellIndex, targetBreachIndex, targetSpellIndex,
   )
   if (msg) pushLog(msg, msg.startsWith('Moved ') || msg.startsWith('Swapped ') ? 'ok' : 'warn')
-  finishAction(previous)
-}
-
-export function replacePreppedSpell(
-  cardIdx: number, breachIndex: number, replacedSpellIndex?: number,
-) {
-  if (!state.game || !canActMain.value) return
-  const previous = beforeAction()
-  const p = cp()
-  const cardId = p.hand[cardIdx]
-  const msg = cardId
-    ? engineReplacePreppedSpell(state.game, p.id, cardId, breachIndex, cardIdx, replacedSpellIndex)
-    : 'Card not in hand'
-  if (msg) pushLog(msg, msg.startsWith('Prepped ') ? 'ok' : 'warn')
   finishAction(previous)
 }
 
@@ -928,6 +913,15 @@ export const canActMain = computed(() =>
   isCurrentSelected.value && state.phase === 'main',
 )
 
+export const canRepositionPrepped = computed(() =>
+  !!state.game
+    && state.game.currentTurn !== 'nemesis'
+    && isCurrentSelected.value
+    && (state.phase === 'main' || state.phase === 'discard_order')
+    && !state.game.pendingDecision
+    && !state.game.pendingEffect,
+)
+
 export const canActivateAbilityInMain = computed(() =>
   !!state.game && state.phase === 'main' && canActivateAbilityDuringMain(state.game, state.selectedPlayer),
 )
@@ -975,12 +969,12 @@ export function useGame() {
     returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
-    movePreppedSpell, replacePreppedSpell, returnPreppedSpellToHand,
+    movePreppedSpell, returnPreppedSpellToHand,
     endTurn, nemesisChooseTarget, discardNemesisCard, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, openPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     castableSpells, buyables, playerCanAct,
-    displayPlayer, isCurrentSelected, canActMain, canCast, preppedCardActions, nemesisDiscardActions,
+    displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast, preppedCardActions, nemesisDiscardActions,
     canActivateAbilityInMain,
   }
 }

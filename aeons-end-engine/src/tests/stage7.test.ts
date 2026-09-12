@@ -13,7 +13,6 @@ import {
   getPreppedSpellChoices,
   getCastableSpells,
   movePreppedSpell,
-  replacePreppedSpell,
   returnPreppedSpellToHand,
   getSpellDamagePreview,
   prepSpell,
@@ -21,6 +20,7 @@ import {
   gainLife,
   startTurn,
   canActivateAbilityDuringMain,
+  canPlayerAct,
   nemesisResolveAttack,
 } from '../engine'
 import { arcaneNexus, getCard, INITIAL_CARDS, MARKET_CARDS, MAGES } from '../data'
@@ -510,18 +510,38 @@ function testHandAndBreachSpellTransfers(): void {
   player.breaches[0]!.opened = true
 
   assert(
-    replacePreppedSpell(game, player.id, 'flare', 1, 0)?.includes('returned Spark'),
-    'A hand spell replaces a spell already prepped on an available Breach',
+    prepSpell(game, player.id, 'flare', 1, 0)?.includes('Breach already has'),
+    'A hand spell cannot replace a spell already prepped on an available Breach',
   )
-  assertEqual(player.hand.join(','), 'spark', 'The replaced spell returns to hand')
-  assertEqual(player.breaches[0]!.prepSpells.join(','), 'flare', 'The dragged hand spell is prepped on the Breach')
+  assertEqual(player.hand.join(','), 'flare', 'The rejected hand spell remains in hand')
+  assertEqual(player.breaches[0]!.prepSpells.join(','), 'spark', 'The existing prepped spell remains on the Breach')
 
   assert(
-    returnPreppedSpellToHand(game, player.id, 1, 0)?.includes('Returned Flare'),
+    returnPreppedSpellToHand(game, player.id, 1, 0)?.includes('Returned Spark'),
     'A prepped spell can be returned to hand during Main Phase',
   )
-  assertEqual(player.hand.join(','), 'spark,flare', 'Returned spells are appended to hand')
+  assertEqual(player.hand.join(','), 'flare,spark', 'Returned spells are appended to hand')
   assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Returning a spell clears its Breach slot')
+}
+
+function testPreppedSpellRepositionDoesNotKeepMainPhaseOpen(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  game.currentTurn = player.id
+  game.currentPhase = 'main'
+  player.hand = []
+  player.bonusAether = 0
+  player.breaches[0]!.opened = true
+  player.breaches[0]!.prepSpells = ['spark']
+  player.breaches[1]!.opened = true
+
+  assert(!canPlayerAct(game, player.id), 'Prepped spell repositioning is not a Main Phase action')
+  assert(
+    movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Moved Spark'),
+    'A prepped spell can move after other Main Phase actions are exhausted',
+  )
+  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'The source Breach is cleared after repositioning')
+  assertEqual(player.breaches[1]!.prepSpells.join(','), 'spark', 'The spell reaches the newly available Breach')
 }
 
 function testPreppedOncePerTurnAndTargets(): void {
@@ -889,6 +909,7 @@ function run(): void {
   testSpellDamagePreview()
   testMovePreppedSpell()
   testHandAndBreachSpellTransfers()
+  testPreppedSpellRepositionDoesNotKeepMainPhaseOpen()
   testPreppedOncePerTurnAndTargets()
   testReturnedGemKeepsPlayCount()
   testTurnReset()

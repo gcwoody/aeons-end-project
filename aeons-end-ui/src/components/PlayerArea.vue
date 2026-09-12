@@ -10,12 +10,12 @@ import { breachImageUrl, breachRotation } from '../breach-images'
 import MageBoard from './MageBoard.vue'
 
 const {
-  state, displayPlayer, isCurrentSelected, canActMain, canCast,
+  state, displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast,
   canActivateAbilityInMain,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
   activatePreppedCardAction, preppedCardActions,
   isPendingPreppedSpellSelected, togglePendingPreppedSpell,
-  playCard, playAllGems, castSpell, movePreppedSpell, replacePreppedSpell, returnPreppedSpellToHand, endTurn, toMainPhase,
+  playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, endTurn, toMainPhase,
   selectPlayer, clickDiscardCard, openPile, resolveDecision, toggleHelp,
 } = useGame()
 
@@ -67,11 +67,8 @@ const canPrep = (b: BreachState) =>
     && (b.opened || b.focusedThisTurn)
 
 const canMovePreppedTo = (b: BreachState) =>
-  b.present !== false && canActMain.value && (b.opened || b.focusedThisTurn)
+  b.present !== false && canRepositionPrepped.value && (b.opened || b.focusedThisTurn)
     && (!draggedPreppedSpell.value || draggedPreppedSpell.value.breachIndex !== b.index)
-
-const canReceiveHandSpell = (b: BreachState) =>
-  b.present !== false && canActMain.value && (b.opened || b.focusedThisTurn)
 
 const isMustCastBreach = (b: BreachState) =>
   canCast.value && !state.game?.pendingDecision && b.prepSpells.length > 0 && getCastableSpells(state.game!, player.value.id)
@@ -250,7 +247,7 @@ function startSpellPointerDrag(i: number, event: PointerEvent) {
 }
 
 function startPreppedSpellDrag(b: BreachState, spellIndex: number, event: PointerEvent) {
-  if (event.button !== 0 || !canActMain.value || state.game?.pendingDecision || b.present === false) return
+  if (event.button !== 0 || !canRepositionPrepped.value || state.game?.pendingDecision || b.present === false) return
   const cardId = b.prepSpells[spellIndex]
   if (!cardId) return
   const source = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
@@ -302,7 +299,7 @@ function finishSpellPointerDrag(event: PointerEvent) {
     const height = Math.max(0, Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top))
     return width * height
   }
-  const breachTarget = [...document.querySelectorAll<HTMLElement>('[data-breach-index]')]
+  const breachCandidates = [...document.querySelectorAll<HTMLElement>('[data-breach-index]')]
     .map(element => {
       const rect = element.getBoundingClientRect()
       return {
@@ -313,6 +310,7 @@ function finishSpellPointerDrag(event: PointerEvent) {
       }
     })
     .filter(candidate => candidate.touches)
+  const breachTarget = [...breachCandidates]
     .sort((a, b) => b.area - a.area)[0]?.element
   const targetSpell = [...document.querySelectorAll<HTMLElement>('[data-spell-index]')]
     .map(element => ({
@@ -321,8 +319,22 @@ function finishSpellPointerDrag(event: PointerEvent) {
       area: overlapArea(draggedRect, element.getBoundingClientRect()),
     }))
     .filter(candidate => candidate.breach && candidate.area > 0)
+    .filter(candidate => {
+      const breachIndex = Number(candidate.breach?.dataset.breachIndex)
+      const breach = player.value.breaches.find(item => item.index === breachIndex)
+      return !!breach && canMovePreppedTo(breach)
+    })
     .sort((a, b) => b.area - a.area)[0] ?? null
-  const target = targetSpell?.breach ?? breachTarget
+  const handBreachTarget = breachCandidates
+    .map(candidate => ({
+      ...candidate,
+      breach: player.value.breaches.find(item => item.index === Number(candidate.element.dataset.breachIndex)),
+    }))
+    .filter(candidate => !!candidate.breach && canPrep(candidate.breach))
+    .sort((a, b) => b.area - a.area || Number(a.element.dataset.breachIndex) - Number(b.element.dataset.breachIndex))[0]?.element
+  const target = preppedSource
+    ? targetSpell?.breach ?? breachTarget
+    : handBreachTarget
   const breachIndex = target ? Number(target.dataset.breachIndex) : NaN
   const targetSpellIndex = targetSpell ? Number(targetSpell.element.dataset.spellIndex) : undefined
   const handRect = handElement.value?.getBoundingClientRect()
@@ -344,9 +356,11 @@ function finishSpellPointerDrag(event: PointerEvent) {
       }
     } else if (spellIndex !== null && target) {
       const breach = player.value.breaches.find((item) => item.index === breachIndex)
-      if (breach && canReceiveHandSpell(breach)) {
-        if (breach.prepSpells.length > 0) replacePreppedSpell(spellIndex, breach.index, targetSpellIndex)
-        else if (canPrep(breach)) prepSpell(spellIndex, breach.index)
+      if (breach) {
+        // A hand spell uses the normal prep flow even if the target Breach
+        // already contains a spell. Multi-spell Breaches can still stack;
+        // an existing spell is never replaced by a hand drag.
+        if (canPrep(breach)) prepSpell(spellIndex, breach.index)
       }
     }
   }
@@ -447,7 +461,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           open: b.opened,
           castable: isCastableBreach(b),
           'must-cast': isMustCastBreach(b),
-          'drag-target': draggingSpell && (draggedPreppedSpell ? canMovePreppedTo(b) : canReceiveHandSpell(b)),
+          'drag-target': draggingSpell && (draggedPreppedSpell ? canMovePreppedTo(b) : canPrep(b)),
           'move-drag-target': draggingSpell && !!draggedPreppedSpell && canMovePreppedTo(b),
           'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
         }"
@@ -504,7 +518,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                   'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
                   'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
                   'pending-cast-spell': pendingCastSpell(b, spellIndex),
-                  'repositionable-spell': canActMain && !state.game?.pendingDecision,
+                  'repositionable-spell': canRepositionPrepped && !state.game?.pendingDecision,
                 }"
               >
                 <img v-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />

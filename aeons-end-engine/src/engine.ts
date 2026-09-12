@@ -2892,33 +2892,6 @@ export function prepSpell(
   return `Prepped ${card.name} on Breach ${toRoman(breachIndex)}`
 }
 
-/** Replace a spell on an available Breach with a spell from hand. */
-export function replacePreppedSpell(
-  g: GameState, playerId: string, cardId: string, breachIndex: number,
-  handIndex: number, replacedSpellIndex?: number,
-): string | null {
-  const blocked = pendingActionMessage(g)
-  if (blocked) return blocked
-  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Spells can only be replaced during your Main Phase'
-
-  const p = getPlayer(g, playerId)
-  if (handIndex < 0 || handIndex >= p.hand.length || p.hand[handIndex] !== cardId) return 'Card not in hand'
-  if (getCard(cardId).type !== 'spell') return 'Only spell cards can be prepped'
-
-  const breach = p.breaches.find(item => item.index === breachIndex)
-  if (!breach || !isPresentBreach(breach)) return 'Invalid Breach'
-  if (!breach.opened && !breach.focusedThisTurn) return 'Cannot prep on this Breach'
-  if (breach.prepSpells.length === 0) return 'No spell is prepped on this Breach'
-
-  const targetIndex = replacedSpellIndex ?? 0
-  const replacedCardId = breach.prepSpells[targetIndex]
-  if (!replacedCardId) return 'No spell is prepped at the target position'
-  p.hand.splice(handIndex, 1)
-  breach.prepSpells[targetIndex] = cardId
-  p.hand.push(replacedCardId)
-  return `Prepped ${getCard(cardId).name} and returned ${getCard(replacedCardId).name} to hand`
-}
-
 /** Return one of the player's prepped spells to their hand during Main Phase. */
 export function returnPreppedSpellToHand(
   g: GameState, playerId: string, breachIndex: number, spellIndex: number,
@@ -2937,14 +2910,14 @@ export function returnPreppedSpellToHand(
   return `Returned ${getCard(cardId).name} to hand`
 }
 
-/** Move a prepped spell during Main Phase, swapping with a spell at the target when needed. */
+/** Move a prepped spell during the player's turn, swapping with a spell at the target when needed. */
 export function movePreppedSpell(
   g: GameState, playerId: string, sourceBreachIndex: number, sourceSpellIndex: number,
   targetBreachIndex: number, targetSpellIndex?: number,
 ): string | null {
   const blocked = pendingActionMessage(g)
   if (blocked) return blocked
-  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Prepped spells can only be moved during your Main Phase'
+  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Prepped spells can only be moved before your turn ends'
   if (sourceBreachIndex === targetBreachIndex) return 'Choose a different Breach'
 
   const p = getPlayer(g, playerId)

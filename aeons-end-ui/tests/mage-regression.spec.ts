@@ -205,7 +205,32 @@ test('prepped spells can move between Breaches and swap positions during Main Ph
   await expect(page.locator('.breach[data-breach-index="2"] img[alt="Spark"]')).toBeVisible()
 })
 
-test('a hand spell replaces a prepped spell and a prepped spell can return to hand', async ({ page }) => {
+test('prepped spells remain movable during discard order before the turn fully ends', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = 'p1'
+    game.currentPhase = 'main'
+    game.players[0].breaches[0].opened = true
+    game.players[0].breaches[0].prepSpells = ['spark']
+    game.players[0].breaches[1].opened = true
+    game.players[0].playedThisTurn = ['crystal']
+  }, 'discard_order')
+
+  const source = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  const target = page.locator('.breach[data-breach-index="2"]')
+  await expect(source).toHaveClass(/repositionable-spell/)
+  await dragLocatorToLocator(page, source, target)
+
+  await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(0)
+  await expect(page.locator('.breach[data-breach-index="2"] img[alt="Spark"]')).toBeVisible()
+})
+
+test('a hand spell does not replace a prepped spell, while a prepped spell can return to hand', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -224,13 +249,13 @@ test('a hand spell replaces a prepped spell and a prepped spell can return to ha
   const handSpell = hand.locator('.card').filter({ has: page.locator('img[alt="Flare"]') })
   const breachSpell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
   await dragLocatorToLocator(page, handSpell, breachSpell)
-  await expect(page.locator('.breach[data-breach-index="1"] img[alt="Flare"]')).toBeVisible()
-  await expect(hand.locator('img[alt="Spark"]')).toBeVisible()
+  await expect(page.locator('.breach[data-breach-index="1"] img[alt="Spark"]')).toBeVisible()
+  await expect(hand.locator('img[alt="Flare"]')).toBeVisible()
 
   const returnedSpell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
   await dragLocatorToLocator(page, returnedSpell, hand)
   await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(0)
-  await expect(hand.locator('img[alt="Flare"]')).toBeVisible()
+  await expect(hand.locator('img[alt="Spark"]')).toBeVisible()
 })
 
 test('a spell stays highlighted until its damage target is confirmed', async ({ page }) => {
