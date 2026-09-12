@@ -42,6 +42,10 @@ export type CardEffectCondition =
       comparison: EffectComparison
       count: number
     }
+  | {
+      /** True when the player still has a present breach that is not open. */
+      kind: 'has_unopened_breach'
+    }
 
 export type CardEffectTrigger =
   | { kind: 'on_gain' }
@@ -171,6 +175,8 @@ export interface PendingNemesisDiscard {
 export interface DecisionOption {
   id: string
   label: string
+  /** The option is shown for context but cannot be selected in the current state. */
+  disabled?: boolean
 }
 
 export type PendingDecision = PendingDecisionBase & (
@@ -200,6 +206,8 @@ export type PendingDecision = PendingDecisionBase & (
       candidates: PreppedSpellChoice[]
       min: number
       max: number
+      /** Choices that are required but remain on the board until confirmation. */
+      requiredChoices?: PreppedSpellChoice[]
     }
   | {
       kind: 'select_collective_cards'
@@ -287,6 +295,8 @@ export interface CardEffectOption {
   id: string
   label: string
   effects: CardEffect[]
+  /** Optional dynamic rule used to determine whether this choice is available. */
+  condition?: CardEffectCondition
 }
 
 /** A small, serializable vocabulary for reusable card rules. */

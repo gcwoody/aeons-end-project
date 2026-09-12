@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount } from 'vue'
+import { ref, onBeforeUnmount, watch } from 'vue'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 
@@ -13,6 +13,7 @@ const props = defineProps<{
   previewDelay?: number
   imageObjectFit?: 'cover' | 'contain' | 'fill'
   previewClass?: string
+  disabled?: boolean
 }>()
 
 const visible = ref(false)
@@ -40,6 +41,7 @@ function updatePosition(clientX: number, clientY: number) {
 }
 
 function startPreview(event: MouseEvent) {
+  if (props.disabled) return
   clearTimeout(showTimer)
   previewSize.value = {
     width: props.previewWidth ?? 210,
@@ -51,6 +53,19 @@ function startPreview(event: MouseEvent) {
     visible.value = true
     window.addEventListener('wheel', resizePreview, { passive: false })
   }, props.previewDelay ?? 500)
+}
+
+function isPreviewDisabledTarget(target: EventTarget | null): boolean {
+  return target instanceof Element && Boolean(target.closest('[data-card-preview-disabled]'))
+}
+
+function handleMouseOver(event: MouseEvent) {
+  if (props.disabled || isPreviewDisabledTarget(event.target)) {
+    stopPreview()
+    return
+  }
+  if (visible.value || showTimer) return
+  startPreview(event)
 }
 
 function resizePreview(event: WheelEvent) {
@@ -71,12 +86,15 @@ function stopPreview() {
 }
 
 onBeforeUnmount(stopPreview)
+watch(() => props.disabled, (disabled) => {
+  if (disabled) stopPreview()
+})
 </script>
 
 <template>
   <span
     class="card-hover-wrap"
-    @mouseenter="startPreview"
+    @mouseover="handleMouseOver"
     @mouseleave="stopPreview"
   >
     <slot />

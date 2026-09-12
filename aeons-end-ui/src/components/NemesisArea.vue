@@ -167,7 +167,7 @@ onBeforeUnmount(() => {
               <div class="nemesis-play-card" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === card.instanceId), 'damage-target': isDamageTarget(`minion:${card.placedAt}`), 'effect-target': isMainEffectTarget(card.instanceId ?? `${card.cardId}:${card.placedAt}`) }]" @click="isDamageTarget(`minion:${card.placedAt}`) ? chooseDamageTarget(`minion:${card.placedAt}`) : confirmMainEffect(card)">
                 <img v-if="cardImageUrl(card.cardId)" :src="cardImageUrl(card.cardId)" :alt="getCard(card.cardId).name" draggable="false" />
                 <div v-else class="nemesis-card-fallback">{{ getCard(card.cardId).name }}</div>
-                <div class="nemesis-card-meta"><span>{{ cardCounter(card) }}</span><button v-if="nemesisDiscardActions.some(action => action.instanceId === card.instanceId)" class="btn small" @click.stop="discardAction(card)">To Discard</button></div>
+                <div class="nemesis-card-meta"><span>{{ cardCounter(card) }}</span><button v-if="nemesisDiscardActions.some(action => action.instanceId === card.instanceId)" class="btn small" data-card-preview-disabled @click.stop="discardAction(card)">To Discard</button></div>
               </div>
             </CardHoverPreview>
           </div>

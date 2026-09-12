@@ -12,6 +12,7 @@ export const flexingDagger: RelicCard = {
         {
           id: 'reduce_breach_cost',
           label: 'Reduce the next focus or open cost by 3',
+          condition: { kind: 'has_unopened_breach' },
           effects: [{ kind: 'modify_next_breach_cost', amount: 3, actions: ['focus', 'open'] }],
         },
         {

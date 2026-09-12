@@ -12,6 +12,10 @@ import {
   resolvePreppedEffects,
   getPreppedSpellChoices,
   getCastableSpells,
+  movePreppedSpell,
+  replacePreppedSpell,
+  returnPreppedSpellToHand,
+  getSpellDamagePreview,
   prepSpell,
   resolveDrawPhase,
   gainLife,
@@ -313,7 +317,7 @@ function testRelicEffects(): void {
   assert(playCard(game, player.id, 'bottled_vortex')?.includes('Played Bottled Vortex'), 'Bottled Vortex plays')
   assertEqual(game.pendingDecision?.kind, 'select_cards', 'Bottled Vortex asks for cards to destroy')
   assert(game.pendingDecision?.kind === 'select_cards', 'Bottled Vortex decision exposes its card layout')
-  assertEqual(game.pendingDecision.layout, 'pile', 'Bottled Vortex keeps the hand/discard pile layout')
+  assertEqual(game.pendingDecision.layout, 'simple', 'Bottled Vortex uses a plain effect-selection layout')
   const selected = [handChoice(game, player.id, 'spark'), handChoice(game, player.id, 'crystal')]
   resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'select_cards', choices: selected })
   assert(player.destroyedCards.includes('spark') && player.destroyedCards.includes('crystal'), 'Cards are permanently destroyed')
@@ -325,6 +329,26 @@ function testRelicEffects(): void {
   const costs = getBreachActionCosts(costsGame, costsPlayer.id, 3)!
   assertEqual(costs.focus, 0, 'Focus cost is clamped at zero after reduction')
   assertEqual(costs.open, 6, 'Open cost reflects the next-action reduction')
+
+  const allBreachesOpenGame = freshGame()
+  const allBreachesOpenPlayer = allBreachesOpenGame.players[0]!
+  allBreachesOpenPlayer.hand = ['flexing_dagger']
+  for (const breach of allBreachesOpenPlayer.breaches) {
+    if (breach.present !== false) breach.opened = true
+  }
+  playCard(allBreachesOpenGame, allBreachesOpenPlayer.id, 'flexing_dagger')
+  assertEqual(allBreachesOpenGame.pendingDecision?.kind, 'choose_one', 'Flexing Dagger still presents its OR choice')
+  if (allBreachesOpenGame.pendingDecision?.kind === 'choose_one') {
+    const reduceOption = allBreachesOpenGame.pendingDecision.options.find(option => option.id === 'reduce_breach_cost')
+    assertEqual(reduceOption?.disabled, true, 'Flexing Dagger disables breach-cost reduction when every breach is open')
+    const invalidMessages = resolvePendingDecision(
+      allBreachesOpenGame,
+      allBreachesOpenGame.pendingDecision.id,
+      { kind: 'choose_one', optionId: 'reduce_breach_cost' },
+    )
+    assert(invalidMessages.some(message => message.includes('not available')), 'Disabled OR options cannot be selected')
+    assertEqual(allBreachesOpenGame.pendingDecision?.kind, 'choose_one', 'Invalid disabled choice keeps the decision open')
+  }
 }
 
 function testSpellEffects(): void {
@@ -440,6 +464,64 @@ function testSpellEffects(): void {
   brama.breaches[0]!.prepSpells = ['buried_light']
   assert(castSpell(castingAether, brama.id, 1)?.includes('gains 1 Aether'), 'Buried Light grants casting-phase aether')
   assertEqual(brama.bonusAether, 1, 'Casting-phase aether is stored immediately')
+}
+
+function testSpellDamagePreview(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  for (const breach of player.breaches) {
+    breach.opened = breach.index <= 3
+  }
+  player.breaches[2]!.prepSpells = ['planar_insight']
+  assertEqual(
+    getSpellDamagePreview(game, player.id, player.id, 3),
+    6,
+    'Spell damage preview includes Planar Insight damage and the third-breach bonus',
+  )
+}
+
+function testMovePreppedSpell(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  player.breaches[0]!.prepSpells = ['spark']
+  player.breaches[1]!.opened = false
+  player.breaches[1]!.focusedThisTurn = false
+  assertEqual(
+    movePreppedSpell(game, player.id, 1, 0, 2),
+    'The target Breach is not available for preparation',
+    'A closed Breach cannot receive a moved spell',
+  )
+  player.breaches[1]!.opened = true
+  assert(movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Moved Spark'), 'A moved spell can use a Breach opened later')
+  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Moving removes the spell from its source Breach')
+  assertEqual(player.breaches[1]!.prepSpells.join(','), 'spark', 'Moving places the spell on the newly opened Breach')
+
+  player.breaches[0]!.prepSpells = ['flare']
+  assert(movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Swapped'), 'Moving onto a prepared Breach swaps spells')
+  assertEqual(player.breaches[0]!.prepSpells.join(','), 'spark', 'The target spell moves to the source Breach')
+  assertEqual(player.breaches[1]!.prepSpells.join(','), 'flare', 'The dragged spell moves to the target Breach')
+}
+
+function testHandAndBreachSpellTransfers(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  player.hand = ['flare']
+  player.breaches[0]!.prepSpells = ['spark']
+  player.breaches[0]!.opened = true
+
+  assert(
+    replacePreppedSpell(game, player.id, 'flare', 1, 0)?.includes('returned Spark'),
+    'A hand spell replaces a spell already prepped on an available Breach',
+  )
+  assertEqual(player.hand.join(','), 'spark', 'The replaced spell returns to hand')
+  assertEqual(player.breaches[0]!.prepSpells.join(','), 'flare', 'The dragged hand spell is prepped on the Breach')
+
+  assert(
+    returnPreppedSpellToHand(game, player.id, 1, 0)?.includes('Returned Flare'),
+    'A prepped spell can be returned to hand during Main Phase',
+  )
+  assertEqual(player.hand.join(','), 'spark,flare', 'Returned spells are appended to hand')
+  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Returning a spell clears its Breach slot')
 }
 
 function testPreppedOncePerTurnAndTargets(): void {
@@ -804,6 +886,9 @@ function run(): void {
   testInitialCardEffects()
   testRelicEffects()
   testSpellEffects()
+  testSpellDamagePreview()
+  testMovePreppedSpell()
+  testHandAndBreachSpellTransfers()
   testPreppedOncePerTurnAndTargets()
   testReturnedGemKeepsPlayCount()
   testTurnReset()

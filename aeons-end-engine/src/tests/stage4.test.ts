@@ -110,6 +110,43 @@ function testStrikeEffectsAndMinionDamageRule(): void {
   assertEqual(cauterizerGame.nemesis.playArea[0]!.lifeTokens, 2, 'Cauterizer caps each damage instance at one')
 }
 
+function testMostExpensivePreppedSpellSelection(): void {
+  const game = nemesisGame()
+  game.players[0]!.breaches[0]!.prepSpells = ['spark', 'spark']
+  game.players[1]!.breaches[0]!.prepSpells = ['lava_tendril']
+
+  const messages = resolveEffects(game, 'p1', [{
+    kind: 'discard_prepped_spells', amount: 2, target: 'any_player', mostExpensive: true,
+  }])
+  assert(messages.some(message => message.includes('Decision required')), 'A tied cutoff opens a confirmation choice before changing the board')
+  assertEqual(game.players[1]!.breaches[0]!.prepSpells[0], 'lava_tendril', 'The uniquely highest-cost spell remains until confirmation')
+  assertEqual(game.players[1]!.discard.length, 0, 'No prepped spell is discarded before confirmation')
+  assertEqual(game.pendingDecision?.kind, 'select_prepped_spells', 'A tied cutoff opens a choice for the complete selection')
+  assert(game.pendingDecision?.kind !== 'select_prepped_spells' || game.pendingDecision.candidates.length === 3, 'The 4-cost spell and both zero-cost Spark cards are shown')
+  assert(game.pendingDecision?.kind !== 'select_prepped_spells' || game.pendingDecision.requiredChoices?.length === 1, 'The uniquely highest-cost spell is required in the selection')
+
+  const decision = game.pendingDecision!
+  assert(decision.kind === 'select_prepped_spells', 'The remaining tied spells are selectable')
+  const required = decision.requiredChoices![0]!
+  resolvePendingDecision(game, decision.id, { kind: 'select_prepped_spells', choices: [required, decision.candidates.find(choice => choice.cardId === 'spark')!] })
+  assertEqual(game.players[1]!.breaches[0]!.prepSpells.length, 0, 'The confirmed high-cost spell is discarded')
+  assertEqual(game.players[1]!.discard[0], 'lava_tendril', 'The confirmed high-cost spell enters its owner discard pile')
+  assertEqual(game.players[0]!.breaches[0]!.prepSpells.length, 1, 'Selecting one tied Spark removes exactly one Spark')
+
+  const sameBreachGame = nemesisGame()
+  sameBreachGame.players[0]!.breaches[0]!.prepSpells = ['lava_tendril', 'spark', 'spark']
+  resolveEffects(sameBreachGame, 'p1', [{
+    kind: 'discard_prepped_spells', amount: 2, target: 'any_player', mostExpensive: true,
+  }])
+  const sameBreachDecision = sameBreachGame.pendingDecision
+  assert(sameBreachDecision?.kind === 'select_prepped_spells', 'A same-Breach cutoff tie remains selectable')
+  assertEqual(sameBreachGame.players[0]!.breaches[0]!.prepSpells.join(','), 'lava_tendril,spark,spark', 'Same-Breach spells remain until confirmation')
+  resolvePendingDecision(sameBreachGame, sameBreachDecision.id, {
+    kind: 'select_prepped_spells', choices: [sameBreachDecision.requiredChoices![0]!, sameBreachDecision.candidates.find(choice => choice.cardId === 'spark')!],
+  })
+  assertEqual(sameBreachGame.players[0]!.breaches[0]!.prepSpells.join(','), 'spark', 'Prepped-spell indexes stay valid after forced removal')
+}
+
 function testAdelheimPreResolutionResponse(): void {
   const game = createGame('adelheim', 'brama')
   game.currentTurn = 'nemesis'
@@ -188,6 +225,7 @@ function testCollectiveGemMitigation(): void {
 testAttackEffectAndUnleash()
 testPersistentAndPowerEffects()
 testStrikeEffectsAndMinionDamageRule()
+testMostExpensivePreppedSpellSelection()
 testAdelheimPreResolutionResponse()
 testToDiscardKeepsMainPhaseActionsAvailable()
 testCollectiveGemMitigation()

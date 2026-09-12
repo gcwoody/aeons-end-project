@@ -99,3 +99,206 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   await expect(page.locator('.mage-overlay')).toHaveCount(0)
   await expect(page.locator('.nemesis-mat-wrap.damage-target')).toHaveCount(0)
 })
+
+test('To Discard does not show or retain the Power card preview', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  debugState.game.pendingNemesisDiscard = null
+  debugState.game.currentTurn = 'p1'
+  debugState.game.currentPhase = 'main'
+  debugState.game.nemesis.playArea = [{
+    instanceId: 'woven-sky:preview-test', cardId: 'woven_sky', cardType: 'power', placedAt: 1, powerTokens: 2,
+  }]
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const powerCard = page.locator('.nemesis-play-card').first()
+  const discardButton = powerCard.getByRole('button', { name: 'To Discard' })
+  await expect(discardButton).toBeVisible()
+
+  await powerCard.hover()
+  await expect(page.locator('.card-hover-preview')).toBeVisible()
+  await discardButton.hover()
+  await expect(page.locator('.card-hover-preview')).toHaveCount(0)
+
+  await page.mouse.move(10, 10)
+  await discardButton.hover()
+  await expect(page.locator('.card-hover-preview')).toHaveCount(0)
+})
+
+test('collective card decisions use the reusable selection panel', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'main'
+  debugState.selectedPlayer = 'p1'
+  debugState.game.currentTurn = 'p1'
+  debugState.game.currentPhase = 'main'
+  debugState.game.players[0].hand = ['crystal', 'crystal']
+  debugState.game.players[1].hand = ['crystal']
+  debugState.game.pendingDecision = {
+    id: 'collective-card-selection',
+    playerId: 'p1',
+    prompt: 'Discard up to 3 gem(s) to reduce Gravehold damage?',
+    kind: 'select_collective_cards',
+    min: 0,
+    max: 3,
+    candidates: [
+      { playerId: 'p1', choice: { zone: 'hand', index: 0, cardId: 'crystal', cardName: 'Crystal' } },
+      { playerId: 'p1', choice: { zone: 'hand', index: 1, cardId: 'crystal', cardName: 'Crystal' } },
+      { playerId: 'p2', choice: { zone: 'hand', index: 0, cardId: 'crystal', cardName: 'Crystal' } },
+    ],
+  }
+  debugState.game.pendingEffect = {
+    playerId: 'p1', remainingEffects: [],
+    awaiting: { kind: 'deal_gravehold_damage_with_gem_discard', amount: 9, maxGems: 3, reductionPerGem: 3 },
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await expect(page.getByText('Discard up to 3 gem(s) to reduce Gravehold damage?', { exact: true })).toBeVisible()
+  await expect(page.getByText('Selected 0 / 3', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeVisible()
+  await expect(page.locator('.decision-card-choice')).toHaveCount(3)
+  await page.locator('.decision-card-choice').first().click()
+  await expect(page.getByText('Selected 1 / 3', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.locator('.decision-card-choice')).toHaveCount(0)
+})
+
+test('most-expensive prepped spell decisions wait for confirmation', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'nemesis_draw'
+  debugState.selectedPlayer = 'p1'
+  debugState.game.currentTurn = 'nemesis'
+  debugState.game.currentPhase = 'nemesis_draw'
+  debugState.game.players[0].breaches[0].prepSpells = ['spark', 'spark']
+  debugState.game.players[1].breaches[0].prepSpells = ['lava_tendril']
+  debugState.game.pendingDecision = {
+    id: 'most-expensive-prepped-selection',
+    playerId: 'p1',
+    prompt: 'Choose 2 prepped spell(s) to discard',
+    kind: 'select_prepped_spells',
+    min: 2,
+    max: 2,
+    requiredChoices: [{ playerId: 'p2', breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', cardName: 'Lava Tendril' }],
+    candidates: [
+      { playerId: 'p2', breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', cardName: 'Lava Tendril' },
+      { playerId: 'p1', breachIndex: 1, spellIndex: 0, cardId: 'spark', cardName: 'Spark' },
+      { playerId: 'p1', breachIndex: 1, spellIndex: 1, cardId: 'spark', cardName: 'Spark' },
+    ],
+  }
+  debugState.game.pendingEffect = {
+    playerId: 'p1', remainingEffects: [],
+    awaiting: { kind: 'discard_prepped_spells', amount: 2, target: 'any_player', mostExpensive: true },
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await expect(page.getByText('1/2 chosen prepped spells', { exact: true })).toBeVisible()
+  await expect(page.locator('.breach-spell-card-frame.pending-prepped-spell-selected')).toHaveCount(0)
+  await page.locator('.char-btn').nth(1).click()
+  await expect(page.locator('.breach-spell-card-frame.pending-prepped-spell-selected')).toHaveCount(1)
+  await page.locator('.char-btn').first().click()
+  await page.locator('.breach-spell-card-frame.pending-prepped-spell').filter({ has: page.locator('img[alt="Spark"]') }).first().click({ force: true })
+  await expect(page.getByText('2/2 chosen prepped spells', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.locator('.decision-overlay')).toHaveCount(0)
+})
+
+test('a Venomite effect decision returns to the center after another modal was dragged', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'nemesis_main'
+  debugState.selectedPlayer = 'p1'
+  debugState.game.currentTurn = 'nemesis'
+  debugState.game.currentPhase = 'nemesis_main'
+  debugState.game.pendingDecision = {
+    id: 'previous-prepped-decision', playerId: 'p1',
+    prompt: 'Choose a prepped spell', kind: 'select_prepped_spells', min: 0, max: 1,
+    candidates: [],
+  }
+  debugState.game.pendingEffect = {
+    playerId: 'p1', remainingEffects: [],
+    awaiting: { kind: 'discard_prepped_spells', amount: 1, target: 'any_player' },
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const previousModal = page.locator('.non-blocking-prepped-modal')
+  await expect(previousModal).toBeVisible()
+  const previousBox = await previousModal.boundingBox()
+  expect(previousBox).not.toBeNull()
+  await page.mouse.move(previousBox!.x + previousBox!.width / 2, previousBox!.y + 10)
+  await page.mouse.down()
+  await page.mouse.move(previousBox!.x + previousBox!.width / 2, previousBox!.y + 180)
+  await page.mouse.up()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const nextState = JSON.parse(await stateField.inputValue())
+  nextState.game.pendingDecision = {
+    id: 'venomite-effect-choice', playerId: 'p1', prompt: 'Choose the Venomite effect', kind: 'choose_one',
+    options: [
+      { id: 'damage', label: 'Lowest-life player suffers 2 damage' },
+      { id: 'discard', label: 'Discard a prepped spell costing 3 or more' },
+    ],
+  }
+  nextState.game.pendingEffect = {
+    playerId: 'p1', remainingEffects: [],
+    awaiting: {
+      kind: 'choose_one', prompt: 'Choose the Venomite effect',
+      options: [
+        { id: 'damage', label: 'Lowest-life player suffers 2 damage', effects: [] },
+        { id: 'discard', label: 'Discard a prepped spell costing 3 or more', effects: [] },
+      ],
+    },
+  }
+  await stateField.fill(JSON.stringify(nextState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const modal = page.locator('.decision-modal')
+  await expect(modal).toBeVisible()
+  await page.waitForTimeout(350)
+  const modalBox = await modal.boundingBox()
+  expect(modalBox).not.toBeNull()
+  const viewport = page.viewportSize()!
+  expect(Math.abs(modalBox!.x + modalBox!.width / 2 - viewport.width / 2)).toBeLessThan(2)
+  expect(Math.abs(modalBox!.y + modalBox!.height / 2 - viewport.height / 2)).toBeLessThan(2)
+})

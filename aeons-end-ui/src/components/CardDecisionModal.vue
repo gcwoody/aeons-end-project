@@ -1,81 +1,27 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
-import type { CardChoice, PendingDecisionAnswer, TurnOrderCardChoice } from '@engine/types'
+import type { CardChoice, CollectiveCardChoice, PendingDecisionAnswer, TurnOrderCardChoice } from '@engine/types'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
-import { chunkCards, groupPileCards, pileRowLabel } from '../game/pile-layout'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
 import { useModalDrag } from '../game/useModalDrag'
 import CardHoverPreview from './CardHoverPreview.vue'
+import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 
 const { state, resolveDecision, confirmPendingPreppedSpells } = useGame()
-const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
-const selectedCards = ref<CardChoice[]>([])
+const { modalEl, modalStyle, dragging, startDrag, resetModalPosition } = useModalDrag()
+const selectedCardKeys = ref<string[]>([])
 const selectedTurnOrder = ref<number[]>([])
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
 
-interface DecisionCardRow {
-  key: string
-  label: string
-  choices: CardChoice[]
-}
-
-interface DecisionCardZone {
-  key: string
-  rows: DecisionCardRow[]
-}
-
-const cardZones = computed(() => {
-  if (!decision.value || decision.value.kind !== 'select_cards') return []
-  const candidates = decision.value.candidates
-  const zones: DecisionCardZone[] = []
-  const hand = candidates.filter(choice => choice.zone === 'hand')
-  const discard = candidates.filter(choice => choice.zone === 'discard')
-  const other = candidates.filter(choice => choice.zone !== 'hand' && choice.zone !== 'discard')
-
-  const handRows = chunkCards(hand).map((choices, index) => ({
-    key: `hand:${index}`, label: 'HAND', choices,
-  }))
-  if (handRows.length > 0) {
-    zones.push({ key: 'hand', rows: handRows })
-  }
-
-  const usePileLayout = decision.value.layout === 'pile' || decision.value.source === 'hand_or_discard'
-  const deckCount = state.game?.players.find(player => player.id === decision.value!.playerId)?.deck.length ?? 0
-  const discardGroups = usePileLayout ? groupPileCards(discard, 'discard', deckCount) : chunkCards(discard)
-  let discardOffset = 0
-  const discardRows: DecisionCardRow[] = []
-  for (const [index, choices] of discardGroups.entries()) {
-    discardRows.push({
-      key: `discard:${index}`,
-      label: usePileLayout ? `DISCARD · ${pileRowLabel('discard', index, discardGroups.length)}` : 'DISCARD PILE',
-      choices: discard.slice(discardOffset, discardOffset + choices.length),
-    })
-    discardOffset += choices.length
-  }
-  if (discardRows.length > 0) {
-    zones.push({ key: 'discard', rows: discardRows })
-  }
-
-  const otherRows = chunkCards(other).map((choices, index) => ({
-    key: `other:${index}`, label: 'PLAYED THIS TURN', choices,
-  }))
-  if (otherRows.length > 0) {
-    zones.push({ key: 'other', rows: otherRows })
-  }
-  return zones
-})
-
-const decisionColumns = computed(() => {
-  if (!decision.value || decision.value.kind !== 'select_cards') return 5
-  return Math.max(1, Math.min(5, Math.max(0, ...cardZones.value.flatMap(zone => zone.rows.map(row => row.choices.length)))))
-})
-
 watch(() => decision.value?.id, () => {
-  selectedCards.value = []
+  selectedCardKeys.value = []
   selectedTurnOrder.value = []
+  // Each decision is a new modal context. Do not carry a position dragged
+  // for a previous decision into the next one.
+  resetModalPosition()
 })
 
 const turnOrderLabels = computed(() => createTurnOrderLabels(state.game?.players ?? []))
@@ -120,35 +66,70 @@ function choiceKey(choice: CardChoice): string {
   return `${choice.zone}:${choice.index}:${choice.cardId}`
 }
 
-function isSelected(choice: CardChoice): boolean {
-  return selectedCards.value.some(selected => choiceKey(selected) === choiceKey(choice))
+function collectiveChoiceKey(choice: CollectiveCardChoice): string {
+  return `${choice.playerId}:${choiceKey(choice.choice)}`
 }
 
-function toggleCard(choice: CardChoice) {
-  if (isSelected(choice)) {
-    selectedCards.value = selectedCards.value.filter(selected => choiceKey(selected) !== choiceKey(choice))
+const selectionItems = computed<CardSelectionItem[]>(() => {
+  if (decision.value?.kind === 'select_cards') {
+    return decision.value.candidates.map(choice => ({
+      key: choiceKey(choice),
+      cardId: choice.cardId,
+      cardName: choice.cardName,
+      groupKey: choice.zone,
+      groupLabel: choice.zone === 'hand' ? 'HAND'
+        : choice.zone === 'discard' ? 'DISCARD PILE' : 'PLAYED THIS TURN',
+    }))
+  }
+  if (decision.value?.kind === 'select_collective_cards') {
+    return decision.value.candidates.map(choice => ({
+      key: collectiveChoiceKey(choice),
+      cardId: choice.choice.cardId,
+      cardName: choice.choice.cardName,
+      groupKey: choice.playerId,
+      groupLabel: `${playerName(choice.playerId)} HAND`,
+    }))
+  }
+  return []
+})
+
+const decisionColumns = computed(() => {
+  const groupCounts = new Map<string, number>()
+  for (const item of selectionItems.value) groupCounts.set(item.groupKey, (groupCounts.get(item.groupKey) ?? 0) + 1)
+  return Math.max(1, Math.min(5, Math.max(0, ...[...groupCounts.values()].map(count => Math.min(5, count)))))
+})
+
+function confirmSelectedCards() {
+  if (decision.value?.kind === 'select_cards') {
+    const choices = decision.value.candidates.filter(choice => selectedCardKeys.value.includes(choiceKey(choice)))
+    if (choices.length < decision.value.min || choices.length > decision.value.max) return
+    resolveDecision({ kind: 'select_cards', choices })
     return
   }
-  if (!decision.value || decision.value.kind !== 'select_cards') return
-  if (selectedCards.value.length >= decision.value.max) return
-  selectedCards.value.push(choice)
+  if (decision.value?.kind === 'select_collective_cards') {
+    const choices = decision.value.candidates.filter(choice => selectedCardKeys.value.includes(collectiveChoiceKey(choice)))
+    if (choices.length < decision.value.min || choices.length > decision.value.max) return
+    resolveDecision({ kind: 'select_collective_cards', choices })
+  }
 }
 
-function confirmCards() {
-  if (!decision.value || decision.value.kind !== 'select_cards') return
-  if (selectedCards.value.length < decision.value.min || selectedCards.value.length > decision.value.max) return
-  const answer: PendingDecisionAnswer = { kind: 'select_cards', choices: [...selectedCards.value] }
-  resolveDecision(answer)
+function skipSelectedCards() {
+  if (decision.value?.kind === 'select_cards' && decision.value.min === 0) {
+    resolveDecision({ kind: 'select_cards', choices: [] })
+  } else if (decision.value?.kind === 'select_collective_cards' && decision.value.min === 0) {
+    resolveDecision({ kind: 'select_collective_cards', choices: [] })
+  }
 }
 
 function playerName(playerId: string): string {
   const player = state.game?.players.find(candidate => candidate.id === playerId)
-  return player ? `${player.mageType} (${player.id.toUpperCase()})` : playerId
+  if (!player) return playerId
+  return player.mageType.charAt(0).toUpperCase() + player.mageType.slice(1)
 }
 
 function playerTargetLabel(playerId: string): string {
   if (decision.value?.kind === 'select_player_target' && decision.value.prompt === 'Choose a player to suffer damage') {
-    return `Attack ${playerId.toUpperCase()}`
+    return `Attack ${playerName(playerId)}`
   }
   return playerName(playerId)
 }
@@ -177,14 +158,12 @@ function confirmNemesisDraw() {
           ? 'A card was drawn from the Nemesis specific deck. Review it, then click Confirm to resolve it.'
           : 'A Nemesis card was drawn. Review it, then click Confirm to continue.' }}
       </p>
-      <CardHoverPreview :card-id="decision.cardId" :preview-width="252" :preview-height="378">
-        <div class="nemesis-reveal-card">
-          <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
-          <span v-else>{{ getCard(decision.cardId).name }}</span>
-        </div>
-      </CardHoverPreview>
+      <div class="nemesis-reveal-card">
+        <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
+        <span v-else>{{ getCard(decision.cardId).name }}</span>
+      </div>
       <div class="overlay-actions">
-        <button class="btn primary" @click="confirmNemesisDraw">
+        <button class="btn primary confirm-button" @click="confirmNemesisDraw">
           Confirm
         </button>
       </div>
@@ -217,6 +196,9 @@ function confirmNemesisDraw() {
           v-for="option in decision.options"
           :key="option.id"
           class="btn primary decision-option"
+          :class="{ unavailable: option.disabled }"
+          :disabled="option.disabled"
+          :title="option.disabled ? 'This option is not available right now.' : undefined"
           @click="answer({ kind: 'choose_one', optionId: option.id })"
         >
           {{ option.label }}
@@ -232,43 +214,16 @@ function confirmNemesisDraw() {
         </button>
       </div>
 
-      <template v-else-if="decision.kind === 'select_cards'">
-        <div v-for="zone in cardZones" :key="zone.key" class="decision-card-zone">
-          <div
-            v-for="group in zone.rows"
-            :key="group.key"
-            class="pile-row pile-row-labeled decision-card-row"
-            :style="{ '--choice-columns': group.choices.length }"
-          >
-            <span class="pile-row-label">{{ group.label }}</span>
-            <button
-              v-for="choice in group.choices"
-              :key="choiceKey(choice)"
-              class="decision-card-choice"
-              :class="{ selected: isSelected(choice) }"
-              @click="toggleCard(choice)"
-            >
-              <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />
-              <span v-else>{{ choice.cardName }}</span>
-            </button>
-          </div>
-        </div>
-        <div class="decision-footer">
-          <span class="stat">Selected {{ selectedCards.length }} / {{ decision.max }}</span>
-          <div class="decision-footer-actions">
-            <button v-if="decision.min === 0" class="btn" @click="answer({ kind: 'select_cards', choices: [] })">
-              Skip
-            </button>
-            <button
-              class="btn primary"
-              :disabled="selectedCards.length < decision.min || selectedCards.length > decision.max"
-              @click="confirmCards"
-            >
-              Confirm
-            </button>
-          </div>
-        </div>
-      </template>
+      <CardSelectionPanel
+        v-else-if="decision.kind === 'select_cards' || decision.kind === 'select_collective_cards'"
+        :key="decision.id"
+        v-model:selected-keys="selectedCardKeys"
+        :choices="selectionItems"
+        :min="decision.min"
+        :max="decision.max"
+        @confirm="confirmSelectedCards"
+        @skip="skipSelectedCards"
+      />
 
       <template v-else-if="decision.kind === 'reorder_turn_order'">
         <p class="decision-hint">Choose the order of the reviewed cards from top to bottom.</p>
@@ -350,7 +305,7 @@ function confirmNemesisDraw() {
         <button
           v-for="target in decision.targets"
           :key="target.playerId"
-          class="btn primary decision-option"
+          class="btn primary decision-option player-target-option"
           @click="answer({ kind: 'select_player_target', target })"
         >
           {{ playerTargetLabel(target.playerId) }}

@@ -1,4 +1,4 @@
-import { computed, onBeforeUnmount, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 interface DragSession {
   pointerX: number
@@ -70,12 +70,39 @@ export function useModalDrag() {
     window.removeEventListener('pointercancel', stopDrag)
   }
 
+  function clampToViewport() {
+    const element = modalEl.value
+    if (!element || typeof window === 'undefined') return
+    const width = element.offsetWidth
+    const height = element.offsetHeight
+    const baseLeft = (window.innerWidth - width) / 2
+    const baseTop = (window.innerHeight - height) / 2
+    offset.x = clamp(offset.x, 8 - baseLeft, window.innerWidth - width - 8 - baseLeft)
+    offset.y = clamp(offset.y, 8 - baseTop, window.innerHeight - height - 8 - baseTop)
+  }
+
   function resetModalPosition() {
     offset.x = 0
     offset.y = 0
+    requestAnimationFrame(clampToViewport)
   }
 
-  onBeforeUnmount(stopDrag)
+  let resizeObserver: ResizeObserver | null = null
+  watch(modalEl, (element) => {
+    resizeObserver?.disconnect()
+    resizeObserver = null
+    if (!element || typeof ResizeObserver === 'undefined') return
+    resizeObserver = new ResizeObserver(clampToViewport)
+    resizeObserver.observe(element)
+    requestAnimationFrame(clampToViewport)
+  })
+
+  onMounted(() => window.addEventListener('resize', clampToViewport))
+  onBeforeUnmount(() => {
+    stopDrag()
+    resizeObserver?.disconnect()
+    window.removeEventListener('resize', clampToViewport)
+  })
 
   return { modalEl, modalStyle, dragging, startDrag, resetModalPosition }
 }

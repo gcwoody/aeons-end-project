@@ -31,7 +31,7 @@ test('loads setup and starts a game', async ({ page }) => {
       await confirm.click()
       continue
     }
-    const attack = page.getByRole('button', { name: /^Attack (P1|P2|Gravehold)$/ }).first()
+    const attack = page.getByRole('button', { name: /^(Attack .+|Gravehold)$/ }).first()
     if (await attack.isVisible().catch(() => false)) {
       await attack.click()
       continue
@@ -61,7 +61,7 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
       await continueDraw.click()
       continue
     }
-    const attackButton = page.getByRole('button', { name: /^Attack (P1|P2|Gravehold)$/ }).first()
+    const attackButton = page.getByRole('button', { name: /^(Attack .+|Gravehold)$/ }).first()
     if (await attackButton.isVisible().catch(() => false)) {
       await attackButton.click()
       continue
@@ -109,6 +109,11 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
   const highlightedSpell = page.locator('.breach-spell-card-frame.ability-prepped-spell')
   await expect(highlightedSpell).toHaveCount(1)
   await expect(page.locator('.decision-overlay')).toHaveCount(0)
+  const damageBadge = highlightedSpell.locator('.spell-damage-badge')
+  await expect(damageBadge).toHaveText('1')
+  await expect(damageBadge).toBeHidden()
+  await highlightedSpell.hover()
+  await expect(damageBadge).toBeVisible()
 
   await highlightedSpell.click()
   await expect(highlightedSpell).toHaveCount(1)

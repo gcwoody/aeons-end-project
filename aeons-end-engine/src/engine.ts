@@ -843,6 +843,24 @@ export function getPreppedSpellChoices(g: GameState): PreppedSpellChoice[] {
   return choices
 }
 
+/** Move selected prepped spells to their owners' discard piles. */
+function discardPreppedSpellChoices(g: GameState, choices: PreppedSpellChoice[]): string[] {
+  const discarded: string[] = []
+  const ordered = [...choices].sort((a, b) =>
+    a.playerId.localeCompare(b.playerId) ||
+    a.breachIndex - b.breachIndex ||
+    b.spellIndex - a.spellIndex)
+  for (const choice of ordered) {
+    const owner = getPlayer(g, choice.playerId)
+    const breach = owner.breaches.find(item => item.index === choice.breachIndex)
+    if (!breach || breach.prepSpells[choice.spellIndex] !== choice.cardId) continue
+    breach.prepSpells.splice(choice.spellIndex, 1)
+    owner.discard.unshift(choice.cardId)
+    discarded.push(choice.cardName)
+  }
+  return discarded
+}
+
 export function removeCardFromZone(
   p: PlayerState, zone: CardZone, index: number,
 ): string | null {
@@ -1044,6 +1062,71 @@ function applySpellDamageBonus(resolution: PendingEffectResolution, amount: numb
   return bonus > 0 ? amount + bonus : amount
 }
 
+interface SpellDamagePreview {
+  amount: number
+  instances: number
+}
+
+function addSpellDamagePreview(total: SpellDamagePreview, next: SpellDamagePreview): SpellDamagePreview {
+  return {
+    amount: total.amount + next.amount,
+    instances: total.instances + next.instances,
+  }
+}
+
+function previewSpellDamageEffects(
+  g: GameState, playerId: string, effects: CardEffect[], sourceCardId?: string,
+): SpellDamagePreview | null {
+  let preview: SpellDamagePreview = { amount: 0, instances: 0 }
+  for (const effect of effects) {
+    if (effect.kind === 'deal_damage') {
+      preview = addSpellDamagePreview(preview, {
+        amount: amountValue(g, playerId, effect.amount, sourceCardId),
+        instances: 1,
+      })
+      continue
+    }
+    if (effect.kind === 'reveal_turn_order_card') {
+      const top = g.turnOrderDeck[0]
+      if (!top) return null
+      const branch = top === 'nemesis' ? effect.nemesisEffects : effect.playerEffects
+      const branchPreview = previewSpellDamageEffects(g, playerId, branch, sourceCardId)
+      if (!branchPreview) return null
+      preview = addSpellDamagePreview(preview, branchPreview)
+      continue
+    }
+    if (effect.kind === 'choose_one') {
+      const available = effect.options.filter(option => conditionMatches(g, playerId, option.condition))
+      const optionPreviews = available.map(option => previewSpellDamageEffects(g, playerId, option.effects, sourceCardId))
+      if (optionPreviews.some(optionPreview => !optionPreview)) return null
+      const first = optionPreviews[0]
+      if (!first || optionPreviews.some(optionPreview =>
+        optionPreview!.amount !== first.amount || optionPreview!.instances !== first.instances)) return null
+      preview = addSpellDamagePreview(preview, first)
+    }
+    // Optional effects are intentionally excluded: their damage is not guaranteed.
+  }
+  return preview
+}
+
+/** Return the guaranteed damage shown while a prepped spell waits for its target. */
+export function getSpellDamagePreview(
+  g: GameState, casterPlayerId: string, spellOwnerPlayerId: string,
+  breachIndex: number, spellIndex = 0,
+): number | null {
+  const owner = getPlayer(g, spellOwnerPlayerId)
+  const breach = owner.breaches.find(item => item.index === breachIndex)
+  if (!breach || !isPresentBreach(breach)) return null
+  const cardId = breach.prepSpells[spellIndex]
+  if (!cardId || getCard(cardId).type !== 'spell') return null
+  const effects = matchingBlocks(cardId, casterPlayerId, g, { kind: 'on_cast' })
+    .flatMap(block => block.effects)
+  const preview = previewSpellDamageEffects(g, casterPlayerId, effects, cardId)
+  if (!preview) return null
+  const amount = preview.amount + preview.instances * spellBreachDamageBonus(breach)
+  return amount > 0 ? amount : null
+}
+
 function effectPlayerId(resolution: PendingEffectResolution): string {
   return resolution.effectPlayerId ?? resolution.playerId
 }
@@ -1051,6 +1134,9 @@ function effectPlayerId(resolution: PendingEffectResolution): string {
 function conditionMatches(g: GameState, playerId: string, condition?: CardEffectCondition): boolean {
   if (!condition) return true
   const p = getPlayer(g, playerId)
+  if (condition.kind === 'has_unopened_breach') {
+    return p.breaches.some(breach => isPresentBreach(breach) && !breach.opened)
+  }
   let value = 0
   let expected = 0
 
@@ -1750,15 +1836,41 @@ function runEffectResolution(
       let targets = getSelectedPlayerTargets(g, currentPlayerId, effect.target ?? 'any_player', effect.selection)
       let candidates = getPreppedSpellChoices(g).filter(choice => targets.some(target => target.playerId === choice.playerId))
       candidates = candidates.filter(choice => getCard(choice.cardId).cost >= (effect.minCost ?? 0))
-      if (effect.mostExpensive && candidates.length > 0) {
-        const maxCost = Math.max(...candidates.map(choice => getCard(choice.cardId).cost))
-        candidates = candidates.filter(choice => getCard(choice.cardId).cost === maxCost)
-      }
-      const amount = Math.min(Math.max(0, effect.amount), candidates.length)
+      let amount = Math.min(Math.max(0, effect.amount), candidates.length)
       if (amount === 0) {
         messages.push('No eligible prepped spell is available')
         continue
       }
+
+      if (effect.mostExpensive) {
+        // "Most expensive" means the requested number of cards by descending
+        // cost. If the cutoff is tied, pause so the player can confirm the
+        // complete selection; never alter the board before that confirmation.
+        const ordered = [...candidates].sort((a, b) => getCard(b.cardId).cost - getCard(a.cardId).cost)
+        const cutoffCost = getCard(ordered[amount - 1]!.cardId).cost
+        const required = ordered.filter(choice => getCard(choice.cardId).cost > cutoffCost)
+        const cutoffChoices = ordered.filter(choice => getCard(choice.cardId).cost === cutoffCost)
+        const remaining = amount - required.length
+        if (cutoffChoices.length > remaining) {
+          const decision = createDecision(
+            g, resolution.playerId, `Choose ${amount} prepped spell(s) to discard`,
+            'select_prepped_spells', {
+              candidates: ordered.filter(choice => getCard(choice.cardId).cost >= cutoffCost),
+              min: amount,
+              max: amount,
+              requiredChoices: required,
+            }, resolution.sourceCardId,
+          )
+          messages.push(...pauseEffect(g, resolution, effect, decision))
+          return messages
+        }
+
+        const discarded = discardPreppedSpellChoices(g, ordered.slice(0, amount))
+        if (discarded.length > 0) messages.push(`Discarded prepped spell(s): ${discarded.join(', ')}`)
+        continue
+      }
+
+      if (amount === 0) continue
       if (candidates.length > amount || amount > 1) {
         const decision = createDecision(
           g, resolution.playerId, `Choose ${amount} prepped spell(s) to discard`,
@@ -1767,14 +1879,8 @@ function runEffectResolution(
         messages.push(...pauseEffect(g, resolution, effect, decision))
         return messages
       }
-      const choice = candidates[0]!
-      const owner = getPlayer(g, choice.playerId)
-      const breach = owner.breaches.find(item => item.index === choice.breachIndex)
-      if (breach && breach.prepSpells[choice.spellIndex] === choice.cardId) {
-        breach.prepSpells.splice(choice.spellIndex, 1)
-        owner.discard.unshift(choice.cardId)
-        messages.push(`Discarded prepped spell ${choice.cardName}`)
-      }
+      const discarded = discardPreppedSpellChoices(g, [candidates[0]!])
+      if (discarded.length > 0) messages.push(`Discarded prepped spell ${discarded[0]}`)
       continue
     }
 
@@ -1806,7 +1912,7 @@ function runEffectResolution(
         g, resolution.playerId, min > 0 ? `Choose ${min} card(s) to destroy` : `Choose up to ${max} card(s) to destroy`,
         'select_cards', {
           source, candidates, min, max,
-          layout: source === 'hand_or_discard' ? 'pile' : 'simple',
+          layout: 'simple',
         }, resolution.sourceCardId,
       )
       messages.push(...pauseEffect(g, resolution, effect, decision))
@@ -1822,7 +1928,13 @@ function runEffectResolution(
       const options: CardEffectOption[] = effect.options
       const decision = createDecision(
         g, resolution.playerId, effect.prompt, 'choose_one',
-        { options: options.map(option => ({ id: option.id, label: option.label })) }, resolution.sourceCardId,
+        {
+          options: options.map(option => ({
+            id: option.id,
+            label: option.label,
+            disabled: option.condition ? !conditionMatches(g, currentPlayerId, option.condition) : false,
+          })),
+        }, resolution.sourceCardId,
       )
       messages.push(...pauseEffect(g, resolution, effect, decision))
       return messages
@@ -2311,6 +2423,11 @@ export function resolvePendingDecision(
     addRemainingEffects(resolution, effect.effects)
   } else if (answer.kind === 'choose_one') {
     if (decision.kind !== 'choose_one') return ['Decision answer has the wrong type']
+    const selected = decision.options.find(option => option.id === answer.optionId)
+    if (selected?.disabled) {
+      restore()
+      return ['This choice is not available']
+    }
     const source = effect.kind === 'choose_one' ? effect.options.find(option => option.id === answer.optionId) : undefined
     if (!source) {
       g.pendingDecision = decision
@@ -2443,13 +2560,13 @@ export function resolvePendingDecision(
       }
       selectedKeys.add(key)
     }
-    for (const choice of [...selected].sort((a, b) => b.spellIndex - a.spellIndex)) {
-      const owner = getPlayer(g, choice.playerId)
-      const breach = owner.breaches.find(item => item.index === choice.breachIndex)
-      if (!breach || breach.prepSpells[choice.spellIndex] !== choice.cardId) continue
-      breach.prepSpells.splice(choice.spellIndex, 1)
-      owner.discard.unshift(choice.cardId)
+    const requiredKeys = (decision.requiredChoices ?? []).map(choice =>
+      `${choice.playerId}:${choice.breachIndex}:${choice.spellIndex}:${choice.cardId}`)
+    if (requiredKeys.some(key => !selectedKeys.has(key))) {
+      restore()
+      return ['All required prepped spells must be selected']
     }
+    discardPreppedSpellChoices(g, selected)
     return [`Discarded ${selected.map(choice => choice.cardName).join(', ')}`, ...runEffectResolution(g, resolution)]
   } else if (answer.kind === 'select_collective_cards') {
     if (decision.kind !== 'select_collective_cards') {
@@ -2773,6 +2890,83 @@ export function prepSpell(
   p.hand.splice(idx, 1)
   b.prepSpells.push(cardId)
   return `Prepped ${card.name} on Breach ${toRoman(breachIndex)}`
+}
+
+/** Replace a spell on an available Breach with a spell from hand. */
+export function replacePreppedSpell(
+  g: GameState, playerId: string, cardId: string, breachIndex: number,
+  handIndex: number, replacedSpellIndex?: number,
+): string | null {
+  const blocked = pendingActionMessage(g)
+  if (blocked) return blocked
+  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Spells can only be replaced during your Main Phase'
+
+  const p = getPlayer(g, playerId)
+  if (handIndex < 0 || handIndex >= p.hand.length || p.hand[handIndex] !== cardId) return 'Card not in hand'
+  if (getCard(cardId).type !== 'spell') return 'Only spell cards can be prepped'
+
+  const breach = p.breaches.find(item => item.index === breachIndex)
+  if (!breach || !isPresentBreach(breach)) return 'Invalid Breach'
+  if (!breach.opened && !breach.focusedThisTurn) return 'Cannot prep on this Breach'
+  if (breach.prepSpells.length === 0) return 'No spell is prepped on this Breach'
+
+  const targetIndex = replacedSpellIndex ?? 0
+  const replacedCardId = breach.prepSpells[targetIndex]
+  if (!replacedCardId) return 'No spell is prepped at the target position'
+  p.hand.splice(handIndex, 1)
+  breach.prepSpells[targetIndex] = cardId
+  p.hand.push(replacedCardId)
+  return `Prepped ${getCard(cardId).name} and returned ${getCard(replacedCardId).name} to hand`
+}
+
+/** Return one of the player's prepped spells to their hand during Main Phase. */
+export function returnPreppedSpellToHand(
+  g: GameState, playerId: string, breachIndex: number, spellIndex: number,
+): string | null {
+  const blocked = pendingActionMessage(g)
+  if (blocked) return blocked
+  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Prepped spells can only be returned during your Main Phase'
+
+  const p = getPlayer(g, playerId)
+  const breach = p.breaches.find(item => item.index === breachIndex)
+  if (!breach || !isPresentBreach(breach)) return 'Invalid Breach'
+  const cardId = breach.prepSpells[spellIndex]
+  if (!cardId) return 'No spell is prepped at this position'
+  breach.prepSpells.splice(spellIndex, 1)
+  p.hand.push(cardId)
+  return `Returned ${getCard(cardId).name} to hand`
+}
+
+/** Move a prepped spell during Main Phase, swapping with a spell at the target when needed. */
+export function movePreppedSpell(
+  g: GameState, playerId: string, sourceBreachIndex: number, sourceSpellIndex: number,
+  targetBreachIndex: number, targetSpellIndex?: number,
+): string | null {
+  const blocked = pendingActionMessage(g)
+  if (blocked) return blocked
+  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Prepped spells can only be moved during your Main Phase'
+  if (sourceBreachIndex === targetBreachIndex) return 'Choose a different Breach'
+
+  const p = getPlayer(g, playerId)
+  const source = p.breaches.find(breach => breach.index === sourceBreachIndex)
+  const target = p.breaches.find(breach => breach.index === targetBreachIndex)
+  if (!source || !target || !isPresentBreach(source) || !isPresentBreach(target)) return 'Invalid Breach'
+  const sourceCardId = source.prepSpells[sourceSpellIndex]
+  if (!sourceCardId) return 'No spell is prepped at the source position'
+  if (!target.opened && !target.focusedThisTurn) return 'The target Breach is not available for preparation'
+
+  if (target.prepSpells.length > 0) {
+    const swapIndex = targetSpellIndex ?? 0
+    if (!target.prepSpells[swapIndex]) return 'No spell is prepped at the target position'
+    const targetCardId = target.prepSpells[swapIndex]!
+    source.prepSpells[sourceSpellIndex] = targetCardId
+    target.prepSpells[swapIndex] = sourceCardId
+    return `Swapped ${getCard(sourceCardId).name} and ${getCard(targetCardId).name}`
+  }
+
+  source.prepSpells.splice(sourceSpellIndex, 1)
+  target.prepSpells.push(sourceCardId)
+  return `Moved ${getCard(sourceCardId).name} to Breach ${toRoman(targetBreachIndex)}`
 }
 
 export interface BuyableCard {

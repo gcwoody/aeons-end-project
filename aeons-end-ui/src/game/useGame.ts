@@ -3,6 +3,9 @@ import {
   createGame, startTurn, getPlayer,
   getCastableSpells, castSpell as engineCastSpell,
   playCard as enginePlayCard, prepSpell as enginePrepSpell,
+  movePreppedSpell as engineMovePreppedSpell,
+  replacePreppedSpell as engineReplacePreppedSpell,
+  returnPreppedSpellToHand as engineReturnPreppedSpellToHand,
   getBuyableCards, buyCard as engineBuyCard,
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
   gainCharge as engineGainCharge, activateAbility as engineActivateAbility,
@@ -35,6 +38,8 @@ interface Snapshot {
   phase: UiPhase
   pendingNemesis: DrawnCard | null
   prepTarget: number | null
+  selectedPlayer: 'p1' | 'p2'
+  discardRemaining: string[]
 }
 
 export interface SaveSummary {
@@ -54,6 +59,8 @@ interface StoredSave extends SaveSummary {
   selectedPlayer: 'p1' | 'p2'
   pendingNemesis: DrawnCard | null
   discardRemaining: string[]
+  /** The most recent undo snapshots, persisted so resume keeps Ctrl+Z history. */
+  undoStack?: Snapshot[]
 }
 
 let logId = 0
@@ -95,6 +102,16 @@ const MAX_UNDO = 5
 
 /** Fill fields introduced by newer engine versions when loading an older save. */
 function normalizeSavedGame(game: GameState): GameState {
+  // Nemesis fields were added incrementally; keep older saves renderable before
+  // any component reads pile lengths or iterates the play area.
+  const nemesis = game.nemesis
+  nemesis.deck ??= []
+  nemesis.discard ??= []
+  nemesis.strikeDeck ??= []
+  nemesis.strikeDiscard ??= []
+  nemesis.counters ??= {}
+  nemesis.playArea ??= []
+  nemesis.tierAnnounced ??= [false, false, false]
   game.pendingDecision ??= null
   game.pendingEffect ??= null
   game.decisionCounter ??= 0
@@ -155,6 +172,8 @@ export function togglePendingPreppedSpell(choice: PreppedSpellChoice): void {
     preppedSpellChoiceKey(item) === preppedSpellChoiceKey(choice))
   if (!candidate) return
   if (isPendingPreppedSpellSelected(candidate)) {
+    const required = decision.requiredChoices?.some(item => preppedSpellChoiceKey(item) === preppedSpellChoiceKey(candidate))
+    if (required) return
     state.pendingPreppedSpells = state.pendingPreppedSpells.filter(selected =>
       preppedSpellChoiceKey(selected) !== preppedSpellChoiceKey(candidate))
     return
@@ -228,6 +247,7 @@ function saveCurrentGame(force = false) {
       selectedPlayer: state.selectedPlayer,
       pendingNemesis: null,
       discardRemaining: [],
+      undoStack: [],
     }
     storedSaves.unshift(save)
     state.activeSaveId = id
@@ -243,6 +263,7 @@ function saveCurrentGame(force = false) {
   save.selectedPlayer = state.selectedPlayer
   save.pendingNemesis = state.pendingNemesis ? { ...state.pendingNemesis } : null
   save.discardRemaining = [...state.discardRemaining]
+  save.undoStack = undoStack.map(cloneSnapshot)
   persistStoredSaves()
 }
 
@@ -262,7 +283,12 @@ watch(
 
 watch(
   () => state.game?.pendingDecision?.id,
-  () => { state.pendingPreppedSpells = [] },
+  () => {
+    const decision = state.game?.pendingDecision
+    state.pendingPreppedSpells = decision?.kind === 'select_prepped_spells'
+      ? [...(decision.requiredChoices ?? [])]
+      : []
+  },
 )
 
 function pushLog(text: string, kind: LogEntry['kind'] = 'info') {
@@ -303,6 +329,30 @@ function snapshot(): Snapshot {
     phase: state.phase,
     pendingNemesis: state.pendingNemesis ? { ...state.pendingNemesis } : null,
     prepTarget: state.prepTarget,
+    selectedPlayer: state.selectedPlayer,
+    discardRemaining: [...state.discardRemaining],
+  }
+}
+
+function cloneSnapshot(source: Snapshot): Snapshot {
+  return {
+    game: JSON.parse(JSON.stringify(source.game)) as GameState,
+    phase: source.phase ?? 'main',
+    pendingNemesis: source.pendingNemesis ? { ...source.pendingNemesis } : null,
+    prepTarget: source.prepTarget ?? null,
+    selectedPlayer: source.selectedPlayer ?? 'p1',
+    discardRemaining: Array.isArray(source.discardRemaining) ? [...source.discardRemaining] : [],
+  }
+}
+
+function normalizeSavedSnapshot(source: Partial<Snapshot> & { game: GameState }): Snapshot {
+  return {
+    game: normalizeSavedGame(JSON.parse(JSON.stringify(source.game)) as GameState),
+    phase: source.phase ?? 'main',
+    pendingNemesis: source.pendingNemesis ? { ...source.pendingNemesis } : null,
+    prepTarget: source.prepTarget ?? null,
+    selectedPlayer: source.selectedPlayer ?? 'p1',
+    discardRemaining: Array.isArray(source.discardRemaining) ? [...source.discardRemaining] : [],
   }
 }
 
@@ -320,6 +370,9 @@ function finishAction(previous: Snapshot | null) {
   const unchanged = JSON.stringify(previous.game) === JSON.stringify(current.game)
     && previous.phase === current.phase
     && JSON.stringify(previous.pendingNemesis) === JSON.stringify(current.pendingNemesis)
+    && previous.prepTarget === current.prepTarget
+    && previous.selectedPlayer === current.selectedPlayer
+    && JSON.stringify(previous.discardRemaining) === JSON.stringify(current.discardRemaining)
   if (unchanged) undoStack.pop()
 }
 
@@ -330,8 +383,9 @@ export function undo() {
   state.phase = s.phase
   state.pendingNemesis = s.pendingNemesis
   state.pendingPreppedSpells = []
-  state.prepTarget = null
-  state.discardRemaining = []
+  state.prepTarget = s.prepTarget
+  state.selectedPlayer = s.selectedPlayer
+  state.discardRemaining = [...s.discardRemaining]
   state.helpOpen = false
   state.viewPile = null
   pushLog('Undid last action')
@@ -433,6 +487,11 @@ export function resumeGame(saveId?: string): boolean {
     state.exitPrompt = false
     state.log = []
     undoStack.length = 0
+    for (const savedSnapshot of save.undoStack ?? []) {
+      if (!savedSnapshot?.game) continue
+      undoStack.push(normalizeSavedSnapshot(savedSnapshot))
+    }
+    if (undoStack.length > MAX_UNDO) undoStack.splice(0, undoStack.length - MAX_UNDO)
     pushLog('Game resumed', 'ok')
     return true
   } catch {
@@ -622,6 +681,40 @@ export function prepSpell(cardIdx: number, breachIndex: number) {
   state.prepTarget = null
   if (!msg && state.phase === 'main') resolveMainPhasePreppedEffects()
   maybeAutoEnd()
+  finishAction(previous)
+}
+
+export function movePreppedSpell(
+  sourceBreachIndex: number, sourceSpellIndex: number, targetBreachIndex: number, targetSpellIndex?: number,
+) {
+  if (!state.game || !canActMain.value) return
+  const previous = beforeAction()
+  const msg = engineMovePreppedSpell(
+    state.game, cp().id, sourceBreachIndex, sourceSpellIndex, targetBreachIndex, targetSpellIndex,
+  )
+  if (msg) pushLog(msg, msg.startsWith('Moved ') || msg.startsWith('Swapped ') ? 'ok' : 'warn')
+  finishAction(previous)
+}
+
+export function replacePreppedSpell(
+  cardIdx: number, breachIndex: number, replacedSpellIndex?: number,
+) {
+  if (!state.game || !canActMain.value) return
+  const previous = beforeAction()
+  const p = cp()
+  const cardId = p.hand[cardIdx]
+  const msg = cardId
+    ? engineReplacePreppedSpell(state.game, p.id, cardId, breachIndex, cardIdx, replacedSpellIndex)
+    : 'Card not in hand'
+  if (msg) pushLog(msg, msg.startsWith('Prepped ') ? 'ok' : 'warn')
+  finishAction(previous)
+}
+
+export function returnPreppedSpellToHand(breachIndex: number, spellIndex: number) {
+  if (!state.game || !canActMain.value) return
+  const previous = beforeAction()
+  const msg = engineReturnPreppedSpellToHand(state.game, cp().id, breachIndex, spellIndex)
+  if (msg) pushLog(msg, msg.startsWith('Returned ') ? 'ok' : 'warn')
   finishAction(previous)
 }
 
@@ -882,6 +975,7 @@ export function useGame() {
     returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
+    movePreppedSpell, replacePreppedSpell, returnPreppedSpellToHand,
     endTurn, nemesisChooseTarget, discardNemesisCard, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, openPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,

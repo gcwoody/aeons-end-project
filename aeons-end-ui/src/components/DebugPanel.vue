@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { getPlayer, toRoman } from '@engine/engine'
-import { getCard, INITIAL_CARDS, MARKET_CARDS } from '@engine/data'
+import { getCard, INITIAL_CARDS, MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
 import type { GameState } from '@engine/types'
 import { useGame } from '../game/useGame'
 
@@ -115,13 +115,41 @@ const nemesis = computed(() => state.game!.nemesis)
 const gravehold = computed(() => state.game!.gravehold)
 
 const allCards = computed(() => [...Object.keys(INITIAL_CARDS), ...Object.keys(MARKET_CARDS)])
+const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId => {
+  const card = getCard(cardId)
+  return card.type === 'attack' || card.type === 'minion' || card.type === 'power'
+}))
 const addPlayer = ref<'p1' | 'p2'>('p1')
 const addZone = ref<'hand' | 'deck' | 'discard'>('hand')
 const addCard = ref('crystal')
+const addNemesisCard = ref(allNemesisCards.value[0] ?? '')
 
 function addCardToPlayer() {
   const p = getPlayer(state.game!, addPlayer.value)
   p[addZone.value].push(addCard.value)
+}
+
+function addCardToNemesis() {
+  const card = NEMESIS_CARDS[addNemesisCard.value]
+  if (!card) return
+  const n = state.game!.nemesis
+  if (card.type === 'attack') {
+    n.deck.unshift(card.id)
+    return
+  }
+  if (card.type !== 'minion' && card.type !== 'power') return
+  const placedAt = (n.cardInstanceCounter ?? n.playArea.reduce(
+    (highest, item) => Math.max(highest, item.placedAt), 0,
+  )) + 1
+  n.cardInstanceCounter = placedAt
+  n.playArea.push({
+    cardId: card.id,
+    cardType: card.type,
+    placedAt,
+    instanceId: `debug-${card.id}:${placedAt}`,
+    enteredOnNemesisTurn: n.nemesisTurnNumber ?? 0,
+    ...(card.type === 'minion' ? { lifeTokens: card.life ?? 0 } : { powerTokens: card.power ?? 0 }),
+  })
 }
 
 function giveAether(playerId: 'p1' | 'p2') {
@@ -221,6 +249,17 @@ onBeforeUnmount(() => {
           <option value="discard">discard</option>
         </select>
         <button class="btn small" @click="addCardToPlayer()">Add</button>
+      </div>
+
+      <div class="debug-section">
+        <span class="debug-label">Add Nemesis card</span>
+        <select v-model="addNemesisCard">
+          <option v-for="cid in allNemesisCards" :key="cid" :value="cid">
+            {{ cid }} — {{ getCard(cid).name }} ({{ getCard(cid).type }})
+          </option>
+        </select>
+        <span class="debug-hint">Minion and Power cards enter play; Attack cards go to the top of the Nemesis deck.</span>
+        <button class="btn small" @click="addCardToNemesis()">Add to Nemesis</button>
       </div>
 
       <div class="debug-section">
