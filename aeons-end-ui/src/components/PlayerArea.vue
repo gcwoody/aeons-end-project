@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getPlayer, getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellDamagePreview, toRoman } from '@engine/engine'
+import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellDamagePreview, toRoman } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
@@ -19,8 +19,7 @@ const {
   selectPlayer, clickDiscardCard, openPile, resolveDecision, toggleHelp,
 } = useGame()
 
-const p1 = computed(() => getPlayer(state.game!, 'p1'))
-const p2 = computed(() => getPlayer(state.game!, 'p2'))
+const players = computed(() => state.game?.players ?? [])
 const player = displayPlayer
 const aether = computed(() => aetherInfo(player.value))
 const ready = computed(() => player.value.charge >= player.value.chargeThreshold)
@@ -611,22 +610,16 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       <div class="controls-left">
         <div class="char-select">
           <button
-            class="char-btn" :class="{ sel: state.selectedPlayer === 'p1', cur: state.game!.currentTurn === 'p1' }"
-            @click="selectPlayer('p1')"
+            v-for="candidate in players"
+            :key="candidate.id"
+            class="char-btn"
+            :class="{ sel: state.selectedPlayer === candidate.id, cur: state.game!.currentTurn === candidate.id }"
+            @click="selectPlayer(candidate.id)"
           >
-            <span class="cn">{{ p1.mageType }}</span>
-            <span class="chp">HP {{ p1.hp }}</span>
-            <span class="cch">Charge {{ p1.charge }}/{{ p1.chargeThreshold }}</span>
-            <span v-if="p1.exhausted" class="cex">EXHAUSTED</span>
-          </button>
-          <button
-            class="char-btn" :class="{ sel: state.selectedPlayer === 'p2', cur: state.game!.currentTurn === 'p2' }"
-            @click="selectPlayer('p2')"
-          >
-            <span class="cn">{{ p2.mageType }}</span>
-            <span class="chp">HP {{ p2.hp }}</span>
-            <span class="cch">Charge {{ p2.charge }}/{{ p2.chargeThreshold }}</span>
-            <span v-if="p2.exhausted" class="cex">EXHAUSTED</span>
+            <span class="cn">{{ candidate.mageType }}</span>
+            <span class="chp">HP {{ candidate.hp }}</span>
+            <span class="cch">Charge {{ candidate.charge }}/{{ candidate.chargeThreshold }}</span>
+            <span v-if="candidate.exhausted" class="cex">EXHAUSTED</span>
           </button>
         </div>
         <div class="controls-status">

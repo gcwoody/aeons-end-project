@@ -1,12 +1,31 @@
 <script setup lang="ts">
+import { computed, ref, watch } from 'vue'
 import { useGame } from '../game/useGame'
 import { useModalDrag } from '../game/useModalDrag'
+import { MAGES, NEMESES } from '@engine/data'
 
 const {
   state, newGame, resumeGame,
   requestDeleteSave, cancelDeleteSave, deleteSave,
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
+const selectionError = ref('')
+const mageOptions = computed(() => Object.values(MAGES))
+const player2MageOptions = computed(() => mageOptions.value.filter(mage => mage.type !== state.mage1))
+const nemesisOptions = computed(() => Object.values(NEMESES))
+const duplicateMage = computed(() => state.mage1 === state.mage2)
+
+watch(() => [state.mage1, state.mage2], () => {
+  selectionError.value = ''
+})
+
+function startSelectedGame() {
+  selectionError.value = duplicateMage.value
+    ? 'This Mage has already been selected by another player.'
+    : ''
+  if (selectionError.value) return
+  newGame(state.mage1, state.mage2, state.nemesisType)
+}
 
 function saveTime(timestamp: number): string {
   return new Date(timestamp).toLocaleString()
@@ -20,37 +39,38 @@ function turnLabel(turn: string): string {
 <template>
   <div class="setup">
     <h1>Aeon's End — Digital Demo</h1>
-    <p style="color: var(--muted)">2 players vs Rageborne</p>
+    <p style="color: var(--muted)">Two players vs one Nemesis · Six turn-order cards</p>
     <div class="row">
       <label>
         Player 1
         <select v-model="state.mage1">
-          <option value="jian">Jian (Black Mirror)</option>
-          <option value="brama">Brama (Brink Siphon)</option>
-          <option value="xaxos">Xaxos (Metaphysical Link)</option>
-          <option value="adelheim">Adelheim (Aethereal Ward)</option>
-          <option value="kadir">Kadir (Otherworldly Gate)</option>
-          <option value="lash">Lash (Quicken Thought)</option>
-          <option value="mist">Mist (Divine Augury)</option>
-          <option value="phaedraxa">Phaedraxa (Auspex Rune)</option>
+          <option v-for="mage in mageOptions" :key="mage.type" :value="mage.type">
+            {{ mage.type }} ({{ mage.abilityName }})
+          </option>
         </select>
       </label>
       <label>
         Player 2
         <select v-model="state.mage2">
-          <option value="jian">Jian (Black Mirror)</option>
-          <option value="brama">Brama (Brink Siphon)</option>
-          <option value="xaxos">Xaxos (Metaphysical Link)</option>
-          <option value="adelheim">Adelheim (Aethereal Ward)</option>
-          <option value="kadir">Kadir (Otherworldly Gate)</option>
-          <option value="lash">Lash (Quicken Thought)</option>
-          <option value="mist">Mist (Divine Augury)</option>
-          <option value="phaedraxa">Phaedraxa (Auspex Rune)</option>
+          <option v-for="mage in player2MageOptions" :key="mage.type" :value="mage.type">
+            {{ mage.type }} ({{ mage.abilityName }})
+          </option>
+        </select>
+      </label>
+      <label>
+        Nemesis
+        <select v-model="state.nemesisType">
+          <option v-for="nemesis in nemesisOptions" :key="nemesis.type" :value="nemesis.type">
+            {{ nemesis.name }}
+          </option>
         </select>
       </label>
     </div>
+    <p v-if="selectionError || duplicateMage" class="setup-error">
+      {{ selectionError || 'This Mage has already been selected by another player.' }}
+    </p>
     <div class="row">
-      <button class="btn primary" style="font-size: 15px; padding: 10px 28px" @click="newGame(state.mage1, state.mage2)">
+      <button class="btn primary" style="font-size: 15px; padding: 10px 28px" @click="startSelectedGame">
         Start Game
       </button>
     </div>

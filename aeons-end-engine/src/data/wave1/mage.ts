@@ -1,6 +1,7 @@
 import type { AbilityTrigger, BreachState, CardEffect } from '../../types'
 
 export interface MageDef {
+  wave: number
   type: string
   abilityName: string
   abilityTrigger: AbilityTrigger
@@ -30,6 +31,7 @@ export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
 
 export function createMages(makeBreach: BreachFactory): Record<string, MageDef> {
   const jian: MageDef = {
+    wave: 1,
     type: 'jian',
     abilityName: 'Black Mirror',
     abilityTrigger: { kind: 'main_phase', scope: 'current_player' },
@@ -50,6 +52,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   }
 
   const brama: MageDef = {
+    wave: 1,
     type: 'brama',
     abilityName: 'Brink Siphon',
     abilityTrigger: { kind: 'main_phase', scope: 'current_player' },
@@ -67,6 +70,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   }
 
   const xaxos: MageDef = {
+    wave: 1,
     type: 'xaxos',
     abilityName: 'Metaphysical Link',
     abilityTrigger: { kind: 'main_phase', scope: 'any_player' },
@@ -87,6 +91,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   }
 
   const adelheim: MageDef = {
+    wave: 1,
     type: 'adelheim',
     abilityName: 'Aethereal Ward',
     abilityTrigger: { kind: 'nemesis_card_drawn', cardType: 'attack_or_power' },
@@ -104,6 +109,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   }
 
   const kadir: MageDef = {
+    wave: 1,
     type: 'kadir',
     abilityName: 'Otherworldly Gate',
     abilityTrigger: { kind: 'main_phase', scope: 'any_player' },
@@ -124,6 +130,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   }
 
   const lash: MageDef = {
+    wave: 1,
     type: 'lash',
     abilityName: 'Quicken Thought',
     abilityTrigger: { kind: 'main_phase', scope: 'any_player' },
@@ -141,6 +148,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   }
 
   const mist: MageDef = {
+    wave: 1,
     type: 'mist',
     abilityName: 'Divine Augury',
     abilityTrigger: { kind: 'main_phase', scope: 'current_player' },
@@ -158,6 +166,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
   }
 
   const phaedraxa: MageDef = {
+    wave: 1,
     type: 'phaedraxa',
     abilityName: 'Auspex Rune',
     abilityTrigger: { kind: 'turn_order_card_drawn' },

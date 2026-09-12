@@ -249,6 +249,8 @@ export const rageborne: NemesisDef = {
   standardRules: { furyLossAfterStrike: 3, endTurnStrikeThreshold: 4 },
   increasedDifficultyRules: { furyLossAfterStrike: 1 },
   unleashEffects: [{ kind: 'gain_nemesis_counter', counter: 'fury', amount: 1 } as CardEffect],
+  deckBuilder: buildRageborneDeck,
+  specificDeckBuilder: buildRageborneStrikeDeck,
 }
 
 function shuffleWithRandom<T>(items: T[], random: RandomSource): T[] {
@@ -274,4 +276,8 @@ export function buildRageborneDeck(random: RandomSource = Math.random): string[]
 
 export function buildRageborneStrikeDeck(random: RandomSource = Math.random): string[] {
   return shuffleWithRandom(rageborne.strikeCardIds, random)
+}
+
+export const NEMESES: Record<string, NemesisDef> = {
+  [rageborne.type]: rageborne,
 }

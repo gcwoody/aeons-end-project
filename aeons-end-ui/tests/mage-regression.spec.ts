@@ -38,6 +38,11 @@ async function resolveStartupInterrupts(page: Page) {
       await confirm.click()
       continue
     }
+    const nemesisEffectCard = page.locator('.nemesis-play-card.effect-target').first()
+    if (await nemesisEffectCard.isVisible().catch(() => false)) {
+      await nemesisEffectCard.click()
+      continue
+    }
     const attack = page.getByRole('button', { name: /^(Attack .+|Gravehold)$/ }).first()
     if (await attack.isVisible().catch(() => false)) {
       await attack.click()
@@ -61,7 +66,7 @@ async function applyDebugGameState(page: Page, update: (game: any) => void, phas
   const stateField = page.locator('.debug-panel textarea')
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const debugState = JSON.parse(await stateField.inputValue())
-  debugState.selectedPlayer = 'p1'
+  debugState.selectedPlayer = debugState.game.players[0].id
   if (phase) debugState.phase = phase
   update(debugState.game)
   await stateField.fill(JSON.stringify(debugState))
@@ -141,10 +146,10 @@ test('Kadir can stack two spells on one Breach in the UI', async ({ page }) => {
   await page.keyboard.press('Control+d')
   await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
 
-  const kadirSection = page.locator('.debug-section').filter({ hasText: 'kadir (p1)' })
+  const kadirSection = page.locator('.debug-section').filter({ hasText: 'kadir (wave1_KADIR)' })
   await kadirSection.locator('input[type="number"]').nth(1).fill('5')
   const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
-  for (const playerId of ['p1', 'p2']) {
+  for (const playerId of ['wave1_KADIR', 'wave1_BRAMA']) {
     for (const cardId of ['spark', 'flare']) {
       await addCardSection.locator('select').nth(0).selectOption(cardId)
       await addCardSection.locator('select').nth(1).selectOption(playerId)
@@ -189,7 +194,7 @@ test('prepped spells can move between Breaches and swap positions during Main Ph
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    game.currentTurn = 'p1'
+    game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
     game.players[0].breaches[0].opened = true
     game.players[0].breaches[0].prepSpells = ['spark']
@@ -213,7 +218,7 @@ test('prepped spells remain movable during discard order before the turn fully e
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    game.currentTurn = 'p1'
+    game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
     game.players[0].breaches[0].opened = true
     game.players[0].breaches[0].prepSpells = ['spark']
@@ -238,7 +243,7 @@ test('a hand spell does not replace a prepped spell, while a prepped spell can r
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    game.currentTurn = 'p1'
+    game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
     game.players[0].hand = ['flare']
     game.players[0].breaches[0].opened = true
@@ -270,24 +275,24 @@ test('a spell stays highlighted until its damage target is confirmed', async ({ 
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const debugState = JSON.parse(await stateField.inputValue())
   debugState.phase = 'casting'
-  debugState.selectedPlayer = 'p1'
-  debugState.game.currentTurn = 'p1'
+  debugState.selectedPlayer = debugState.game.players[0].id
+  debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'casting'
   debugState.game.players[0].breaches[0].prepSpells = ['lava_tendril']
   debugState.game.nemesis.playArea = [{
     instanceId: 'target-minion:1', cardId: 'bane_sire', cardType: 'minion', placedAt: 1, lifeTokens: 3,
   }]
   debugState.game.pendingDecision = {
-    id: 'target-1', playerId: 'p1', prompt: 'Choose a damage target', kind: 'select_damage_target',
+    id: 'target-1', playerId: debugState.game.players[0].id, prompt: 'Choose a damage target', kind: 'select_damage_target',
     targets: [
       { kind: 'nemesis', id: 'nemesis', label: 'Nemesis' },
       { kind: 'minion', id: 'minion:1', placedAt: 1, cardId: 'bane_sire', label: 'Bane Sire' },
     ],
   }
   debugState.game.pendingEffect = {
-    playerId: 'p1', sourceCardId: 'lava_tendril', remainingEffects: [],
+    playerId: debugState.game.players[0].id, sourceCardId: 'lava_tendril', remainingEffects: [],
     awaiting: { kind: 'deal_damage', amount: 3, target: 'nemesis_or_minion' },
-    pendingSpellCast: { playerId: 'p1', breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', discard: true },
+    pendingSpellCast: { playerId: debugState.game.players[0].id, breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', discard: true },
     spellDamageEffectSeen: true,
   }
   await stateField.fill(JSON.stringify(debugState))
@@ -317,7 +322,7 @@ test('a prepped spell shows its damage preview while hovered during Casting Phas
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    game.currentTurn = 'p1'
+    game.currentTurn = game.players[0].id
     game.currentPhase = 'casting'
     for (const breach of game.players[0].breaches) breach.prepSpells = []
     game.players[0].breaches[0].opened = true
@@ -343,7 +348,7 @@ test('Flexing Dagger disables its breach-cost option when all breaches are open'
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    game.currentTurn = 'p1'
+    game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
     game.players[0].hand = ['flexing_dagger']
     for (const breach of game.players[0].breaches) {
@@ -359,6 +364,7 @@ test('Flexing Dagger disables its breach-cost option when all breaches are open'
 })
 
 test('preparing a spell preserves the remaining hand order', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1100 })
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -370,8 +376,8 @@ test('preparing a spell preserves the remaining hand order', async ({ page }) =>
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const debugState = JSON.parse(await stateField.inputValue())
   debugState.phase = 'main'
-  debugState.selectedPlayer = 'p1'
-  debugState.game.currentTurn = 'p1'
+  debugState.selectedPlayer = debugState.game.players[0].id
+  debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'main'
   debugState.game.players[0].hand = ['spark', 'crystal', 'crystal', 'crystal', 'spark']
   debugState.game.players[0].breaches[0].opened = true
@@ -440,7 +446,7 @@ test('saved games retain the undo history after resume', async ({ page }) => {
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    game.currentTurn = 'p1'
+    game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
     game.players[0].hand = ['crystal', 'crystal']
     game.players[0].bonusAether = 3
@@ -452,7 +458,7 @@ test('saved games retain the undo history after resume', async ({ page }) => {
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Save & Exit' }).click()
   const savedHistoryLength = await page.evaluate(() => {
-    const saves = JSON.parse(localStorage.getItem('aeons-end-saves-v2') ?? '[]')
+    const saves = JSON.parse(localStorage.getItem('aeons-end-saves-v3') ?? '[]')
     return saves[0]?.undoStack?.length ?? 0
   })
   expect(savedHistoryLength).toBeGreaterThanOrEqual(1)
@@ -545,13 +551,16 @@ test('dragging a spell suppresses Breach preview and accepts an overlapping drop
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    game.currentTurn = 'p1'
+    game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
     game.pendingDecision = null
     game.pendingEffect = null
-    game.players[0].hand = ['spark']
+    // Keep one non-spell action in hand so the Main Phase remains active after
+    // the test spell is prepared.
+    game.players[0].hand = ['spark', 'crystal']
     game.players[0].breaches[0].prepSpells = []
   }, 'main')
+  await page.locator('.char-btn').filter({ hasText: 'jian' }).click()
 
   const spell = page.locator('.hand .card').filter({ has: page.locator('img[alt="Spark"]') }).first()
   const breach = page.locator('.breach[data-breach-index="1"]')

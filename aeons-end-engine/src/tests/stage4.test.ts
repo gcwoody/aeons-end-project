@@ -91,7 +91,7 @@ function testStrikeEffectsAndMinionDamageRule(): void {
   const game = nemesisGame()
   game.nemesis.strikeDeck = ['devastate']
   game.nemesis.counters.fury = 2
-  const messages = resolveEffects(game, 'p1', [{ kind: 'resolve_strike' }])
+  const messages = resolveEffects(game, game.players[0]!.id, [{ kind: 'resolve_strike' }])
   const strikeDecision = game.pendingDecision
   assert(strikeDecision?.kind === 'confirm_nemesis_draw' && strikeDecision.source === 'specific_deck', 'Strike draw uses the generic Nemesis reveal confirmation')
   const confirmedStrike = resolvePendingDecision(game, strikeDecision.id, { kind: 'confirm_nemesis_draw', accepted: true })
@@ -115,7 +115,7 @@ function testMostExpensivePreppedSpellSelection(): void {
   game.players[0]!.breaches[0]!.prepSpells = ['spark', 'spark']
   game.players[1]!.breaches[0]!.prepSpells = ['lava_tendril']
 
-  const messages = resolveEffects(game, 'p1', [{
+  const messages = resolveEffects(game, game.players[0]!.id, [{
     kind: 'discard_prepped_spells', amount: 2, target: 'any_player', mostExpensive: true,
   }])
   assert(messages.some(message => message.includes('Decision required')), 'A tied cutoff opens a confirmation choice before changing the board')
@@ -135,7 +135,7 @@ function testMostExpensivePreppedSpellSelection(): void {
 
   const sameBreachGame = nemesisGame()
   sameBreachGame.players[0]!.breaches[0]!.prepSpells = ['lava_tendril', 'spark', 'spark']
-  resolveEffects(sameBreachGame, 'p1', [{
+  resolveEffects(sameBreachGame, sameBreachGame.players[0]!.id, [{
     kind: 'discard_prepped_spells', amount: 2, target: 'any_player', mostExpensive: true,
   }])
   const sameBreachDecision = sameBreachGame.pendingDecision
@@ -168,7 +168,7 @@ function testAdelheimPreResolutionResponse(): void {
 
 function testToDiscardKeepsMainPhaseActionsAvailable(): void {
   const aetherGame = createGame('jian', 'brama')
-  aetherGame.currentTurn = 'p1'
+  aetherGame.currentTurn = aetherGame.players[0]!.id
   aetherGame.currentPhase = 'main'
   aetherGame.players[0]!.hand = []
   aetherGame.players[0]!.bonusAether = 6
@@ -176,12 +176,12 @@ function testToDiscardKeepsMainPhaseActionsAvailable(): void {
     cardId: 'eye_of_nothing', cardType: 'power', placedAt: 1,
     instanceId: 'eye-of-nothing:1', powerTokens: 2,
   }]
-  assert(canPlayerAct(aetherGame, 'p1'), 'A Power To Discard action remains available after other resources are spent')
-  discardNemesisPower(aetherGame, 'p1', 'eye-of-nothing:1')
+  assert(canPlayerAct(aetherGame, aetherGame.players[0]!.id), 'A Power To Discard action remains available after other resources are spent')
+  discardNemesisPower(aetherGame, aetherGame.players[0]!.id, 'eye-of-nothing:1')
   assertEqual(aetherGame.nemesis.playArea.length, 0, 'Aether To Discard removes the Power from play')
 
   const chargeGame = createGame('jian', 'brama')
-  chargeGame.currentTurn = 'p1'
+  chargeGame.currentTurn = chargeGame.players[0]!.id
   chargeGame.currentPhase = 'main'
   chargeGame.players[0]!.hand = []
   chargeGame.players[0]!.charge = 4
@@ -189,17 +189,17 @@ function testToDiscardKeepsMainPhaseActionsAvailable(): void {
     cardId: 'blood_cry', cardType: 'power', placedAt: 1,
     instanceId: 'blood-cry:1', powerTokens: 2,
   }]
-  assert(canPlayerAct(chargeGame, 'p1'), 'A Charge-based To Discard action remains available after charging')
+  assert(canPlayerAct(chargeGame, chargeGame.players[0]!.id), 'A Charge-based To Discard action remains available after charging')
 
   const discardGame = createGame('jian', 'brama')
-  discardGame.currentTurn = 'p1'
+  discardGame.currentTurn = discardGame.players[0]!.id
   discardGame.currentPhase = 'main'
   discardGame.players[0]!.hand = ['crystal', 'crystal', 'spark', 'crystal']
   discardGame.nemesis.playArea = [{
     cardId: 'woven_sky', cardType: 'power', placedAt: 1,
     instanceId: 'woven-sky:1', powerTokens: 2,
   }]
-  discardNemesisPower(discardGame, 'p1', 'woven-sky:1')
+  discardNemesisPower(discardGame, discardGame.players[0]!.id, 'woven-sky:1')
   assertEqual(discardGame.pendingDecision?.kind, 'select_cards', 'Discard-card To Discard opens a card selection')
   assert(discardGame.pendingDecision?.kind !== 'select_cards' || discardGame.pendingDecision.prompt.includes('discard the Power'), 'Discard-card prompt uses discard rather than destroy')
 }
@@ -207,7 +207,7 @@ function testToDiscardKeepsMainPhaseActionsAvailable(): void {
 function testCollectiveGemMitigation(): void {
   const game = nemesisGame()
   game.players[0]!.hand = ['crystal']
-  const messages = resolveEffects(game, 'p1', [{
+  const messages = resolveEffects(game, game.players[0]!.id, [{
     kind: 'deal_gravehold_damage_with_gem_discard', amount: 18, maxGems: 6, reductionPerGem: 3,
   }])
   assert(messages.some(message => message.includes('Decision required')), 'Collective gem mitigation pauses for a shared choice')

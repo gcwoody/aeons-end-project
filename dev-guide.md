@@ -1,108 +1,108 @@
 # 开发者地图（dev-guide）
 
-这份文档说明当前项目的架构、文件职责、功能入口和卡牌效果扩展方式。
-项目现在以 Web UI 为唯一的游戏操作和可视化测试入口；CLI 已删除，不再维护。
+> 这是给独立开发者和 Codex 使用的唯一主开发指南。需要查看弹窗遮挡、`z-index` 或
+> stacking context 时，再打开 [`design/ui-layering-guide.md`](design/ui-layering-guide.md)。
 
-## 架构概览
+更新时间：2026-09-12
 
-`aeons-end-engine` 是纯 TypeScript 规则引擎，原地修改一个 `GameState` 对象；
-`aeons-end-ui` 是 Vue 3 前端，通过 `@engine` 别名直接引用引擎源码。UI 用
-Vue `reactive()` 包装 GameState，把点击、选择和阶段操作交给引擎处理，再渲染结果。
+## 先记住三条
 
-规则逻辑应放在引擎，UI 只负责展示状态、收集输入和调用引擎。不要为了适应某个
-组件而在 UI 中复制卡牌规则。
+1. 卡牌和 Ability 是数据；规则由引擎解释器执行；Vue 组件不复制卡牌规则。
+2. 新卡优先组合现有 `CardEffect`。只有确实无法表达的新规则，才增加一种通用效果模块。
+3. `effect.kind` 和 `decision.kind` 的集中分支是解释器/渲染器的正常分支；按具体卡牌
+   ID 写规则，才是需要警惕的硬编码。
 
-## 文件地图
+## 两层架构
 
-### 引擎：`aeons-end-engine/src/`
+`aeons-end-engine` 是纯 TypeScript 规则层，原地修改一个 `GameState`；
+`aeons-end-ui` 是 Vue 3 展示层，通过 `@engine` 直接引用引擎源码。
 
-| 文件 | 职责 |
+```text
+data/*.ts → CardEffect / MageDef / NemesisCardDef
+                    ↓
+engine.ts → 规则、资源、目标、阶段、中断和胜负
+                    ↓
+useGame.ts → 响应式状态、UI 阶段、存档、撤销、操作入口
+                    ↓
+Vue components + style.css → 显示、拖拽、弹窗和布局
+```
+
+引擎与 UI 的边界是最重要的扩展边界：规则结果必须由引擎决定，UI 只能提交操作。
+需要玩家选择时，引擎写入 `pendingDecision` / `pendingEffect`；这两个字段可以被
+JSON 存档、Resume 和 Ctrl+Z 恢复。
+
+## 文件地图：改功能去哪找
+
+| 需求 | 首要位置 |
 | --- | --- |
-| `types.ts` | GameState、玩家、裂隙、卡牌、效果模块、Pending Decision 类型 |
-| `data.ts` | 统一卡牌数据出口和全局 Breach 配置 |
-| `data/wave1/gems.ts` | Wave 1 的初始 Gem 与市场 Gem 数据 |
-| `data/wave1/relics.ts` | Wave 1 的市场 Relic 数据 |
-| `data/wave1/spells.ts` | Wave 1 的初始 Spell 与市场 Spell 数据 |
-| `data/wave1/mage.ts` | Wave 1 法师定义和法师专属卡牌关系 |
-| `data/wave1/nemesis.ts` | Wave 1 Nemesis 卡牌和 Nemesis 定义 |
-| `engine.ts` | 回合流程、资源、卡牌效果解释器、目标选择、伤害、抽牌和胜负 |
-| `tests/stage7.test.ts` | 当前玩家卡、关键词、边界和 JSON 暂停恢复的引擎回归测试 |
+| Gem / Relic / Spell 数据 | `aeons-end-engine/src/data/wave1/gems.ts`、`relics.ts`、`spells.ts` |
+| Mage 数据和 Ability 组合 | `aeons-end-engine/src/data/wave1/mage.ts` |
+| Nemesis 卡牌和定义 | `aeons-end-engine/src/data/wave1/nemesis.ts` |
+| 统一出口、初始/市场卡表、Common Breach 费用 | `aeons-end-engine/src/data.ts` |
+| 状态、效果、触发器、决策类型 | `aeons-end-engine/src/types.ts` |
+| 回合流程、效果解释器、规则判定 | `aeons-end-engine/src/engine.ts` |
+| 引擎回归 | `aeons-end-engine/src/tests/stage*.test.ts` |
+| UI 状态、阶段流转、存档、撤销 | `aeons-end-ui/src/game/useGame.ts` |
+| 卡牌选择弹窗 | `aeons-end-ui/src/components/CardDecisionModal.vue` + `CardSelectionPanel.vue` |
+| 全局布局、悬停、层级、滚动条 | `aeons-end-ui/src/style.css` |
+| 玩家区域、裂隙、手牌、施法拖拽 | `aeons-end-ui/src/components/PlayerArea.vue` |
+| Nemesis 区域和专属牌堆显示 | `aeons-end-ui/src/components/NemesisArea.vue` + `game/nemesis-presentation.ts` |
+| 卡图、Mage 图、Breach 图路径 | `card-images.ts`、`mage-images.ts`、`breach-images.ts` |
+| 浏览器流程测试 | `aeons-end-ui/tests/` |
 
-### 前端：`aeons-end-ui/src/`
+## 当前哪些是真正可复用的
 
-| 文件 | 职责 |
+### 卡牌和 Ability：已经是模块化的
+
+`CardDef.effects` 是一个效果块数组。效果块声明触发时机、条件、是否每回合一次，
+内部再按顺序组合 `CardEffect[]`。核心入口是：
+
+- `resolveCardEffects()`：`on_gain`、`on_play`、`on_cast`。
+- `resolvePreppedEffects()`：`while_prepped`。
+- `runEffectResolution()`：统一执行效果，遇到操作就暂停。
+- `resolvePendingDecision()`：校验选择并从暂停点继续。
+- `getPreppedCardActions()`：主阶段非阻塞的预备法术动作。
+
+当前可以直接组合的模块包括：
+
+| 规则类别 | 代表效果 |
 | --- | --- |
-| `game/useGame.ts` | 响应式状态封装、UI 阶段流转、操作入口、自动存档、撤销 |
-| `App.vue` | 全屏布局、快捷键、退出提示、Nemesis 目标和胜负弹窗 |
-| `components/GameTopArea.vue` | 顶部 Nemesis 区域和 Turn Order Bar 的组合 |
-| `components/NemesisArea.vue` | 全高 Mat、可选子版图、上排五分区、场上卡牌及 Mat/弃牌弹窗 |
-| `game/nemesis-presentation.ts` | 各 Nemesis 的子版图、专属牌堆、专属弃牌区显示配置 |
-| `components/TurnOrderBar.vue` | 六个回合槽、Nemesis/Gravehold HP、Round |
-| `components/PlayerArea.vue` | 法师选择、裂隙、施法、Played、手牌、牌库和控制栏 |
-| `components/MarketPanel.vue` | 九个固定位置的市场牌堆；耗尽后保留不可见空槽 |
-| `components/CardDecisionModal.vue` | 通用分支、Yes/No、牌卡、玩家、伤害目标和回合顺序重排 UI |
-| `components/CardHoverPreview.vue` | 卡牌/裂隙悬停预览 |
-| `components/PileModal.vue` | 牌库、弃牌堆查看和抽牌分组注释 |
-| `components/SetupScreen.vue` | 新游戏、多存档 Resume 和删除存档 |
-| `components/DebugPanel.vue` | Ctrl+D 调试面板 |
-| `style.css` | 全部布局、层级、边框、悬停、滚动条和选择行为 |
+| 资源 | `gain_aether`、`gain_conditional_aether`、`gain_charge`、`modify_next_breach_cost` |
+| 生命与伤害 | `deal_damage`、`deal_player_damage`、`gain_life` |
+| 牌区 | `draw_cards`、`discard_cards`、`destroy_cards`、`return_cards_to_hand`、`gain_card` |
+| 选择 | `choose_one`、`choose_optional`、`select_*` Pending Decision |
+| 施法 | `cast_prepped_spell`、`return_card_to_hand` |
+| 回合顺序 | `reveal_turn_order_card`、`review_turn_order_deck`、`shuffle_turn_order_card` |
+| 预备法术 | `while_prepped`、`set_prep_limit`、`prevent_damage_this_turn` |
+| Nemesis 基础动作 | `unleash`、Nemesis counter、`resolve_strike` |
 
-## 改功能去哪找
+`CardDecisionModal.vue` 按决策类型渲染，`CardSelectionPanel.vue` 负责通用卡牌选择；
+它们不应该出现 `if (cardId === 'new_card')`。同样，Ability 不维护一段仅供展示的
+规则文本，而是复用同一套 `CardEffect[]`。
 
-| 需求 | 首要修改位置 |
-| --- | --- |
-| 新增或修改 Gem | `aeons-end-engine/src/data/wave1/gems.ts` |
-| 新增或修改 Relic | `aeons-end-engine/src/data/wave1/relics.ts` |
-| 新增或修改 Spell | `aeons-end-engine/src/data/wave1/spells.ts` |
-| 新增或修改法师/Nemesis | 对应 `aeons-end-engine/src/data/wave1/` 文件 |
-| 新增一种可复用卡牌效果模块 | `types.ts` 定义 + `engine.ts` 解释器 + 引擎测试 |
-| 修改普通规则判定、资源或目标 | `aeons-end-engine/src/engine.ts` |
-| 修改回合/阶段转换 | `engine.ts` + `aeons-end-ui/src/game/useGame.ts` |
-| 修改按钮、边框、布局和显示 | 对应 Vue 组件 + `style.css` |
-| 修改玩家选择弹窗 | `CardDecisionModal.vue`；规则仍在 `engine.ts` |
-| 修改存档、恢复、撤销 | `useGame.ts` |
-| 修改市场固定槽或预览 | `MarketPanel.vue` + `style.css` |
+### UI：大部分交互也已经抽象
 
-## 卡牌效果系统
+- 卡牌选择：通过 `PendingDecision` 参数描述来源、候选、最小/最大数量和布局。
+- 牌库/弃牌查看：使用 `PileModal` 和 `pile-layout.ts`，这是“抽牌顺序展示”的专用布局，
+  不应被 Kadir 这类普通弃牌选择复用。
+- 所有可拖动弹窗：使用 `useModalDrag.ts`；层级参数集中在 `style.css` 顶部。
+- 卡牌预览：使用 `CardHoverPreview.vue`，特殊场景通过 props 禁用或调整延迟。
 
-卡牌通过 `CardDef.effects` 声明效果块：一个效果块包含触发时机、可选条件、
-一次性标记和一组按顺序执行的 `CardEffect`。解释器不按卡牌 ID 写分支，而是
-依次执行这些模块。
+## 新增内容的实际流程
 
-核心入口：
+### 新增一张 Gem / Relic / Spell
 
-- `resolveCardEffects()`：执行 `on_gain`、`on_play`、`on_cast` 效果。
-- `resolvePreppedEffects()`：执行 `while_prepped` 效果。
-- `runEffectResolution()`：执行效果序列，遇到玩家操作时暂停。
-- `resolvePendingDecision()`：校验答案并从暂停位置继续执行。
-- `getPreppedCardActions()` / `activatePreppedCardAction()`：处理主阶段可随时
-  点击的非阻塞预备法术动作。
+1. 在 `types.ts` 查看触发器、目标和 `CardEffect` 是否已经能表达规则。
+2. 如果能表达，只修改对应 Wave 的数据文件，组合已有效果。
+3. 在引擎测试中覆盖成功分支、选择分支、无目标/上限、重复触发和 JSON 恢复。
+4. 如果需要玩家操作，复用现有 Pending Decision；不要先为这张卡单独做弹窗。
+5. 最后运行引擎测试、前端构建和相关 Playwright 用例。
 
-需要玩家操作时，规则状态写入 `GameState.pendingDecision` 和
-`GameState.pendingEffect`。这两个字段会进入自动存档、Resume 和 Ctrl+Z 快照。
-UI 不直接修改效果结果。
-
-### 新增卡牌时的推荐流程
-
-1. 先在 `types.ts` 和 `design/card-effects-keywords.md` 确认现有模块是否足够。
-2. 如果足够，只在对应的 `data/wave1/gems.ts`、`relics.ts` 或 `spells.ts`
-   新增卡牌数据和效果组合，不修改 UI；`data.ts` 会继续提供统一出口。
-3. 如果缺少规则词汇，先增加通用 `CardEffect` 类型，再在 `engine.ts` 的统一
-   解释器中实现一次，之后所有卡牌都可以复用。
-4. 如果效果需要选择，复用已有的 `choose_one`、`choose_optional`、
-   `select_cards`、`select_player_target` 或 `select_damage_target`。
-5. 在 `stage7.test.ts` 增加效果成功、跳过/边界、目标和 JSON 暂停恢复测试。
-6. 最后通过 Web UI 和调试面板做可视化流程验证。
-
-例如，一个造成伤害并让任意玩家获得生命的 Spell 可以直接组合已有模块：
+示例：
 
 ```ts
 export const exampleSpell: SpellCard = {
-  id: 'example_spell',
-  name: 'Example Spell',
-  type: 'spell',
-  cost: 5,
-  set: 'wave1',
+  id: 'example_spell', name: 'Example Spell', type: 'spell', cost: 5, set: 'wave1',
   effects: [{
     trigger: { kind: 'on_cast' },
     effects: [
@@ -113,88 +113,76 @@ export const exampleSpell: SpellCard = {
 }
 ```
 
-一个需要在 casting phase 结束时强制玩家确认的预备效果，可以这样组合：
+### 新增 Mage
 
-```ts
-{
-  trigger: { kind: 'while_prepped', phase: 'casting_phase_end' },
-  oncePerTurn: true,
-  requiresConfirmation: true,
-  effects: [{ kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' }],
-}
-```
+先在 `mage.ts` 加静态资料和 Ability 效果。若触发时机、目标和效果已有类型，通常不需要
+改引擎或 UI；如果出现全新时机，才扩展 `AbilityTrigger`、引擎触发入口和测试。
 
-`requiresConfirmation` 会使用通用的 `confirm_prepped_effect` 暂停机制；UI 会在
-对应法术上显示红色 2px 边框。主阶段的可选 `return_card_to_hand` 则由通用绿色
-高亮动作处理。两者都不需要为具体卡牌增加 UI ID 分支。
+### 新增 Nemesis
 
-详细模型、关键词、当前卡牌覆盖、进度和未实现边界见：
-[`design/card-effects-keywords.md`](design/card-effects-keywords.md)。
+卡牌先在 `nemesis.ts` 用 `NemesisCardDef` 描述，公共动作尽量使用现有
+`NemesisEffectBlock` 和 `CardEffect`。Nemesis 通过 `NEMESES` 注册表提供给
+Setup 的选择器；定义可以提供 `deckBuilder` 和 `specificDeckBuilder`，没有专属牌组时
+省略对应 builder 即可。
 
-## 已实现的核心机制
+## 当前场景边界
 
-- Gem、Relic、Spell 的类型化效果、5 张初始玩家卡和 9 张 Wave 1 市场卡。
-- `gain` 默认进入弃牌堆顶，也支持效果移动到牌库顶。
-- `may`、`or`、卡牌/玩家/伤害目标选择和可序列化中断恢复。
-- 永久销毁卡牌，并记录到 `destroyedCards`。
-- Nemesis、Minion、Gravehold 和玩家的伤害/生命目标边界处理。
-- Xaxos 的 `Metaphysical Link`：任意玩家的主阶段均可激活；Ally 获得充能并查看、重排未翻开的回合顺序牌。
-- Turn Order UI 使用法师名称的最短不歧义前缀显示玩家牌，Nemesis 仍显示为 `NEM`。
-- 第三、第四裂隙施放法术时，每个独立伤害实例增加 1 点；无显式伤害的类型化
-  Spell 会获得一次补充伤害。
-- Arcane Nexus 的主阶段非阻塞动作和 Lava Tendril 的 casting phase 结束确认。
-- 不洗牌抽牌、Played/弃牌排序、自动结束回合和多存档。
-- Market 固定九宫格槽位；耗尽牌堆不补位且不显示卡图。
-- Ctrl+Z 最多撤销五步、Ctrl+D 调试、ESC 保存并退出/直接退出。
+当前产品范围是 `ScenarioConfig.id === 'two_player'`：
 
-## 调试与验证
+- 固定两名玩家、一个 Nemesis。
+- 回合顺序牌固定 6 张：每名玩家 2 张，Nemesis 2 张；下一轮由玩家数组重新生成。
+- Setup 可以从已注册的 Mage 和 Nemesis 中选择；目前 Nemesis 注册表只有 Rageborne。
+- 玩家 ID 由 Mage 的 Wave 和类型生成，例如 `wave1_JIAN`。它会进入回合顺序牌、目标选择、
+  存档和撤销快照，不要在新代码中写 `p1` / `p2`。
+- 同一个 Mage 不能被两个玩家选择。UI 会过滤第二个选择框并显示错误，引擎的
+  `createTwoPlayerScenario()` 和 `createGame(scenario)` 也会再次拒绝重复选择。
+- 1、3、4 人规则暂不实现；不要为了提前支持它们给当前流程增加隐含分支。
+
+存档使用当前 v3 结构。旧 v1/v2 存档不再迁移或读取；测试存档可以直接删除并重新开始。
+
+## 哪些地方仍然是硬编码或过渡代码
+
+以下是有意保留的边界，而不是卡牌级别的复制粘贴：
+
+| 位置 | 当前情况 | 什么时候重构 |
+| --- | --- | --- |
+| `engine.ts:buildScenarioTurnOrder()` | 只接受双玩家配置，但牌数和玩家 ID 都来自 `ScenarioConfig`/`players` | 开始实现 1、3、4 人规则时扩展 Scenario 类型 |
+| `engine.ts` 的 Rageborne 分支 | Fury、Strike 和结束回合 Strike 是 Rageborne 独有机制 | 第二个 Nemesis 实装后，再比较两者并抽取真正共用的 Nemesis hooks |
+| `engine.ts:nemesisDrawCard()` 与 `useGame.ts:pendingNemesis` | 为现有 UI/测试保留的 Nemesis 抽牌入口；主流程使用 `nemesisResolution` | 改动 Nemesis 抽牌流程时先确认调用者，再统一入口 |
+| `card-images.ts`、`mage-images.ts` | 当前用显式 import 和映射 | 图片数量明显增大时使用目录扫描脚本生成映射，并加入缺图校验 |
+
+以下不算坏的硬编码：卡牌费用、起始牌、Breach 方向和图片文件名属于数据配置；
+`switch/if effect.kind` 属于统一解释器；`decision.kind` 属于通用 UI 渲染分派。
+
+## 后续扩展顺序
+
+两人场景和稳定玩家 ID 已完成，接下来按小步推进：
+
+1. 新增第二个 Nemesis，验证 Nemesis 选择、牌组 builder、通用抽牌/结算 UI 是否足够。
+2. 对比两个 Nemesis 后，只把确实共用的 Fury/Strike 之外的行为抽成 Nemesis hooks；
+   Rageborne 的专属规则继续留在其定义或专属模块中。
+3. 使用脚本从图片目录生成 import 映射，并在构建/测试阶段检查数据卡牌与图片是否一致。
+4. 最后再设计 1、3、4 人场景的 ScenarioConfig，而不是现在为未确定的规则预留行为。
+
+## 测试和验收
 
 ```powershell
-# 引擎类型检查和回归测试
 cd aeons-end-engine
 npm test
 
-# 前端开发服务器
 cd ..\aeons-end-ui
-npm install
-npm run dev
-
-# 前端生产构建
 npm run build
+npx playwright test --workers=1
 ```
 
-浏览器端 E2E 测试（首次使用需先执行 `npx playwright install chromium`）：
+Playwright 适合验证按钮状态、弹窗流程、拖拽、存档和 DOM 几何关系；它不能完全替代人工
+检查字体清晰度、动画观感和真实 Chrome 窗口中的层级。配置默认不复用旧开发服务器；若
+确认 `5173` 就是当前项目，可临时使用：
 
 ```powershell
-cd ..\aeons-end-ui
-npm run test:e2e
+$env:PLAYWRIGHT_REUSE_SERVER='true'
+npx playwright test --workers=1
 ```
 
-Playwright 配置位于 `aeons-end-ui/playwright.config.ts`，测试位于
-`aeons-end-ui/tests/`。配置会自动启动 Vite 开发服务器；后续可在同一目录增加
-游戏流程、存档恢复、决策弹窗和视觉截图测试。功能断言适合自动化，字体清晰度、
-悬停层级和整体布局等视觉细节仍建议结合浏览器人工检查。
-
-调试面板支持修改 HP/Charge、添加卡牌、开关裂隙、导出/导入 JSON 和清除全部
-存档。已有存档在继续游玩时会自动同步到浏览器 localStorage；新游戏只有选择
-`Save & Exit` 后才会创建存档记录。浏览器端 localStorage 是当前唯一的存档介质；存档列表支持多条记录、
-删除确认和按条目 Resume。
-
-## 常见坑
-
-- 引擎原地修改 GameState；不要通过返回新对象来替代引擎约定。
-- UI 改动可能因为 `useGame.ts` 模块级状态而触发 HMR 重置；刷新后可从自动存档
-  Resume。
-- 牌堆数组约定：`[0]` 是顶部；抽牌使用 `shift()`，弃牌顶使用 `unshift()`，
-  弃牌堆翻转时使用 `reverse()`。
-- 只有在 `CardEffect` 确实无法表达新规则时才扩展引擎；新增卡牌优先组合已有
-  模块。
-- 所有 UI 字符串必须为英文；中文只用于内部文档。
-
-## 当前缺口
-
-1. Jian 的 Black Mirror、Brama 的 Brink Siphon 和 Xaxos 的 Metaphysical Link 已接入类型化 Ability 效果；更多
-   Ability 触发时机仍需继续扩展。
-2. Nemesis 的 Minion/Power 完整规则和效果结算仍未完成。
-3. 当前已配置引擎回归测试和基础浏览器 E2E；复杂 UI 视觉细节仍需要浏览器手动验证。
-4. 后续新增卡牌、Nemesis 和更完整的胜负规则仍需继续扩展。
+常见约定：牌堆 `[0]` 是顶部；抽牌用 `shift()`，弃牌顶用 `unshift()`；引擎原地修改
+状态；所有 UI 字符串用英文，中文只写在内部文档中。

@@ -1,21 +1,9 @@
 # 末日决战（Aeon's End）电子化
 
-本地单人 Web 版《末日决战》：2 名裂隙法师对抗天罚 Nemesis。当前是可操作的
-Demo，基础回合流程、市场、法师区域、存档和一批类型化卡牌效果已经接入。
+本项目是本地单人 Web 版《末日决战》：两名裂隙法师对抗一名 Nemesis。当前通过 Web UI、
+调试面板、引擎回归测试和 Playwright 浏览器测试开发，CLI 已删除。
 
-## 架构
-
-```
-aeons-end-engine/  共享规则引擎（纯 TypeScript）
-aeons-end-ui/      Vue 3 + Vite 前端，直接通过 @engine 引用引擎源码
-design/            卡牌效果模型、关键词状态和扩展参考
-```
-
-引擎原地修改单个 `GameState`；UI 使用 Vue `reactive()` 追踪状态。规则只在引擎
-实现，UI 只负责显示、交互和提交选择。项目已经删除 CLI，后续统一通过 Web UI、
-调试面板和引擎回归测试开发。
-
-## 运行
+## 快速开始
 
 ```powershell
 cd aeons-end-ui
@@ -23,77 +11,49 @@ npm install
 npm run dev        # http://localhost:5173
 ```
 
-生产构建：
-
-```powershell
-cd aeons-end-ui
-npm run build
-```
-
-引擎测试：
+常用验证：
 
 ```powershell
 cd aeons-end-engine
-npm test
+npm test           # 类型检查 + 引擎回归
+
+cd ..\aeons-end-ui
+npm run build      # 前端生产构建
+npx playwright install chromium  # 首次使用 Playwright 时执行
+npm run test:e2e   # 浏览器流程测试
 ```
 
-浏览器端 E2E 测试（首次使用需先执行 `npx playwright install chromium`）：
+## 代码分层
 
-```powershell
-cd aeons-end-ui
-npm run test:e2e
+```text
+aeons-end-engine/  纯 TypeScript 规则引擎和数据
+aeons-end-ui/      Vue 3 + Vite 展示层，@engine 直接引用引擎源码
+design/            当前只保留 UI 层级维护指南
 ```
 
-## 当前玩法
+引擎原地修改一个 `GameState`；UI 使用 Vue `reactive()` 追踪状态。规则、资源变更、
+目标选择和中断恢复属于引擎；组件只负责显示状态、收集输入和调用引擎。
 
-- 开局选择两名法师（Jian / Brama / Xaxos）对抗 Rageborne。
-- 玩家回合依次进行 Casting Phase、Main Phase 和抽牌流程。
-- Casting Phase 可选择释放准备好的 Spell；未开启 breach 上的 Spell 必须释放。
-- Spell 可通过点击或拖拽从手牌 Prep 到可用 breach。
-- Main Phase 可打出 Gem/Relic、购买市场卡、Focus/Open breach、充能和激活能力。
-- 抽牌补足到 5 张；牌库耗尽时翻转弃牌堆，不洗牌。
-- Played 区在回合结束时进入弃牌排序；顺序完全相同的牌会自动处理。
-- Nemesis 回合会显示攻击目标选择，支持玩家或 Gravehold。
-- Market 为固定九宫格；牌堆耗尽后保留原位置但不显示卡图，后续牌堆不补位。
+## 当前实现
 
-## 已接入的卡牌效果
+- 玩家卡牌使用 `CardEffect` 类型化效果，由 `engine.ts` 的统一解释器按顺序执行。
+- Gem、Relic、Spell 的初始卡和 Wave 1 市场卡已接入；Mage Ability 也复用同一效果队列。
+- 已有可复用的牌区选择、玩家/伤害目标选择、`may`、`or`、抽牌、弃牌、Destroy、
+  费用减免、持续效果、存档中断恢复等模块。
+- 当前场景由可序列化的 `ScenarioConfig` 描述，固定使用 6 张回合顺序牌；Setup 已支持
+  从注册表选择 Mage 和 Nemesis，目前 Nemesis 注册表只有 Rageborne。
+- 玩家使用稳定 ID（例如 `wave1_JIAN`），同一 Mage 不能被两个玩家同时选择；旧 v1/v2
+  存档不再迁移。
+- Rageborne 已接入基础 Nemesis Deck、Strike、Fury、Minion/Power 的部分流程；完整
+  Nemesis 规则仍在扩展中，Fury/Strike 目前明确属于 Rageborne 专属逻辑。
+- 支持多存档、Save & Exit、Resume、删除确认、Ctrl+Z（最多 5 步）和 Ctrl+D 调试。
 
-5 张初始玩家卡和 9 张 Wave 1 市场卡已经通过可组合的类型化效果接入：
+## 开发入口
 
-- Gem：V'riswood Amber、Diamond Cluster、Burning Opal
-- Relic：Flexing Dagger、Bottled Vortex
-- Spell：Lava Tendril、Essence Theft、Planar Insight、Arcane Nexus
+新增卡牌、Ability、Nemesis 或场景时，先阅读 [`dev-guide.md`](dev-guide.md)。它是当前唯一
+的规则/数据/测试扩展指南，并明确区分“应复用的模块”和“暂时保留的硬编码”。
 
-初始卡：Spark、Flare、Crystal、Moonstone Shard、Buried Light。当前效果系统支持 `gain`、
-`may`、`ally`、`or`、`destroy`、`while prepped`、`cast`、`deal damage`、
-`gain life`、条件 Aether、抽牌、费用减免和返回手牌等模块。第三/第四裂隙的施法增伤、效果
-选择暂停以及存档后恢复也已接入。
+涉及遮挡、悬停、弹窗或 `z-index` 时，查阅
+[`design/ui-layering-guide.md`](design/ui-layering-guide.md)。
 
-新增卡牌时，优先在 `aeons-end-engine/src/data/wave1/` 对应的 `gems.ts`、
-`relics.ts` 或 `spells.ts` 中组合已有 `CardEffect`；`data.ts` 只负责统一出口和
-Breach 配置。只有出现全新的规则词汇时，才扩展 `types.ts` 和引擎解释器。具体组合方式及实现进度见：
-[`design/card-effects-keywords.md`](design/card-effects-keywords.md)。
-
-## 存档与调试
-
-- 已有存档在继续游玩时会自动同步到浏览器 localStorage；新游戏只有选择 `Save & Exit` 后才会创建存档记录。
-- 设置页显示多条存档的法师、Nemesis、轮次和回合，并可 Resume 或删除。
-- 游戏中按 ESC，可选择 `Save & Exit` 或 `Exit Without Saving`。
-- Ctrl+D 打开调试面板：修改 HP/Charge、添加卡牌、开关裂隙、导出/导入 JSON、
-  清除全部存档。
-- Ctrl+Z 撤销最近最多 5 步操作。
-
-## 当前限制
-
-- Jian 的 Black Mirror、Brama 的 Brink Siphon 和 Xaxos 的 Metaphysical Link 已通过类型化 Ability 效果实现。
-- Nemesis 的 Minion/Power 完整规则尚未完成。
-- 当前玩家卡牌已完全迁移到类型化效果，旧 Gem/Relic/Spell 字段和 demo 专用 Relic
-  结算逻辑已删除。
-- 已配置引擎回归测试和基础浏览器 E2E；复杂 UI 视觉细节仍建议手动验证。
-
-## 文档索引
-
-| 文档 | 用途 |
-| --- | --- |
-| [dev-guide.md](dev-guide.md) | 文件职责、修改入口、调试和新增卡牌流程 |
-| [design/card-effects-keywords.md](design/card-effects-keywords.md) | 类型化模型、关键词状态、卡牌覆盖、扩展方式和进度决策 |
+`AGENTS.md` 是给编码代理的项目约束，不是玩法或开发教程。

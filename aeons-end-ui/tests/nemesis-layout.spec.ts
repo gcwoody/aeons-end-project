@@ -14,7 +14,7 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   debugState.phase = 'main'
   debugState.game.pendingDecision = null
   debugState.game.pendingEffect = null
-  debugState.game.currentTurn = 'p1'
+  debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'main'
   debugState.game.nemesis.discard = ['slaughter']
   debugState.game.nemesis.playArea = Array.from({ length: 12 }, (_, i) => ({
@@ -75,19 +75,19 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   const damageStateField = page.locator('.debug-panel textarea')
   const damageState = JSON.parse(await damageStateField.inputValue())
   damageState.phase = 'main'
-  damageState.game.currentTurn = 'p1'
+  damageState.game.currentTurn = damageState.game.players[0].id
   damageState.game.currentPhase = 'main'
   damageState.game.nemesis.hp = damageState.game.nemesis.maxHp
   damageState.game.nemesis.playArea = [{ instanceId: 'damage-minion:1', cardId: 'haze_spewer', cardType: 'minion', placedAt: 1, lifeTokens: 5 }]
   damageState.game.pendingDecision = {
-    id: 'damage-1', playerId: 'p1', prompt: 'Choose a damage target', kind: 'select_damage_target',
+    id: 'damage-1', playerId: damageState.game.players[0].id, prompt: 'Choose a damage target', kind: 'select_damage_target',
     targets: [
       { kind: 'nemesis', id: 'nemesis', label: 'Nemesis' },
       { kind: 'minion', id: 'minion:1', placedAt: 1, cardId: 'haze_spewer', label: 'Haze Spewer' },
     ],
   }
   damageState.game.pendingEffect = {
-    playerId: 'p1', remainingEffects: [],
+    playerId: damageState.game.players[0].id, remainingEffects: [],
     awaiting: { kind: 'deal_damage', amount: 2, target: 'nemesis_or_minion' },
   }
   await damageStateField.fill(JSON.stringify(damageState))
@@ -114,7 +114,7 @@ test('To Discard does not show or retain the Power card preview', async ({ page 
   debugState.game.pendingDecision = null
   debugState.game.pendingEffect = null
   debugState.game.pendingNemesisDiscard = null
-  debugState.game.currentTurn = 'p1'
+  debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'main'
   debugState.game.nemesis.playArea = [{
     instanceId: 'woven-sky:preview-test', cardId: 'woven_sky', cardType: 'power', placedAt: 1, powerTokens: 2,
@@ -148,26 +148,26 @@ test('collective card decisions use the reusable selection panel', async ({ page
   const stateField = page.locator('.debug-panel textarea')
   const debugState = JSON.parse(await stateField.inputValue())
   debugState.phase = 'main'
-  debugState.selectedPlayer = 'p1'
-  debugState.game.currentTurn = 'p1'
+  debugState.selectedPlayer = debugState.game.players[0].id
+  debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'main'
   debugState.game.players[0].hand = ['crystal', 'crystal']
   debugState.game.players[1].hand = ['crystal']
   debugState.game.pendingDecision = {
     id: 'collective-card-selection',
-    playerId: 'p1',
+    playerId: debugState.game.players[0].id,
     prompt: 'Discard up to 3 gem(s) to reduce Gravehold damage?',
     kind: 'select_collective_cards',
     min: 0,
     max: 3,
     candidates: [
-      { playerId: 'p1', choice: { zone: 'hand', index: 0, cardId: 'crystal', cardName: 'Crystal' } },
-      { playerId: 'p1', choice: { zone: 'hand', index: 1, cardId: 'crystal', cardName: 'Crystal' } },
-      { playerId: 'p2', choice: { zone: 'hand', index: 0, cardId: 'crystal', cardName: 'Crystal' } },
+      { playerId: debugState.game.players[0].id, choice: { zone: 'hand', index: 0, cardId: 'crystal', cardName: 'Crystal' } },
+      { playerId: debugState.game.players[0].id, choice: { zone: 'hand', index: 1, cardId: 'crystal', cardName: 'Crystal' } },
+      { playerId: debugState.game.players[1].id, choice: { zone: 'hand', index: 0, cardId: 'crystal', cardName: 'Crystal' } },
     ],
   }
   debugState.game.pendingEffect = {
-    playerId: 'p1', remainingEffects: [],
+    playerId: debugState.game.players[0].id, remainingEffects: [],
     awaiting: { kind: 'deal_gravehold_damage_with_gem_discard', amount: 9, maxGems: 3, reductionPerGem: 3 },
   }
   await stateField.fill(JSON.stringify(debugState))
@@ -195,27 +195,27 @@ test('most-expensive prepped spell decisions wait for confirmation', async ({ pa
   const stateField = page.locator('.debug-panel textarea')
   const debugState = JSON.parse(await stateField.inputValue())
   debugState.phase = 'nemesis_draw'
-  debugState.selectedPlayer = 'p1'
+  debugState.selectedPlayer = debugState.game.players[0].id
   debugState.game.currentTurn = 'nemesis'
   debugState.game.currentPhase = 'nemesis_draw'
   debugState.game.players[0].breaches[0].prepSpells = ['spark', 'spark']
   debugState.game.players[1].breaches[0].prepSpells = ['lava_tendril']
   debugState.game.pendingDecision = {
     id: 'most-expensive-prepped-selection',
-    playerId: 'p1',
+    playerId: debugState.game.players[0].id,
     prompt: 'Choose 2 prepped spell(s) to discard',
     kind: 'select_prepped_spells',
     min: 2,
     max: 2,
-    requiredChoices: [{ playerId: 'p2', breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', cardName: 'Lava Tendril' }],
+    requiredChoices: [{ playerId: debugState.game.players[1].id, breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', cardName: 'Lava Tendril' }],
     candidates: [
-      { playerId: 'p2', breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', cardName: 'Lava Tendril' },
-      { playerId: 'p1', breachIndex: 1, spellIndex: 0, cardId: 'spark', cardName: 'Spark' },
-      { playerId: 'p1', breachIndex: 1, spellIndex: 1, cardId: 'spark', cardName: 'Spark' },
+      { playerId: debugState.game.players[1].id, breachIndex: 1, spellIndex: 0, cardId: 'lava_tendril', cardName: 'Lava Tendril' },
+      { playerId: debugState.game.players[0].id, breachIndex: 1, spellIndex: 0, cardId: 'spark', cardName: 'Spark' },
+      { playerId: debugState.game.players[0].id, breachIndex: 1, spellIndex: 1, cardId: 'spark', cardName: 'Spark' },
     ],
   }
   debugState.game.pendingEffect = {
-    playerId: 'p1', remainingEffects: [],
+    playerId: debugState.game.players[0].id, remainingEffects: [],
     awaiting: { kind: 'discard_prepped_spells', amount: 2, target: 'any_player', mostExpensive: true },
   }
   await stateField.fill(JSON.stringify(debugState))
@@ -230,7 +230,10 @@ test('most-expensive prepped spell decisions wait for confirmation', async ({ pa
   await page.locator('.breach-spell-card-frame.pending-prepped-spell').filter({ has: page.locator('img[alt="Spark"]') }).first().click({ force: true })
   await expect(page.getByText('2/2 chosen prepped spells', { exact: true })).toBeVisible()
   await page.getByRole('button', { name: 'Confirm', exact: true }).click()
-  await expect(page.locator('.decision-overlay')).toHaveCount(0)
+  await expect(page.getByText('2/2 chosen prepped spells', { exact: true })).toHaveCount(0)
+  // The selection interrupt is complete. Depending on the serialized Nemesis
+  // resolution state, the engine may now show the next Nemesis interrupt or
+  // advance to the next turn; neither is part of this selection-panel check.
 })
 
 test('a Venomite effect decision returns to the center after another modal was dragged', async ({ page }) => {
@@ -244,16 +247,16 @@ test('a Venomite effect decision returns to the center after another modal was d
   const stateField = page.locator('.debug-panel textarea')
   const debugState = JSON.parse(await stateField.inputValue())
   debugState.phase = 'nemesis_main'
-  debugState.selectedPlayer = 'p1'
+  debugState.selectedPlayer = debugState.game.players[0].id
   debugState.game.currentTurn = 'nemesis'
   debugState.game.currentPhase = 'nemesis_main'
   debugState.game.pendingDecision = {
-    id: 'previous-prepped-decision', playerId: 'p1',
+    id: 'previous-prepped-decision', playerId: debugState.game.players[0].id,
     prompt: 'Choose a prepped spell', kind: 'select_prepped_spells', min: 0, max: 1,
     candidates: [],
   }
   debugState.game.pendingEffect = {
-    playerId: 'p1', remainingEffects: [],
+    playerId: debugState.game.players[0].id, remainingEffects: [],
     awaiting: { kind: 'discard_prepped_spells', amount: 1, target: 'any_player' },
   }
   await stateField.fill(JSON.stringify(debugState))
@@ -273,14 +276,14 @@ test('a Venomite effect decision returns to the center after another modal was d
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const nextState = JSON.parse(await stateField.inputValue())
   nextState.game.pendingDecision = {
-    id: 'venomite-effect-choice', playerId: 'p1', prompt: 'Choose the Venomite effect', kind: 'choose_one',
+    id: 'venomite-effect-choice', playerId: debugState.game.players[0].id, prompt: 'Choose the Venomite effect', kind: 'choose_one',
     options: [
       { id: 'damage', label: 'Lowest-life player suffers 2 damage' },
       { id: 'discard', label: 'Discard a prepped spell costing 3 or more' },
     ],
   }
   nextState.game.pendingEffect = {
-    playerId: 'p1', remainingEffects: [],
+    playerId: debugState.game.players[0].id, remainingEffects: [],
     awaiting: {
       kind: 'choose_one', prompt: 'Choose the Venomite effect',
       options: [

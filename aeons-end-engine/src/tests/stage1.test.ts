@@ -10,6 +10,7 @@ import {
   buildRageborneStrikeDeck,
   getCard,
   rageborne,
+  createTwoPlayerScenario,
 } from '../data'
 
 declare const console: { log(message?: unknown): void }
@@ -76,7 +77,13 @@ function testRageborneDeckBuilder(): void {
 }
 
 function testNemesisGameInitialization(): void {
-  const standard = createGame('jian', 'brama')
+  const scenario = createTwoPlayerScenario(['jian', 'brama'])
+  const standard = createGame(scenario)
+  assertEqual(standard.scenario.id, 'two_player', 'Game stores the selected scenario')
+  assertEqual(standard.scenario.turnOrderDeckSize, 6, 'Two-player scenario always uses six turn-order cards')
+  assertEqual(standard.turnOrderDeck.length, 6, 'Initial turn-order deck contains six cards')
+  assertEqual(standard.players[0]!.id, 'wave1_JIAN', 'Player ID includes the Wave and Mage name')
+  assertEqual(standard.players[1]!.id, 'wave1_BRAMA', 'Each player receives a stable Mage-based ID')
   assertEqual(standard.nemesis.definitionId, 'rageborne', 'Game uses the Rageborne definition')
   assertEqual(standard.nemesis.name, 'Rageborne', 'Game stores the Nemesis name')
   assertEqual(standard.nemesis.difficultyLevel, 2, 'Game stores the printed difficulty level')
@@ -85,9 +92,25 @@ function testNemesisGameInitialization(): void {
   assertEqual(standard.nemesis.strikeDeck.length, 6, 'Game initializes the Strike deck separately')
   assertEqual(standard.nemesis.counters.fury, 1, 'Rageborne starts with one Fury counter')
 
-  const increased = createGame('jian', 'brama', 'increased')
+  const increased = createGame(createTwoPlayerScenario(['jian', 'brama'], 'rageborne', 'increased'))
   assertEqual(increased.nemesis.difficulty, 'increased', 'Increased difficulty is serializable at initialization')
   assertEqual(increased.nemesis.counters.fury, 1, 'Difficulty selection does not change initial Fury')
+
+  let duplicateRejected = false
+  try {
+    createTwoPlayerScenario(['jian', 'jian'])
+  } catch {
+    duplicateRejected = true
+  }
+  assert(duplicateRejected, 'Scenario rejects selecting the same Mage twice')
+
+  duplicateRejected = false
+  try {
+    createGame({ ...scenario, mageTypes: ['jian', 'jian'] })
+  } catch {
+    duplicateRejected = true
+  }
+  assert(duplicateRejected, 'Game creation rejects duplicate Mage IDs in a direct scenario')
 }
 
 testNemesisCatalog()

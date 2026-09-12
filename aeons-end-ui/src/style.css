@@ -1251,6 +1251,7 @@ body {
 }
 .setup h1 { letter-spacing: 2px; }
 .setup .row { display: flex; gap: 24px; }
+.setup-error { color: var(--danger); margin: -8px 0 0; }
 .save-list {
   width: min(720px, calc(100vw - 32px));
   max-height: 42vh;

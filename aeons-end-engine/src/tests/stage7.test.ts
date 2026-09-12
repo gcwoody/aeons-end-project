@@ -38,7 +38,7 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
 
 function freshGame(): GameState {
   const game = createGame('jian', 'brama')
-  game.currentTurn = 'p1'
+  game.currentTurn = game.players[0]!.id
   game.currentPhase = 'main'
   return game
 }
@@ -151,7 +151,8 @@ function testCommonBreachCosts(): void {
   }
 
   for (const mageType of Object.keys(MAGES)) {
-    const game = createGame(mageType, 'jian')
+    const otherMage = mageType === 'jian' ? 'brama' : 'jian'
+    const game = createGame(mageType, otherMage)
     const player = game.players[0]!
     for (const breach of player.breaches) {
       if (breach.present === false || breach.opened) continue
@@ -186,22 +187,22 @@ function testStage3AbilityTriggers(): void {
   lash.charge = lash.chargeThreshold
   lashGame.turnOrderDiscard = ['nemesis']
   assert(!canActivateAbilityDuringMain(lashGame, lash.id), 'Lash is blocked without a player turn-order card')
-  lashGame.turnOrderDiscard = ['p2', 'nemesis']
+  lashGame.turnOrderDiscard = [lashGame.players[1]!.id, 'nemesis']
   assert(canActivateAbilityDuringMain(lashGame, lash.id), 'Lash activates when a player card is available')
   activateAbility(lashGame, lash.id)
   assertEqual(lashGame.pendingDecision?.kind, 'select_turn_order_card', 'Lash asks which player turn-order card to shuffle')
-  const p2Before = lashGame.players[1]!.hp
+  const otherPlayerHpBefore = lashGame.players[1]!.hp
   resolvePendingDecision(lashGame, lashGame.pendingDecision!.id, {
-    kind: 'select_turn_order_card', choice: { index: 0, cardId: 'p2' },
+    kind: 'select_turn_order_card', choice: { index: 0, cardId: lashGame.players[1]!.id },
   })
-  assertEqual(lashGame.players[1]!.hp, p2Before - 1, 'Lash damages the owner of the selected turn-order card')
-  assert(!lashGame.turnOrderDiscard.includes('p2'), 'Lash removes the selected card from the turn-order discard')
-  assert(lashGame.turnOrderDeck.includes('p2'), 'Lash shuffles the selected card into the turn-order deck')
+  assertEqual(lashGame.players[1]!.hp, otherPlayerHpBefore - 1, 'Lash damages the owner of the selected turn-order card')
+  assert(!lashGame.turnOrderDiscard.includes(lashGame.players[1]!.id), 'Lash removes the selected card from the turn-order discard')
+  assert(lashGame.turnOrderDeck.includes(lashGame.players[1]!.id), 'Lash shuffles the selected card into the turn-order deck')
 
   const phaedraxaGame = createGame('phaedraxa', 'brama')
   const phaedraxa = phaedraxaGame.players[0]!
   phaedraxa.charge = phaedraxa.chargeThreshold
-  phaedraxaGame.turnOrderDeck = ['p1']
+  phaedraxaGame.turnOrderDeck = [phaedraxa.id]
   startTurn(phaedraxaGame)
   assertEqual(phaedraxaGame.pendingDecision?.kind, 'choose_optional', 'Phaedraxa prompts after a turn-order card is drawn')
   resolvePendingDecision(phaedraxaGame, phaedraxaGame.pendingDecision!.id, {
@@ -211,11 +212,11 @@ function testStage3AbilityTriggers(): void {
   assert(phaedraxaGame.damagePrevention, 'Phaedraxa protection lasts through the current turn')
   const protectedHp = phaedraxa.hp
   const protectedGravehold = phaedraxaGame.gravehold.hp
-  nemesisResolveAttack(phaedraxaGame, phaedraxa.id as 'p1', 3)
+  nemesisResolveAttack(phaedraxaGame, phaedraxa.id, 3)
   nemesisResolveAttack(phaedraxaGame, 'gravehold', 3)
   assertEqual(phaedraxa.hp, protectedHp, 'Phaedraxa prevents player damage')
   assertEqual(phaedraxaGame.gravehold.hp, protectedGravehold, 'Phaedraxa prevents Gravehold damage')
-  phaedraxaGame.turnOrderDeck = ['p2']
+  phaedraxaGame.turnOrderDeck = [phaedraxaGame.players[1]!.id]
   startTurn(phaedraxaGame)
   assert(!phaedraxaGame.damagePrevention, 'Phaedraxa protection resets at the next turn')
 }
@@ -243,7 +244,7 @@ function testGainAndSaveShape(): void {
   const skipped = freshGame()
   skipped.players[0]!.bonusAether = 3
   const skippedPile = skipped.market.piles.findIndex(pile => pile.cardId === 'vriswood_amber')
-  buyCard(skipped, 'p1', skippedPile)
+  buyCard(skipped, skipped.players[0]!.id, skippedPile)
   resolvePendingDecision(skipped, skipped.pendingDecision!.id, { kind: 'choose_optional', accepted: false })
   assertEqual(skipped.pendingDecision, null, 'Optional gain effect can be cancelled')
   assertEqual(skipped.players[0]!.discard[0], 'vriswood_amber', 'Cancelled Vriswood stays in discard')
@@ -393,7 +394,7 @@ function testSpellEffects(): void {
   targeted.nemesis.playArea = [{
     cardId: 'bane_sire', cardType: 'minion', placedAt: 1, lifeTokens: 3,
   }]
-  assert(castSpell(targeted, 'p1', 1)?.includes('Cast Lava Tendril'), 'Lava Tendril can target a minion')
+  assert(castSpell(targeted, targeted.players[0]!.id, 1)?.includes('Cast Lava Tendril'), 'Lava Tendril can target a minion')
   assertEqual(targeted.pendingDecision?.kind, 'select_damage_target', 'Damage target selection is exposed')
   assertEqual(targeted.players[0]!.breaches[0]!.prepSpells[0], 'lava_tendril', 'A targeted spell remains visible on its breach while awaiting its target')
   resolvePendingDecision(targeted, targeted.pendingDecision!.id, {
@@ -408,7 +409,7 @@ function testSpellEffects(): void {
   planar.players[0]!.breaches[0]!.prepSpells = ['planar_insight']
   planar.players[0]!.breaches[1]!.opened = true
   planar.nemesis.hp = 20
-  assert(castSpell(planar, 'p1', 1)?.includes('Cast Planar Insight'), 'Planar Insight casts')
+  assert(castSpell(planar, planar.players[0]!.id, 1)?.includes('Cast Planar Insight'), 'Planar Insight casts')
   assertEqual(planar.nemesis.hp, 16, 'Planar Insight counts open breaches')
 
   const thirdBreachBonus = freshGame()
@@ -416,7 +417,7 @@ function testSpellEffects(): void {
   thirdBreachCaster.breaches[2]!.opened = true
   thirdBreachCaster.breaches[2]!.prepSpells = ['planar_insight']
   thirdBreachBonus.nemesis.hp = 20
-  assert(castSpell(thirdBreachBonus, 'p1', 3)?.includes('Cast Planar Insight'), 'Planar Insight casts from breach III')
+  assert(castSpell(thirdBreachBonus, thirdBreachBonus.players[0]!.id, 3)?.includes('Cast Planar Insight'), 'Planar Insight casts from breach III')
   assertEqual(thirdBreachBonus.nemesis.hp, 14, 'Breach III adds one damage to typed spell effects')
 
   const sparkBreachBonus = freshGame()
@@ -424,7 +425,7 @@ function testSpellEffects(): void {
   sparkCaster.breaches[2]!.opened = true
   sparkCaster.breaches[2]!.prepSpells = ['spark']
   sparkBreachBonus.nemesis.hp = 20
-  castSpell(sparkBreachBonus, 'p1', 3)
+  castSpell(sparkBreachBonus, sparkBreachBonus.players[0]!.id, 3)
   assertEqual(sparkBreachBonus.nemesis.hp, 18, 'Spark uses typed cast damage and breach bonus')
 
   const originalArcaneNexusEffects = arcaneNexus.effects
@@ -438,7 +439,7 @@ function testSpellEffects(): void {
     noDamageCaster.breaches[2]!.opened = true
     noDamageCaster.breaches[2]!.prepSpells = ['arcane_nexus']
     noDamageSpell.nemesis.hp = 20
-    const noDamageMessage = castSpell(noDamageSpell, 'p1', 3)
+    const noDamageMessage = castSpell(noDamageSpell, noDamageSpell.players[0]!.id, 3)
     assertEqual(noDamageSpell.nemesis.hp, 19, `Breach III adds damage when a spell has no damage effect (${noDamageMessage})`)
 
     arcaneNexus.effects = [{
@@ -453,7 +454,7 @@ function testSpellEffects(): void {
     twoDamageCaster.breaches[2]!.opened = true
     twoDamageCaster.breaches[2]!.prepSpells = ['arcane_nexus']
     twoDamageInstances.nemesis.hp = 20
-    castSpell(twoDamageInstances, 'p1', 3)
+    castSpell(twoDamageInstances, twoDamageInstances.players[0]!.id, 3)
     assertEqual(twoDamageInstances.nemesis.hp, 16, 'Breach III boosts each damage instance')
   } finally {
     arcaneNexus.effects = originalArcaneNexusEffects
@@ -715,7 +716,7 @@ function testMageAbilities(): void {
   xaxosGame.currentTurn = xaxosAlly.id
   xaxosGame.currentPhase = 'main'
   xaxos.charge = xaxos.chargeThreshold
-  xaxosGame.turnOrderDeck = ['p1', 'nemesis', 'p2']
+  xaxosGame.turnOrderDeck = [xaxos.id, 'nemesis', xaxosAlly.id]
   assert(activateAbility(xaxosGame, xaxos.id)?.includes('Metaphysical Link activated'), 'Xaxos activates during an ally main phase')
   assertEqual(xaxos.charge, 0, 'Xaxos charge is consumed')
   assertEqual(xaxosAlly.charge, 4, 'Xaxos allies collectively gain four charges')
@@ -723,14 +724,14 @@ function testMageAbilities(): void {
   resolvePendingDecision(xaxosGame, xaxosGame.pendingDecision!.id, {
     kind: 'reorder_turn_order', order: [2, 0, 1],
   })
-  assertEqual(xaxosGame.turnOrderDeck.join(','), 'p2,p1,nemesis', 'Xaxos returns reviewed cards in the chosen order')
+  assertEqual(xaxosGame.turnOrderDeck.join(','), `${xaxosAlly.id},${xaxos.id},nemesis`, 'Xaxos returns reviewed cards in the chosen order')
 
   const flareGame = createGame('xaxos', 'brama')
   const flareMage = flareGame.players[0]!
   flareMage.breaches[0]!.prepSpells = ['flare']
   flareGame.currentTurn = flareMage.id
   flareGame.currentPhase = 'casting'
-  flareGame.turnOrderDeck = ['p2']
+  flareGame.turnOrderDeck = [flareGame.players[1]!.id]
   flareGame.nemesis.hp = 20
   castSpell(flareGame, flareMage.id, 1)
   assertEqual(flareGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Flare pauses to confirm its revealed card')
@@ -738,7 +739,7 @@ function testMageAbilities(): void {
     kind: 'confirm_turn_order_reveal', accepted: true,
   })
   assertEqual(flareGame.nemesis.hp, 17, 'Flare deals three damage for a revealed player turn-order card')
-  assertEqual(flareGame.turnOrderDeck[0], 'p2', 'Flare leaves the revealed turn-order card on top')
+  assertEqual(flareGame.turnOrderDeck[0], flareGame.players[1]!.id, 'Flare leaves the revealed turn-order card on top')
 
   const finalTurnFlareGame = createGame('xaxos', 'brama')
   const finalTurnFlareMage = finalTurnFlareGame.players[0]!
@@ -746,7 +747,7 @@ function testMageAbilities(): void {
   finalTurnFlareGame.currentTurn = finalTurnFlareMage.id
   finalTurnFlareGame.currentPhase = 'casting'
   finalTurnFlareGame.turnOrderDeck = []
-  finalTurnFlareGame.turnOrderDiscard = ['p2']
+  finalTurnFlareGame.turnOrderDiscard = [finalTurnFlareGame.players[1]!.id]
   finalTurnFlareGame.nemesis.hp = 20
   castSpell(finalTurnFlareGame, finalTurnFlareMage.id, 1)
   assertEqual(finalTurnFlareGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Flare pauses after recycling the turn-order discard')
@@ -754,7 +755,7 @@ function testMageAbilities(): void {
     kind: 'confirm_turn_order_reveal', accepted: true,
   })
   assertEqual(finalTurnFlareGame.nemesis.hp, 17, 'Flare recycles the turn-order discard before revealing on an empty deck')
-  assertEqual(finalTurnFlareGame.turnOrderDeck[0], 'p2', 'Recycled turn-order card remains on top after Flare')
+  assertEqual(finalTurnFlareGame.turnOrderDeck[0], finalTurnFlareGame.players[1]!.id, 'Recycled turn-order card remains on top after Flare')
   assertEqual(finalTurnFlareGame.turnOrderDiscard.length, 0, 'Recycling clears the previous round turn-order bar')
 
   const nemesisFlareGame = createGame('xaxos', 'brama')
@@ -848,7 +849,7 @@ function testMageUniqueCardEffects(): void {
   const quartzGame = createGame('lash', 'brama')
   const quartzPlayer = quartzGame.players[0]!
   quartzPlayer.hand = ['quartz_shard']
-  quartzGame.turnOrderDeck = ['p2', 'nemesis']
+  quartzGame.turnOrderDeck = [quartzGame.players[1]!.id, 'nemesis']
   assert(playCard(quartzGame, quartzPlayer.id, 'quartz_shard')?.includes('Played Quartz Shard'), 'Quartz Shard plays')
   assertEqual(quartzGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Quartz Shard pauses for the reveal')
   resolvePendingDecision(quartzGame, quartzGame.pendingDecision!.id, {
@@ -859,7 +860,7 @@ function testMageUniqueCardEffects(): void {
     kind: 'choose_turn_order_position', position: 'bottom',
   })
   assertEqual(quartzPlayer.bonusAether, 2, 'Quartz Shard grants an extra aether for a player card')
-  assertEqual(quartzGame.turnOrderDeck.join(','), 'nemesis,p2', 'Quartz Shard can place the revealed card on the bottom')
+  assertEqual(quartzGame.turnOrderDeck.join(','), `nemesis,${quartzGame.players[1]!.id}`, 'Quartz Shard can place the revealed card on the bottom')
 
   const garnetGame = createGame('mist', 'brama')
   const garnetPlayer = garnetGame.players[0]!

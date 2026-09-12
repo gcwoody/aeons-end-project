@@ -1,5 +1,5 @@
 import type {
-  CardDef, BreachState, Direction,
+  CardDef, BreachState, Direction, NemesisDifficulty, ScenarioConfig,
 } from './types'
 import {
   INITIAL_GEM_CARDS, MARKET_GEM_CARDS,
@@ -16,7 +16,7 @@ import {
 } from './data/wave1/spells'
 import { createMages, MAGE_UNIQUE_CARDS } from './data/wave1/mage'
 import {
-  NEMESIS_CARDS, rageborne,
+  NEMESIS_CARDS, rageborne, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
   BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER,
   buildRageborneDeck, buildRageborneStrikeDeck,
@@ -29,12 +29,44 @@ export {
   flexingDagger, bottledVortex,
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
   MAGE_UNIQUE_CARDS,
-  NEMESIS_CARDS, rageborne,
+  NEMESIS_CARDS, rageborne, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
   BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER,
   buildRageborneDeck, buildRageborneStrikeDeck,
 }
 export type { MageDef } from './data/wave1/mage'
+
+export function getNemesisDefinition(type: string) {
+  return NEMESES[type]
+}
+
+/** Create the only currently supported scenario: two players versus one Nemesis. */
+export function createTwoPlayerScenario(
+  mageTypes: [string, string],
+  nemesisType = rageborne.type,
+  nemesisDifficulty: NemesisDifficulty = 'standard',
+): ScenarioConfig {
+  const [firstMage, secondMage] = mageTypes
+  if (!MAGES[firstMage] || !MAGES[secondMage]) {
+    throw new Error('Scenario contains an unknown Mage')
+  }
+  if (firstMage === secondMage) {
+    throw new Error('This Mage has already been selected by another player')
+  }
+  if (!NEMESES[nemesisType]) {
+    throw new Error(`Unknown Nemesis: ${nemesisType}`)
+  }
+  return {
+    id: 'two_player',
+    playerCount: 2,
+    mageTypes: [firstMage, secondMage],
+    nemesisType,
+    nemesisDifficulty,
+    turnOrderDeckSize: 6,
+    playerTurnOrderCardsPerPlayer: 2,
+    nemesisTurnOrderCards: 2,
+  }
+}
 
 // Unified card lookups used by the engine.
 export const INITIAL_CARDS: Record<string, CardDef> = {

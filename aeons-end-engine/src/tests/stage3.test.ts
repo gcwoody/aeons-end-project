@@ -22,7 +22,7 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
 
 function mainPhaseGame(): GameState {
   const game = createGame('jian', 'brama')
-  game.currentTurn = 'p1'
+  game.currentTurn = game.players[0]!.id
   game.currentPhase = 'main'
   return game
 }
@@ -30,11 +30,11 @@ function mainPhaseGame(): GameState {
 function testNemesisCountersAndUnleash(): void {
   const game = mainPhaseGame()
   assertEqual(game.nemesis.counters.fury, 1, 'Rageborne starts with one Fury')
-  const messages = resolveEffects(game, 'p1', [{ kind: 'unleash' }])
+  const messages = resolveEffects(game, game.players[0]!.id, [{ kind: 'unleash' }])
   assert(messages.some(message => message.includes('fury')), 'Unleash resolves the Nemesis configuration')
   assertEqual(game.nemesis.counters.fury, 2, 'Unleash gains the configured Fury amount')
 
-  resolveEffects(game, 'p1', [{ kind: 'lose_nemesis_counter', counter: 'fury', amount: 10 }])
+  resolveEffects(game, game.players[0]!.id, [{ kind: 'lose_nemesis_counter', counter: 'fury', amount: 10 }])
   assertEqual(game.nemesis.counters.fury, 0, 'Nemesis counters cannot become negative')
 }
 

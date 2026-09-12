@@ -1,6 +1,10 @@
 // ===== Card Types =====
 export type CardType = 'gem' | 'relic' | 'spell' | 'attack' | 'minion' | 'power' | 'strike'
 
+/** Stable identifier for a player in the saved game state. */
+export type PlayerId = string
+export type TurnOrderActorId = PlayerId | 'nemesis'
+
 // ===== Typed Card Effects =====
 
 export type EffectAmount =
@@ -70,7 +74,7 @@ export type PlayerSelectionRule =
   | 'lowest_hp'
   | 'most_charges'
   | 'most_opened_breaches'
-export type PlayerTargetRef = { kind: 'player'; playerId: string }
+export type PlayerTargetRef = { kind: 'player'; playerId: PlayerId }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
 export type CardSelectionSource = 'hand' | 'discard' | 'hand_or_discard' | 'played_gem_this_turn'
@@ -86,12 +90,12 @@ export interface CardChoice {
 }
 
 export interface CollectiveCardChoice {
-  playerId: string
+  playerId: PlayerId
   choice: CardChoice
 }
 
 export interface PreppedSpellChoice {
-  playerId: string
+  playerId: PlayerId
   breachIndex: number
   spellIndex: number
   cardId: string
@@ -120,14 +124,14 @@ export interface PendingDecisionContext {
 
 export interface PendingDecisionBase {
   id: string
-  playerId: string
+  playerId: PlayerId
   prompt: string
   context?: PendingDecisionContext
 }
 
 /** Serializable continuation data used while an effect waits for a choice. */
 export interface PendingEffectResolution {
-  playerId: string
+  playerId: PlayerId
   sourceCardId?: string
   remainingEffects: CardEffect[]
   lastGainedCardId?: string
@@ -153,7 +157,7 @@ export interface PendingEffectResolution {
 }
 
 export interface PendingSpellCast {
-  playerId: string
+  playerId: PlayerId
   breachIndex: number
   spellIndex: number
   cardId: string
@@ -162,7 +166,7 @@ export interface PendingSpellCast {
 
 /** A serializable continuation for a Power card's optional To Discard action. */
 export interface PendingNemesisDiscard {
-  playerId: string
+  playerId: PlayerId
   cardInstanceId: string
   costs: NemesisDiscardCost[]
   nextCostIndex: number
@@ -500,6 +504,25 @@ export interface NemesisEffectBlock {
 
 export type NemesisDifficulty = 'standard' | 'increased'
 
+/**
+ * Serializable setup for the currently supported two-player scenario.
+ *
+ * The turn-order deck always contains six cards in this scenario: two cards
+ * per player and two Nemesis cards. The composition fields are explicit so
+ * player-count-specific rules can be extended later without changing the
+ * saved game shape again.
+ */
+export interface ScenarioConfig {
+  id: 'two_player'
+  playerCount: 2
+  mageTypes: [string, string]
+  nemesisType: string
+  nemesisDifficulty: NemesisDifficulty
+  turnOrderDeckSize: 6
+  playerTurnOrderCardsPerPlayer: 2
+  nemesisTurnOrderCards: 2
+}
+
 export interface NemesisDef {
   type: string
   name: string
@@ -513,6 +536,9 @@ export interface NemesisDef {
   increasedDifficultyRules: Record<string, number>
   /** Typed effect sequence executed whenever this Nemesis unleashes. */
   unleashEffects?: CardEffect[]
+  /** Builders for this Nemesis' decks. Definitions may omit unused auxiliary decks. */
+  deckBuilder?: () => string[]
+  specificDeckBuilder?: () => string[]
 }
 
 // ===== Breach =====
@@ -520,7 +546,7 @@ export type Direction = 'east' | 'south' | 'west' | 'north'
 
 export interface BreachState {
   index: number
-  /** Whether this breach exists for the Mage. Older saves omit this and mean true. */
+  /** Whether this breach exists for the Mage. */
   present?: boolean
   opened: boolean
   prepSpells: string[]
@@ -550,7 +576,7 @@ export interface UnleashEffect {
 
 // ===== Game State =====
 export interface PlayerState {
-  id: string
+  id: PlayerId
   mageType: string
   hp: number
   maxHp: number
@@ -637,13 +663,14 @@ export interface NemesisResolutionState {
 }
 
 export interface GameState {
+  scenario: ScenarioConfig
   players: PlayerState[]
   nemesis: NemesisState
   gravehold: GraveholdState
   market: MarketState
   turnOrderDeck: string[]
   turnOrderDiscard: string[]
-  currentTurn: string
+  currentTurn: TurnOrderActorId
   currentPhase: Phase
   round: number
   gameOver: boolean

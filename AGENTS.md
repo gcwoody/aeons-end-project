@@ -30,7 +30,7 @@ Read it before making changes.
 - A player turn **auto-ends** when the player has no legal actions — checked when the
   main phase begins and after every action.
 - Aether is displayed as: total earned, available, regular vs conditional breakdown.
-- Prep flow: click a spell card in hand, then click an open/focused breach.
+- Prep flow: drag a spell card from hand onto an open/focused breach.
 
 ## Developer map
 - See `dev-guide.md` (file responsibilities, where to change features, debugging guide).

@@ -47,18 +47,36 @@ test('loads setup and starts a game', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeHidden()
 })
 
+test('rejects selecting the same Mage twice', async ({ page }) => {
+  await page.goto('/')
+  await page.getByLabel('Player 1').selectOption('brama')
+  await expect(page.getByText('This Mage has already been selected by another player.')).toBeVisible()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await expect(page.getByText('Market', { exact: true })).toHaveCount(0)
+})
+
 test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => {
   await page.goto('/')
   await page.getByLabel('Player 1').selectOption('jian')
-  await page.getByLabel('Player 2').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()
 
-  // The turn-order deck is shuffled. Resolve any nemesis turn until a player
-  // turn is available, then move past casting when there are no spells to cast.
-  for (let attempt = 0; attempt < 8; attempt++) {
+  // The turn-order deck is shuffled. Resolve Nemesis turns and pass the other
+  // player's empty turn until Jian is the active player in Main Phase.
+  for (let attempt = 0; attempt < 12; attempt++) {
     const continueDraw = page.getByRole('button', { name: 'Continue', exact: true })
     if (await continueDraw.isVisible().catch(() => false)) {
       await continueDraw.click()
+      continue
+    }
+    const nemesisConfirm = page.getByRole('button', { name: 'Confirm', exact: true })
+    if (await nemesisConfirm.isVisible().catch(() => false)) {
+      await nemesisConfirm.click()
+      continue
+    }
+    const nemesisEffectCard = page.locator('.nemesis-play-card.effect-target').first()
+    if (await nemesisEffectCard.isVisible().catch(() => false)) {
+      await nemesisEffectCard.click()
       continue
     }
     const attackButton = page.getByRole('button', { name: /^(Attack .+|Gravehold)$/ }).first()
@@ -66,11 +84,21 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
       await attackButton.click()
       continue
     }
-    const mainPhaseButton = page.getByRole('button', { name: 'Start Main Phase →' })
-    if (await mainPhaseButton.isVisible().catch(() => false)) {
-      await mainPhaseButton.click()
+    const currentButton = page.locator('.char-btn.cur')
+    const currentMage = await currentButton.locator('.cn').textContent().catch(() => null)
+    if (await currentButton.isVisible().catch(() => false)) {
+      await currentButton.click()
+      const mainPhaseButton = page.getByRole('button', { name: 'Start Main Phase →' })
+      if (await mainPhaseButton.isVisible().catch(() => false)) await mainPhaseButton.click()
+      if (currentMage?.toLowerCase() !== 'jian') {
+        const endTurnButton = page.getByRole('button', { name: 'End Turn', exact: true })
+        if (await endTurnButton.isVisible().catch(() => false)) {
+          await endTurnButton.click()
+          continue
+        }
+      }
     }
-    if (await page.getByRole('button', { name: 'Activate Ability' }).isVisible().catch(() => false)) break
+    if (currentMage?.toLowerCase() === 'jian' && await page.getByRole('button', { name: 'Activate Ability' }).isVisible().catch(() => false)) break
     await page.waitForTimeout(50)
   }
 
@@ -78,16 +106,15 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
   await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
 
   const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
-  for (const playerId of ['p1', 'p2']) {
-    const section = page.locator('.debug-section').filter({ hasText: `jian (${playerId})` })
-    await section.locator('input[type="number"]').nth(1).fill('4')
-    await addCardSection.locator('select').nth(0).selectOption('spark')
-    await addCardSection.locator('select').nth(1).selectOption(playerId)
-    await addCardSection.locator('select').nth(2).selectOption('hand')
-    await addCardSection.getByRole('button', { name: 'Add', exact: true }).click()
-  }
+  const section = page.locator('.debug-section').filter({ hasText: 'jian (wave1_JIAN)' })
+  await section.locator('input[type="number"]').nth(1).fill('4')
+  await addCardSection.locator('select').nth(0).selectOption('spark')
+  await addCardSection.locator('select').nth(1).selectOption('wave1_JIAN')
+  await addCardSection.locator('select').nth(2).selectOption('hand')
+  await addCardSection.getByRole('button', { name: 'Add', exact: true }).click()
 
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+  await page.locator('.char-btn').filter({ hasText: 'jian' }).click()
 
   // The current player is the selected player. Put one of the added Sparks on
   // the first open breach, then activate Jian's ability.

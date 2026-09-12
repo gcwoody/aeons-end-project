@@ -5,13 +5,12 @@ import {
   PendingDecision, PendingDecisionAnswer, PendingEffectResolution, PendingSpellCast,
   CardEffect, CardEffectBlock, CardEffectCondition, CardEffectOption,
   CardEffectTrigger, PlayerTargetRef, PlayerTargetScope, PlayerSelectionRule, PlayerTurnEffects,
-  PreppedSpellChoice, TurnOrderCardChoice, NemesisDifficulty,
+  PreppedSpellChoice, TurnOrderCardChoice, NemesisDifficulty, ScenarioConfig, PlayerId,
   NemesisCardDef, NemesisCardInPlay, NemesisDiscardCost, NemesisEffectTrigger,
   NemesisResolutionState, PendingNemesisDiscard,
 } from './types'
 import {
-  getCard, MAGES, rageborne, MARKET_CARDS,
-  buildRageborneDeck, buildRageborneStrikeDeck,
+  getCard, MAGES, rageborne, MARKET_CARDS, createTwoPlayerScenario, getNemesisDefinition,
 } from './data'
 import type { MageDef } from './data'
 
@@ -53,13 +52,59 @@ function drawFromDeck(deck: string[], discard: string[], count: number): {
 
 // ===== Game Init =====
 
+export function playerIdForMage(mageType: string): PlayerId {
+  const mage = MAGES[mageType]
+  if (!mage) throw new Error(`Unknown Mage: ${mageType}`)
+  return `wave${mage.wave}_${mage.type.toUpperCase()}`
+}
+
+function buildScenarioTurnOrder(scenario: ScenarioConfig, playerIds: PlayerId[]): string[] {
+  if (
+    scenario.id !== 'two_player'
+    || scenario.playerCount !== 2
+    || scenario.turnOrderDeckSize !== 6
+    || scenario.playerTurnOrderCardsPerPlayer !== 2
+    || scenario.nemesisTurnOrderCards !== 2
+    || playerIds.length !== 2
+  ) {
+    throw new Error('Only the two-player scenario is currently supported')
+  }
+  const cards = [
+    ...playerIds.flatMap(playerId => Array.from(
+      { length: scenario.playerTurnOrderCardsPerPlayer }, () => playerId,
+    )),
+    ...Array.from({ length: scenario.nemesisTurnOrderCards }, () => 'nemesis' as const),
+  ]
+  if (cards.length !== scenario.turnOrderDeckSize) {
+    throw new Error(`Scenario turn-order configuration must produce ${scenario.turnOrderDeckSize} cards`)
+  }
+  return shuffle(cards)
+}
+
+export function createGame(scenario: ScenarioConfig): GameState
 export function createGame(
   mage1Type: string,
   mage2Type: string,
+  nemesisDifficulty?: NemesisDifficulty,
+  nemesisType?: string,
+): GameState
+export function createGame(
+  scenarioOrMage1: ScenarioConfig | string,
+  mage2Type?: string,
   nemesisDifficulty: NemesisDifficulty = 'standard',
+  nemesisType = rageborne.type,
 ): GameState {
-  const mage1Def = MAGES[mage1Type]!
-  const mage2Def = MAGES[mage2Type]!
+  const scenario = typeof scenarioOrMage1 === 'string'
+    ? createTwoPlayerScenario([scenarioOrMage1, mage2Type!], nemesisType, nemesisDifficulty)
+    : scenarioOrMage1
+  const mage1Def = MAGES[scenario.mageTypes[0]]
+  const mage2Def = MAGES[scenario.mageTypes[1]]
+  const nemesisDef = getNemesisDefinition(scenario.nemesisType)
+  if (!mage1Def || !mage2Def) throw new Error('Scenario contains an unknown Mage')
+  if (scenario.mageTypes[0] === scenario.mageTypes[1]) {
+    throw new Error('This Mage has already been selected by another player')
+  }
+  if (!nemesisDef) throw new Error(`Unknown Nemesis: ${scenario.nemesisType}`)
 
   function createPlayer(id: string, def: MageDef): PlayerState {
     return {
@@ -87,8 +132,8 @@ export function createGame(
     }
   }
 
-  const player1 = createPlayer('p1', mage1Def)
-  const player2 = createPlayer('p2', mage2Def)
+  const player1 = createPlayer(playerIdForMage(mage1Def.type), mage1Def)
+  const player2 = createPlayer(playerIdForMage(mage2Def.type), mage2Def)
 
   const marketPiles = Object.keys(MARKET_CARDS).map(cardId => {
     const card = getCard(cardId)
@@ -96,22 +141,23 @@ export function createGame(
     return { cardId, remaining }
   })
 
-  const nemesisDeck = buildRageborneDeck()
-  const strikeDeck = buildRageborneStrikeDeck()
-  const turnOrder = shuffle(['p1', 'p1', 'p2', 'p2', 'nemesis', 'nemesis'])
+  const nemesisDeck = nemesisDef.deckBuilder?.() ?? []
+  const strikeDeck = nemesisDef.specificDeckBuilder?.() ?? []
+  const turnOrder = buildScenarioTurnOrder(scenario, [player1.id, player2.id])
 
   return {
+    scenario: clone(scenario),
     players: [player1, player2],
     nemesis: {
-      definitionId: rageborne.type,
-      name: rageborne.name,
-      type: rageborne.type,
-      hp: rageborne.hp, maxHp: rageborne.hp,
-      difficultyLevel: rageborne.difficultyLevel,
-      difficulty: nemesisDifficulty,
+      definitionId: nemesisDef.type,
+      name: nemesisDef.name,
+      type: nemesisDef.type,
+      hp: nemesisDef.hp, maxHp: nemesisDef.hp,
+      difficultyLevel: nemesisDef.difficultyLevel,
+      difficulty: scenario.nemesisDifficulty,
       deck: nemesisDeck, discard: [],
       strikeDeck, strikeDiscard: [],
-      counters: { ...rageborne.startingCounters },
+      counters: { ...nemesisDef.startingCounters },
       playArea: [],
       tierAnnounced: [false, false, false],
     },
@@ -134,7 +180,7 @@ export function createGame(
 export function startTurn(g: GameState): GameState {
   g.damagePrevention = false
   if (g.turnOrderDeck.length === 0) {
-    g.turnOrderDeck = shuffle(['p1', 'p1', 'p2', 'p2', 'nemesis', 'nemesis'])
+    g.turnOrderDeck = buildScenarioTurnOrder(g.scenario, g.players.map(player => player.id))
     g.turnOrderDiscard = []
     g.round++
   }
@@ -422,9 +468,10 @@ export function advanceNemesisTurn(g: GameState): string[] {
     }
 
     g.currentPhase = 'nemesis_draw'
+    const nemesisDefinition = getNemesisDefinition(g.nemesis.definitionId)
     if (
       g.nemesis.definitionId === rageborne.type &&
-      (g.nemesis.counters.fury ?? 0) >= rageborne.standardRules.endTurnStrikeThreshold
+      (g.nemesis.counters.fury ?? 0) >= (nemesisDefinition?.standardRules.endTurnStrikeThreshold ?? Number.POSITIVE_INFINITY)
     ) {
       messages.push('Rageborne strikes at the end of the Nemesis turn')
       messages.push(...resolveEffects(
@@ -1284,7 +1331,7 @@ function drawCardsForPlayer(g: GameState, playerId: string, amount: number): num
 function getPlayerTurnOrderCards(g: GameState): TurnOrderCardChoice[] {
   return g.turnOrderDiscard
     .map((cardId, index) => ({ cardId, index }))
-    .filter(choice => choice.cardId === 'p1' || choice.cardId === 'p2')
+    .filter(choice => g.players.some(player => player.id === choice.cardId))
 }
 
 /** Ensure the turn-order deck has cards available for a reveal effect. */
@@ -1357,7 +1404,7 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'unleash') {
-      const configured = g.nemesis.definitionId === rageborne.type ? rageborne.unleashEffects : undefined
+      const configured = getNemesisDefinition(g.nemesis.definitionId)?.unleashEffects
       if (configured && configured.length > 0) {
         const multiplier = Math.max(0, effect.amount ?? 1)
         const expanded = configured.map(configuredEffect => {
@@ -1396,9 +1443,10 @@ function runEffectResolution(
       resolution.revealedStrikeCardId = undefined
       const strike = getCard(strikeId)
       messages.push(`Resolve Strike: ${strike.name}`)
+      const nemesisDefinition = getNemesisDefinition(g.nemesis.definitionId)
       const furyLoss = g.nemesis.difficulty === 'increased'
-        ? rageborne.increasedDifficultyRules.furyLossAfterStrike
-        : rageborne.standardRules.furyLossAfterStrike
+        ? (nemesisDefinition?.increasedDifficultyRules.furyLossAfterStrike ?? 0)
+        : (nemesisDefinition?.standardRules.furyLossAfterStrike ?? 0)
       const nextStrike: CardEffect[] = [
         ...(strike.effects?.flatMap(block => block.effects) ?? []),
         { kind: 'lose_nemesis_counter', counter: 'fury', amount: furyLoss },
@@ -3207,7 +3255,7 @@ export function nemesisDrawCard(g: GameState): DrawnNemesisCard | null {
 }
 
 export function nemesisResolveAttack(
-  g: GameState, target: 'p1' | 'p2' | 'gravehold', damage: number,
+  g: GameState, target: PlayerId | 'gravehold', damage: number,
 ): string {
   if (target === 'gravehold') {
     if (g.damagePrevention) return 'Gravehold suffers no damage this turn'

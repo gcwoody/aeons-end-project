@@ -18,8 +18,8 @@ import {
   nemesisDrawCard, nemesisResolveAttack,
   checkGameOver, checkPlayerDeath,
 } from '@engine/engine'
-import { getCard } from '@engine/data'
-import type { CardChoice, GameState, PendingDecisionAnswer, PlayerState, PreppedSpellChoice } from '@engine/types'
+import { createTwoPlayerScenario, getCard } from '@engine/data'
+import type { CardChoice, GameState, PendingDecisionAnswer, PlayerId, PlayerState, PreppedSpellChoice } from '@engine/types'
 
 export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'nemesis_target' | 'gameover'
 
@@ -37,7 +37,7 @@ interface Snapshot {
   phase: UiPhase
   pendingNemesis: DrawnCard | null
   prepTarget: number | null
-  selectedPlayer: 'p1' | 'p2'
+  selectedPlayer: PlayerId
   discardRemaining: string[]
 }
 
@@ -55,11 +55,11 @@ interface StoredSave extends SaveSummary {
   createdAt: number
   game: GameState
   phase: UiPhase
-  selectedPlayer: 'p1' | 'p2'
+  selectedPlayer: PlayerId
   pendingNemesis: DrawnCard | null
   discardRemaining: string[]
   /** The most recent undo snapshots, persisted so resume keeps Ctrl+Z history. */
-  undoStack?: Snapshot[]
+  undoStack: Snapshot[]
 }
 
 let logId = 0
@@ -70,7 +70,7 @@ const state = reactive({
   log: [] as LogEntry[],
   pendingNemesis: null as DrawnCard | null,
   prepTarget: null as number | null, // hand index of the spell being prepped
-  selectedPlayer: 'p1' as 'p1' | 'p2',
+  selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
   viewPile: null as 'deck' | 'discard' | null,
   debugOpen: false,
@@ -83,10 +83,10 @@ const state = reactive({
   exitPrompt: false,
   mage1: 'jian',
   mage2: 'brama',
+  nemesisType: 'rageborne',
 })
 
-const SAVE_KEY = 'aeons-end-saves-v2'
-const LEGACY_SAVE_KEY = 'aeons-end-save-v1'
+const SAVE_KEY = 'aeons-end-saves-v3'
 let storedSaves: StoredSave[] = []
 // A newly started game must not become a save record until the player chooses
 // Save & Exit. Resumed games keep the existing auto-save behavior.
@@ -99,52 +99,15 @@ function displayName(id: string): string {
 const undoStack: Snapshot[] = []
 const MAX_UNDO = 5
 
-/** Fill fields introduced by newer engine versions when loading an older save. */
-function normalizeSavedGame(game: GameState): GameState {
-  // Nemesis fields were added incrementally; keep older saves renderable before
-  // any component reads pile lengths or iterates the play area.
-  const nemesis = game.nemesis
-  nemesis.deck ??= []
-  nemesis.discard ??= []
-  nemesis.strikeDeck ??= []
-  nemesis.strikeDiscard ??= []
-  nemesis.counters ??= {}
-  nemesis.playArea ??= []
-  nemesis.tierAnnounced ??= [false, false, false]
-  game.pendingDecision ??= null
-  game.pendingEffect ??= null
-  game.decisionCounter ??= 0
-  game.damagePrevention ??= false
-  for (const player of game.players) {
-    player.destroyedCards ??= []
-    player.conditionalAetherEarned ??= {}
-    if (!player.cardPlayCountsThisTurn) {
-      player.cardPlayCountsThisTurn = {}
-      for (const cardId of player.playedThisTurn) {
-        player.cardPlayCountsThisTurn[cardId] = (player.cardPlayCountsThisTurn[cardId] ?? 0) + 1
-      }
-    }
-    player.turnEffects ??= { nextBreachCostReductions: [], usedPreppedEffects: [], prepSpellLimit: 1 }
-    player.turnEffects.nextBreachCostReductions ??= []
-    player.turnEffects.usedPreppedEffects ??= []
-    player.turnEffects.prepSpellLimit ??= 1
-    for (const breach of player.breaches) {
-      const legacy = breach as typeof breach & { prepSpell?: string | null }
-      breach.prepSpells ??= legacy.prepSpell ? [legacy.prepSpell] : []
-      delete legacy.prepSpell
-    }
-  }
-  return game
-}
-
 function saveSummary(save: StoredSave): SaveSummary {
+  const currentPlayer = save.game.players.find(player => player.id === save.currentTurn)
   return {
     id: save.id,
     players: save.players.map(displayName),
     nemesisType: displayName(save.nemesisType),
     round: save.round,
     turn: save.turn,
-    currentTurn: save.currentTurn,
+    currentTurn: currentPlayer ? displayName(currentPlayer.mageType) : 'Nemesis',
     updatedAt: save.updatedAt,
   }
 }
@@ -191,31 +154,13 @@ export function confirmPendingPreppedSpells(): void {
 function readStoredSaves(): StoredSave[] {
   try {
     const current = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null')
-    if (Array.isArray(current)) return current.filter(save => save?.game && save?.id)
-  } catch {
-    // Fall back to the legacy single-save format.
-  }
-
-  try {
-    const legacy = JSON.parse(localStorage.getItem(LEGACY_SAVE_KEY) ?? 'null')
-    if (!legacy?.game) return []
-    const game = normalizeSavedGame(legacy.game as GameState)
-    const now = Date.now()
-    return [{
-      id: `legacy-${game.timestamp || now}`,
-      createdAt: now,
-      updatedAt: now,
-      players: game.players.map(player => player.mageType),
-      nemesisType: game.nemesis.type,
-      round: game.round,
-      turn: game.turnOrderDiscard.length,
-      currentTurn: game.currentTurn,
-      game,
-      phase: legacy.phase ?? 'main',
-      selectedPlayer: legacy.selectedPlayer ?? 'p1',
-      pendingNemesis: legacy.pendingNemesis ?? null,
-      discardRemaining: legacy.discardRemaining ?? [],
-    }]
+    if (!Array.isArray(current)) return []
+    return current.filter(save => {
+      const game = save?.game
+      return save?.id
+        && game?.scenario?.id === 'two_player'
+        && game.players?.every((player: PlayerState) => /^wave\d+_[A-Z0-9_-]+$/.test(player.id))
+    })
   } catch {
     return []
   }
@@ -336,21 +281,10 @@ function snapshot(): Snapshot {
 function cloneSnapshot(source: Snapshot): Snapshot {
   return {
     game: JSON.parse(JSON.stringify(source.game)) as GameState,
-    phase: source.phase ?? 'main',
+    phase: source.phase,
     pendingNemesis: source.pendingNemesis ? { ...source.pendingNemesis } : null,
-    prepTarget: source.prepTarget ?? null,
-    selectedPlayer: source.selectedPlayer ?? 'p1',
-    discardRemaining: Array.isArray(source.discardRemaining) ? [...source.discardRemaining] : [],
-  }
-}
-
-function normalizeSavedSnapshot(source: Partial<Snapshot> & { game: GameState }): Snapshot {
-  return {
-    game: normalizeSavedGame(JSON.parse(JSON.stringify(source.game)) as GameState),
-    phase: source.phase ?? 'main',
-    pendingNemesis: source.pendingNemesis ? { ...source.pendingNemesis } : null,
-    prepTarget: source.prepTarget ?? null,
-    selectedPlayer: source.selectedPlayer ?? 'p1',
+    prepTarget: source.prepTarget,
+    selectedPlayer: source.selectedPlayer,
     discardRemaining: Array.isArray(source.discardRemaining) ? [...source.discardRemaining] : [],
   }
 }
@@ -440,29 +374,31 @@ function beginTurn() {
     continueNemesisTurn()
   } else {
     const p = getPlayer(g, g.currentTurn)
-    pushLog(`Turn ${turnNum} — ${g.currentTurn.toUpperCase()} (${p.mageType}) begins`, 'info')
-    state.selectedPlayer = g.currentTurn as 'p1' | 'p2'
+    pushLog(`Turn ${turnNum} — ${displayName(p.mageType)} begins`, 'info')
+    state.selectedPlayer = g.currentTurn
     if (g.pendingDecision || getCastableSpells(g, g.currentTurn).length > 0) state.phase = 'casting'
     else enterMainPhase()
   }
 }
 
-export function newGame(m1: string, m2: string) {
+export function newGame(m1: string, m2: string, nemesisType = state.nemesisType) {
   state.activeSaveId = null
   autoSaveEnabled = false
   state.exitPrompt = false
-  const g = reactive(createGame(m1, m2)) as GameState
+  state.nemesisType = nemesisType
+  const scenario = createTwoPlayerScenario([m1, m2], nemesisType)
+  const g = reactive(createGame(scenario)) as GameState
   state.game = g
   state.log = []
   state.pendingNemesis = null
   state.pendingPreppedSpells = []
   state.prepTarget = null
-  state.selectedPlayer = 'p1'
+  state.selectedPlayer = g.players[0]!.id
   state.discardRemaining = []
   state.helpOpen = false
   state.viewPile = null
   undoStack.length = 0
-  pushLog(`Game started: ${m1.toUpperCase()} + ${m2.toUpperCase()} vs Rageborne`, 'ok')
+  pushLog(`Game started: ${m1.toUpperCase()} + ${m2.toUpperCase()} vs ${g.nemesis.name}`, 'ok')
   startTurn(g)
   beginTurn()
 }
@@ -473,23 +409,20 @@ export function resumeGame(saveId?: string): boolean {
     ?? storedSaves[0]
   if (!save) return false
   try {
-    state.game = reactive(normalizeSavedGame(JSON.parse(JSON.stringify(save.game)) as GameState)) as GameState
+    state.game = reactive(JSON.parse(JSON.stringify(save.game)) as GameState) as GameState
     state.activeSaveId = save.id
     autoSaveEnabled = true
-    state.phase = save.phase ?? 'main'
+    state.phase = save.phase
     syncEnginePhaseWithUi()
-    state.selectedPlayer = save.selectedPlayer ?? 'p1'
-    state.pendingNemesis = save.pendingNemesis ?? null
+    state.selectedPlayer = save.selectedPlayer
+    state.pendingNemesis = save.pendingNemesis
     state.pendingPreppedSpells = []
-    state.discardRemaining = save.discardRemaining ?? []
+    state.discardRemaining = [...save.discardRemaining]
     state.prepTarget = null
     state.exitPrompt = false
     state.log = []
     undoStack.length = 0
-    for (const savedSnapshot of save.undoStack ?? []) {
-      if (!savedSnapshot?.game) continue
-      undoStack.push(normalizeSavedSnapshot(savedSnapshot))
-    }
+    for (const savedSnapshot of save.undoStack) undoStack.push(cloneSnapshot(savedSnapshot))
     if (undoStack.length > MAX_UNDO) undoStack.splice(0, undoStack.length - MAX_UNDO)
     pushLog('Game resumed', 'ok')
     return true
@@ -501,7 +434,6 @@ export function resumeGame(saveId?: string): boolean {
 export function clearSaves() {
   storedSaves = []
   localStorage.removeItem(SAVE_KEY)
-  localStorage.removeItem(LEGACY_SAVE_KEY)
   state.activeSaveId = null
   state.deleteSaveId = null
   syncSaveList()
@@ -525,7 +457,6 @@ export function deleteSave(saveId: string) {
   storedSaves = storedSaves.filter(save => save.id !== saveId)
   if (storedSaves.length === 0) {
     localStorage.removeItem(SAVE_KEY)
-    localStorage.removeItem(LEGACY_SAVE_KEY)
   } else {
     persistStoredSaves()
   }
@@ -583,7 +514,7 @@ export function closeHelp() {
   state.helpOpen = false
 }
 
-export function selectPlayer(id: 'p1' | 'p2') {
+export function selectPlayer(id: PlayerId) {
   state.selectedPlayer = id
   state.prepTarget = null
 }
@@ -874,13 +805,16 @@ function continueNemesisTurn() {
   }
 }
 
-export function nemesisChooseTarget(target: 'p1' | 'p2' | 'gravehold') {
+export function nemesisChooseTarget(target: PlayerId | 'gravehold') {
   const g = state.game!
   const card = state.pendingNemesis
   if (!card) return
   const previous = beforeAction()
   const msg = nemesisResolveAttack(g, target, card.damage)
-  pushLog(`Nemesis attacks ${target}: ${msg}`, 'warn')
+  const targetLabel = target === 'gravehold'
+    ? 'Gravehold'
+    : displayName(getPlayer(g, target).mageType)
+  pushLog(`Nemesis attacks ${targetLabel}: ${msg}`, 'warn')
   if (target !== 'gravehold') {
     const d = checkPlayerDeath(g, target)
     if (d) pushLog(d, 'warn')

@@ -108,9 +108,7 @@ function handleViewportResize() {
   clampPanelPosition()
 }
 
-const g = computed(() => state.game!)
-const p1 = computed(() => getPlayer(state.game!, 'p1'))
-const p2 = computed(() => getPlayer(state.game!, 'p2'))
+const players = computed(() => state.game?.players ?? [])
 const nemesis = computed(() => state.game!.nemesis)
 const gravehold = computed(() => state.game!.gravehold)
 
@@ -119,12 +117,13 @@ const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId 
   const card = getCard(cardId)
   return card.type === 'attack' || card.type === 'minion' || card.type === 'power'
 }))
-const addPlayer = ref<'p1' | 'p2'>('p1')
+const addPlayer = ref('')
 const addZone = ref<'hand' | 'deck' | 'discard'>('hand')
 const addCard = ref('crystal')
 const addNemesisCard = ref(allNemesisCards.value[0] ?? '')
 
 function addCardToPlayer() {
+  if (!addPlayer.value) return
   const p = getPlayer(state.game!, addPlayer.value)
   p[addZone.value].push(addCard.value)
 }
@@ -152,7 +151,7 @@ function addCardToNemesis() {
   })
 }
 
-function giveAether(playerId: 'p1' | 'p2') {
+function giveAether(playerId: string) {
   getPlayer(state.game!, playerId).bonusAether += 3
 }
 
@@ -172,7 +171,7 @@ function applyJson() {
     if (state.game.currentTurn !== 'nemesis' && (state.phase === 'casting' || state.phase === 'main')) {
       state.game.currentPhase = state.phase
     }
-    state.selectedPlayer = data.selectedPlayer ?? 'p1'
+    state.selectedPlayer = data.selectedPlayer ?? state.game.players[0]?.id ?? ''
     state.pendingNemesis = data.pendingNemesis ?? null
     state.discardRemaining = data.discardRemaining ?? []
   } catch (e: any) {
@@ -218,7 +217,7 @@ onBeforeUnmount(() => {
         <input type="number" v-model.number="gravehold.hp" min="0" :max="gravehold.maxHp" />
       </div>
 
-      <div v-for="p in [p1, p2]" :key="p.id" class="debug-section">
+      <div v-for="p in players" :key="p.id" class="debug-section">
         <span class="debug-player">{{ p.mageType }} ({{ p.id }})</span>
         <div class="debug-row">
           <label>HP <input type="number" v-model.number="p.hp" min="0" /></label>
@@ -240,8 +239,7 @@ onBeforeUnmount(() => {
           <option v-for="cid in allCards" :key="cid" :value="cid">{{ cid }} — {{ getCard(cid).name }}</option>
         </select>
         <select v-model="addPlayer">
-          <option value="p1">p1</option>
-          <option value="p2">p2</option>
+          <option v-for="p in players" :key="p.id" :value="p.id">{{ p.mageType }} ({{ p.id }})</option>
         </select>
         <select v-model="addZone">
           <option value="hand">hand</option>
