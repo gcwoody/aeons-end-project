@@ -5,7 +5,7 @@ import {
   PendingDecision, PendingDecisionAnswer, PendingEffectResolution, PendingSpellCast,
   CardEffect, CardEffectBlock, CardEffectCondition, CardEffectOption,
   CardEffectTrigger, PlayerTargetRef, PlayerTargetScope, PlayerSelectionRule, PlayerTurnEffects,
-  PreppedSpellChoice, TurnOrderCardChoice, NemesisDifficulty, ScenarioConfig, PlayerId,
+  PreppedSpellChoice, TurnOrderCardChoice, MarketPileChoice, NemesisDifficulty, ScenarioConfig, PlayerId,
   NemesisCardDef, NemesisCardInPlay, NemesisDiscardCost, NemesisEffectTrigger,
   NemesisResolutionState, PendingNemesisDiscard,
 } from './types'
@@ -13,6 +13,8 @@ import {
   getCard, MAGES, rageborne, MARKET_CARDS, createTwoPlayerScenario, getNemesisDefinition,
 } from './data'
 import type { MageDef } from './data'
+import { getNemesisRules } from './nemesis/registry'
+import { leastExpensiveMarketPiles, marketPileChoices } from './nemesis/market'
 
 // ===== Utilities =====
 
@@ -145,7 +147,7 @@ export function createGame(
   const strikeDeck = nemesisDef.specificDeckBuilder?.() ?? []
   const turnOrder = buildScenarioTurnOrder(scenario, [player1.id, player2.id])
 
-  return {
+  const game: GameState = {
     scenario: clone(scenario),
     players: [player1, player2],
     nemesis: {
@@ -173,6 +175,14 @@ export function createGame(
     decisionCounter: 0,
     damagePrevention: false,
   }
+  getNemesisRules(nemesisDef.rulesModuleId ?? nemesisDef.type)?.setup?.({
+    game,
+    definition: nemesisDef,
+    marketPileChoices,
+    createDecision: (playerId, prompt, kind, details) =>
+      createDecision(game, playerId, prompt, kind, details),
+  })
+  return game
 }
 
 // ===== Turn Management =====
@@ -236,6 +246,59 @@ function activeNemesisCard(
 function discardNemesisCard(g: GameState, card: NemesisCardInPlay): void {
   g.nemesis.playArea = g.nemesis.playArea.filter(candidate => candidate !== card)
   g.nemesis.discard.unshift(card.cardId)
+}
+
+function usesDevouredPile(g: GameState): boolean {
+  return getNemesisDefinition(g.nemesis.definitionId)?.specificPileKind === 'devoured'
+}
+
+function activeNemesisRules(g: GameState) {
+  const definition = getNemesisDefinition(g.nemesis.definitionId)
+  return getNemesisRules(definition?.rulesModuleId ?? g.nemesis.definitionId)
+}
+
+function emptyMarketPileCount(g: GameState): number {
+  return g.market.piles.filter(pile => pile.remaining <= 0).length
+}
+
+/** Move the requested cards to the Devoured pile, applying its empty-pile rule. */
+function devourMarketPile(g: GameState, pileIndex: number, amount: number): string[] {
+  const pile = g.market.piles[pileIndex]
+  if (!usesDevouredPile(g) || !pile || amount <= 0) return ['No supply pile can be Devoured']
+  if (pile.remaining <= 0) return [`${getCard(pile.cardId).name} is empty — Devour does not begin`]
+
+  const devoured = Math.min(amount, pile.remaining)
+  pile.remaining -= devoured
+  for (let index = 0; index < devoured; index++) g.nemesis.strikeDeck.unshift(pile.cardId)
+
+  const messages = [`Devoured ${devoured} ${getCard(pile.cardId).name} card(s)`]
+  const missing = amount - devoured
+  if (missing > 0) messages.push(dealDamage(g, { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' }, missing * 2))
+  if (g.market.piles.every(candidate => candidate.remaining <= 0)) {
+    g.gameOver = true
+    g.winner = 'nemesis'
+    messages.push('DEFEAT! All supply piles have been Devoured!')
+  }
+  return messages
+}
+
+function fixedDevourPile(
+  g: GameState,
+  pile: Extract<CardEffect, { kind: 'devour_market_cards' }>['pile'],
+  cardType?: 'gem' | 'relic' | 'spell',
+): MarketPileChoice | null {
+  // Fixed-cost Devours skip exhausted supply piles before ranking costs.
+  const candidates = marketPileChoices(g, cardType).filter(candidate => candidate.remaining > 0)
+  if (pile === 'least_expensive') {
+    return leastExpensiveMarketPiles(g, cardType)[0] ?? null
+  }
+  if (pile === 'most_expensive') {
+    return candidates.sort((left, right) => getCard(right.cardId).cost - getCard(left.cardId).cost)[0] ?? null
+  }
+  if (pile === 'second_most_expensive') {
+    return candidates.sort((left, right) => getCard(right.cardId).cost - getCard(left.cardId).cost)[1] ?? null
+  }
+  return null
 }
 
 function nemesisEffectBlocks(
@@ -469,16 +532,14 @@ export function advanceNemesisTurn(g: GameState): string[] {
 
     g.currentPhase = 'nemesis_draw'
     const nemesisDefinition = getNemesisDefinition(g.nemesis.definitionId)
-    if (
-      g.nemesis.definitionId === rageborne.type &&
-      (g.nemesis.counters.fury ?? 0) >= (nemesisDefinition?.standardRules.endTurnStrikeThreshold ?? Number.POSITIVE_INFINITY)
-    ) {
-      messages.push('Rageborne strikes at the end of the Nemesis turn')
+    const endTurnRule = activeNemesisRules(g)?.endTurn
+    if (nemesisDefinition && endTurnRule?.shouldResolve(g, nemesisDefinition)) {
+      messages.push(endTurnRule.message)
       messages.push(...resolveEffects(
         g,
         resolution.controllerPlayerId ?? g.players[0]!.id,
-        [{ kind: 'resolve_strike' }],
-        'rageborne:strike',
+        endTurnRule.effects,
+        endTurnRule.sourceCardId,
         0,
         undefined,
         true,
@@ -937,6 +998,7 @@ export function gainCard(
   destination: CardGainDestination = 'discard_top',
   marketPileIndex?: number,
   triggerEffects = true,
+  specificPile = false,
 ): string | null {
   if (triggerEffects) {
     const blocked = pendingActionMessage(g)
@@ -950,6 +1012,14 @@ export function gainCard(
     if (!pile || pile.cardId !== cardId) return 'Invalid market pile'
     if (pile.remaining <= 0) return 'Pile empty'
     pile.remaining--
+    if (usesDevouredPile(g) && g.market.piles.every(candidate => candidate.remaining <= 0)) {
+      g.gameOver = true
+      g.winner = 'nemesis'
+    }
+  }
+  if (specificPile) {
+    if (g.nemesis.strikeDeck[0] !== cardId) return 'The top specific-pile card is no longer available'
+    g.nemesis.strikeDeck.shift()
   }
 
   const p = getPlayer(g, playerId)
@@ -1093,6 +1163,9 @@ function amountValue(
     const prepped = getPlayer(g, playerId).breaches
       .reduce((sum, breach) => sum + breach.prepSpells.length, 0)
     return Math.max(0, amount.base + prepped * amount.amountPerSpell)
+  }
+  if (amount.kind === 'per_empty_market_pile') {
+    return Math.max(0, amount.base + emptyMarketPileCount(g) * amount.amountPerPile)
   }
   const minion = g.nemesis.playArea.find(card =>
     card.cardType === 'minion' && (!sourceCardId || card.cardId === sourceCardId),
@@ -1404,13 +1477,13 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'unleash') {
-      const configured = getNemesisDefinition(g.nemesis.definitionId)?.unleashEffects
+      const configured = activeNemesisRules(g)?.unleashEffects
       if (configured && configured.length > 0) {
-        const multiplier = Math.max(0, effect.amount ?? 1)
-        const expanded = configured.map(configuredEffect => {
-          if (configuredEffect.kind !== 'gain_nemesis_counter') return configuredEffect
-          return { ...configuredEffect, amount: configuredEffect.amount * multiplier }
-        })
+        // An amount means the Nemesis performs its complete Unleash effect
+        // that many times. Repeat the whole configured sequence so non-counter
+        // effects (for example Prince of Gluttons' Devour) are not collapsed.
+        const count = Math.max(0, effect.amount ?? 1)
+        const expanded = Array.from({ length: count }, () => configured).flat()
         addRemainingEffects(resolution, expanded)
       } else {
         const counter = 'unleash'
@@ -1444,13 +1517,13 @@ function runEffectResolution(
       const strike = getCard(strikeId)
       messages.push(`Resolve Strike: ${strike.name}`)
       const nemesisDefinition = getNemesisDefinition(g.nemesis.definitionId)
-      const furyLoss = g.nemesis.difficulty === 'increased'
-        ? (nemesisDefinition?.increasedDifficultyRules.furyLossAfterStrike ?? 0)
-        : (nemesisDefinition?.standardRules.furyLossAfterStrike ?? 0)
+      const strikeAfterResolve = nemesisDefinition
+        ? (activeNemesisRules(g)?.strikeAfterResolve?.(g, nemesisDefinition, strikeId)
+          ?? [{ kind: 'return_strike_card', cardId: strikeId } as CardEffect])
+        : [{ kind: 'return_strike_card', cardId: strikeId } as CardEffect]
       const nextStrike: CardEffect[] = [
         ...(strike.effects?.flatMap(block => block.effects) ?? []),
-        { kind: 'lose_nemesis_counter', counter: 'fury', amount: furyLoss },
-        { kind: 'return_strike_card', cardId: strikeId },
+        ...strikeAfterResolve,
       ]
       const remaining = Math.max(0, (effect.count ?? 1) - 1)
       if (remaining > 0) nextStrike.push({ kind: 'resolve_strike', count: remaining })
@@ -1472,6 +1545,10 @@ function runEffectResolution(
         continue
       }
       resolutionState.drawnCardCancelled = true
+      // The card was already drawn from the Nemesis deck.  Move it to the
+      // discard pile now so cancelling it has the same destination as a
+      // normally resolved Attack, without allowing any of its effects to run.
+      g.nemesis.discard.unshift(cardId)
       messages.push(`Discarded revealed Nemesis card: ${getCard(cardId).name}`)
       continue
     }
@@ -1719,6 +1796,7 @@ function runEffectResolution(
 
     if (effect.kind === 'gain_card') {
       let marketPileIndex: number | undefined
+      const fromSpecificPile = effect.source === 'specific'
       if (effect.source === 'market') {
         marketPileIndex = g.market.piles.findIndex(pile => pile.cardId === effect.cardId && pile.remaining > 0)
         if (marketPileIndex === -1) {
@@ -1726,8 +1804,12 @@ function runEffectResolution(
           continue
         }
       }
+      if (fromSpecificPile && g.nemesis.strikeDeck[0] !== effect.cardId) {
+        messages.push(`Cannot gain ${getCard(effect.cardId).name}: it is not on top of the specific pile`)
+        continue
+      }
       const destination = effect.destination ?? 'discard_top'
-      const message = gainCard(g, currentPlayerId, effect.cardId, destination, marketPileIndex, false)
+      const message = gainCard(g, currentPlayerId, effect.cardId, destination, marketPileIndex, false, fromSpecificPile)
       if (message) {
         resolution.lastGainedCardId = effect.cardId
         const followups = matchingBlocks(effect.cardId, currentPlayerId, g, { kind: 'on_gain' })
@@ -1735,6 +1817,58 @@ function runEffectResolution(
         addRemainingEffects(resolution, followups)
         messages.push(message)
       }
+      continue
+    }
+
+    if (effect.kind === 'devour_market_cards') {
+      const amount = amountValue(g, currentPlayerId, effect.amount, resolution.sourceCardId)
+      if (amount === 0) {
+        messages.push('No cards are Devoured')
+        continue
+      }
+      if (effect.pile === 'choose') {
+        const candidates = marketPileChoices(g, effect.cardType).filter(candidate => candidate.remaining > 0)
+        if (candidates.length === 0) {
+          messages.push('No non-empty matching supply pile can be Devoured')
+          continue
+        }
+        const decision = createDecision(
+          g, resolution.playerId, 'Choose a supply pile to Devour', 'select_market_pile',
+          { candidates }, resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      if (effect.pile === 'least_expensive') {
+        const candidates = leastExpensiveMarketPiles(g, effect.cardType)
+        if (candidates.length > 1) {
+          const decision = createDecision(
+            g, resolution.playerId, 'Choose a least expensive supply pile to Devour', 'select_market_pile',
+            { candidates }, resolution.sourceCardId,
+          )
+          messages.push(...pauseEffect(g, resolution, effect, decision))
+          return messages
+        }
+      }
+      const target = fixedDevourPile(g, effect.pile, effect.cardType)
+      if (!target) {
+        messages.push('No matching supply pile can be Devoured')
+        continue
+      }
+      messages.push(...devourMarketPile(g, target.pileIndex, amount))
+      continue
+    }
+
+    if (effect.kind === 'set_source_minion_life') {
+      const minion = g.nemesis.playArea.find(card =>
+        card.cardType === 'minion' && card.cardId === resolution.sourceCardId,
+      )
+      if (!minion) {
+        messages.push('No source Minion is in play')
+        continue
+      }
+      minion.lifeTokens = Math.max(0, effect.base + emptyMarketPileCount(g) * effect.amountPerEmptyMarketPile)
+      messages.push(`${getCard(minion.cardId).name} gains ${minion.lifeTokens} life`)
       continue
     }
 
@@ -1934,10 +2068,12 @@ function runEffectResolution(
 
     if (effect.kind === 'destroy_cards') {
       if (effect.source === 'self') {
-        const selfChoice = getCardChoices(g, currentPlayerId, 'hand_or_discard')
+        // On-play effects must destroy the card that was just played, even if
+        // an identical card remains in the player's hand or discard pile.
+        const selfChoice = getZoneCards(getPlayer(g, currentPlayerId), 'played_this_turn')
+          .map((cardId, index) => ({ zone: 'played_this_turn' as CardZone, index, cardId, cardName: getCard(cardId).name }))
           .find(choice => choice.cardId === resolution.sourceCardId)
-          ?? getZoneCards(getPlayer(g, currentPlayerId), 'played_this_turn')
-            .map((cardId, index) => ({ zone: 'played_this_turn' as CardZone, index, cardId, cardName: getCard(cardId).name }))
+          ?? getCardChoices(g, currentPlayerId, 'hand_or_discard')
             .find(choice => choice.cardId === resolution.sourceCardId)
         if (!selfChoice) {
           messages.push('Source card is no longer available to destroy')
@@ -2338,6 +2474,38 @@ export function resolvePendingDecision(
   g: GameState, decisionId: string, answer: PendingDecisionAnswer,
 ): string[] {
   const decision = g.pendingDecision
+  if (decision?.kind === 'select_setup_devour_pile') {
+    if (decision.id !== decisionId || answer.kind !== 'select_setup_devour_pile') {
+      return ['Invalid setup Devour choice']
+    }
+    const choice = decision.candidates.find(candidate =>
+      candidate.pileIndex === answer.choice.pileIndex && candidate.cardId === answer.choice.cardId,
+    )
+    const pile = choice ? g.market.piles[choice.pileIndex] : null
+    if (!choice || !pile || pile.cardId !== choice.cardId || pile.remaining <= 0) {
+      return ['The selected supply pile is no longer available']
+    }
+
+    const messages = devourMarketPile(g, choice.pileIndex, 1)
+    const remainingChoices = decision.remainingChoices - 1
+    if (g.gameOver || remainingChoices <= 0) {
+      g.pendingDecision = null
+      return [...messages, 'Increased difficulty setup complete']
+    }
+
+    const candidates = marketPileChoices(g).filter(candidate => candidate.remaining > 0)
+    if (candidates.length === 0) {
+      g.pendingDecision = null
+      return [...messages, 'No supply piles remain to complete setup']
+    }
+    g.pendingDecision = createDecision(
+      g, decision.playerId,
+      `Choose a supply pile to Devour (${remainingChoices} remaining)`,
+      'select_setup_devour_pile',
+      { candidates, remainingChoices },
+    )
+    return messages
+  }
   if (decision?.kind === 'confirm_nemesis_draw') {
     if (decision.id !== decisionId || answer.kind !== 'confirm_nemesis_draw' || !answer.accepted) {
       return ['Invalid Nemesis draw confirmation']
@@ -2648,6 +2816,21 @@ export function resolvePendingDecision(
     }
     restore()
     return ['Collective card selection does not match the pending effect']
+  } else if (answer.kind === 'select_market_pile') {
+    if (decision.kind !== 'select_market_pile' || effect.kind !== 'devour_market_cards') {
+      restore()
+      return ['Decision answer has the wrong type']
+    }
+    const choice = decision.candidates.find(candidate =>
+      candidate.pileIndex === answer.choice.pileIndex && candidate.cardId === answer.choice.cardId,
+    )
+    const pile = choice ? g.market.piles[choice.pileIndex] : null
+    if (!choice || !pile || pile.cardId !== choice.cardId || pile.remaining <= 0) {
+      restore()
+      return ['The selected supply pile is no longer available']
+    }
+    const amount = amountValue(g, effectPlayerId(resolution), effect.amount, resolution.sourceCardId)
+    return [...devourMarketPile(g, choice.pileIndex, amount), ...runEffectResolution(g, resolution)]
   } else if (answer.kind === 'select_player_target') {
     if (decision.kind !== 'select_player_target' ||
       (effect.kind !== 'draw_cards' && effect.kind !== 'deal_player_damage' &&
@@ -3022,7 +3205,32 @@ export function buyCard(g: GameState, playerId: string, pileIndex: number): stri
 
   spendAether(p, card.cost, spendType)
   const message = gainCard(g, playerId, pile.cardId, 'discard_top', pileIndex)
-  return message ? `Bought ${card.name} (${card.cost}a) -> ${message}` : null
+  if (!message) return null
+  const defeat = g.gameOver && g.winner === 'nemesis' && usesDevouredPile(g)
+    ? '; DEFEAT! All supply piles have been Devoured!'
+    : ''
+  return `Bought ${card.name} (${card.cost}a) -> ${message}${defeat}`
+}
+
+/** Buy the revealed top card of a Nemesis-specific supply pile. */
+export function buySpecificPileCard(g: GameState, playerId: string): string | null {
+  const blocked = pendingActionMessage(g)
+  if (blocked) return blocked
+  if (!usesDevouredPile(g)) return 'This Nemesis has no buyable specific pile'
+  const cardId = g.nemesis.strikeDeck[0]
+  if (!cardId) return 'The Devoured pile is empty'
+
+  const card = getCard(cardId)
+  const p = getPlayer(g, playerId)
+  const spendType: SpendType = card.type === 'gem' ? 'gem'
+    : card.type === 'spell' ? 'spell'
+    : card.type === 'relic' ? 'relic' : 'general'
+  const available = getSpendableAether(p, spendType)
+  if (available < card.cost) return `Need ${card.cost} Aether, have ${available}`
+
+  spendAether(p, card.cost, spendType)
+  const message = gainCard(g, playerId, cardId, 'discard_top', undefined, true, true)
+  return message ? `Gained ${card.name} from the Devoured pile (${card.cost}a) -> ${message}` : null
 }
 
 export function focusBreach(g: GameState, playerId: string, breachIndex: number): string | null {
@@ -3278,6 +3486,11 @@ export function checkGameOver(g: GameState): string | null {
   if (g.nemesis.hp <= 0) { g.gameOver = true; g.winner = 'players'; return 'VICTORY! Nemesis defeated!' }
   if (g.gravehold.hp <= 0) { g.gameOver = true; g.winner = 'nemesis'; return 'DEFEAT! Gravehold destroyed!' }
   if (g.players.every(p => p.exhausted)) { g.gameOver = true; g.winner = 'nemesis'; return 'DEFEAT! All mages exhausted!' }
+  if (usesDevouredPile(g) && g.market.piles.every(pile => pile.remaining <= 0)) {
+    g.gameOver = true
+    g.winner = 'nemesis'
+    return 'DEFEAT! All supply piles have been Devoured!'
+  }
   return null
 }
 

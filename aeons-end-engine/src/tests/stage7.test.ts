@@ -313,6 +313,23 @@ function testRelicEffects(): void {
   resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'choose_one', optionId: 'reduce_breach_cost' })
   assertEqual(player.turnEffects.nextBreachCostReductions[0]!.amount, 3, 'Flexing Dagger stores a reduction')
 
+  const duplicateDaggerGame = freshGame()
+  const duplicateDaggerPlayer = duplicateDaggerGame.players[0]!
+  duplicateDaggerGame.nemesis.hp = 20
+  duplicateDaggerPlayer.hand = ['flexing_dagger', 'flexing_dagger']
+  assert(playCard(duplicateDaggerGame, duplicateDaggerPlayer.id, 'flexing_dagger')?.includes('Played Flexing Dagger'),
+    'The first Flexing Dagger plays with an identical Dagger still in hand')
+  assertEqual(duplicateDaggerGame.pendingDecision?.kind, 'choose_one', 'Flexing Dagger waits for its selected effect')
+  resolvePendingDecision(duplicateDaggerGame, duplicateDaggerGame.pendingDecision!.id,
+    { kind: 'choose_one', optionId: 'destroy_for_damage' })
+  assertEqual(duplicateDaggerPlayer.hand.join(','), 'flexing_dagger',
+    'Destroying Flexing Dagger leaves its identical unplayed copy in hand')
+  assertEqual(duplicateDaggerPlayer.playedThisTurn.length, 0,
+    'Destroying Flexing Dagger removes the copy in the played area')
+  assertEqual(duplicateDaggerPlayer.destroyedCards.filter(cardId => cardId === 'flexing_dagger').length, 1,
+    'Exactly the played Flexing Dagger is destroyed')
+  assertEqual(duplicateDaggerGame.nemesis.hp, 19, 'Destroying Flexing Dagger deals 1 damage')
+
   player.hand = ['bottled_vortex', 'spark', 'crystal']
   player.discard = ['moonstone_shard']
   assert(playCard(game, player.id, 'bottled_vortex')?.includes('Played Bottled Vortex'), 'Bottled Vortex plays')

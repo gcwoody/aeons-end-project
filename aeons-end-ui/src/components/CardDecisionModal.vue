@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
-import type { CardChoice, CollectiveCardChoice, PendingDecisionAnswer, TurnOrderCardChoice } from '@engine/types'
+import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, TurnOrderCardChoice } from '@engine/types'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
@@ -9,12 +9,25 @@ import { useModalDrag } from '../game/useModalDrag'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 
-const { state, resolveDecision, confirmPendingPreppedSpells } = useGame()
+const {
+  state, resolveDecision, confirmPendingPreppedSpells,
+  isBoardCardSelectionActive, confirmPendingBoardCards, skipPendingBoardCards,
+} = useGame()
 const { modalEl, modalStyle, dragging, startDrag, resetModalPosition } = useModalDrag()
 const selectedCardKeys = ref<string[]>([])
 const selectedTurnOrder = ref<number[]>([])
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
+const isDirectBoardCardDecision = computed(() => isBoardCardSelectionActive())
+type DirectBoardCardDecision = Extract<PendingDecision, { kind: 'select_cards' | 'select_collective_cards' }>
+const boardCardDecision = computed<DirectBoardCardDecision | null>(() => {
+  const current = decision.value
+  if (!current || !isDirectBoardCardDecision.value) return null
+  return current.kind === 'select_cards' || current.kind === 'select_collective_cards' ? current : null
+})
+const isDirectMarketDecision = computed(() =>
+  decision.value?.kind === 'select_market_pile' || decision.value?.kind === 'select_setup_devour_pile',
+)
 
 watch(() => decision.value?.id, () => {
   selectedCardKeys.value = []
@@ -170,6 +183,13 @@ function confirmNemesisDraw() {
     </div>
   </div>
 
+  <div v-if="isDirectMarketDecision" class="decision-overlay non-blocking-decision-overlay non-blocking-market-selection-overlay">
+    <div ref="modalEl" class="overlay-card decision-modal non-blocking-selection-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+      <h2>{{ decision?.prompt }}</h2>
+      <p class="decision-hint">Select a highlighted supply pile directly in the Market.</p>
+    </div>
+  </div>
+
   <div v-if="decision?.kind === 'select_prepped_spells'" class="decision-overlay non-blocking-decision-overlay">
     <div ref="modalEl" class="overlay-card decision-modal non-blocking-prepped-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
       <h2>{{ decision.prompt }}</h2>
@@ -187,7 +207,27 @@ function confirmNemesisDraw() {
     </div>
   </div>
 
-  <div v-if="decision && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'" class="overlay decision-overlay">
+  <div v-if="boardCardDecision" class="decision-overlay non-blocking-decision-overlay">
+    <div ref="modalEl" class="overlay-card decision-modal non-blocking-selection-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+      <h2>{{ boardCardDecision.prompt }}</h2>
+      <p class="decision-hint">Select highlighted cards directly on the player boards. You can switch players while this panel remains open.</p>
+      <div class="decision-footer">
+        <span class="stat">{{ state.pendingBoardCards.length }} / {{ boardCardDecision.max }} selected</span>
+        <div class="decision-footer-actions">
+          <button v-if="boardCardDecision.min === 0" class="btn" @click="skipPendingBoardCards">Skip</button>
+          <button
+            class="btn primary"
+            :disabled="state.pendingBoardCards.length < boardCardDecision.min || state.pendingBoardCards.length > boardCardDecision.max"
+            @click="confirmPendingBoardCards"
+          >
+            Confirm
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'" class="overlay decision-overlay">
     <div ref="modalEl" class="overlay-card decision-modal draggable-modal" :class="{ dragging }" :style="{ ...modalStyle, '--decision-columns': decisionColumns }" @pointerdown="startDrag">
       <h2>{{ decision.prompt }}</h2>
 
@@ -323,16 +363,6 @@ function confirmNemesisDraw() {
         </button>
       </div>
 
-      <div v-else-if="decision.kind === 'select_damage_target'" class="decision-options">
-        <button
-          v-for="target in decision.targets"
-          :key="target.id"
-          class="btn primary decision-option"
-          @click="answer({ kind: 'select_damage_target', target })"
-        >
-          {{ target.label }}
-        </button>
-      </div>
     </div>
   </div>
 </template>

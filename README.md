@@ -18,6 +18,7 @@ cd aeons-end-engine
 npm test           # 类型检查 + 引擎回归
 
 cd ..\aeons-end-ui
+npm run generate:images  # 从图片目录重建已注册资源的 import 映射
 npm run build      # 前端生产构建
 npx playwright install chromium  # 首次使用 Playwright 时执行
 npm run test:e2e   # 浏览器流程测试
@@ -29,6 +30,7 @@ npm run test:e2e   # 浏览器流程测试
 aeons-end-engine/  纯 TypeScript 规则引擎和数据
 aeons-end-ui/      Vue 3 + Vite 展示层，@engine 直接引用引擎源码
 design/            当前只保留 UI 层级维护指南
+handoff.md         新 Codex 对话的当前状态和交接信息
 ```
 
 引擎原地修改一个 `GameState`；UI 使用 Vue `reactive()` 追踪状态。规则、资源变更、

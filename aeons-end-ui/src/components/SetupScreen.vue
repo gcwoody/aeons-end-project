@@ -24,7 +24,7 @@ function startSelectedGame() {
     ? 'This Mage has already been selected by another player.'
     : ''
   if (selectionError.value) return
-  newGame(state.mage1, state.mage2, state.nemesisType)
+  newGame(state.mage1, state.mage2, state.nemesisType, state.nemesisDifficulty)
 }
 
 function saveTime(timestamp: number): string {
@@ -59,10 +59,17 @@ function turnLabel(turn: string): string {
       </label>
       <label>
         Nemesis
-        <select v-model="state.nemesisType">
+        <select v-model="state.nemesisType" aria-label="Nemesis">
           <option v-for="nemesis in nemesisOptions" :key="nemesis.type" :value="nemesis.type">
             {{ nemesis.name }}
           </option>
+        </select>
+      </label>
+      <label>
+        Nemesis Difficulty
+        <select v-model="state.nemesisDifficulty" aria-label="Nemesis Difficulty">
+          <option value="standard">Standard</option>
+          <option value="increased">Increased</option>
         </select>
       </label>
     </div>

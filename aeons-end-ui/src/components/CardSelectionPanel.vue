@@ -58,24 +58,26 @@ function toggle(key: string): void {
 <template>
   <div class="card-selection-panel">
     <div v-for="group in groups" :key="group.key" class="decision-card-zone">
-      <div
-        v-for="(row, index) in group.rows"
-        :key="`${group.key}:${index}`"
-        class="pile-row pile-row-labeled decision-card-row"
-        :style="{ '--choice-columns': row.length }"
-      >
-        <span class="pile-row-label">{{ group.label }}</span>
-        <button
-          v-for="choice in row"
-          :key="choice.key"
-          class="decision-card-choice"
-          :class="{ selected: isSelected(choice.key) }"
-          type="button"
-          @click="toggle(choice.key)"
+      <span class="decision-card-zone-label">{{ group.label }}</span>
+      <div class="decision-card-rows">
+        <div
+          v-for="(row, index) in group.rows"
+          :key="`${group.key}:${index}`"
+          class="pile-row decision-card-row"
+          :style="{ '--choice-columns': row.length }"
         >
-          <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />
-          <span v-else>{{ choice.cardName }}</span>
-        </button>
+          <button
+            v-for="choice in row"
+            :key="choice.key"
+            class="decision-card-choice"
+            :class="{ selected: isSelected(choice.key) }"
+            type="button"
+            @click="toggle(choice.key)"
+          >
+            <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />
+            <span v-else>{{ choice.cardName }}</span>
+          </button>
+        </div>
       </div>
     </div>
 

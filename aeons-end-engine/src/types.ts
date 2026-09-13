@@ -25,6 +25,11 @@ export type EffectAmount =
       base: number
       amountPerSpell: number
     }
+  | {
+      kind: 'per_empty_market_pile'
+      base: number
+      amountPerPile: number
+    }
   | { kind: 'current_minion_life' }
 
 export type EffectComparison = 'equals' | 'at_least'
@@ -105,6 +110,14 @@ export interface PreppedSpellChoice {
 export interface TurnOrderCardChoice {
   index: number
   cardId: string
+}
+
+/** A supply pile selected by a market-facing Nemesis effect. */
+export interface MarketPileChoice {
+  pileIndex: number
+  cardId: string
+  cardName: string
+  remaining: number
 }
 
 export type LifeTargetRef =
@@ -232,6 +245,16 @@ export type PendingDecision = PendingDecisionBase & (
       targets: DamageTargetRef[]
     }
   | {
+      kind: 'select_market_pile'
+      candidates: MarketPileChoice[]
+    }
+  | {
+      /** A Nemesis setup rule requires choosing a supply pile before turn one. */
+      kind: 'select_setup_devour_pile'
+      candidates: MarketPileChoice[]
+      remainingChoices: number
+    }
+  | {
       kind: 'reorder_turn_order'
       cards: TurnOrderCardChoice[]
     }
@@ -276,6 +299,8 @@ export type PendingDecisionAnswer =
   | { kind: 'select_life_target'; target: LifeTargetRef }
   | { kind: 'select_player_target'; target: PlayerTargetRef }
   | { kind: 'select_damage_target'; target: DamageTargetRef }
+  | { kind: 'select_market_pile'; choice: MarketPileChoice }
+  | { kind: 'select_setup_devour_pile'; choice: MarketPileChoice }
   | { kind: 'reorder_turn_order'; order: number[] }
   | { kind: 'select_turn_order_card'; choice: TurnOrderCardChoice }
   | { kind: 'confirm_turn_order_reveal'; accepted: true }
@@ -336,6 +361,15 @@ export type CardEffect =
       source: 'market' | 'specific'
       destination?: 'discard_top' | 'deck_top'
     }
+  /** Move cards from one supply pile to the active Nemesis' specific pile. */
+  | {
+      kind: 'devour_market_cards'
+      amount: EffectAmount
+      pile: 'least_expensive' | 'second_most_expensive' | 'most_expensive' | 'choose'
+      cardType?: 'gem' | 'relic' | 'spell'
+    }
+  /** Set the source Minion's life based on exhausted supply piles. */
+  | { kind: 'set_source_minion_life'; base: number; amountPerEmptyMarketPile: number }
   | { kind: 'move_gained_card'; destination: 'deck_top' }
   | {
       kind: 'discard_cards'
@@ -407,7 +441,7 @@ export type CardEffect =
   | { kind: 'resolve_spell_damage_bonus' }
   /** Internal marker used to move a cast spell to its discard pile after resolution. */
   | { kind: 'finalize_spell_cast' }
-  /** Increase the active Nemesis' configured Unleash counter/effects. */
+  /** Perform the active Nemesis' complete Unleash sequence. */
   | { kind: 'unleash'; amount?: number }
   /** Generic Nemesis counter operations used by reusable Nemesis effects. */
   | { kind: 'gain_nemesis_counter'; counter: string; amount: number }
@@ -534,11 +568,13 @@ export interface NemesisDef {
   startingCounters: Record<string, number>
   standardRules: Record<string, number>
   increasedDifficultyRules: Record<string, number>
-  /** Typed effect sequence executed whenever this Nemesis unleashes. */
-  unleashEffects?: CardEffect[]
+  /** Runtime rules module that supplies this Nemesis' Unleash sequence and optional hooks. */
+  rulesModuleId?: string
   /** Builders for this Nemesis' decks. Definitions may omit unused auxiliary decks. */
   deckBuilder?: () => string[]
   specificDeckBuilder?: () => string[]
+  /** How the otherwise generic specific-deck zone is used by this Nemesis. */
+  specificPileKind?: 'devoured'
 }
 
 // ===== Breach =====

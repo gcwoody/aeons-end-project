@@ -14,6 +14,7 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   debugState.phase = 'main'
   debugState.game.pendingDecision = null
   debugState.game.pendingEffect = null
+  debugState.selectedPlayer = debugState.game.players[0].id
   debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'main'
   debugState.game.nemesis.discard = ['slaughter']
@@ -137,7 +138,118 @@ test('To Discard does not show or retain the Power card preview', async ({ page 
   await expect(page.locator('.card-hover-preview')).toHaveCount(0)
 })
 
-test('collective card decisions use the reusable selection panel', async ({ page }) => {
+test('Prince of Gluttons displays and sells the top Devoured card directly', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByLabel('Nemesis', { exact: true }).selectOption('prince_of_gluttons')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await expect(page.getByRole('img', { name: 'Prince of Gluttons mat' })).toBeVisible()
+  await expect(page.getByLabel('Devoured Pile', { exact: true })).toBeVisible()
+  await expect(page.locator('.nemesis-specific-pile')).toBeVisible()
+  await expect(page.locator('.nemesis-specific-pile img')).toHaveAttribute('alt', "V'riswood Amber")
+  await expect(page.locator('.pile-modal')).toHaveCount(0)
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  debugState.selectedPlayer = debugState.game.players[0].id
+  debugState.game.currentTurn = debugState.game.players[0].id
+  debugState.game.currentPhase = 'main'
+  debugState.game.players[0].bonusAether = 3
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.nemesis-specific-pile').click({ button: 'right' })
+  await expect(page.locator('.pile-modal')).toBeVisible()
+  await expect(page.locator('.pile-modal h3')).toContainText('Devoured Pile')
+  await expect(page.locator('.pile-modal .pile-row')).toHaveCount(1)
+  expect(await page.locator('.pile-modal .pile-card img').evaluateAll(images => images.map(image => image.alt)))
+    .toEqual(["V'riswood Amber", 'Diamond Cluster', 'Burning Opal'])
+  await page.locator('.pile-modal').getByRole('button', { name: 'Close', exact: true }).click()
+
+  await page.getByRole('button', { name: "Buy V'riswood Amber from the Devoured Pile" }).click()
+  await expect(page.locator('.nemesis-specific-pile img')).toHaveAttribute('alt', 'Diamond Cluster')
+})
+
+test('Setup passes the selected increased Nemesis difficulty into Prince of Gluttons setup', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByLabel('Nemesis', { exact: true }).selectOption('prince_of_gluttons')
+  await page.getByLabel('Nemesis Difficulty').selectOption('increased')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await expect(page.getByText('Choose a supply pile to Devour (9 remaining)', { exact: true })).toBeVisible()
+  await expect(page.locator('.pile.decision-market-choice')).toHaveCount(9)
+  for (let remaining = 9; remaining > 0; remaining--) {
+    await page.locator('.pile.decision-market-choice').first().click()
+    if (remaining > 1) {
+      await expect(page.getByText(`Choose a supply pile to Devour (${remaining - 1} remaining)`, { exact: true })).toBeVisible()
+    }
+  }
+
+  await expect(page.getByRole('heading', { name: /^Choose a supply pile to Devour/ })).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Nemesis Mainboard' })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Prince of Gluttons mat' })).toBeVisible()
+})
+
+test('Lobotomize highlights spell supply piles after its Devour option is chosen', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByLabel('Nemesis', { exact: true }).selectOption('prince_of_gluttons')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  const playerId = debugState.game.players[0].id
+  debugState.phase = 'nemesis_draw'
+  debugState.selectedPlayer = playerId
+  debugState.game.currentTurn = 'nemesis'
+  debugState.game.currentPhase = 'nemesis_draw'
+  debugState.game.pendingDecision = {
+    id: 'lobotomize-effect', playerId, prompt: 'Choose the Lobotomize effect', kind: 'choose_one',
+    options: [
+      { id: 'damage', label: 'Any player suffers 3 damage' },
+      { id: 'devour', label: 'Devour three cards from a spell supply pile' },
+    ],
+  }
+  debugState.game.pendingEffect = {
+    playerId, sourceCardId: 'lobotomize', remainingEffects: [],
+    awaiting: {
+      kind: 'choose_one', prompt: 'Choose the Lobotomize effect', options: [
+        { id: 'damage', label: 'Any player suffers 3 damage', effects: [] },
+        {
+          id: 'devour', label: 'Devour three cards from a spell supply pile', effects: [
+            { kind: 'devour_market_cards', amount: 3, pile: 'choose', cardType: 'spell' },
+          ],
+        },
+      ],
+    },
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.getByRole('button', { name: 'Devour three cards from a spell supply pile', exact: true }).click()
+  await expect(page.getByText('Select a highlighted supply pile directly in the Market.', { exact: true })).toBeVisible()
+  await expect(page.locator('.pile.decision-market-choice')).toHaveCount(4)
+  await expect(page.locator('.decision-options')).toHaveCount(0)
+  await page.locator('.pile.decision-market-choice').filter({ has: page.getByRole('img', { name: 'Lava Tendril' }) }).click()
+  await expect(page.locator('.pile.decision-market-choice')).toHaveCount(0)
+  await expect(page.locator('.nemesis-specific-pile img')).toHaveAttribute('alt', 'Lava Tendril')
+})
+
+test('collective hand-card decisions use direct board selection', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -175,13 +287,61 @@ test('collective card decisions use the reusable selection panel', async ({ page
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
   await expect(page.getByText('Discard up to 3 gem(s) to reduce Gravehold damage?', { exact: true })).toBeVisible()
-  await expect(page.getByText('Selected 0 / 3', { exact: true })).toBeVisible()
+  await expect(page.getByText('0 / 3 selected', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeVisible()
-  await expect(page.locator('.decision-card-choice')).toHaveCount(3)
-  await page.locator('.decision-card-choice').first().click()
-  await expect(page.getByText('Selected 1 / 3', { exact: true })).toBeVisible()
-  await page.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.locator('.pending-board-card')).toHaveCount(2)
   await expect(page.locator('.decision-card-choice')).toHaveCount(0)
+  await page.locator('.pending-board-card').first().click()
+  await expect(page.locator('.pending-board-card-selected')).toHaveCount(1)
+  await expect(page.getByText('1 / 3 selected', { exact: true })).toBeVisible()
+  await page.locator('.char-btn').nth(1).click()
+  await expect(page.locator('.pending-board-card')).toHaveCount(1)
+  await page.locator('.pending-board-card').click()
+  await expect(page.getByText('2 / 3 selected', { exact: true })).toBeVisible()
+  await page.getByRole('button', { name: 'Confirm', exact: true }).click()
+  await expect(page.locator('.pending-board-card')).toHaveCount(0)
+})
+
+test('a multi-row discard selection shows one vertically centered source label', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  const playerId = debugState.game.players[0].id
+  debugState.phase = 'main'
+  debugState.selectedPlayer = playerId
+  debugState.game.currentTurn = playerId
+  debugState.game.currentPhase = 'main'
+  debugState.game.players[0].discard = Array.from({ length: 7 }, () => 'crystal')
+  debugState.game.pendingDecision = {
+    id: 'multi-row-hand-selection',
+    playerId,
+    prompt: 'Choose cards from your discard pile',
+    kind: 'select_cards',
+    source: 'discard',
+    min: 1,
+    max: 7,
+    candidates: Array.from({ length: 7 }, (_, index) => ({
+      zone: 'discard', index, cardId: 'crystal', cardName: 'Crystal',
+    })),
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await expect(page.locator('.decision-card-zone-label')).toHaveText('DISCARD PILE')
+  await expect(page.locator('.decision-card-row')).toHaveCount(2)
+  await expect(page.locator('.decision-card-choice')).toHaveCount(7)
+  await expect.poll(() => page.evaluate(() => {
+    const zone = document.querySelector('.decision-card-zone')!.getBoundingClientRect()
+    const label = document.querySelector('.decision-card-zone-label')!.getBoundingClientRect()
+    return Math.abs((zone.top + zone.height / 2) - (label.top + label.height / 2)) < 2
+  })).toBe(true)
 })
 
 test('most-expensive prepped spell decisions wait for confirmation', async ({ page }) => {

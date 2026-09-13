@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { mageImageUrls } from '../mage-images'
 import CardHoverPreview from './CardHoverPreview.vue'
+import { useGame } from '../game/useGame'
 import { useModalDrag } from '../game/useModalDrag'
 
 const props = defineProps<{ mageType: string }>()
 
 const images = computed(() => mageImageUrls(props.mageType))
+const { state } = useGame()
 const showModal = ref(false)
 const showBack = ref(false)
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
@@ -20,6 +22,8 @@ function openModal() {
 function closeModal() {
   showModal.value = false
 }
+
+watch(() => state.dismissibleOverlayVersion, closeModal)
 </script>
 
 <template>

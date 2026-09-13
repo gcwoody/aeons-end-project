@@ -16,10 +16,10 @@ import {
 } from './data/wave1/spells'
 import { createMages, MAGE_UNIQUE_CARDS } from './data/wave1/mage'
 import {
-  NEMESIS_CARDS, rageborne, NEMESES,
+  NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
-  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER,
-  buildRageborneDeck, buildRageborneStrikeDeck,
+  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER, PRINCE_OF_GLUTTONS_UNIQUE_CARDS, PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
+  buildRageborneDeck, buildRageborneStrikeDeck, buildPrinceOfGluttonsDeck,
 } from './data/wave1/nemesis'
 
 // Re-export the Wave 1 catalog so existing engine and UI imports stay stable.
@@ -29,10 +29,10 @@ export {
   flexingDagger, bottledVortex,
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
   MAGE_UNIQUE_CARDS,
-  NEMESIS_CARDS, rageborne, NEMESES,
+  NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
-  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER,
-  buildRageborneDeck, buildRageborneStrikeDeck,
+  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER, PRINCE_OF_GLUTTONS_UNIQUE_CARDS, PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
+  buildRageborneDeck, buildRageborneStrikeDeck, buildPrinceOfGluttonsDeck,
 }
 export type { MageDef } from './data/wave1/mage'
 

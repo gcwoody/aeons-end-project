@@ -6,6 +6,7 @@ import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
+import FaceUpPileCard from './FaceUpPileCard.vue'
 import { breachImageUrl, breachRotation } from '../breach-images'
 import MageBoard from './MageBoard.vue'
 
@@ -15,12 +16,13 @@ const {
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
   activatePreppedCardAction, preppedCardActions,
   isPendingPreppedSpellSelected, togglePendingPreppedSpell,
+  getBoardCardSelection, isPendingBoardCardSelected, togglePendingBoardCard,
   playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, endTurn, toMainPhase,
   selectPlayer, clickDiscardCard, openPile, resolveDecision, toggleHelp,
 } = useGame()
 
 const players = computed(() => state.game?.players ?? [])
-const player = displayPlayer
+const player = computed(() => displayPlayer.value!)
 const aether = computed(() => aetherInfo(player.value))
 const ready = computed(() => player.value.charge >= player.value.chargeThreshold)
 const hasPreppedSpell = computed(() => !!state.game && getPreppedSpellChoices(state.game).length > 0)
@@ -30,6 +32,7 @@ const abilityNeedsPreppedSpell = computed(() =>
 const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order')
+const discardTopCard = computed(() => player.value.discard[0] ?? null)
 const draggingSpell = ref(false)
 const handElement = ref<HTMLElement | null>(null)
 const handOffset = ref(0)
@@ -153,18 +156,34 @@ function isPreppedActionCard(index: number, cardId: string): boolean {
       choice.zone === 'played_this_turn' && choice.index === index && choice.cardId === cardId))
 }
 
+function boardCardChoice(zone: 'hand' | 'played_this_turn', index: number, cardId: string) {
+  return getBoardCardSelection(player.value.id, zone, index, cardId)
+}
+
 function clickPlayedCard(index: number) {
-  if (!canActMain.value) return
   const cardId = player.value.playedThisTurn[index]
-  if (!cardId || !isPreppedActionCard(index, cardId)) return
+  if (!cardId) return
+  const boardChoice = boardCardChoice('played_this_turn', index, cardId)
+  if (boardChoice) {
+    togglePendingBoardCard(boardChoice)
+    return
+  }
+  if (!canActMain.value) return
+  if (!isPreppedActionCard(index, cardId)) return
   activatePreppedCardAction({
     zone: 'played_this_turn', index, cardId, cardName: getCard(cardId).name,
   })
 }
 
 function clickHand(i: number) {
-  if (!canActMain.value) return
   const cid = player.value.hand[i]
+  if (!cid) return
+  const boardChoice = boardCardChoice('hand', i, cid)
+  if (boardChoice) {
+    togglePendingBoardCard(boardChoice)
+    return
+  }
+  if (!canActMain.value) return
   // Spells are prepared exclusively by dragging them onto a breach.
   if (getCard(cid).type !== 'spell') playCard(i)
 }
@@ -195,7 +214,7 @@ function animateHandScroll() {
 function handleHandWheel(event: WheelEvent) {
   const target = event.target
   const hand = target instanceof Element ? target.closest<HTMLElement>('.hand') : null
-  if (hand !== handElement.value || hand.scrollWidth <= hand.clientWidth || event.deltaY === 0) return
+  if (!hand || hand !== handElement.value || hand.scrollWidth <= hand.clientWidth || event.deltaY === 0) return
   event.preventDefault()
   event.stopPropagation()
   // The hand intentionally maps vertical mouse-wheel movement to horizontal
@@ -228,6 +247,7 @@ function updateHandAlignment() {
 }
 
 function startSpellPointerDrag(i: number, event: PointerEvent) {
+  if (boardCardChoice('hand', i, player.value.hand[i] ?? '')) return
   if (event.button !== 0 || !canActMain.value || getCard(player.value.hand[i]).type !== 'spell') return
   const source = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
   dragCardWidth = source?.width ?? 122
@@ -563,7 +583,12 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         >
           <div
             class="card small"
-            :class="[typeClass(cid), { 'card-image': cardImageUrl(cid), 'prepped-action': isPreppedActionCard(i, cid) }]"
+            :class="[typeClass(cid), {
+              'card-image': cardImageUrl(cid),
+              'prepped-action': isPreppedActionCard(i, cid),
+              'pending-board-card': !!boardCardChoice('played_this_turn', i, cid),
+              'pending-board-card-selected': !!boardCardChoice('played_this_turn', i, cid) && isPendingBoardCardSelected(boardCardChoice('played_this_turn', i, cid)!),
+            }]"
             @click="clickPlayedCard(i)"
           >
             <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
@@ -589,6 +614,8 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
             'card-image': cardImageUrl(cid),
             dragging: draggingSpell && draggedSpellIndex === i,
             'spell-draggable': canActMain && getCard(cid).type === 'spell',
+            'pending-board-card': !!boardCardChoice('hand', i, cid),
+            'pending-board-card-selected': !!boardCardChoice('hand', i, cid) && isPendingBoardCardSelected(boardCardChoice('hand', i, cid)!),
           }]"
           @click="clickHand(i)"
           draggable="false"
@@ -600,9 +627,14 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           </div>
         </CardHoverPreview>
       </div>
-      <div class="discard-pile clickable" @click="openPile('discard')">
-        <span class="label">Discard</span>
-        <span class="count">{{ player.discard.length }}</span>
+      <div class="discard-pile clickable player-discard-pile" @click="openPile('discard')" @contextmenu.prevent="openPile('discard')">
+        <span class="label">Discard {{ player.discard.length }}</span>
+        <FaceUpPileCard
+          v-if="discardTopCard"
+          display-class="player-discard-face-up"
+          :card-id="discardTopCard"
+          :ariaLabel="`Open ${player.mageType} discard pile`"
+        />
       </div>
     </div>
 

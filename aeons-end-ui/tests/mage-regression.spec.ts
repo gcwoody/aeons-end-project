@@ -363,6 +363,32 @@ test('Flexing Dagger disables its breach-cost option when all breaches are open'
   await expect(page.getByRole('button', { name: 'Destroy this to deal 1 damage' })).toBeEnabled()
 })
 
+test('Flexing Dagger destroys its played copy instead of an identical card in hand', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = ['flexing_dagger', 'flexing_dagger']
+    game.players[0].playedThisTurn = []
+    game.players[0].destroyedCards = []
+    game.nemesis.hp = 20
+  }, 'main')
+
+  const handDaggers = page.locator('.hand .card').filter({ has: page.locator('img[alt="Flexing Dagger"]') })
+  await expect(handDaggers).toHaveCount(2)
+  await handDaggers.first().click()
+  await page.getByRole('button', { name: 'Destroy this to deal 1 damage' }).click()
+
+  await expect(handDaggers).toHaveCount(1)
+  await expect(page.locator('.played-row img[alt="Flexing Dagger"]')).toHaveCount(0)
+  await expect(page.locator('.played-row .empty')).toHaveText('— none —')
+})
+
 test('preparing a spell preserves the remaining hand order', async ({ page }) => {
   await page.setViewportSize({ width: 1920, height: 1100 })
   await resetSetup(page)
@@ -582,7 +608,7 @@ test('dragging a spell suppresses Breach preview and accepts an overlapping drop
   await expect(breach.locator('.breach-spell-card-frame')).toHaveCount(1)
 })
 
-test('discard pile groups future cards from the bottom upward', async ({ page }) => {
+test('face-up discard retains its draw forecast and opens with either mouse button', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -596,6 +622,7 @@ test('discard pile groups future cards from the bottom upward', async ({ page })
     }
   })
 
+  await expect(page.locator('.player-discard-face-up img')).toHaveAttribute('alt', 'Spark')
   await page.locator('.discard-pile').click()
   const rows = page.locator('.pile-modal .pile-row')
   await expect(rows).toHaveCount(3)
@@ -605,4 +632,166 @@ test('discard pile groups future cards from the bottom upward', async ({ page })
   await expect(rows.nth(0).locator('.pile-card')).toHaveCount(1)
   await expect(rows.nth(1).locator('.pile-card')).toHaveCount(5)
   await expect(rows.nth(2).locator('.pile-card')).toHaveCount(5)
+  expect(await page.locator('.pile-modal .pile-card img').evaluateAll(images => images.map(image => image.alt)))
+    .toEqual(['Spark', 'Crystal', 'Spark', 'Crystal', 'Spark', 'Crystal', 'Spark', 'Crystal', 'Spark', 'Crystal', 'Spark'])
+  await page.locator('.pile-modal').getByRole('button', { name: 'Close', exact: true }).click()
+
+  await page.locator('.player-discard-face-up').click({ button: 'right' })
+  await expect(page.locator('.pile-modal')).toBeVisible()
+  await expect(page.locator('.pile-modal .pile-card')).toHaveCount(11)
+})
+
+test('number, Q, and W shortcuts switch the shown mage and open player piles above decisions', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.players[0].deck = ['spark']
+    game.players[0].discard = ['crystal']
+    game.players[1].deck = ['crystal']
+    game.players[1].discard = ['spark']
+  })
+
+  await page.getByLabel('Open game help').click()
+  await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeVisible()
+  await page.keyboard.press('2')
+  await expect(page.locator('.controls-status .turn')).toHaveText('brama')
+  await page.keyboard.press('q')
+  await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeHidden()
+  await expect(page.locator('.pile-modal h3')).toContainText('Deck')
+  await expect(page.locator('.pile-modal .pile-card img')).toHaveAttribute('alt', 'Crystal')
+  await page.keyboard.press('q')
+  await expect(page.locator('.pile-modal')).toHaveCount(0)
+  await page.keyboard.press('q')
+  await expect(page.locator('.pile-modal h3')).toContainText('Deck')
+  await page.keyboard.press('w')
+  await expect(page.locator('.pile-modal')).toHaveCount(1)
+  await expect(page.locator('.pile-modal h3')).toContainText('Discard')
+  await expect(page.locator('.pile-modal .pile-card img')).toHaveAttribute('alt', 'Spark')
+  await page.locator('.pile-modal').getByRole('button', { name: 'Close', exact: true }).click()
+
+  await applyDebugGameState(page, game => {
+    game.pendingDecision = {
+      id: 'shortcut-decision',
+      playerId: game.players[0].id,
+      kind: 'choose_one',
+      prompt: 'Choose an option before continuing',
+      options: [{ id: 'continue', label: 'Continue' }],
+    }
+  }, 'main')
+
+  await expect(page.locator('.decision-overlay .decision-modal')).toBeVisible()
+  await page.keyboard.press('q')
+  await expect(page.locator('.pile-modal h3')).toContainText('Deck')
+  await expect(page.locator('.decision-overlay .decision-modal')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => ({
+    pile: Number(getComputedStyle(document.querySelector('.pile-viewer-overlay')!).zIndex),
+    decision: Number(getComputedStyle(document.querySelector('.decision-overlay')!).zIndex),
+  }))).toEqual({ pile: 130, decision: 120 })
+})
+
+test('Space advances from Casting to Main and ends the Main Phase', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    const player = game.players[0]
+    game.currentTurn = player.id
+    game.currentPhase = 'casting'
+    game.pendingDecision = null
+    game.pendingEffect = null
+    player.hand = ['crystal']
+    player.playedThisTurn = []
+    for (const breach of player.breaches) breach.prepSpells = []
+  }, 'casting')
+
+  await expect(page.getByRole('button', { name: 'Start Main Phase →' })).toBeVisible()
+  await page.keyboard.press('Space')
+  await expect(page.getByRole('button', { name: 'End Turn', exact: true })).toBeVisible()
+
+  await applyDebugGameState(page, game => {
+    const player = game.players[0]
+    game.currentTurn = player.id
+    game.currentPhase = 'main'
+    game.pendingDecision = null
+    game.pendingEffect = null
+    player.playedThisTurn = ['crystal', 'spark']
+  }, 'main')
+
+  await page.keyboard.press('Space')
+  await expect(page.getByText('Discard Phase · Card Order', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'End Turn', exact: true })).toHaveCount(0)
+})
+
+test('Space confirms a revealed Nemesis card', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    const controller = game.players[0]
+    game.currentTurn = 'nemesis'
+    game.currentPhase = 'nemesis_draw'
+    game.pendingEffect = null
+    game.pendingDecision = {
+      id: 'nemesis-draw-confirm',
+      playerId: controller.id,
+      kind: 'confirm_nemesis_draw',
+      prompt: 'Nemesis drew Bane Sire',
+      cardId: 'bane_sire',
+    }
+    game.nemesis.deck = []
+    game.nemesis.playArea = []
+    game.nemesisResolution = {
+      step: 'draw',
+      mainQueue: [],
+      mainIndex: 0,
+      controllerPlayerId: controller.id,
+      drawnCardId: 'bane_sire',
+      drawnCardRevealed: true,
+    }
+  }, 'nemesis_draw')
+
+  await expect(page.locator('.nemesis-reveal-overlay')).toBeVisible()
+  await page.keyboard.press('Space')
+  await expect(page.locator('.nemesis-reveal-overlay')).toHaveCount(0)
+})
+
+test('a unique ally card decision automatically displays that ally', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('adelheim')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    const [sourcePlayer, ally] = game.players
+    sourcePlayer.hand = ['amethyst_shard']
+    ally.hand = ['crystal']
+    game.pendingEffect = {
+      playerId: sourcePlayer.id,
+      effectPlayerId: ally.id,
+      remainingEffects: [],
+    }
+    game.pendingDecision = {
+      id: 'amethyst-shard-ally-discard',
+      playerId: sourcePlayer.id,
+      kind: 'select_cards',
+      prompt: 'Discard a card.',
+      min: 1,
+      max: 1,
+      candidates: [{ zone: 'hand', index: 0, cardId: 'crystal' }],
+    }
+  }, 'main')
+
+  await expect(page.locator('.controls-status .turn')).toHaveText('brama')
+  await expect(page.getByRole('heading', { name: 'Discard a card.' })).toBeVisible()
 })

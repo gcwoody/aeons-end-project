@@ -4,11 +4,29 @@ import { useGame } from '../game/useGame'
 import { cardImageUrl } from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 
-const { state, buyables, buyCard } = useGame()
+const { state, buyables, buyCard, resolveDecision } = useGame()
 
 const canBuy = computed(() => state.game!.currentTurn !== 'nemesis' && state.phase === 'main')
+const marketDecision = computed(() => {
+  const decision = state.game?.pendingDecision
+  return decision?.kind === 'select_market_pile' || decision?.kind === 'select_setup_devour_pile'
+    ? decision
+    : null
+})
 
-function onBuy(pileIndex: number) {
+function marketChoice(pileIndex: number) {
+  return marketDecision.value?.candidates.find(choice => choice.pileIndex === pileIndex) ?? null
+}
+
+function onPileClick(pileIndex: number) {
+  const decision = marketDecision.value
+  if (decision) {
+    const choice = marketChoice(pileIndex)
+    if (!choice) return
+    if (decision.kind === 'select_market_pile') resolveDecision({ kind: 'select_market_pile', choice })
+    else resolveDecision({ kind: 'select_setup_devour_pile', choice })
+    return
+  }
   if (!canBuy.value) return
   const pile = buyables.value.find(candidate => candidate.pileIndex === pileIndex)
   if (!pile || pile.remaining <= 0) return
@@ -31,9 +49,12 @@ function onBuy(pileIndex: number) {
           <button
             type="button"
             class="pile"
-            :class="{ 'can-buy': canBuy }"
-            :disabled="!canBuy"
-            @click="onBuy(b.pileIndex)"
+            :class="{
+              'can-buy': canBuy && !marketDecision,
+              'decision-market-choice': !!marketChoice(b.pileIndex),
+            }"
+            :disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy"
+            @click="onPileClick(b.pileIndex)"
           >
             <img v-if="cardImageUrl(b.cardId)" :src="cardImageUrl(b.cardId)" :alt="b.cardName" draggable="false" />
             <span v-else class="cname">{{ b.cardName }}</span>

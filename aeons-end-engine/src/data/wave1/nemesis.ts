@@ -231,10 +231,86 @@ export const RAGEBORNE_UNIQUE_CARDS_BY_TIER: Record<Tier, string[]> = {
   3: ['avatar_of_wrath', 'onslaught', 'rolling_death'],
 }
 
+export const PRINCE_OF_GLUTTONS_UNIQUE_CARDS: Record<string, NemesisCardDef> = {
+  gorge: {
+    ...makeNemesisCard('gorge', 'Gorge', 'attack', 1),
+    nemesisEffects: immediate(
+      { kind: 'devour_market_cards', amount: 2, pile: 'second_most_expensive', cardType: 'gem' },
+      anyPlayerDamage(2),
+    ),
+  },
+  lobotomize: {
+    ...makeNemesisCard('lobotomize', 'Lobotomize', 'attack', 1),
+    nemesisEffects: immediate({
+      kind: 'choose_one', prompt: 'Choose the Lobotomize effect', options: [
+        { id: 'damage', label: 'Any player suffers 3 damage', effects: [anyPlayerDamage(3)] },
+        { id: 'devour', label: 'Devour three cards from a spell supply pile', effects: [{ kind: 'devour_market_cards', amount: 3, pile: 'choose', cardType: 'spell' }] },
+      ],
+    }),
+  },
+  thought_biter: {
+    ...makeNemesisCard('thought_biter', 'Thought Biter', 'minion', 1, { life: 6 }),
+    nemesisEffects: persistent({
+      kind: 'choose_one', prompt: 'Choose the Thought Biter effect', options: [
+        { id: 'damage', label: 'Any player suffers 2 damage', effects: [anyPlayerDamage(2)] },
+        { id: 'devour', label: 'Devour two cards from the least expensive relic supply pile', effects: [{ kind: 'devour_market_cards', amount: 2, pile: 'least_expensive', cardType: 'relic' }] },
+      ],
+    }),
+  },
+  cerephage: {
+    ...makeNemesisCard('cerephage', 'Cerephage', 'minion', 2, { life: 7 }),
+    nemesisEffects: persistent(
+      { kind: 'devour_market_cards', amount: { kind: 'current_minion_life' }, pile: 'choose' },
+      { kind: 'deal_damage', amount: 2, target: 'source_minion' },
+    ),
+  },
+  godfeeders: {
+    ...makeNemesisCard('godfeeders', 'Godfeeders', 'minion', 2, { life: 8 }),
+    nemesisEffects: persistent(
+      { kind: 'deal_damage', amount: 3, target: 'gravehold' },
+      { kind: 'devour_market_cards', amount: 1, pile: 'most_expensive', cardType: 'gem' },
+    ),
+  },
+  mindguzzler: {
+    ...makeNemesisCard('mindguzzler', 'Mindguzzler', 'minion', 2, { life: 0 }),
+    nemesisEffects: [
+      ...immediate({ kind: 'set_source_minion_life', base: 8, amountPerEmptyMarketPile: 1 }),
+      ...persistent(unleash()),
+    ],
+  },
+  digest: {
+    ...makeNemesisCard('digest', 'Digest', 'attack', 3),
+    nemesisEffects: immediate({
+      kind: 'choose_one', prompt: 'Choose the Digest effect', options: [
+        { id: 'unleash', label: 'Unleash three times', effects: [unleash(3)] },
+        { id: 'damage', label: 'Any player suffers damage equal to empty supply piles', effects: [{ kind: 'deal_player_damage', amount: { kind: 'per_empty_market_pile', base: 0, amountPerPile: 1 }, target: 'any_player' }] },
+      ],
+    }),
+  },
+  memory_eater: {
+    ...makeNemesisCard('memory_eater', 'Memory Eater', 'minion', 3, { life: 16 }),
+    nemesisEffects: persistent({
+      kind: 'deal_player_damage', amount: { kind: 'per_empty_market_pile', base: 0, amountPerPile: 1 }, target: 'any_player', selection: 'lowest_hp',
+    }),
+  },
+  vile_feast: {
+    ...makeNemesisCard('vile_feast', 'Vile Feast', 'power', 3, { power: 2 }),
+    nemesisEffects: powerResolved({ kind: 'deal_damage', amount: { kind: 'per_empty_market_pile', base: 0, amountPerPile: 2 }, target: 'gravehold' }),
+    toDiscard: { costs: [{ kind: 'spend_aether', amount: 8 }] },
+  },
+}
+
+export const PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER: Record<Tier, string[]> = {
+  1: ['gorge', 'lobotomize', 'thought_biter'],
+  2: ['cerephage', 'godfeeders', 'mindguzzler'],
+  3: ['digest', 'memory_eater', 'vile_feast'],
+}
+
 export const NEMESIS_CARDS: Record<string, NemesisCardDef | StrikeCardDef> = {
   ...BASIC_NEMESIS_CARDS,
   ...RAGEBORNE_UNIQUE_CARDS,
   ...RAGEBORNE_STRIKE_CARDS,
+  ...PRINCE_OF_GLUTTONS_UNIQUE_CARDS,
 }
 
 export const rageborne: NemesisDef = {
@@ -248,9 +324,25 @@ export const rageborne: NemesisDef = {
   startingCounters: { fury: 1 },
   standardRules: { furyLossAfterStrike: 3, endTurnStrikeThreshold: 4 },
   increasedDifficultyRules: { furyLossAfterStrike: 1 },
-  unleashEffects: [{ kind: 'gain_nemesis_counter', counter: 'fury', amount: 1 } as CardEffect],
+  rulesModuleId: 'rageborne',
   deckBuilder: buildRageborneDeck,
   specificDeckBuilder: buildRageborneStrikeDeck,
+}
+
+export const princeOfGluttons: NemesisDef = {
+  type: 'prince_of_gluttons',
+  name: 'Prince of Gluttons',
+  hp: 70,
+  difficultyLevel: 5,
+  uniqueCardIdsByTier: PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
+  basicCardsPerTier: { 1: 3, 2: 5, 3: 7 },
+  strikeCardIds: [],
+  startingCounters: {},
+  standardRules: {},
+  increasedDifficultyRules: { additionalSetupDevours: 9 },
+  rulesModuleId: 'prince_of_gluttons',
+  deckBuilder: buildPrinceOfGluttonsDeck,
+  specificPileKind: 'devoured',
 }
 
 function shuffleWithRandom<T>(items: T[], random: RandomSource): T[] {
@@ -264,11 +356,20 @@ function shuffleWithRandom<T>(items: T[], random: RandomSource): T[] {
 
 /** Build the two-player Rageborne deck in tier order, with each tier shuffled separately. */
 export function buildRageborneDeck(random: RandomSource = Math.random): string[] {
+  return buildTieredNemesisDeck(rageborne, random)
+}
+
+/** Build the two-player Prince of Gluttons deck in tier order, with each tier shuffled separately. */
+export function buildPrinceOfGluttonsDeck(random: RandomSource = Math.random): string[] {
+  return buildTieredNemesisDeck(princeOfGluttons, random)
+}
+
+function buildTieredNemesisDeck(nemesis: NemesisDef, random: RandomSource): string[] {
   const deck: string[] = []
   for (const tier of [1, 2, 3] as const) {
     const basic = shuffleWithRandom(BASIC_NEMESIS_CARDS_BY_TIER[tier], random)
-      .slice(0, rageborne.basicCardsPerTier[tier])
-    const tierCards = [...RAGEBORNE_UNIQUE_CARDS_BY_TIER[tier], ...basic]
+      .slice(0, nemesis.basicCardsPerTier[tier])
+    const tierCards = [...nemesis.uniqueCardIdsByTier[tier], ...basic]
     deck.push(...shuffleWithRandom(tierCards, random))
   }
   return deck
@@ -280,4 +381,5 @@ export function buildRageborneStrikeDeck(random: RandomSource = Math.random): st
 
 export const NEMESES: Record<string, NemesisDef> = {
   [rageborne.type]: rageborne,
+  [princeOfGluttons.type]: princeOfGluttons,
 }

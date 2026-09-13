@@ -5,7 +5,7 @@ import {
   playCard as enginePlayCard, prepSpell as enginePrepSpell,
   movePreppedSpell as engineMovePreppedSpell,
   returnPreppedSpellToHand as engineReturnPreppedSpellToHand,
-  getBuyableCards, buyCard as engineBuyCard,
+  getBuyableCards, buyCard as engineBuyCard, buySpecificPileCard as engineBuySpecificPileCard,
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
   gainCharge as engineGainCharge, activateAbility as engineActivateAbility,
   resolveDrawPhase, getTotalAether, getAllRemainingConditional,
@@ -19,7 +19,10 @@ import {
   checkGameOver, checkPlayerDeath,
 } from '@engine/engine'
 import { createTwoPlayerScenario, getCard } from '@engine/data'
-import type { CardChoice, GameState, PendingDecisionAnswer, PlayerId, PlayerState, PreppedSpellChoice } from '@engine/types'
+import type {
+  CardChoice, CollectiveCardChoice, GameState, NemesisDifficulty, PendingDecisionAnswer,
+  PendingDecision, PlayerId, PlayerState, PreppedSpellChoice,
+} from '@engine/types'
 
 export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'nemesis_target' | 'gameover'
 
@@ -62,6 +65,11 @@ interface StoredSave extends SaveSummary {
   undoStack: Snapshot[]
 }
 
+interface BoardCardSelection {
+  playerId: PlayerId
+  choice: CardChoice
+}
+
 let logId = 0
 
 const state = reactive({
@@ -72,7 +80,9 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
-  viewPile: null as 'deck' | 'discard' | null,
+  viewPile: null as 'deck' | 'discard' | 'nemesis_specific' | null,
+  // Lets component-local, dismissible overlays close before a pile viewer opens.
+  dismissibleOverlayVersion: 0,
   debugOpen: false,
   helpOpen: false,
   hasSave: false,
@@ -80,10 +90,12 @@ const state = reactive({
   activeSaveId: null as string | null,
   deleteSaveId: null as string | null,
   pendingPreppedSpells: [] as PreppedSpellChoice[],
+  pendingBoardCards: [] as BoardCardSelection[],
   exitPrompt: false,
   mage1: 'jian',
   mage2: 'brama',
   nemesisType: 'rageborne',
+  nemesisDifficulty: 'standard' as NemesisDifficulty,
 })
 
 const SAVE_KEY = 'aeons-end-saves-v3'
@@ -122,6 +134,132 @@ function preppedSpellChoiceKey(choice: PreppedSpellChoice): string {
   return `${choice.playerId}:${choice.breachIndex}:${choice.spellIndex}:${choice.cardId}`
 }
 
+function boardCardSelectionKey(selection: BoardCardSelection): string {
+  const { playerId, choice } = selection
+  return `${playerId}:${choice.zone}:${choice.index}:${choice.cardId}`
+}
+
+function usesBoardCardSelection(decision = state.game?.pendingDecision): boolean {
+  if (decision?.kind === 'select_cards') {
+    return decision.candidates.length > 0 && decision.candidates.every(choice =>
+      choice.zone === 'hand' || choice.zone === 'played_this_turn')
+  }
+  if (decision?.kind === 'select_collective_cards') {
+    return decision.candidates.length > 0 && decision.candidates.every(item =>
+      item.choice.zone === 'hand' || item.choice.zone === 'played_this_turn')
+  }
+  return false
+}
+
+/** Whether the active card-selection decision can be made directly on the board. */
+export function isBoardCardSelectionActive(): boolean {
+  return usesBoardCardSelection()
+}
+
+function boardCardSelections(): BoardCardSelection[] {
+  const decision = state.game?.pendingDecision
+  if (!decision || !usesBoardCardSelection(decision)) return []
+  if (decision.kind === 'select_collective_cards') {
+    return decision.candidates.map(item => ({ playerId: item.playerId, choice: item.choice }))
+  }
+  if (decision.kind === 'select_cards') {
+    const playerId = state.game?.pendingEffect?.effectPlayerId
+      ?? state.game?.pendingNemesisDiscard?.playerId
+      ?? decision.playerId
+    return decision.candidates.map(choice => ({ playerId, choice }))
+  }
+  return []
+}
+
+function soleCandidateOwner(playerIds: PlayerId[]): PlayerId | null {
+  const owners = [...new Set(playerIds)]
+  return owners.length === 1 ? owners[0]! : null
+}
+
+/** Return the player whose board contains the only possible decision target. */
+function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefined): PlayerId | null {
+  if (!decision) return null
+
+  if (decision.kind === 'select_cards') {
+    return state.game?.pendingEffect?.effectPlayerId
+      ?? state.game?.pendingNemesisDiscard?.playerId
+      ?? decision.playerId
+  }
+
+  if (decision.kind === 'select_collective_cards') {
+    return soleCandidateOwner(decision.candidates.map(candidate => candidate.playerId))
+  }
+
+  if (decision.kind === 'select_prepped_spell' || decision.kind === 'select_prepped_spells') {
+    return soleCandidateOwner(decision.candidates.map(candidate => candidate.playerId))
+  }
+
+  return null
+}
+
+/** Return a board-resident hand or played-card candidate, if this card is selectable now. */
+export function getBoardCardSelection(
+  playerId: PlayerId, zone: CardChoice['zone'], index: number, cardId: string,
+): BoardCardSelection | null {
+  return boardCardSelections().find(selection =>
+    selection.playerId === playerId &&
+    selection.choice.zone === zone &&
+    selection.choice.index === index &&
+    selection.choice.cardId === cardId,
+  ) ?? null
+}
+
+export function isPendingBoardCardSelected(selection: BoardCardSelection): boolean {
+  return state.pendingBoardCards.some(item => boardCardSelectionKey(item) === boardCardSelectionKey(selection))
+}
+
+/** Select or unselect a highlighted card on the board for the active decision. */
+export function togglePendingBoardCard(selection: BoardCardSelection): void {
+  const decision = state.game?.pendingDecision
+  if (!decision || (decision.kind !== 'select_cards' && decision.kind !== 'select_collective_cards')) return
+  if (!usesBoardCardSelection(decision)) return
+  const candidate = boardCardSelections().find(item => boardCardSelectionKey(item) === boardCardSelectionKey(selection))
+  if (!candidate) return
+
+  if (isPendingBoardCardSelected(candidate)) {
+    state.pendingBoardCards = state.pendingBoardCards.filter(item =>
+      boardCardSelectionKey(item) !== boardCardSelectionKey(candidate))
+    return
+  }
+  if (state.pendingBoardCards.length >= decision.max) return
+
+  state.pendingBoardCards = [...state.pendingBoardCards, candidate]
+  if (decision.max === 1) confirmPendingBoardCards()
+}
+
+/** Confirm board card selections for a multi-select decision. */
+export function confirmPendingBoardCards(): void {
+  const decision = state.game?.pendingDecision
+  if (!decision || (decision.kind !== 'select_cards' && decision.kind !== 'select_collective_cards')) return
+  if (!usesBoardCardSelection(decision)) return
+  if (state.pendingBoardCards.length < decision.min || state.pendingBoardCards.length > decision.max) return
+
+  if (decision.kind === 'select_cards') {
+    resolveDecision({ kind: 'select_cards', choices: state.pendingBoardCards.map(item => item.choice) })
+    return
+  }
+  if (decision.kind === 'select_collective_cards') {
+    const choices: CollectiveCardChoice[] = state.pendingBoardCards.map(item => ({
+      playerId: item.playerId,
+      choice: item.choice,
+    }))
+    resolveDecision({ kind: 'select_collective_cards', choices })
+  }
+}
+
+export function skipPendingBoardCards(): void {
+  const decision = state.game?.pendingDecision
+  if (!decision || (decision.kind !== 'select_cards' && decision.kind !== 'select_collective_cards')) return
+  if (!usesBoardCardSelection(decision) || decision.min !== 0) return
+  if (decision.kind === 'select_cards') resolveDecision({ kind: 'select_cards', choices: [] })
+  if (decision.kind === 'select_collective_cards') resolveDecision({ kind: 'select_collective_cards', choices: [] })
+}
+
 export function isPendingPreppedSpellSelected(choice: PreppedSpellChoice): boolean {
   return state.pendingPreppedSpells.some(selected =>
     preppedSpellChoiceKey(selected) === preppedSpellChoiceKey(choice))
@@ -141,7 +279,9 @@ export function togglePendingPreppedSpell(choice: PreppedSpellChoice): void {
     return
   }
   if (state.pendingPreppedSpells.length >= decision.max) return
-  state.pendingPreppedSpells.push(candidate)
+  const next = [...state.pendingPreppedSpells, candidate]
+  state.pendingPreppedSpells = next
+  if (decision.max === 1) resolveDecision({ kind: 'select_prepped_spells', choices: next })
 }
 
 export function confirmPendingPreppedSpells(): void {
@@ -232,6 +372,12 @@ watch(
     state.pendingPreppedSpells = decision?.kind === 'select_prepped_spells'
       ? [...(decision.requiredChoices ?? [])]
       : []
+    state.pendingBoardCards = []
+
+    const decisionPlayerId = soleDecisionDisplayPlayerId(decision)
+    if (decisionPlayerId && decisionPlayerId !== state.selectedPlayer) {
+      selectPlayer(decisionPlayerId)
+    }
   },
 )
 
@@ -316,6 +462,7 @@ export function undo() {
   state.phase = s.phase
   state.pendingNemesis = s.pendingNemesis
   state.pendingPreppedSpells = []
+  state.pendingBoardCards = []
   state.prepTarget = s.prepTarget
   state.selectedPlayer = s.selectedPlayer
   state.discardRemaining = [...s.discardRemaining]
@@ -369,7 +516,7 @@ function beginTurn() {
   if (g.gameOver) { state.phase = 'gameover'; return }
   const turnNum = g.turnOrderDiscard.length
   if (g.currentTurn === 'nemesis') {
-    pushLog(`Turn ${turnNum} — RAGEBORNE begins`, 'warn')
+    pushLog(`Turn ${turnNum} — ${g.nemesis.name.toUpperCase()} begins`, 'warn')
     state.phase = g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
     continueNemesisTurn()
   } else {
@@ -381,24 +528,36 @@ function beginTurn() {
   }
 }
 
-export function newGame(m1: string, m2: string, nemesisType = state.nemesisType) {
+export function newGame(
+  m1: string,
+  m2: string,
+  nemesisType = state.nemesisType,
+  nemesisDifficulty = state.nemesisDifficulty,
+) {
   state.activeSaveId = null
   autoSaveEnabled = false
   state.exitPrompt = false
   state.nemesisType = nemesisType
-  const scenario = createTwoPlayerScenario([m1, m2], nemesisType)
+  state.nemesisDifficulty = nemesisDifficulty
+  const scenario = createTwoPlayerScenario([m1, m2], nemesisType, nemesisDifficulty)
   const g = reactive(createGame(scenario)) as GameState
   state.game = g
   state.log = []
   state.pendingNemesis = null
   state.pendingPreppedSpells = []
+  state.pendingBoardCards = []
   state.prepTarget = null
   state.selectedPlayer = g.players[0]!.id
   state.discardRemaining = []
   state.helpOpen = false
   state.viewPile = null
   undoStack.length = 0
-  pushLog(`Game started: ${m1.toUpperCase()} + ${m2.toUpperCase()} vs ${g.nemesis.name}`, 'ok')
+  pushLog(`Game started: ${m1.toUpperCase()} + ${m2.toUpperCase()} vs ${g.nemesis.name} (${nemesisDifficulty})`, 'ok')
+  if (g.pendingDecision) {
+    state.phase = 'casting'
+    pushLog('Complete the Nemesis setup before the first turn begins', 'info')
+    return
+  }
   startTurn(g)
   beginTurn()
 }
@@ -417,6 +576,7 @@ export function resumeGame(saveId?: string): boolean {
     state.selectedPlayer = save.selectedPlayer
     state.pendingNemesis = save.pendingNemesis
     state.pendingPreppedSpells = []
+    state.pendingBoardCards = []
     state.discardRemaining = [...save.discardRemaining]
     state.prepTarget = null
     state.exitPrompt = false
@@ -481,6 +641,7 @@ function resetToSetup() {
   state.exitPrompt = false
   state.pendingNemesis = null
   state.pendingPreppedSpells = []
+  state.pendingBoardCards = []
   state.prepTarget = null
   state.discardRemaining = []
   state.helpOpen = false
@@ -547,6 +708,7 @@ export function toMainPhase() {
 export function resolveDecision(answer: PendingDecisionAnswer) {
   if (!state.game?.pendingDecision) return
   const wasCasting = state.phase === 'casting'
+  const wasInitialSetup = !state.game.currentTurn
   const wasCastingPhaseEnd = state.game.pendingEffect?.preppedPhase === 'casting_phase_end'
   const wasNemesisTurnWaiting = state.game.currentTurn === 'nemesis'
   const previous = beforeAction()
@@ -558,6 +720,10 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
   if (state.game.gameOver) {
     pushLog(checkGameOver(state.game) ?? 'Game over', 'warn')
     state.phase = 'gameover'
+  } else if (!state.game.pendingDecision && wasInitialSetup) {
+    pushLog('Nemesis setup complete — first turn begins', 'ok')
+    startTurn(state.game)
+    beginTurn()
   } else if (!state.game.pendingDecision && wasCasting) {
     const noSpellsRemain = getCastableSpells(state.game, cp().id).length === 0
     if (wasCastingPhaseEnd || noSpellsRemain) enterMainPhase()
@@ -581,11 +747,26 @@ export function playCard(cardIdx: number) {
 }
 
 export function openPile(pile: 'deck' | 'discard') {
+  closeDismissibleOverlays()
   state.viewPile = pile
+}
+
+/** Open the currently configured face-up Nemesis specific pile for inspection. */
+export function openNemesisSpecificPile() {
+  closeDismissibleOverlays()
+  state.viewPile = 'nemesis_specific'
 }
 
 export function closePile() {
   state.viewPile = null
+}
+
+/** Close every non-decision overlay before opening a pile viewer. */
+function closeDismissibleOverlays() {
+  state.helpOpen = false
+  state.exitPrompt = false
+  state.debugOpen = false
+  state.dismissibleOverlayVersion += 1
 }
 
 export function playAllGems() {
@@ -647,6 +828,11 @@ export function buyCard(pileIdx: number) {
   const previous = beforeAction()
   const msg = engineBuyCard(state.game!, cp().id, pileIdx)
   if (msg) pushLog(msg, 'ok')
+  if (state.game!.gameOver) {
+    state.phase = 'gameover'
+    finishAction(previous)
+    return
+  }
   maybeAutoEnd()
   finishAction(previous)
 }
@@ -894,6 +1080,21 @@ export function discardNemesisCard(instanceId: string) {
   finishAction(previous)
 }
 
+/** Perform the configured action for the top card of the Nemesis-specific pile. */
+export function buyNemesisSpecificTopCard() {
+  if (!state.game || !canActMain.value) return
+  const previous = beforeAction()
+  const msg = engineBuySpecificPileCard(state.game, cp().id)
+  if (msg) pushLog(msg, 'ok')
+  if (state.game.gameOver) {
+    state.phase = 'gameover'
+    finishAction(previous)
+    return
+  }
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
 export function useGame() {
   return {
     state,
@@ -902,11 +1103,13 @@ export function useGame() {
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
     returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
-    buyCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
+    buyCard, buyNemesisSpecificTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, nemesisChooseTarget, discardNemesisCard, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, openPile, closePile,
+    selectPlayer, clickDiscardCard, openPile, openNemesisSpecificPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
+    isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,
+    togglePendingBoardCard, confirmPendingBoardCards, skipPendingBoardCards,
     castableSpells, buyables, playerCanAct,
     displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast, preppedCardActions, nemesisDiscardActions,
     canActivateAbilityInMain,

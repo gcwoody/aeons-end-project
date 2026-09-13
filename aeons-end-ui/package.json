@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "prebuild": "npm run generate:images",
     "build": "vite build",
+    "generate:images": "node ../scripts/generate-image-imports.mjs",
     "preview": "vite preview",
     "test:e2e": "playwright test"
   },

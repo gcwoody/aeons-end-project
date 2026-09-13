@@ -23,14 +23,14 @@ aeons-end-ui/src/style.css
 | `--z-local-hover` | 10 | 局部悬停效果、可购买 Market 卡牌、弹窗内选中卡牌 |
 | `--z-controls` | 30 | 底部 Controls 控制栏 |
 | `--z-hand-row` | 40 | 手牌所在整行 |
-| `--z-overlay` | 50 | 普通全屏弹窗、手牌悬停容器 |
 | `--z-drag-preview` | 100 | Spell 拖拽中的预览卡牌 |
 | `--z-help` | 110 | Game Help 弹窗 |
 | `--z-decision` | 120 | Card Decision 选择弹窗 |
 | `--z-save-confirm` | 140 | 删除存档确认弹窗 |
-| `--z-card-preview` | 200 | 鼠标悬停产生的卡牌放大预览 |
 | `--z-debug` | 250 | Debug Tools 浮动面板 |
 | `--z-mage-modal` | 300 | Mage 图片详情弹窗 |
+| `--z-overlay` | 500 | 普通全屏弹窗、手牌悬停容器 |
+| `--z-card-preview` | 600 | 鼠标悬停产生的卡牌放大预览 |
 | `--z-exit` | 1000 | ESC 触发的退出确认弹窗，始终最高 |
 
 层级关系可以简单理解为：

@@ -12,8 +12,9 @@ import DebugPanel from './components/DebugPanel.vue'
 import { useModalDrag } from './game/useModalDrag'
 
 const {
-  state, undo, toggleDebug,
+  state, undo, toggleDebug, selectPlayer, openPile, closePile,
   closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
+  toMainPhase, endTurn, resolveDecision,
 } = useGame()
 
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
@@ -24,10 +25,47 @@ function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault()
     undo()
+    return
   }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
     e.preventDefault()
     toggleDebug()
+    return
+  }
+  if (!state.game || e.ctrlKey || e.metaKey || e.altKey || isEditableTarget(e.target)) return
+
+  // Deliberately use the physical Digit keys, never the numeric keypad.
+  if (e.code.startsWith('Digit')) {
+    const playerIndex = Number(e.code.slice('Digit'.length)) - 1
+    const player = state.game.players[playerIndex]
+    if (player) {
+      e.preventDefault()
+      selectPlayer(player.id)
+    }
+    return
+  }
+  if (e.key.toLowerCase() === 'q') {
+    e.preventDefault()
+    togglePlayerPile('deck')
+    return
+  }
+  if (e.key.toLowerCase() === 'w') {
+    e.preventDefault()
+    togglePlayerPile('discard')
+    return
+  }
+  if (e.code === 'Space' && !e.shiftKey && canConfirmNemesisDrawWithSpace()) {
+    e.preventDefault()
+    if (e.repeat) return
+    resolveDecision({ kind: 'confirm_nemesis_draw', accepted: true })
+    return
+  }
+  if (e.code === 'Space' && !e.shiftKey && canAdvancePhaseWithSpace()) {
+    e.preventDefault()
+    if (e.repeat) return
+    if (state.phase === 'casting') toMainPhase()
+    else endTurn()
+    return
   }
   if (e.key === 'Escape' && state.game) {
     e.preventDefault()
@@ -38,6 +76,41 @@ function onKeydown(e: KeyboardEvent) {
     if (state.exitPrompt) cancelExit()
     else requestExit()
   }
+}
+
+/** Match the visible Confirm button for a revealed Nemesis card. */
+function canConfirmNemesisDrawWithSpace(): boolean {
+  const game = state.game
+  return !!game
+    && game.pendingDecision?.kind === 'confirm_nemesis_draw'
+    && !state.viewPile
+    && !state.helpOpen
+    && !state.exitPrompt
+    && !state.debugOpen
+}
+
+/** Match the visible phase-advance buttons without bypassing an open interaction. */
+function canAdvancePhaseWithSpace(): boolean {
+  const game = state.game
+  return !!game
+    && (state.phase === 'casting' || state.phase === 'main')
+    && state.selectedPlayer === game.currentTurn
+    && !game.pendingDecision
+    && !game.pendingEffect
+    && !state.viewPile
+    && !state.helpOpen
+    && !state.exitPrompt
+    && !state.debugOpen
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement
+    && !!target.closest('input, textarea, select, [contenteditable="true"]')
+}
+
+function togglePlayerPile(pile: 'deck' | 'discard') {
+  if (state.viewPile === pile) closePile()
+  else openPile(pile)
 }
 
 onMounted(() => window.addEventListener('keydown', onKeydown))
@@ -73,6 +146,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>ESC</kbd><span>Open the exit menu. Press it again to close an open dialog.</span></div>
             <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to five steps.</span></div>
             <div class="help-row"><kbd>Ctrl + D</kbd><span>Toggle Debug Tools.</span></div>
+            <div class="help-row"><kbd>1–4</kbd><span>Switch the mage currently shown on the board.</span></div>
+            <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
+            <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Confirm a revealed Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 

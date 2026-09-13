@@ -51,8 +51,9 @@
   --z-drag-preview: 100;
   --z-help: 110;
   --z-decision: 120;
+  --z-pile-viewer: 130;
   --z-save-confirm: 140;
-  --z-card-preview: 200;
+  --z-card-preview: 600;
   --z-debug: 250;
   --z-mage-modal: 300;
   --z-exit: 1000;
@@ -380,6 +381,33 @@ body {
 .nemesis-discard-button:hover, .nemesis-discard-button:focus-visible { border-color: var(--accent); }
 .nemesis-asset strong { font-size: 20px; color: var(--text); }
 .nemesis-asset { align-items: center; text-align: center; }
+.nemesis-specific-pile-asset {
+  /* Change this one value to scale any face-up Nemesis specific pile. */
+  --nemesis-specific-pile-size: 112px;
+  --nemesis-specific-pile-radius: 5px;
+  --nemesis-specific-pile-gap: 0px;
+  --nemesis-specific-pile-asset-padding: 4px;
+  justify-content: center;
+  gap: var(--nemesis-specific-pile-gap);
+  padding: var(--nemesis-specific-pile-asset-padding);
+  overflow: visible;
+}
+.face-up-pile-card {
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: #151a29;
+  overflow: hidden;
+  cursor: default;
+}
+.face-up-pile-card.is-primary-action { cursor: pointer; }
+.face-up-pile-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.face-up-pile-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nemesis-specific-pile {
+  width: min(100%, var(--nemesis-specific-pile-size));
+  aspect-ratio: 108 / 158;
+  border-radius: var(--nemesis-specific-pile-radius);
+}
 .asset-subtext { color: var(--muted); font-size: 11px; }
 .fury-asset strong { color: var(--warn); }
 .pile-box {
@@ -469,6 +497,17 @@ body {
   transform: translateY(-3px);
 }
 .pile:not(.can-buy) { opacity: .5; cursor: default; }
+.pile.decision-market-choice {
+  opacity: 1;
+  border: 2px solid #e6c84f;
+  cursor: pointer;
+}
+.pile.decision-market-choice:hover,
+.pile.decision-market-choice:focus-visible {
+  z-index: var(--z-local-hover);
+  transform: translateY(-3px);
+  box-shadow: 0 0 0 2px rgba(230, 200, 79, .28);
+}
 .pile.pile-empty {
   visibility: hidden;
   pointer-events: none;
@@ -757,6 +796,8 @@ body {
 .deck-pile .count, .discard-pile .count { font-size: 26px; font-weight: 700; }
 .discard-pile .top { color: var(--spell); font-size: 11px; text-align: center; }
 .discard-pile { grid-column: 4; }
+.player-discard-pile { padding: 5px; gap: 2px; overflow: visible; }
+.player-discard-face-up { width: min(100%, 100px); aspect-ratio: 108 / 158; }
 
 .hand {
   grid-column: 3;
@@ -1060,6 +1101,17 @@ body {
 }
 .non-blocking-prepped-modal h2 { margin-bottom: 4px; font-size: 18px; }
 .non-blocking-prepped-modal .decision-hint { margin-bottom: 6px; font-size: 12px; }
+.non-blocking-selection-modal {
+  pointer-events: auto;
+  max-width: min(720px, calc(100vw - 24px));
+  padding: 14px 20px;
+}
+.non-blocking-selection-modal h2 { margin-bottom: 4px; font-size: 18px; }
+.non-blocking-selection-modal .decision-hint { margin-bottom: 6px; font-size: 12px; }
+.non-blocking-market-selection-overlay {
+  align-items: flex-end;
+  padding: 0 12px 24px;
+}
 
 @keyframes overlay-fade-in {
   from { opacity: 0; }
@@ -1114,6 +1166,10 @@ body {
   width: calc(var(--decision-columns, 5) * 92px + 130px);
   max-width: 100%;
   box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
   margin: 12px 0;
   padding: 2px 12px;
   border: 1px solid var(--border);
@@ -1165,12 +1221,22 @@ body {
   box-shadow: 0 0 0 2px var(--ok) inset;
   transform: translateY(-3px);
 }
+.decision-card-zone-label {
+  align-self: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-align: left;
+}
+.decision-card-rows { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
 
-/* Override the generic pile-row rule below this section. Each row only
-   reserves columns for the cards it actually contains. */
+/* Each row reserves columns only for the cards it actually contains. */
 .decision-card-zone .decision-card-row {
   width: max-content;
-  grid-template-columns: 92px repeat(var(--choice-columns), minmax(0, 82px));
+  margin: 0;
+  grid-template-columns: repeat(var(--choice-columns), minmax(0, 82px));
 }
 
 @media (max-width: 520px) {
@@ -1180,8 +1246,7 @@ body {
     padding-right: 14px;
   }
   .decision-card-zone .decision-card-row {
-    min-width: 100%;
-    grid-template-columns: 92px repeat(var(--choice-columns), 82px);
+    grid-template-columns: repeat(var(--choice-columns), 82px);
   }
 }
 
@@ -1309,6 +1374,7 @@ body {
 .pile-modal:not(.pile-modal-with-labels) {
   width: min(calc(var(--pile-columns, 5) * 92px + 64px), calc(100vw - 32px));
 }
+.pile-viewer-overlay { z-index: var(--z-pile-viewer); }
 .pile-rows {
   display: flex;
   flex-direction: column;
@@ -1374,12 +1440,21 @@ body {
   }
   .decision-card-zone .decision-card-row {
     width: max-content;
-    min-width: 100%;
-    grid-template-columns: 92px repeat(5, 82px);
+    grid-template-columns: repeat(var(--choice-columns), 82px);
   }
 }
 
 .card.small.selected { border: 2px solid var(--ok); box-shadow: 0 0 0 1px var(--ok) inset; }
+.card.pending-board-card {
+  border: 2px solid #e6c84f;
+  cursor: pointer;
+}
+.card.pending-board-card-selected {
+  z-index: var(--z-local-hover);
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px rgba(158, 206, 106, .35);
+  transform: translateY(-3px);
+}
 
 /* ===== Help modal ===== */
 .help-overlay { z-index: var(--z-help); }

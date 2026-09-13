@@ -4,33 +4,50 @@ import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
-import { groupPileCards, pileRowLabel } from '../game/pile-layout'
+import { chunkCards, groupPileCards, pileRowLabel, type PileKind } from '../game/pile-layout'
 import { useModalDrag } from '../game/useModalDrag'
+import { getNemesisPresentation } from '../game/nemesis-presentation'
 
 const { state, displayPlayer, closePile } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
-const title = computed(() => (state.viewPile === 'deck' ? 'Deck' : 'Discard'))
-const cards = computed(() =>
-  state.viewPile === 'deck' ? displayPlayer.value!.deck : displayPlayer.value!.discard,
-)
+const title = computed(() => {
+  if (state.viewPile === 'nemesis_specific') {
+    return getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.label
+  }
+  return state.viewPile === 'deck' ? 'Deck' : 'Discard'
+})
+const cards = computed(() => {
+  if (state.viewPile === 'nemesis_specific') return state.game?.nemesis.strikeDeck ?? []
+  return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
+})
 
 const deckCount = computed(() => displayPlayer.value?.deck.length ?? 0)
+const playerPileKind = computed<PileKind | null>(() =>
+  state.viewPile === 'deck' || state.viewPile === 'discard' ? state.viewPile : null,
+)
 
 const groups = computed(() => {
-  return state.viewPile ? groupPileCards(cards.value, state.viewPile, deckCount.value) : []
+  if (!state.viewPile) return []
+  // Player piles retain their draw forecast. Face-up Nemesis specific piles
+  // are informational, so they remain in simple top-to-bottom order.
+  return playerPileKind.value
+    ? groupPileCards(cards.value, playerPileKind.value, deckCount.value)
+    : chunkCards(cards.value)
 })
 
 const columns = computed(() => Math.max(1, Math.min(5, Math.max(0, ...groups.value.map(group => group.length)))))
 
 function rowLabel(groupIndex: number): string {
-  return state.viewPile ? pileRowLabel(state.viewPile, groupIndex, groups.value.length) : ''
+  return playerPileKind.value ? pileRowLabel(playerPileKind.value, groupIndex, groups.value.length) : ''
 }
+
+const usesRowLabels = computed(() => playerPileKind.value !== null)
 </script>
 
 <template>
-  <div v-if="state.viewPile" class="overlay" @click.self="closePile">
-    <div ref="modalEl" class="overlay-card pile-modal pile-modal-with-labels draggable-modal" :class="{ dragging }" :style="{ ...modalStyle, '--pile-columns': columns }" @pointerdown="startDrag">
+  <div v-if="state.viewPile" class="overlay pile-viewer-overlay" @click.self="closePile">
+    <div ref="modalEl" class="overlay-card pile-modal draggable-modal" :class="{ dragging, 'pile-modal-with-labels': usesRowLabels }" :style="{ ...modalStyle, '--pile-columns': columns }" @pointerdown="startDrag">
       <h3>
         {{ title }}
         <span class="muted">(top → bottom)</span>
@@ -40,9 +57,10 @@ function rowLabel(groupIndex: number): string {
         <div
           v-for="(group, gi) in groups"
           :key="gi"
-          class="pile-row pile-row-labeled"
+          class="pile-row"
+          :class="{ 'pile-row-labeled': usesRowLabels }"
         >
-          <span class="pile-row-label">{{ rowLabel(gi) }}</span>
+          <span v-if="usesRowLabels" class="pile-row-label">{{ rowLabel(gi) }}</span>
           <CardHoverPreview v-for="(cid, i) in group" :key="cid + i" :card-id="cid">
             <div class="pile-card" :class="{ 'pile-card-image': cardImageUrl(cid) }">
               <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />

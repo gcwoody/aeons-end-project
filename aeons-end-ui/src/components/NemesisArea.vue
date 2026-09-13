@@ -1,17 +1,30 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
 import type { NemesisCardInPlay } from '@engine/types'
 import { cardImageUrl, nemesisMatImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
+import NemesisSpecificPile from './NemesisSpecificPile.vue'
 import { chunkCards } from '../game/pile-layout'
 import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
 
-const { state, nemesisDiscardActions, discardNemesisCard, resolveDecision } = useGame()
+const {
+  state, nemesisDiscardActions, discardNemesisCard, resolveDecision,
+  buyNemesisSpecificTopCard, openNemesisSpecificPile, canActMain,
+} = useGame()
 const nemesis = computed(() => state.game!.nemesis)
 const presentation = computed(() => getNemesisPresentation(nemesis.value.type))
+const specificTopCard = computed(() => presentation.value.specificDeck.display === 'face_up'
+  ? nemesis.value.strikeDeck[0] ?? null
+  : null)
+const canActivateSpecificTopCard = computed(() =>
+  presentation.value.specificDeck.topCardAction === 'buy' && !!specificTopCard.value && canActMain.value)
+const specificTopCardActionLabel = computed(() => {
+  if (presentation.value.specificDeck.topCardAction !== 'buy' || !specificTopCard.value) return undefined
+  return `Buy ${getCard(specificTopCard.value).name} from the ${presentation.value.specificDeck.label}`
+})
 const matRatio = ref(1036 / 1384)
 function measureMat(event: Event) {
   const image = event.target as HTMLImageElement
@@ -91,9 +104,18 @@ function confirmMainEffect(card: NemesisCardInPlay) {
 function closeMat() { matModalOpen.value = false }
 function closeDiscard() { discardModalOpen.value = false }
 
+watch(() => state.dismissibleOverlayVersion, () => {
+  closeMat()
+  closeDiscard()
+})
+
 function discardAction(card: NemesisCardInPlay) {
   const action = nemesisDiscardActions.value.find(item => item.instanceId === card.instanceId)
   if (action) discardNemesisCard(action.instanceId)
+}
+
+function activateSpecificTopCard() {
+  if (canActivateSpecificTopCard.value) buyNemesisSpecificTopCard()
 }
 
 function cardCounter(card: NemesisCardInPlay): string | null {
@@ -113,8 +135,8 @@ onBeforeUnmount(() => {
   <div class="nemesis-area" :style="{ '--nemesis-mat-ratio': matRatio }">
     <section class="nemesis-mat-column" aria-label="Nemesis Mainboard">
       <CardHoverPreview
-        v-if="nemesisMatImageUrl('front')"
-        :image-url="nemesisMatImageUrl('front')"
+        v-if="nemesisMatImageUrl(nemesis.type, 'front')"
+        :image-url="nemesisMatImageUrl(nemesis.type, 'front')"
         :image-alt="`${nemesis.name} mat`"
         :preview-width="matPreviewWidth"
         :preview-height="matPreviewHeight"
@@ -123,7 +145,7 @@ onBeforeUnmount(() => {
         preview-class="nemesis-mat-preview"
       >
         <button class="nemesis-mat-wrap" :class="{ 'damage-target': isDamageTarget('nemesis') }" :aria-label="`Open ${nemesis.name} mat`" @click="isDamageTarget('nemesis') ? chooseDamageTarget('nemesis') : openMat()">
-          <img class="nemesis-mat-image" :src="nemesisMatImageUrl('front')" :alt="`${nemesis.name} mat`" draggable="false" @load="measureMat" />
+          <img class="nemesis-mat-image" :src="nemesisMatImageUrl(nemesis.type, 'front')" :alt="`${nemesis.name} mat`" draggable="false" @load="measureMat" />
         </button>
       </CardHoverPreview>
       <div v-else class="nemesis-mat-wrap"><div class="nemesis-mat-fallback">{{ nemesis.name }}</div></div>
@@ -147,11 +169,17 @@ onBeforeUnmount(() => {
         <button class="nemesis-asset nemesis-discard-button" aria-label="Open Nemesis Discard" @click="discardModalOpen = true">
           <span class="nemesis-section-title">Nemesis Discard</span><strong>{{ nemesis.discard.length }}</strong>
         </button>
-        <div class="nemesis-asset strike-asset" :class="{ 'is-unavailable': !presentation.specificDeck.enabled }" aria-label="Nemesis Specific">
-          <span class="nemesis-section-title">{{ presentation.specificDeck.label }}</span>
-          <strong v-if="presentation.specificDeck.enabled">{{ nemesis.strikeDeck.length }}</strong>
-          <span v-else class="asset-subtext">Not used</span>
-        </div>
+        <NemesisSpecificPile
+          :label="presentation.specificDeck.label"
+          :enabled="presentation.specificDeck.enabled"
+          :card-count="nemesis.strikeDeck.length"
+          :display="presentation.specificDeck.display"
+          :top-card-id="specificTopCard ?? undefined"
+          :action-label="specificTopCardActionLabel"
+          :action-enabled="canActivateSpecificTopCard"
+          @activate="activateSpecificTopCard"
+          @inspect="openNemesisSpecificPile"
+        />
         <div class="nemesis-asset" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled }" aria-label="Nemesis Specific Discard">
           <span class="nemesis-section-title">{{ presentation.specificDiscard.label }}</span>
           <strong v-if="presentation.specificDiscard.enabled">{{ nemesis.strikeDiscard.length }}</strong>
@@ -178,7 +206,7 @@ onBeforeUnmount(() => {
     <div v-if="matModalOpen" class="overlay mage-overlay" @click.self="closeMat">
       <div ref="matModalEl" class="overlay-card mage-modal draggable-modal" :class="{ dragging: matDragging }" :style="matModalStyle" @pointerdown="startMatDrag">
         <div class="mage-modal-frame nemesis-mat-modal-frame">
-          <img class="mage-modal-image" :src="nemesisMatImageUrl(matSide)" :alt="`${nemesis.name} mat ${matSide}`" draggable="false" />
+          <img class="mage-modal-image" :src="nemesisMatImageUrl(nemesis.type, matSide)" :alt="`${nemesis.name} mat ${matSide}`" draggable="false" />
         </div>
         <div class="overlay-actions">
           <button class="btn" @click="matSide = matSide === 'front' ? 'back' : 'front'">{{ matSide === 'front' ? 'Flip to Back' : 'Show Front' }}</button>
