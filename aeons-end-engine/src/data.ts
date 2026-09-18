@@ -1,18 +1,20 @@
 import type {
-  CardDef, BreachState, Direction, NemesisDifficulty, ScenarioConfig,
+  CardDef, BreachState, Direction, NemesisDifficulty, ScenarioConfig, MarketSetupConfig,
 } from './types'
 import {
   INITIAL_GEM_CARDS, MARKET_GEM_CARDS,
   crystal, moonstoneShard, amethystShard, emeraldShard, quartzShard, garnetShard, tourmalineShard,
-  vriswoodAmber, diamondCluster, burningOpal,
+  vriswoodAmber, diamondCluster, burningOpal, cloudedSapphire, jade, searingRuby, siftersPearl,
 } from './data/wave1/gems'
 import {
   MARKET_RELIC_CARDS,
-  flexingDagger, bottledVortex,
+  flexingDagger, bottledVortex, blastingStaff, focusingOrb, magesTalisman, unstablePrism,
 } from './data/wave1/relics'
 import {
   INITIAL_SPELL_CARDS, MARKET_SPELL_CARDS,
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
+  amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
+  phoenixFlame, spectralEcho, wildfireWhip,
 } from './data/wave1/spells'
 import { createMages, MAGE_UNIQUE_CARDS } from './data/wave1/mage'
 import {
@@ -25,9 +27,11 @@ import {
 // Re-export the Wave 1 catalog so existing engine and UI imports stay stable.
 export {
   crystal, moonstoneShard, amethystShard, emeraldShard, quartzShard, garnetShard, tourmalineShard,
-  vriswoodAmber, diamondCluster, burningOpal,
-  flexingDagger, bottledVortex,
+  vriswoodAmber, diamondCluster, burningOpal, cloudedSapphire, jade, searingRuby, siftersPearl,
+  flexingDagger, bottledVortex, blastingStaff, focusingOrb, magesTalisman, unstablePrism,
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
+  amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
+  phoenixFlame, spectralEcho, wildfireWhip,
   MAGE_UNIQUE_CARDS,
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
@@ -45,6 +49,7 @@ export function createTwoPlayerScenario(
   mageTypes: [string, string],
   nemesisType = rageborne.type,
   nemesisDifficulty: NemesisDifficulty = 'standard',
+  marketSetup?: MarketSetupConfig,
 ): ScenarioConfig {
   const [firstMage, secondMage] = mageTypes
   if (!MAGES[firstMage] || !MAGES[secondMage]) {
@@ -65,6 +70,10 @@ export function createTwoPlayerScenario(
     turnOrderDeckSize: 6,
     playerTurnOrderCardsPerPlayer: 2,
     nemesisTurnOrderCards: 2,
+    marketSetup: marketSetup ? {
+      mode: marketSetup.mode,
+      slots: [...marketSetup.slots],
+    } : defaultMarketSetup(),
   }
 }
 
@@ -74,14 +83,91 @@ export const INITIAL_CARDS: Record<string, CardDef> = {
   ...INITIAL_SPELL_CARDS,
 }
 
-export const MARKET_CARDS: Record<string, CardDef> = {
+export const ALL_MARKET_CARDS: Record<string, CardDef> = {
   ...MARKET_GEM_CARDS,
   ...MARKET_RELIC_CARDS,
   ...MARKET_SPELL_CARDS,
 }
 
+/** The original nine-card market remains the default preset for backwards-compatible saves. */
+export const DEFAULT_MARKET_SLOTS = [
+  'vriswood_amber', 'diamond_cluster', 'burning_opal',
+  'flexing_dagger', 'bottled_vortex',
+  'lava_tendril', 'essence_theft', 'planar_insight', 'arcane_nexus',
+]
+
+export const MARKET_SLOT_TYPES = [
+  'gem', 'gem', 'gem', 'relic', 'relic', 'spell', 'spell', 'spell', 'spell',
+] as const
+
+/** Backwards-compatible name for the complete market card catalog. */
+export const MARKET_CARDS: Record<string, CardDef> = ALL_MARKET_CARDS
+
+export function defaultMarketSetup(): MarketSetupConfig {
+  return { mode: 'manual', slots: [...DEFAULT_MARKET_SLOTS] }
+}
+
+/** Return a user-facing validation error, or null for a valid market setup. */
+export function validateMarketSetup(config?: MarketSetupConfig): string | null {
+  if (!config) return null
+  if (config.mode === 'template1') return null
+  if (config.mode !== 'manual') return 'Unknown market setup mode'
+  if (config.slots.length !== 9) return 'Manual market setup must contain exactly nine slots'
+  if (new Set(config.slots).size !== config.slots.length) return 'Manual market setup cannot repeat a card'
+  for (const [index, cardId] of config.slots.entries()) {
+    const card = ALL_MARKET_CARDS[cardId]
+    if (!card) return `Unknown market card: ${cardId}`
+    if (card.type !== MARKET_SLOT_TYPES[index]) {
+      return `${card.name} cannot be placed in ${MARKET_SLOT_TYPES[index]} slot ${index + 1}`
+    }
+  }
+  return null
+}
+
+export type RandomSource = () => number
+
+function pickRandom<T>(items: T[], count: number, random: RandomSource): T[] {
+  const pool = [...items]
+  for (let index = pool.length - 1; index > 0; index--) {
+    const swap = Math.floor(random() * (index + 1))
+    ;[pool[index], pool[swap]] = [pool[swap]!, pool[index]!]
+  }
+  return pool.slice(0, count)
+}
+
+/** Resolve a Setup selection into the nine concrete market card IDs. */
+export function resolveMarketCardIds(config?: MarketSetupConfig, random: RandomSource = Math.random): string[] {
+  const validationError = validateMarketSetup(config)
+  if (validationError) throw new Error(validationError)
+  if (!config || config.mode === 'manual') {
+    const slots = config?.slots ?? DEFAULT_MARKET_SLOTS
+    return [...slots]
+  }
+  // Setup stores the first Template 1 roll in its slots so the images shown
+  // before Start Game are exactly the piles that enter play. An empty template
+  // still means "roll now" for callers that do not have a preview yet.
+  if (config.slots.length > 0) {
+    const resolvedError = validateMarketSetup({ mode: 'manual', slots: config.slots })
+    if (resolvedError) throw new Error(`Template 1 resolved slots are invalid: ${resolvedError}`)
+    return [...config.slots]
+  }
+  const cards = Object.values(ALL_MARKET_CARDS)
+  const gems = pickRandom(cards.filter(card => card.type === 'gem' && card.cost <= 3), 1, random)
+    .concat(pickRandom(cards.filter(card => card.type === 'gem' && card.cost === 4), 1, random))
+    .concat(pickRandom(cards.filter(card => card.type === 'gem' && card.cost >= 5), 1, random))
+  const relics = pickRandom(cards.filter(card => card.type === 'relic' && card.cost <= 3), 1, random)
+    .concat(pickRandom(cards.filter(card => card.type === 'relic' && card.cost >= 4), 1, random))
+  const spells = pickRandom(cards.filter(card => card.type === 'spell' && card.cost === 3), 1, random)
+    .concat(pickRandom(cards.filter(card => card.type === 'spell' && card.cost === 4), 1, random))
+    .concat(pickRandom(cards.filter(card => card.type === 'spell' && card.cost === 5), 1, random))
+    .concat(pickRandom(cards.filter(card => card.type === 'spell' && card.cost >= 6), 1, random))
+  const ids = [...gems, ...relics, ...spells].map(card => card.id)
+  if (ids.length !== 9) throw new Error('Template 1 cannot fill all nine market slots from the current catalog')
+  return ids
+}
+
 export function getCard(id: string): CardDef {
-  return INITIAL_CARDS[id] ?? MARKET_CARDS[id] ?? NEMESIS_CARDS[id]
+  return INITIAL_CARDS[id] ?? ALL_MARKET_CARDS[id] ?? NEMESIS_CARDS[id]
 }
 
 // ===== Breach Configuration =====
@@ -123,7 +209,7 @@ export function makeBreach(
 ): BreachState {
   if (!present) {
     return {
-      index, present: false, opened: false, prepSpells: [],
+      index, present: false, opened: false, prepSpells: [], preppedThisTurn: [],
       focusDirection: 'north', focusCost: 0, focusCount: 0, focusToOpen: 0,
       openCost: { east: 0, south: 0, west: 0, north: 0 },
       focusedThisTurn: false,
@@ -132,7 +218,7 @@ export function makeBreach(
   }
   if (opened) {
     return {
-      index, present: true, opened: true, prepSpells: [],
+      index, present: true, opened: true, prepSpells: [], preppedThisTurn: [],
       focusDirection: 'north', focusCost: 0, focusCount: 0, focusToOpen: 0,
       openCost: { east: 0, south: 0, west: 0, north: 0 },
       focusedThisTurn: false,
@@ -143,7 +229,7 @@ export function makeBreach(
   const resolvedFocusCost = COMMON_BREACH_FOCUS_COSTS[index] ?? 0
   const commonOpenCosts = COMMON_BREACH_OPEN_COSTS[index]
   return {
-    index, present: true, opened: false, prepSpells: [],
+    index, present: true, opened: false, prepSpells: [], preppedThisTurn: [],
     focusDirection: dir, focusCost: resolvedFocusCost, focusCount: 0,
     focusToOpen: focusesToOpen(dir),
     openCost: commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost),

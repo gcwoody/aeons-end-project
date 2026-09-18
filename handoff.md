@@ -1,6 +1,6 @@
 # Aeon's End Digital — 对话交接
 
-更新时间：2026-09-13
+更新时间：2026-09-14
 
 这份文档用于把当前项目状态交给新的 Codex 对话。它只记录“现在是什么状态、哪些决定已经确定、接下来怎么工作”；长期的代码地图和调试入口请结合 [`dev-guide.md`](dev-guide.md) 阅读。涉及 UI 覆盖、`z-index` 和 stacking context 时，再阅读 [`design/ui-layering-guide.md`](design/ui-layering-guide.md)。
 
@@ -26,6 +26,7 @@
 - 同一 Mage 不允许被多个玩家选择；引擎和 UI 都有校验。
 - 当前已经实现 Wave 1 的 8 个 Mage：Jian、Brama、Xaxos、Adelheim、Kadir、Lash、Mist、Phaedraxa。
 - 当前已经实现 Rageborne 和 Prince of Gluttons 两个 Nemesis。Setup 可选择 Standard 或 Increased 难度；Prince 的 Increased 开局会要求玩家逐张选择额外 Devour 的 9 张供应牌。所有 Nemesis 共用 `unleash` 关键词，但每个 Nemesis 的完整 Unleash 后续序列由 `aeons-end-engine/src/nemesis/<nemesis>.ts` 的规则模块提供。Rageborne 模块负责 Fury、Strike 结算后处理和结束回合 Strike；Prince of Gluttons 模块负责 Unleash 序列、Devoured pile setup 和 Increased setup。专属 Strike deck 的卡牌数据和构建仍位于 Nemesis 数据文件。Prince 继续使用同一 `nemesis.strikeDeck` 状态字段作为 Devoured pile。通用的 `devour_market_cards`、空供应数量、市场选择和顶牌获得规则由引擎统一解释，不能再为单张 Prince 卡写 ID 分支。UI 的 `NemesisSpecificPile.vue` 同时支持计数和顶牌正面显示；后续 Nemesis 应通过 presentation 配置其显示方式，并由父组件注入可选动作。
+- Wave 1 商店已扩展为完整卡库：`aeons-end-engine/src/data.ts` 的 `ALL_MARKET_CARDS`/`MARKET_CARDS` 包含 27 张可选市场卡，`DEFAULT_MARKET_SLOTS` 保留原先九张默认预设。`ScenarioConfig.marketSetup` 保存九个槽位的手动选择或 `template1` 半随机模式；Setup 目前只显示 Template 1，九宫格以卡图展示，切换后立即填充并可用 Refresh 重抽，点击槽位可在图片选择器中替换。Template 1 已解析的槽位会原样进入游戏，确保预览与实际市场一致。Setup 同时显示两名 Mage mat 和 Nemesis mat 预览，并随下拉选择更新。卡牌资料和图片映射前置产物分别在 `documents/wave1-supply-catalog.json`、`documents/wave1-supply-wiki-rules.md`，抓取脚本为 `image-database/collect_supply_wiki_rules.py`。Searing Ruby 的 spell-only Aether 在玩家控制栏单独显示。
 - CLI 已删除，不要重新维护 CLI 测试入口。
 - 不需要兼容旧存档；当前保存格式以最新代码为准。
 - UI 中所有按钮、标签、提示和日志文本必须使用英文；文档可以使用中文。
@@ -71,7 +72,7 @@ npm run build
 npm run test:e2e -- --workers=1
 ```
 
-当前最近一次验证结果：引擎回归通过，前端构建通过，Playwright 24 项全部通过。若 5173 端口已经有本项目开发服务器，可使用：
+当前最近一次验证结果：引擎回归通过，前端类型检查和构建通过，Playwright 39 项全部通过（包含 Setup 三列布局、滚动、Template 1 图片配置、Mage/Nemesis mat 预览和 Debug Tools 卡牌冒烟测试）。若 5173 端口已经有本项目开发服务器，可使用：
 
 ```powershell
 $env:PLAYWRIGHT_REUSE_SERVER='true'

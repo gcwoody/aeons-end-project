@@ -5,12 +5,12 @@ import {
   PendingDecision, PendingDecisionAnswer, PendingEffectResolution, PendingSpellCast,
   CardEffect, CardEffectBlock, CardEffectCondition, CardEffectOption,
   CardEffectTrigger, PlayerTargetRef, PlayerTargetScope, PlayerSelectionRule, PlayerTurnEffects,
-  PreppedSpellChoice, TurnOrderCardChoice, MarketPileChoice, NemesisDifficulty, ScenarioConfig, PlayerId,
+  PreppedSpellChoice, BreachChoice, TurnOrderCardChoice, MarketPileChoice, NemesisDifficulty, ScenarioConfig, PlayerId,
   NemesisCardDef, NemesisCardInPlay, NemesisDiscardCost, NemesisEffectTrigger,
   NemesisResolutionState, PendingNemesisDiscard,
 } from './types'
 import {
-  getCard, MAGES, rageborne, MARKET_CARDS, createTwoPlayerScenario, getNemesisDefinition,
+  getCard, MAGES, rageborne, resolveMarketCardIds, createTwoPlayerScenario, getNemesisDefinition,
 } from './data'
 import type { MageDef } from './data'
 import { getNemesisRules } from './nemesis/registry'
@@ -137,7 +137,7 @@ export function createGame(
   const player1 = createPlayer(playerIdForMage(mage1Def.type), mage1Def)
   const player2 = createPlayer(playerIdForMage(mage2Def.type), mage2Def)
 
-  const marketPiles = Object.keys(MARKET_CARDS).map(cardId => {
+  const marketPiles = resolveMarketCardIds(scenario.marketSetup).map(cardId => {
     const card = getCard(cardId)
     const remaining = card.type === 'gem' ? 7 : 5
     return { cardId, remaining }
@@ -248,6 +248,14 @@ function discardNemesisCard(g: GameState, card: NemesisCardInPlay): void {
   g.nemesis.discard.unshift(card.cardId)
 }
 
+/** Move a depleted Power to the Nemesis discard after its effects finish. */
+function discardCompletedNemesisPower(g: GameState, resolution: NemesisResolutionState): void {
+  if (!resolution.activePowerPendingDiscard) return
+  const card = activeNemesisCard(g, resolution)
+  if (card?.cardType === 'power') discardNemesisCard(g, card)
+  resolution.activePowerPendingDiscard = undefined
+}
+
 function usesDevouredPile(g: GameState): boolean {
   return getNemesisDefinition(g.nemesis.definitionId)?.specificPileKind === 'devoured'
 }
@@ -352,6 +360,10 @@ export function advanceNemesisTurn(g: GameState): string[] {
 
   while (!g.pendingDecision && !g.pendingEffect && g.nemesisResolution) {
     if (resolution.step === 'main') {
+      // Keep a depleted Power visible while its effect resolution is paused by
+      // a player decision. The continuation reaches this point again after the
+      // decision and only then moves the card to the Nemesis discard pile.
+      discardCompletedNemesisPower(g, resolution)
       const key = resolution.mainQueue[resolution.mainIndex]
       if (!key) {
         resolution.step = 'draw'
@@ -432,9 +444,10 @@ export function advanceNemesisTurn(g: GameState): string[] {
       resolution.activeTrigger = 'power_resolved'
       const blockCount = nemesisEffectBlocks(definition, 'power_resolved')
       messages.push(`Power depleted for ${definition.name}${blockCount ? ` — resolving ${blockCount} block(s)` : ''}`)
-      discardNemesisCard(g, card)
+      resolution.activePowerPendingDiscard = true
       messages.push(...resolveNemesisCardEffects(g, resolution, definition, 'power_resolved'))
       if (g.pendingDecision || g.pendingEffect) return messages
+      discardCompletedNemesisPower(g, resolution)
       resolution.activeCardInstanceId = undefined
       resolution.activeCardId = undefined
       resolution.activeTrigger = undefined
@@ -684,6 +697,7 @@ function finishNemesisDiscard(g: GameState): string[] {
       const breach = owner.breaches.find(item => item.index === choice.breachIndex)
       if (!breach || breach.prepSpells[choice.spellIndex] !== choice.cardId) continue
       breach.prepSpells.splice(choice.spellIndex, 1)
+      breach.preppedThisTurn?.splice(choice.spellIndex, 1)
       ensurePlayerCollections(owner)
       owner.destroyedCards.push(choice.cardId)
       removed.push(choice.cardId)
@@ -855,6 +869,11 @@ function ensurePlayerCollections(p: PlayerState): void {
       prepSpellLimit: 1,
     }
   }
+  for (const breach of p.breaches) {
+    if (!breach.preppedThisTurn || breach.preppedThisTurn.length !== breach.prepSpells.length) {
+      breach.preppedThisTurn = breach.prepSpells.map(() => false)
+    }
+  }
   p.turnEffects.prepSpellLimit ??= 1
 }
 
@@ -951,6 +970,72 @@ export function getPreppedSpellChoices(g: GameState): PreppedSpellChoice[] {
   return choices
 }
 
+function getBreachChoices(g: GameState, target: 'self' | 'any_player', playerId: string): BreachChoice[] {
+  const players = target === 'self' ? [getPlayer(g, playerId)] : g.players
+  return players.flatMap(player => player.breaches
+    .filter(breach => isPresentBreach(breach) && !breach.opened && breach.focusCount < breach.focusToOpen)
+    .map(breach => ({
+      playerId: player.id,
+      breachIndex: breach.index,
+      playerName: player.mageType,
+      focusCost: breach.focusCost,
+      focusCount: breach.focusCount,
+      focusToOpen: breach.focusToOpen,
+    })))
+}
+
+/** Return every Breach that can be destroyed as part of a player's exhaustion. */
+function getExhaustBreachChoices(g: GameState, playerId: string): BreachChoice[] {
+  const player = getPlayer(g, playerId)
+  return player.breaches
+    .filter(isPresentBreach)
+    .map(breach => ({
+      playerId: player.id,
+      breachIndex: breach.index,
+      playerName: player.mageType,
+      focusCost: breach.focusCost,
+      focusCount: breach.focusCount,
+      focusToOpen: breach.focusToOpen,
+    }))
+}
+
+function applyFreeBreachFocus(g: GameState, choice: BreachChoice): string {
+  const player = getPlayer(g, choice.playerId)
+  const breach = player.breaches.find(item => item.index === choice.breachIndex)
+  if (!breach || !isPresentBreach(breach) || breach.opened || breach.focusCount >= breach.focusToOpen) {
+    return 'The selected breach is no longer available'
+  }
+  breach.focusCount++
+  breach.focusedThisTurn = true
+  if (breach.focusCount < breach.focusToOpen) {
+    breach.focusDirection = rotateDirection(breach.focusDirection)
+    return `Focused ${player.mageType}'s Breach ${toRoman(breach.index)} (${breach.focusCount}/${breach.focusToOpen})`
+  }
+  breach.opened = true
+  return `${player.mageType}'s Breach ${toRoman(breach.index)} OPENED!`
+}
+
+/** Destroy a Breach and move every spell prepared on it to its owner's discard pile. */
+function destroyExhaustedBreach(g: GameState, choice: BreachChoice): string {
+  const player = getPlayer(g, choice.playerId)
+  const breach = player.breaches.find(item => item.index === choice.breachIndex)
+  if (!breach || !isPresentBreach(breach)) return 'The selected breach is no longer available'
+
+  const prepared = [...breach.prepSpells]
+  // Keep all moved cards available in the discard pile. Their exact order is
+  // immaterial to the rules, while unshifting preserves the normal discard
+  // convention used by the rest of the engine.
+  for (const cardId of prepared) player.discard.unshift(cardId)
+  breach.prepSpells = []
+  breach.preppedThisTurn = []
+  breach.present = false
+  breach.opened = false
+  breach.focusedThisTurn = false
+  return prepared.length > 0
+    ? `${player.mageType} destroys Breach ${toRoman(breach.index)} and discards ${prepared.length} prepared spell(s)`
+    : `${player.mageType} destroys Breach ${toRoman(breach.index)}`
+}
+
 /** Move selected prepped spells to their owners' discard piles. */
 function discardPreppedSpellChoices(g: GameState, choices: PreppedSpellChoice[]): string[] {
   const discarded: string[] = []
@@ -963,6 +1048,7 @@ function discardPreppedSpellChoices(g: GameState, choices: PreppedSpellChoice[])
     const breach = owner.breaches.find(item => item.index === choice.breachIndex)
     if (!breach || breach.prepSpells[choice.spellIndex] !== choice.cardId) continue
     breach.prepSpells.splice(choice.spellIndex, 1)
+    breach.preppedThisTurn?.splice(choice.spellIndex, 1)
     owner.discard.unshift(choice.cardId)
     discarded.push(choice.cardName)
   }
@@ -1055,13 +1141,18 @@ export function getLifeTargets(
 ): LifeTargetRef[] {
   if (scope === 'nemesis') return [{ kind: 'nemesis' }]
   if (scope === 'gravehold') return [{ kind: 'gravehold' }]
-  if (scope === 'self') return [{ kind: 'player', playerId: sourcePlayerId }]
+  if (scope === 'self') {
+    const player = getPlayer(g, sourcePlayerId)
+    return player.exhausted ? [] : [{ kind: 'player', playerId: sourcePlayerId }]
+  }
   if (scope === 'ally') {
     return g.players
-      .filter(player => player.id !== sourcePlayerId)
+      .filter(player => player.id !== sourcePlayerId && !player.exhausted)
       .map(player => ({ kind: 'player', playerId: player.id }))
   }
-  return g.players.map(player => ({ kind: 'player', playerId: player.id }))
+  return g.players
+    .filter(player => !player.exhausted)
+    .map(player => ({ kind: 'player', playerId: player.id }))
 }
 
 export function getPlayerTargets(
@@ -1082,8 +1173,12 @@ function getSelectedPlayerTargets(
   scope: PlayerTargetScope,
   selection?: PlayerSelectionRule,
 ): PlayerTargetRef[] {
-  const targets = getPlayerTargets(g, sourcePlayerId, scope)
+  let targets = getPlayerTargets(g, sourcePlayerId, scope)
   if (!selection || targets.length === 0) return targets
+  // Effects that choose the player with the lowest life never target an
+  // exhausted Mage; explicit damage targets may still affect one.
+  if (selection === 'lowest_hp') targets = targets.filter(target => !getPlayer(g, target.playerId).exhausted)
+  if (targets.length === 0) return []
   const values = targets.map(target => {
     const player = getPlayer(g, target.playerId)
     if (selection === 'most_prepped_spells') {
@@ -1102,6 +1197,7 @@ export function gainLife(g: GameState, target: LifeTargetRef, amount: number): s
   if (target.kind === 'player') {
     const p = getPlayer(g, target.playerId)
     if (!p) return 'Invalid life target'
+    if (p.exhausted) return `${p.mageType} cannot gain life while exhausted`
     const before = p.hp
     p.hp = Math.min(p.maxHp, before + value)
     return `${p.mageType} gains ${p.hp - before} life (${p.hp}/${p.maxHp})`
@@ -1149,6 +1245,7 @@ function amountValue(
   playerId: string,
   amount: Extract<CardEffect, { kind: 'deal_damage' }>['amount'],
   sourceCardId?: string,
+  resolution?: PendingEffectResolution,
 ): number {
   if (typeof amount === 'number') return Math.max(0, amount)
   if (amount.kind === 'per_open_breach') {
@@ -1164,8 +1261,21 @@ function amountValue(
       .reduce((sum, breach) => sum + breach.prepSpells.length, 0)
     return Math.max(0, amount.base + prepped * amount.amountPerSpell)
   }
+  if (amount.kind === 'per_adjacent_prepped_spell') {
+    const cast = resolution?.pendingSpellCast
+    const owner = getPlayer(g, cast?.playerId ?? playerId)
+    const breachIndex = cast?.breachIndex ?? 0
+    const adjacent = owner.breaches.filter(breach =>
+      isPresentBreach(breach) && Math.abs(breach.index - breachIndex) === 1,
+    )
+    const count = adjacent.reduce((sum, breach) => sum + breach.prepSpells.length, 0)
+    return Math.max(0, amount.base + count * amount.amountPerSpell)
+  }
   if (amount.kind === 'per_empty_market_pile') {
     return Math.max(0, amount.base + emptyMarketPileCount(g) * amount.amountPerPile)
+  }
+  if (amount.kind === 'last_selection_cost') {
+    return Math.max(0, resolution?.lastSelectedCardCost ?? 0)
   }
   const minion = g.nemesis.playArea.find(card =>
     card.cardType === 'minion' && (!sourceCardId || card.cardId === sourceCardId),
@@ -1173,13 +1283,45 @@ function amountValue(
   return Math.max(0, minion?.lifeTokens ?? 0)
 }
 
+/** Resolve the amount of one damage instance, including conditional bonuses. */
+function damageAmountValue(
+  g: GameState,
+  playerId: string,
+  effect: Extract<CardEffect, { kind: 'deal_damage' }>,
+  sourceCardId?: string,
+  resolution?: PendingEffectResolution,
+): number {
+  let amount = amountValue(g, playerId, effect.amount, sourceCardId, resolution)
+  for (const bonus of effect.additionalDamage ?? []) {
+    if (conditionMatches(g, playerId, bonus.condition, resolution)) {
+      amount += amountValue(g, playerId, bonus.amount, sourceCardId, resolution)
+    }
+  }
+  return Math.max(0, amount)
+}
+
+function hasDeferredAdditionalDamage(
+  effect: Extract<CardEffect, { kind: 'deal_damage' }>,
+): boolean {
+  return (effect.additionalDamage ?? []).some(bonus =>
+    (typeof bonus.amount !== 'number' && bonus.amount.kind === 'last_selection_cost') ||
+    bonus.condition?.kind === 'last_optional_accepted')
+}
+
 function spellBreachDamageBonus(breach: PlayerState['breaches'][number]): number {
   return isPresentBreach(breach) && breach.opened && breach.index >= 3 ? 1 : 0
 }
 
 function applySpellDamageBonus(resolution: PendingEffectResolution, amount: number): number {
-  const bonus = resolution.spellDamageBonus ?? 0
-  return bonus > 0 ? amount + bonus : amount
+  const breachBonus = resolution.spellDamageBonus ?? 0
+  const additionalBonus = resolution.spellAdditionalDamageBonus ?? 0
+  if (additionalBonus > 0) {
+    // An external "additional damage" effect (for example Blasting Staff's
+    // +2) modifies only the first damage instance of the cast. The Breach III/
+    // IV bonus remains per damage instance, as required by the Breach rules.
+    resolution.spellAdditionalDamageBonus = 0
+  }
+  return amount + breachBonus + additionalBonus
 }
 
 interface SpellDamagePreview {
@@ -1201,11 +1343,25 @@ function previewSpellDamageEffects(
   for (const effect of effects) {
     if (effect.kind === 'deal_damage') {
       preview = addSpellDamagePreview(preview, {
-        amount: amountValue(g, playerId, effect.amount, sourceCardId),
+        amount: damageAmountValue(g, playerId, effect, sourceCardId),
         instances: 1,
       })
       continue
     }
+
+    if (effect.kind === 'conditional') {
+      // Conditional damage is guaranteed whenever the condition is currently
+      // true. This is especially important for effects such as Amplify
+      // Vision, whose bonus damage depends on the player's present Breaches;
+      // destroyed Breaches are already excluded by conditionMatches.
+      if (conditionMatches(g, playerId, effect.condition)) {
+        const conditionalPreview = previewSpellDamageEffects(g, playerId, effect.effects, sourceCardId)
+        if (!conditionalPreview) return null
+        preview = addSpellDamagePreview(preview, conditionalPreview)
+      }
+      continue
+    }
+
     if (effect.kind === 'reveal_turn_order_card') {
       const top = g.turnOrderDeck[0]
       if (!top) return null
@@ -1251,12 +1407,28 @@ function effectPlayerId(resolution: PendingEffectResolution): string {
   return resolution.effectPlayerId ?? resolution.playerId
 }
 
-function conditionMatches(g: GameState, playerId: string, condition?: CardEffectCondition): boolean {
+function conditionMatches(
+  g: GameState,
+  playerId: string,
+  condition?: CardEffectCondition,
+  resolution?: PendingEffectResolution,
+): boolean {
   if (!condition) return true
   const p = getPlayer(g, playerId)
   if (condition.kind === 'has_unopened_breach') {
     return p.breaches.some(breach => isPresentBreach(breach) && !breach.opened)
   }
+  if (condition.kind === 'all_breaches_opened') {
+    const present = p.breaches.filter(isPresentBreach)
+    return present.length > 0 && present.every(breach => breach.opened)
+  }
+  if (condition.kind === 'has_charge') return p.charge >= Math.max(0, condition.amount)
+  if (condition.kind === 'has_aether') return getSpendableAether(p, 'general') >= Math.max(0, condition.amount)
+  if (condition.kind === 'has_card_in_hand') {
+    return p.hand.some(cardId => getCard(cardId).type === condition.cardType)
+  }
+  if (condition.kind === 'last_selection_nonempty') return (resolution?.lastSelectedCardCount ?? 0) > 0
+  if (condition.kind === 'last_optional_accepted') return resolution?.lastOptionalAccepted === true
   let value = 0
   let expected = 0
 
@@ -1291,17 +1463,37 @@ function addRemainingEffects(resolution: PendingEffectResolution, effects: CardE
   resolution.remainingEffects = [...effects, ...resolution.remainingEffects]
 }
 
-function finalizePendingSpellCast(g: GameState, resolution: PendingEffectResolution): void {
+/** Queue the complete, ordered exhaustion sequence after a lethal damage hit. */
+function queuePlayerExhaustion(
+  resolution: PendingEffectResolution,
+  playerId: string,
+  overflowDamage: number,
+): void {
+  addRemainingEffects(resolution, [{
+    kind: 'exhaust_player',
+    playerId,
+    overflowDamage: Math.max(0, overflowDamage),
+  }])
+}
+
+function clearPendingSpellCast(resolution: PendingEffectResolution): void {
+  resolution.pendingSpellCast = undefined
+}
+
+/** Move a cast spell to its owner's discard before any on-cast effects run.
+ * The pending cast metadata remains available while those effects resolve so
+ * damage calculations can still identify the original Breach. */
+function discardPendingSpellCast(g: GameState, resolution: PendingEffectResolution): void {
   const pending = resolution.pendingSpellCast
-  if (!pending) return
+  if (!pending || !pending.discard) return
 
   const owner = getPlayer(g, pending.playerId)
   const breach = owner.breaches.find(item => item.index === pending.breachIndex)
-  if (pending.discard && breach?.prepSpells[pending.spellIndex] === pending.cardId) {
-    breach.prepSpells.splice(pending.spellIndex, 1)
-    owner.discard.unshift(pending.cardId)
-  }
-  resolution.pendingSpellCast = undefined
+  if (breach?.prepSpells[pending.spellIndex] !== pending.cardId) return
+
+  breach.prepSpells.splice(pending.spellIndex, 1)
+  breach.preppedThisTurn?.splice(pending.spellIndex, 1)
+  owner.discard.unshift(pending.cardId)
 }
 
 function cardChoiceMatches(choice: CardChoice, expectedSource: CardSelectionSource): boolean {
@@ -1309,6 +1501,34 @@ function cardChoiceMatches(choice: CardChoice, expectedSource: CardSelectionSour
   if (expectedSource === 'discard') return choice.zone === 'discard'
   if (expectedSource === 'hand_or_discard') return choice.zone === 'hand' || choice.zone === 'discard'
   return choice.zone === 'played_this_turn'
+}
+
+function findOptionalCardSelection(
+  effects: CardEffect[],
+): Extract<CardEffect, { kind: 'discard_cards' }> | null {
+  for (const effect of effects) {
+    if (effect.kind === 'discard_cards') return effect
+    if (effect.kind === 'conditional' || effect.kind === 'choose_optional') {
+      const nested = findOptionalCardSelection(effect.effects)
+      if (nested) return nested
+    }
+    if (effect.kind === 'choose_one') {
+      const nested = effect.options
+        .map(option => findOptionalCardSelection(option.effects))
+        .find(Boolean)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
+/** Whether an opt-in effect has at least one card available for its nested selection. */
+function optionalCardSelectionAvailable(g: GameState, playerId: string, effects: CardEffect[]): boolean {
+  const discard = findOptionalCardSelection(effects)
+  if (!discard) return true
+  const targets = getSelectedPlayerTargets(g, playerId, discard.target ?? 'self', discard.selection)
+  return targets.some(target => getCardChoices(g, target.playerId, discard.source)
+    .some(choice => !discard.cardType || getCard(choice.cardId).type === discard.cardType))
 }
 
 function selectedChoicesAreCurrent(
@@ -1424,6 +1644,7 @@ function runEffectResolution(
 ): string[] {
   const messages: string[] = []
   g.pendingEffect = null
+  discardPendingSpellCast(g, resolution)
 
   while (resolution.remainingEffects.length > 0) {
     const effect = resolution.remainingEffects.shift()!
@@ -1465,6 +1686,78 @@ function runEffectResolution(
       return messages
     }
 
+    if (effect.kind === 'spend_aether') {
+      const amount = Math.max(0, effect.amount)
+      const available = getSpendableAether(p, 'general')
+      if (available < amount) {
+        messages.push(`Need ${amount} Aether, have ${available}`)
+      } else {
+        spendAether(p, amount, 'general')
+        messages.push(`${p.mageType} spends ${amount} Aether`)
+      }
+      continue
+    }
+
+    if (effect.kind === 'conditional') {
+      if (conditionMatches(g, currentPlayerId, effect.condition, resolution)) addRemainingEffects(resolution, effect.effects)
+      continue
+    }
+
+    if (effect.kind === 'focus_breach') {
+      let candidates = getBreachChoices(g, effect.target, currentPlayerId)
+      if (effect.selection === 'lowest_focus_cost' && candidates.length > 0) {
+        const lowest = Math.min(...candidates.map(choice => choice.focusCost))
+        candidates = candidates.filter(choice => choice.focusCost === lowest)
+      }
+      if (candidates.length === 0) {
+        messages.push('No eligible closed breach is available')
+        continue
+      }
+      if (candidates.length > 1) {
+        const decision = createDecision(
+          g, resolution.playerId,
+          effect.target === 'self' ? 'Choose a closed breach to focus' : 'Choose a player breach to focus',
+          'select_breach', { candidates }, resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      messages.push(applyFreeBreachFocus(g, candidates[0]!))
+      continue
+    }
+
+    if (effect.kind === 'review_top_cards') {
+      resolution.reviewTopPlayerIds ??= g.players.map(player => player.id)
+      const playerId = resolution.reviewTopPlayerIds.shift()
+      if (!playerId) {
+        resolution.reviewTopPlayerIds = undefined
+        resolution.reviewingTopCard = undefined
+        continue
+      }
+      const reviewedPlayer = getPlayer(g, playerId)
+      if (reviewedPlayer.deck.length === 0 && reviewedPlayer.discard.length > 0) {
+        reviewedPlayer.deck = [...reviewedPlayer.discard].reverse()
+        reviewedPlayer.discard = []
+      }
+      const cardId = reviewedPlayer.deck[0]
+      if (!cardId) {
+        addRemainingEffects(resolution, [effect])
+        continue
+      }
+      resolution.reviewingTopCard = { playerId, cardId }
+      const decision = createDecision(
+        g, playerId,
+        `${reviewedPlayer.mageType} reveals ${getCard(cardId).name}: discard it or return it to the top?`,
+        'choose_one',
+        { options: [
+          { id: 'discard', label: 'Discard the revealed card' },
+          { id: 'keep', label: 'Return it to the top of the deck' },
+        ] }, resolution.sourceCardId,
+      )
+      messages.push(...pauseEffect(g, resolution, effect, decision))
+      return messages
+    }
+
     if (effect.kind === 'gain_nemesis_counter' || effect.kind === 'lose_nemesis_counter') {
       const amount = Math.max(0, effect.amount)
       const before = g.nemesis.counters[effect.counter] ?? 0
@@ -1490,6 +1783,71 @@ function runEffectResolution(
         const amount = Math.max(0, effect.amount ?? 1)
         g.nemesis.counters[counter] = (g.nemesis.counters[counter] ?? 0) + amount
         messages.push(`${g.nemesis.name} unleashes (${counter}: ${g.nemesis.counters[counter]})`)
+      }
+      continue
+    }
+
+    if (effect.kind === 'exhaust_player') {
+      const exhausted = getPlayer(g, effect.playerId)
+      // The damage handler marks the Mage exhausted before queueing this
+      // continuation. Keep the marker idempotent for loaded/older saves.
+      exhausted.exhausted = true
+      exhausted.hp = 0
+      addRemainingEffects(resolution, [
+        { kind: 'unleash', amount: 2 },
+        {
+          kind: 'destroy_exhausted_breach',
+          playerId: effect.playerId,
+          overflowDamage: Math.max(0, effect.overflowDamage),
+        },
+        {
+          kind: 'finish_exhaustion',
+          playerId: effect.playerId,
+          overflowDamage: Math.max(0, effect.overflowDamage),
+        },
+      ])
+      messages.push(`${exhausted.mageType} exhaustion sequence: Nemesis unleashes twice`)
+      continue
+    }
+
+    if (effect.kind === 'destroy_exhausted_breach') {
+      const candidates = getExhaustBreachChoices(g, effect.playerId)
+      if (candidates.length === 0) {
+        messages.push(`${getPlayer(g, effect.playerId).mageType} has no Breach available to destroy`)
+        continue
+      }
+      if (candidates.length > 1) {
+        const decision = createDecision(
+          g,
+          effect.playerId,
+          'Choose a Breach to destroy for exhaustion',
+          'select_exhaust_breach',
+          { candidates },
+          resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      messages.push(destroyExhaustedBreach(g, candidates[0]!))
+      continue
+    }
+
+    if (effect.kind === 'finish_exhaustion') {
+      const exhausted = getPlayer(g, effect.playerId)
+      exhausted.charge = 0
+      messages.push(`${exhausted.mageType} charge is reset to 0`)
+      const overflow = Math.max(0, effect.overflowDamage)
+      if (overflow > 0) {
+        messages.push(dealDamage(
+          g,
+          { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' },
+          overflow * 2,
+        ))
+      }
+      const gameOver = checkGameOver(g)
+      if (gameOver) {
+        messages.push(gameOver)
+        resolution.remainingEffects = []
       }
       continue
     }
@@ -1712,7 +2070,19 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'deal_damage') {
-      const amount = amountValue(g, currentPlayerId, effect.amount, resolution.sourceCardId)
+      // Some card texts ask for an optional choice before adding its value as
+      // "additional damage". Defer this damage instance until that choice has
+      // resolved so the base and bonus remain one event (and one target choice).
+      if (hasDeferredAdditionalDamage(effect) &&
+        resolution.lastSelectedCardCount === undefined &&
+        resolution.lastOptionalAccepted === undefined) {
+        resolution.lastSelectedCardCount = 0
+        resolution.lastSelectedCardCost = 0
+        resolution.lastOptionalAccepted = false
+        resolution.remainingEffects.push(effect)
+        continue
+      }
+      const amount = damageAmountValue(g, currentPlayerId, effect, resolution.sourceCardId, resolution)
       const targets = getDamageTargets(g, effect.target, resolution.sourceCardId)
       if (targets.length === 0) {
         messages.push('No valid damage target')
@@ -1725,6 +2095,28 @@ function runEffectResolution(
           { targets }, resolution.sourceCardId,
         )
         messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      resolution.spellDamageEffectSeen = true
+      messages.push(dealDamage(g, targets[0]!, applySpellDamageBonus(resolution, amount)))
+      continue
+    }
+
+    if (effect.kind === 'deal_damage_from_last_selection' || effect.kind === 'deal_damage_from_last_selection_cost') {
+      const count = resolution.lastSelectedCardCount ?? 0
+      const amount = effect.kind === 'deal_damage_from_last_selection'
+        ? Math.max(0, (effect.base ?? 0) + count * effect.amountPerCard)
+        : Math.max(0, (effect.base ?? 0) + (resolution.lastSelectedCardCost ?? 0))
+      const targets = getDamageTargets(g, effect.target, resolution.sourceCardId)
+      resolution.lastSelectedCardCount = undefined
+      resolution.lastSelectedCardCost = undefined
+      if (targets.length === 0) {
+        messages.push('No valid damage target')
+        continue
+      }
+      if (targets.length > 1) {
+        const decision = createDecision(g, resolution.playerId, 'Choose a damage target', 'select_damage_target', { targets }, resolution.sourceCardId)
+        messages.push(...pauseEffect(g, resolution, { kind: 'deal_damage', amount, target: effect.target }, decision))
         return messages
       }
       resolution.spellDamageEffectSeen = true
@@ -1748,9 +2140,23 @@ function runEffectResolution(
       }
       const target = getPlayer(g, targets[0]!.playerId)
       resolution.effectPlayerId = target.id
-      messages.push(sufferPlayerDamage(g, target.id, amountValue(g, currentPlayerId, effect.amount, resolution.sourceCardId)))
-      const death = checkPlayerDeath(g, target.id)
-      if (death) messages.push(death)
+      // Amounts such as Bleed Static's per_prepped_spell are based on the
+      // player who was selected, not the player controlling the Nemesis
+      // resolution.
+      const damage = amountValue(g, target.id, effect.amount, resolution.sourceCardId)
+      messages.push(sufferPlayerDamage(g, target.id, damage))
+      const excess = Math.max(0, -target.hp)
+      const death = checkPlayerDeath(g, target.id, true)
+      if (death) {
+        messages.push(death)
+        queuePlayerExhaustion(resolution, target.id, excess)
+      } else if (target.exhausted) {
+        const gameOver = checkGameOver(g)
+        if (gameOver) {
+          messages.push(gameOver)
+          resolution.remainingEffects = []
+        }
+      }
       continue
     }
 
@@ -1791,6 +2197,79 @@ function runEffectResolution(
       }
       const message = gainLife(g, targets[0]!, effect.amount)
       if (message) messages.push(message)
+      continue
+    }
+
+    if (effect.kind === 'lose_charge') {
+      const amount = Math.min(Math.max(0, effect.amount), p.charge)
+      p.charge -= amount
+      messages.push(`${p.mageType} loses ${amount} charge (${p.charge}/${p.chargeThreshold})`)
+      continue
+    }
+
+    if (effect.kind === 'play_card_from_hand') {
+      const selectedId = resolution.selectedCardId
+      const candidates = getCardChoices(g, currentPlayerId, 'hand')
+        .filter(choice => getCard(choice.cardId).type === effect.cardType)
+      if (!selectedId) {
+        if (candidates.length === 0) {
+          messages.push(`No ${effect.cardType} card is available in hand`)
+          continue
+        }
+        const decision = createDecision(
+          g, resolution.playerId, `Choose a ${effect.cardType} to play`, 'select_cards',
+          { source: 'hand', candidates, min: 1, max: 1 }, resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      resolution.selectedCardId = undefined
+      const handIndex = getPlayer(g, currentPlayerId).hand.indexOf(selectedId)
+      if (handIndex < 0 || getCard(selectedId).type !== effect.cardType) {
+        messages.push('The selected card is no longer available')
+        continue
+      }
+      const player = getPlayer(g, currentPlayerId)
+      player.hand.splice(handIndex, 1)
+      const times = Math.max(1, effect.times)
+      const instances: CardEffect[] = []
+      for (let index = 0; index < times; index++) {
+        instances.push({
+          kind: 'play_card_instance', cardId: selectedId,
+          destroyAfter: effect.destroy && index === times - 1,
+          recordPlay: index === 0,
+        })
+      }
+      addRemainingEffects(resolution, instances)
+      continue
+    }
+
+    if (effect.kind === 'play_card_instance') {
+      const card = getCard(effect.cardId)
+      // Keep the physical card in the played area while its nested on-play
+      // effects are resolving. This matters when the replay pauses for a
+      // choice (for example Burning Opal) before Unstable Prism destroys it.
+      if (effect.recordPlay !== false) p.playedThisTurn.push(effect.cardId)
+      ensurePlayerCollections(p)
+      p.cardPlayCountsThisTurn[effect.cardId] = (p.cardPlayCountsThisTurn[effect.cardId] ?? 0) + 1
+      const nested = matchingBlocks(effect.cardId, currentPlayerId, g, { kind: 'on_play' }).flatMap(block => block.effects)
+      if (effect.destroyAfter) nested.push({ kind: 'destroy_played_card', cardId: effect.cardId, playerId: currentPlayerId })
+      addRemainingEffects(resolution, nested)
+      messages.push(`Played ${card.name}`)
+      continue
+    }
+
+    if (effect.kind === 'destroy_played_card') {
+      const owner = getPlayer(g, effect.playerId ?? currentPlayerId)
+      const index = [...owner.playedThisTurn].lastIndexOf(effect.cardId)
+      if (index < 0) {
+        messages.push('Played card is no longer available to destroy')
+        continue
+      }
+      owner.playedThisTurn.splice(index, 1)
+      ensurePlayerCollections(owner)
+      owner.destroyedCards.push(effect.cardId)
+      messages.push(`Destroyed ${getCard(effect.cardId).name}`)
       continue
     }
 
@@ -1898,20 +2377,27 @@ function runEffectResolution(
       const discardPlayerId = targets[0]?.playerId ?? currentPlayerId
       resolution.effectPlayerId = discardPlayerId
       const candidates = getCardChoices(g, discardPlayerId, effect.source)
-      const amount = Math.min(Math.max(0, effect.amount), candidates.length)
-      if (amount === 0) {
+        .filter(choice => !effect.cardType || getCard(choice.cardId).type === effect.cardType)
+      const fixedAmount = effect.minAmount === undefined && effect.maxAmount === undefined
+      const min = Math.min(Math.max(0, effect.minAmount ?? effect.amount), candidates.length)
+      const max = Math.min(Math.max(min, effect.maxAmount ?? effect.amount), candidates.length)
+      if (max === 0) {
+        resolution.lastSelectedCardCount = 0
+        resolution.lastSelectedCardCost = 0
         messages.push('No cards available to discard')
         continue
       }
-      if (candidates.length > amount || amount > 1) {
+      if (!fixedAmount || candidates.length > min || max > 1) {
         const decision = createDecision(
-          g, resolution.playerId, `Choose ${amount} card(s) to discard`, 'select_cards',
-          { source: effect.source, candidates, min: amount, max: amount }, resolution.sourceCardId,
+          g, resolution.playerId, min === max ? `Choose ${min} card(s) to discard` : `Choose up to ${max} card(s) to discard`, 'select_cards',
+          { source: effect.source, candidates, min, max }, resolution.sourceCardId,
         )
         messages.push(...pauseEffect(g, resolution, effect, decision))
         return messages
       }
-      const removed = discardSelectedCards(g, discardPlayerId, candidates.slice(0, amount))
+      const removed = discardSelectedCards(g, discardPlayerId, candidates.slice(0, min))
+      resolution.lastSelectedCardCount = removed.length
+      resolution.lastSelectedCardCost = removed.length > 0 ? Math.max(...removed.map(id => getCard(id).cost)) : 0
       messages.push(`Discarded ${removed.map(id => getCard(id).name).join(', ')}`)
       continue
     }
@@ -2080,14 +2566,19 @@ function runEffectResolution(
         } else {
           const message = destroyCard(g, currentPlayerId, selfChoice)
           if (message) messages.push(message)
+          resolution.lastSelectedCardCount = message ? 1 : 0
+          resolution.lastSelectedCardCost = message ? getCard(selfChoice.cardId).cost : 0
         }
         continue
       }
 
       const source = effect.source as CardSelectionSource
       const candidates = getCardChoices(g, currentPlayerId, source)
-      const max = Math.min(effect.maxAmount ?? 1, candidates.length)
+        .filter(choice => !effect.cardType || getCard(choice.cardId).type === effect.cardType)
+      const max = Math.min(Math.max(0, effect.maxAmount ?? 1), candidates.length)
       if (max === 0) {
+        resolution.lastSelectedCardCount = 0
+        resolution.lastSelectedCardCost = 0
         messages.push('No cards available to destroy')
         continue
       }
@@ -2125,10 +2616,15 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'choose_optional') {
+      const acceptDisabled = Boolean(
+        (effect.acceptCondition !== undefined &&
+          !conditionMatches(g, currentPlayerId, effect.acceptCondition, resolution)) ||
+        (effect.disableIfUnavailable && !optionalCardSelectionAvailable(g, currentPlayerId, effect.effects)),
+      )
       const decision = createDecision(
         g, resolution.playerId, effect.prompt, 'choose_optional',
         {
-          accept: { id: 'accept', label: 'Yes' },
+          accept: { id: 'accept', label: 'Yes', disabled: acceptDisabled },
           skip: { id: 'skip', label: 'No' },
         }, resolution.sourceCardId,
       )
@@ -2171,7 +2667,7 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'resolve_spell_damage_bonus') {
-      if (resolution.spellDamageBonus && !resolution.spellDamageEffectSeen) {
+      if ((resolution.spellDamageBonus || resolution.spellAdditionalDamageBonus) && !resolution.spellDamageEffectSeen) {
         const bonusEffect: CardEffect = {
           kind: 'deal_damage', amount: 0, target: 'nemesis_or_minion',
         }
@@ -2191,21 +2687,29 @@ function runEffectResolution(
         }
       }
       resolution.spellDamageBonus = undefined
+      resolution.spellAdditionalDamageBonus = undefined
       resolution.spellDamageEffectSeen = false
       resolution.effectPlayerId = undefined
       continue
     }
 
     if (effect.kind === 'finalize_spell_cast') {
-      finalizePendingSpellCast(g, resolution)
+      clearPendingSpellCast(resolution)
       continue
     }
 
     if (effect.kind === 'cast_prepped_spell') {
       let choice = resolution.selectedPreppedSpell
-      if (effect.source === 'any_prepped_spell') {
+      if (effect.source === 'any_prepped_spell' || effect.source === 'prepped_spell_prepped_this_turn') {
         if (!choice) {
-          const candidates = getPreppedSpellChoices(g)
+          let candidates = getPreppedSpellChoices(g)
+          if (effect.source === 'prepped_spell_prepped_this_turn') {
+            candidates = candidates.filter(candidate => {
+              const owner = getPlayer(g, candidate.playerId)
+              const breach = owner.breaches.find(item => item.index === candidate.breachIndex)
+              return breach?.preppedThisTurn?.[candidate.spellIndex] === true
+            })
+          }
           if (candidates.length === 0) {
             messages.push('No prepped spell is available')
             continue
@@ -2237,6 +2741,7 @@ function runEffectResolution(
         return messages
       }
       resolution.confirmedPreppedSpell = undefined
+      if (effect.source !== 'any_prepped_spell') resolution.selectedPreppedSpell = undefined
       const spellOwner = getPlayer(g, choice.playerId)
       const breach = spellOwner.breaches.find(item => item.index === choice.breachIndex)
       if (!breach || breach.prepSpells[choice.spellIndex] !== choice.cardId) {
@@ -2257,10 +2762,12 @@ function runEffectResolution(
         breachIndex: choice.breachIndex,
         spellIndex: choice.spellIndex,
         cardId: choice.cardId,
-        discard: effect.discard,
+        discard: effect.discard !== false,
       }
+      discardPendingSpellCast(g, resolution)
       resolution.effectPlayerId = resolution.playerId
       resolution.spellDamageBonus = spellBreachDamageBonus(breach)
+      resolution.spellAdditionalDamageBonus = Math.max(0, effect.bonusDamage ?? 0)
       resolution.spellDamageEffectSeen = false
       const castEffects = matchingBlocks(choice.cardId, resolution.playerId, g, { kind: 'on_cast' })
         .flatMap(block => block.effects)
@@ -2269,12 +2776,12 @@ function runEffectResolution(
         { kind: 'resolve_spell_damage_bonus' },
         { kind: 'finalize_spell_cast' },
       ])
-      messages.push(`Cast ${card.name}${effect.discard ? '' : ' without discarding it'}`)
+      messages.push(`Cast ${card.name}${effect.discard === false ? ' without discarding it' : ''}`)
       continue
     }
   }
 
-  if (resolution.spellDamageBonus && !resolution.spellDamageEffectSeen) {
+  if ((resolution.spellDamageBonus || resolution.spellAdditionalDamageBonus) && !resolution.spellDamageEffectSeen) {
     const bonusEffect: CardEffect = {
       kind: 'deal_damage', amount: 0, target: 'nemesis_or_minion',
     }
@@ -2294,10 +2801,15 @@ function runEffectResolution(
     }
   }
 
-  finalizePendingSpellCast(g, resolution)
+  clearPendingSpellCast(resolution)
 
-  g.pendingEffect = null
   if (resolution.nemesisResume && g.currentTurn === 'nemesis' && g.nemesisResolution) {
+    // This also handles a final effect that ends the game, where the normal
+    // Nemesis continuation is intentionally not started.
+    discardCompletedNemesisPower(g, g.nemesisResolution)
+  }
+  g.pendingEffect = null
+  if (!g.gameOver && resolution.nemesisResume && g.currentTurn === 'nemesis' && g.nemesisResolution) {
     return [...messages, ...advanceNemesisTurn(g)]
   }
   return messages
@@ -2340,9 +2852,12 @@ export interface PreppedCardAction {
   breachIndex: number
   spellIndex: number
   cardId: string
-  kind: 'return_card_to_hand'
+  /** Whether the action targets a played card or the prepped spell itself. */
+  kind: 'return_card_to_hand' | 'activate_effect'
   choices: CardChoice[]
   marker: string
+  /** Whether the action can be activated repeatedly while its conditions remain true. */
+  repeatable: boolean
 }
 
 function findReturnCardEffect(effects: CardEffect[]): Extract<CardEffect, { kind: 'return_card_to_hand' }> | null {
@@ -2369,6 +2884,13 @@ function isDeferredReturnAction(effects: CardEffect[]): boolean {
   return false
 }
 
+/** Main-phase while-prepped blocks are either board-card actions or explicit
+ * clicks on the spell itself. Automatic resolution must leave both kinds
+ * untouched until the player activates them. */
+function isManualPreppedActionBlock(block: CardEffectBlock): boolean {
+  return block.manualActivation === true || isDeferredReturnAction(block.effects)
+}
+
 function getPreppedReturnActions(
   g: GameState, playerId: string, phase: 'main_phase',
 ): PreppedCardAction[] {
@@ -2381,19 +2903,24 @@ function getPreppedReturnActions(
       const blocks = matchingBlocks(cardId, playerId, g, { kind: 'while_prepped', phase })
       for (const [blockIndex, block] of blocks.entries()) {
         const effect = findReturnCardEffect(block.effects)
-        if (!effect || !isDeferredReturnAction(block.effects)) continue
+        const isReturnAction = !!effect && isDeferredReturnAction(block.effects)
+        if (!isReturnAction && !block.manualActivation) continue
         const marker = `${cardId}:${breach.index}:${spellIndex}:${phase}:${blockIndex}`
         if (block.oncePerTurn && turnEffects.usedPreppedEffects.includes(marker)) continue
-        const choices = getCardChoices(g, playerId, effect.source)
-        if (choices.length === 0) continue
-        actions.push({ breachIndex: breach.index, spellIndex, cardId, kind: effect.kind, choices, marker })
+        if (isReturnAction && effect) {
+          const choices = getCardChoices(g, playerId, effect.source)
+          if (choices.length === 0) continue
+          actions.push({ breachIndex: breach.index, spellIndex, cardId, kind: effect.kind, choices, marker, repeatable: !block.oncePerTurn })
+        } else if (block.effects.length > 0) {
+          actions.push({ breachIndex: breach.index, spellIndex, cardId, kind: 'activate_effect', choices: [], marker, repeatable: !block.oncePerTurn })
+        }
       }
     }
   }
   return actions
 }
 
-/** Return main-phase card actions that can be activated without blocking the turn. */
+/** Return main-phase prepped-spell actions that can be activated without blocking the turn. */
 export function getPreppedCardActions(g: GameState, playerId: string): PreppedCardAction[] {
   if (g.pendingDecision || g.pendingEffect) return []
   return getPreppedReturnActions(g, playerId, 'main_phase')
@@ -2407,7 +2934,7 @@ export function activatePreppedCardAction(
   const action = getPreppedCardActions(g, playerId)
     .find(candidate => candidate.choices.some(item =>
       item.zone === choice.zone && item.index === choice.index && item.cardId === choice.cardId))
-  if (!action) return 'That card is not an available prepped action'
+  if (!action || action.kind !== 'return_card_to_hand') return 'That card is not an available prepped action'
   const p = getPlayer(g, playerId)
   const turnEffects = getPlayerTurnEffects(p)
   const breach = p.breaches.find(item => item.index === action.breachIndex)
@@ -2419,6 +2946,35 @@ export function activatePreppedCardAction(
   if (!returned) return 'That card is no longer available'
   if (block?.oncePerTurn) turnEffects.usedPreppedEffects.push(action.marker)
   return `Returned ${getCard(returned).name} to hand`
+}
+
+/** Activate a Main Phase while-prepped effect by clicking the prepped spell. */
+export function activatePreppedSpellAction(
+  g: GameState, playerId: string, breachIndex: number, spellIndex: number,
+): string[] {
+  if (g.pendingDecision || g.pendingEffect) return ['Resolve the pending card decision first']
+  const action = getPreppedCardActions(g, playerId).find(candidate =>
+    candidate.kind === 'activate_effect'
+      && candidate.breachIndex === breachIndex
+      && candidate.spellIndex === spellIndex,
+  )
+  if (!action) return ['That prepped spell has no available Main Phase action']
+
+  const p = getPlayer(g, playerId)
+  const breach = p.breaches.find(item => item.index === breachIndex)
+  const cardId = breach?.prepSpells[spellIndex]
+  if (!breach || !cardId || cardId !== action.cardId) return ['That prepped spell is no longer available']
+  const block = matchingBlocks(cardId, playerId, g, { kind: 'while_prepped', phase: 'main_phase' })
+    .find((item, index) => `${cardId}:${breachIndex}:${spellIndex}:main_phase:${index}` === action.marker)
+  if (!block || !block.manualActivation) return ['That prepped spell has no available Main Phase action']
+
+  if (block.oncePerTurn) getPlayerTurnEffects(p).usedPreppedEffects.push(action.marker)
+  return runEffectResolution(g, {
+    playerId,
+    sourceCardId: cardId,
+    remainingEffects: [...block.effects],
+    preppedPhase: 'main_phase',
+  })
 }
 
 /** Resolve effects that belong to spells currently prepped on the player's breaches. */
@@ -2437,7 +2993,7 @@ export function resolvePreppedEffects(
       const blocks = matchingBlocks(cardId, playerId, g, { kind: 'while_prepped', phase })
       for (const [blockIndex, block] of blocks.entries()) {
       // Main-phase card actions are exposed as clickable choices instead of a blocking modal.
-      if (phase === 'main_phase' && isDeferredReturnAction(block.effects)) continue
+      if (phase === 'main_phase' && isManualPreppedActionBlock(block)) continue
       const blockEffects: CardEffect[] = phase === 'casting_phase_end' && block.requiresConfirmation
       ? [{
             kind: 'confirm_prepped_effect',
@@ -2612,7 +3168,9 @@ export function resolvePendingDecision(
   if (!decision || !resolution) return ['No pending card decision']
   if (decision.id !== decisionId) return ['Stale card decision']
   if (decision.kind !== answer.kind) return ['Decision answer has the wrong type']
-  if (decision.playerId !== resolution.playerId && decision.playerId !== effectPlayerId(resolution)) {
+  const reviewPlayerId = resolution.reviewingTopCard?.playerId
+  if (decision.playerId !== resolution.playerId && decision.playerId !== effectPlayerId(resolution)
+    && decision.playerId !== reviewPlayerId) {
     return ['Decision player mismatch']
   }
 
@@ -2644,6 +3202,25 @@ export function resolvePendingDecision(
       restore()
       return ['This choice is not available']
     }
+    if (effect.kind === 'review_top_cards') {
+      if (answer.optionId !== 'discard' && answer.optionId !== 'keep') {
+        restore()
+        return ['Invalid review choice']
+      }
+      const reviewed = resolution.reviewingTopCard
+      const player = reviewed ? getPlayer(g, reviewed.playerId) : null
+      if (!reviewed || !player || player.deck[0] !== reviewed.cardId) {
+        restore()
+        return ['The reviewed card is no longer on top of the deck']
+      }
+      if (answer.optionId === 'discard') {
+        player.deck.shift()
+        player.discard.unshift(reviewed.cardId)
+      }
+      resolution.reviewingTopCard = undefined
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} ${answer.optionId === 'discard' ? 'discards' : 'keeps'} ${getCard(reviewed.cardId).name}`, ...runEffectResolution(g, resolution)]
+    }
     const source = effect.kind === 'choose_one' ? effect.options.find(option => option.id === answer.optionId) : undefined
     if (!source) {
       g.pendingDecision = decision
@@ -2654,6 +3231,11 @@ export function resolvePendingDecision(
   } else if (answer.kind === 'choose_optional') {
     if (decision.kind !== 'choose_optional') return ['Decision answer has the wrong type']
     if (effect.kind === 'choose_optional') {
+      if (answer.accepted && decision.accept.disabled) {
+        restore()
+        return ['This choice is not available']
+      }
+      resolution.lastOptionalAccepted = answer.accepted
       if (answer.accepted) addRemainingEffects(resolution, effect.effects)
     } else if (effect.kind === 'activate_ability') {
       const target = getPlayer(g, effect.mageId)
@@ -2692,6 +3274,44 @@ export function resolvePendingDecision(
     resolution.selectedPreppedSpell = choice
     resolution.confirmedPreppedSpell = choice
     addRemainingEffects(resolution, [effect])
+  } else if (answer.kind === 'select_breach') {
+    if (decision.kind !== 'select_breach' || effect.kind !== 'focus_breach') {
+      restore()
+      return ['Decision answer has the wrong type']
+    }
+    const choice = decision.candidates.find(candidate =>
+      candidate.playerId === answer.choice.playerId && candidate.breachIndex === answer.choice.breachIndex)
+    if (!choice) {
+      restore()
+      return ['Invalid breach choice']
+    }
+    const current = getBreachChoices(g, effect.target, resolution.playerId)
+      .find(candidate => candidate.playerId === choice.playerId && candidate.breachIndex === choice.breachIndex)
+    if (!current) {
+      restore()
+      return ['The selected breach is no longer available']
+    }
+    const message = applyFreeBreachFocus(g, current)
+    return [message, ...runEffectResolution(g, resolution)]
+  } else if (answer.kind === 'select_exhaust_breach') {
+    if (decision.kind !== 'select_exhaust_breach' || effect.kind !== 'destroy_exhausted_breach') {
+      restore()
+      return ['Decision answer has the wrong type']
+    }
+    const choice = decision.candidates.find(candidate =>
+      candidate.playerId === answer.choice.playerId && candidate.breachIndex === answer.choice.breachIndex)
+    if (!choice || choice.playerId !== effect.playerId) {
+      restore()
+      return ['Invalid breach choice']
+    }
+    const current = getExhaustBreachChoices(g, effect.playerId)
+      .find(candidate => candidate.playerId === choice.playerId && candidate.breachIndex === choice.breachIndex)
+    if (!current) {
+      restore()
+      return ['The selected breach is no longer available']
+    }
+    const message = destroyExhaustedBreach(g, current)
+    return [message, ...runEffectResolution(g, resolution)]
   } else if (answer.kind === 'select_cards') {
     if (decision.kind !== 'select_cards') return ['Decision answer has the wrong type']
     const selected = answer.choices
@@ -2709,7 +3329,13 @@ export function resolvePendingDecision(
         restore()
         return ['Invalid card source']
       }
+      if (effect.cardType && !selected.every(choice => getCard(choice.cardId).type === effect.cardType)) {
+        restore()
+        return ['Invalid card type']
+      }
       const removed = discardSelectedCards(g, currentPlayerId, selected)
+      resolution.lastSelectedCardCount = removed.length
+      resolution.lastSelectedCardCost = removed.length > 0 ? Math.max(...removed.map(id => getCard(id).cost)) : 0
       return [`Discarded ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'destroy_cards') {
@@ -2721,7 +3347,19 @@ export function resolvePendingDecision(
       const p = getPlayer(g, currentPlayerId)
       ensurePlayerCollections(p)
       p.destroyedCards.push(...removed)
+      resolution.lastSelectedCardCount = removed.length
+      resolution.lastSelectedCardCost = removed.length > 0 ? Math.max(...removed.map(id => getCard(id).cost)) : 0
       return [`Destroyed ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'play_card_from_hand') {
+      const choice = selected[0]
+      if (!choice || choice.zone !== 'hand' || getCard(choice.cardId).type !== effect.cardType) {
+        restore()
+        return ['Invalid card choice']
+      }
+      resolution.selectedCardId = choice.cardId
+      addRemainingEffects(resolution, [effect])
+      return runEffectResolution(g, resolution)
     }
     if (effect.kind === 'return_card_to_hand') {
       const choice = selected[0]
@@ -2829,7 +3467,7 @@ export function resolvePendingDecision(
       restore()
       return ['The selected supply pile is no longer available']
     }
-    const amount = amountValue(g, effectPlayerId(resolution), effect.amount, resolution.sourceCardId)
+    const amount = amountValue(g, effectPlayerId(resolution), effect.amount, resolution.sourceCardId, resolution)
     return [...devourMarketPile(g, choice.pileIndex, amount), ...runEffectResolution(g, resolution)]
   } else if (answer.kind === 'select_player_target') {
     if (decision.kind !== 'select_player_target' ||
@@ -2851,12 +3489,20 @@ export function resolvePendingDecision(
       return [`${player.mageType} draws ${drawn} card(s)`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'deal_player_damage') {
+      const damage = amountValue(g, effectPlayerId(resolution), effect.amount, resolution.sourceCardId)
       const message = sufferPlayerDamage(
         g,
         target.playerId,
-        amountValue(g, effectPlayerId(resolution), effect.amount, resolution.sourceCardId),
+        damage,
       )
-      const death = checkPlayerDeath(g, target.playerId)
+      const excess = Math.max(0, -player.hp)
+      const death = checkPlayerDeath(g, target.playerId, true)
+      if (death) queuePlayerExhaustion(resolution, target.playerId, excess)
+      else if (player.exhausted) {
+        const gameOver = checkGameOver(g)
+        if (gameOver) resolution.remainingEffects = []
+        return [message, ...(gameOver ? [gameOver] : []), ...runEffectResolution(g, resolution)]
+      }
       return [message, ...(death ? [death] : []), ...runEffectResolution(g, resolution)]
     }
     resolution.effectPlayerId = target.playerId
@@ -2908,11 +3554,16 @@ export function resolvePendingDecision(
     const target = getPlayer(g, choice.cardId)
     const damage = Math.max(0, effect.damage)
     const message = sufferPlayerDamage(g, target.id, damage)
-    const death = checkPlayerDeath(g, target.id)
+    const excess = Math.max(0, -target.hp)
+    const death = checkPlayerDeath(g, target.id, true)
+    if (death) queuePlayerExhaustion(resolution, target.id, excess)
+    const gameOver = !death && target.exhausted ? checkGameOver(g) : null
+    if (gameOver) resolution.remainingEffects = []
     return [
       `Shuffled ${target.mageType}'s turn order card back into the deck`,
       message,
       ...(death ? [death] : []),
+      ...(gameOver ? [gameOver] : []),
       ...runEffectResolution(g, resolution),
     ]
   } else if (answer.kind === 'confirm_turn_order_reveal') {
@@ -2955,7 +3606,7 @@ export function resolvePendingDecision(
       restore()
       return ['Invalid damage target']
     }
-    const amount = amountValue(g, effectPlayerId(resolution), effect.amount, resolution.sourceCardId)
+    const amount = damageAmountValue(g, effectPlayerId(resolution), effect, resolution.sourceCardId, resolution)
     resolution.spellDamageEffectSeen = true
     const message = dealDamage(g, target, applySpellDamageBonus(resolution, amount))
     return [message, ...runEffectResolution(g, resolution)]
@@ -3116,10 +3767,12 @@ export function prepSpell(
   if (!b || !isPresentBreach(b)) return 'Invalid breach'
   const prepLimit = getPlayerTurnEffects(p).prepSpellLimit
   if (b.prepSpells.length >= prepLimit) return `Breach already has ${prepLimit} spell(s)`
-  if (!b.opened && !b.focusedThisTurn) return 'Cannot prep on this breach'
+  if (!b.opened && !b.focusedThisTurn && !card.prepToClosedBreach) return 'Cannot prep on this breach'
 
   p.hand.splice(idx, 1)
   b.prepSpells.push(cardId)
+  b.preppedThisTurn ??= []
+  b.preppedThisTurn.push(true)
   return `Prepped ${card.name} on Breach ${toRoman(breachIndex)}`
 }
 
@@ -3137,6 +3790,7 @@ export function returnPreppedSpellToHand(
   const cardId = breach.prepSpells[spellIndex]
   if (!cardId) return 'No spell is prepped at this position'
   breach.prepSpells.splice(spellIndex, 1)
+  breach.preppedThisTurn?.splice(spellIndex, 1)
   p.hand.push(cardId)
   return `Returned ${getCard(cardId).name} to hand`
 }
@@ -3157,7 +3811,13 @@ export function movePreppedSpell(
   if (!source || !target || !isPresentBreach(source) || !isPresentBreach(target)) return 'Invalid Breach'
   const sourceCardId = source.prepSpells[sourceSpellIndex]
   if (!sourceCardId) return 'No spell is prepped at the source position'
-  if (!target.opened && !target.focusedThisTurn) return 'The target Breach is not available for preparation'
+  // Most spells can only be prepared on an open or focused Breach. A spell
+  // with the prepToClosedBreach keyword (for example Feral Lightning) keeps
+  // that exception when it is repositioned from one Breach to another.
+  const sourceCard = getCard(sourceCardId)
+  if (!target.opened && !target.focusedThisTurn && !sourceCard.prepToClosedBreach) {
+    return 'The target Breach is not available for preparation'
+  }
 
   if (target.prepSpells.length > 0) {
     const swapIndex = targetSpellIndex ?? 0
@@ -3165,11 +3825,20 @@ export function movePreppedSpell(
     const targetCardId = target.prepSpells[swapIndex]!
     source.prepSpells[sourceSpellIndex] = targetCardId
     target.prepSpells[swapIndex] = sourceCardId
+    const sourceWasPrepped = source.preppedThisTurn?.[sourceSpellIndex] ?? false
+    const targetWasPrepped = target.preppedThisTurn?.[swapIndex] ?? false
+    source.preppedThisTurn ??= source.prepSpells.map(() => false)
+    target.preppedThisTurn ??= target.prepSpells.map(() => false)
+    source.preppedThisTurn[sourceSpellIndex] = targetWasPrepped
+    target.preppedThisTurn[swapIndex] = sourceWasPrepped
     return `Swapped ${getCard(sourceCardId).name} and ${getCard(targetCardId).name}`
   }
 
   source.prepSpells.splice(sourceSpellIndex, 1)
+  const movedWasPrepped = source.preppedThisTurn?.splice(sourceSpellIndex, 1)[0] ?? false
   target.prepSpells.push(sourceCardId)
+  target.preppedThisTurn ??= []
+  target.preppedThisTurn.push(movedWasPrepped)
   return `Moved ${getCard(sourceCardId).name} to Breach ${toRoman(targetBreachIndex)}`
 }
 
@@ -3329,7 +3998,6 @@ export function activateAbility(
   }
   const p = getPlayer(g, playerId)
   if (p.charge < p.chargeThreshold) return `Need ${p.chargeThreshold} charge, have ${p.charge}`
-  if (p.exhausted) return 'Mage is exhausted'
 
   const def = MAGES[p.mageType]!
   if (def.abilityEffects.length === 0) return 'This ability is not implemented yet'
@@ -3355,7 +4023,7 @@ export function activateAbility(
 export function canActivateAbilityDuringMain(g: GameState, playerId: string): boolean {
   if (g.currentPhase !== 'main' || g.currentTurn === 'nemesis' || g.pendingDecision || g.pendingEffect) return false
   const player = g.players.find(candidate => candidate.id === playerId)
-  if (!player || player.exhausted) return false
+  if (!player) return false
   const def = MAGES[player.mageType]
   if (!def || def.abilityEffects.length === 0 || def.abilityTrigger.kind !== 'main_phase') return false
   if (def.abilityEffects.some(effect => effect.kind === 'shuffle_turn_order_card') && getPlayerTurnOrderCards(g).length === 0) return false
@@ -3382,7 +4050,10 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
   turnEffects.nextBreachCostReductions = []
   turnEffects.usedPreppedEffects = []
   turnEffects.prepSpellLimit = 1
-  for (const b of p.breaches) b.focusedThisTurn = false
+  for (const b of p.breaches) {
+    b.focusedThisTurn = false
+    b.preppedThisTurn = b.prepSpells.map(() => false)
+  }
 
   // Draw to 5
   while (p.hand.length < 5) {
@@ -3475,9 +4146,15 @@ export function nemesisResolveAttack(
 
 export function sufferPlayerDamage(g: GameState, playerId: string, damage: number): string {
   const p = getPlayer(g, playerId)
+  const value = Math.max(0, damage)
   if (g.damagePrevention) return `${p.mageType} suffers no damage this turn`
-  p.hp -= Math.max(0, damage)
-  return `${p.mageType} takes ${damage} damage (${p.hp}/${p.maxHp})`
+  if (p.exhausted) {
+    const graveholdDamage = value * 2
+    g.gravehold.hp = Math.max(0, g.gravehold.hp - graveholdDamage)
+    return `${p.mageType} is exhausted; Gravehold takes ${graveholdDamage} damage (${g.gravehold.hp}/${g.gravehold.maxHp})`
+  }
+  p.hp -= value
+  return `${p.mageType} takes ${value} damage (${p.hp}/${p.maxHp})`
 }
 
 // ===== Win/Loss Checks =====
@@ -3494,37 +4171,73 @@ export function checkGameOver(g: GameState): string | null {
   return null
 }
 
-export function checkPlayerDeath(g: GameState, playerId: string): string | null {
+export function checkPlayerDeath(g: GameState, playerId: string, deferConsequences = false): string | null {
   const p = getPlayer(g, playerId)
   if (p.hp <= 0 && !p.exhausted) {
     const excess = Math.max(0, -p.hp)
     p.hp = 0
     p.exhausted = true
-    g.gravehold.hp = Math.max(0, g.gravehold.hp - excess * 2)
-    const openB = p.breaches.find(b => b.opened)
-    if (openB) { openB.opened = false; openB.prepSpells = [] }
-    p.charge = 0
-    return `${p.mageType} EXHAUSTED! Breach lost, Gravehold -${excess * 2}`
+    // Keep the legacy direct helper behavior for callers that only need the
+    // immediate state transition. Effect-resolution callers pass `true` so
+    // the ordered Unleash → Breach → charge → overflow sequence can pause for
+    // player input and resume safely.
+    if (!deferConsequences) {
+      g.gravehold.hp = Math.max(0, g.gravehold.hp - excess * 2)
+      const openBreach = p.breaches.find(breach => isPresentBreach(breach) && breach.opened)
+      if (openBreach) {
+        openBreach.opened = false
+        openBreach.prepSpells = []
+        openBreach.preppedThisTurn = []
+        openBreach.present = false
+      }
+      p.charge = 0
+      const gameOver = checkGameOver(g)
+      return gameOver
+        ? `${p.mageType} EXHAUSTED! Breach lost, Gravehold -${excess * 2}; ${gameOver}`
+        : `${p.mageType} EXHAUSTED! Breach lost, Gravehold -${excess * 2}`
+    }
+    return `${p.mageType} EXHAUSTED! Nemesis unleashes twice; choose a Breach to destroy`
   }
   return null
 }
 
+/** Start an exhaustion continuation from a caller outside an effect frame. */
+export function resolvePlayerExhaustion(
+  g: GameState, playerId: string, overflowDamage: number,
+): string[] {
+  if (g.pendingDecision || g.pendingEffect) return ['Another card effect is already waiting for a decision']
+  return runEffectResolution(g, {
+    playerId,
+    remainingEffects: [{
+      kind: 'exhaust_player',
+      playerId,
+      overflowDamage: Math.max(0, overflowDamage),
+    }],
+  })
+}
+
 export function canPlayerAct(g: GameState, playerId: string): boolean {
   const p = getPlayer(g, playerId)
-  if (p.exhausted) return false
   if (g.pendingDecision) return false
 
   // Has non-spell cards in hand
   if (p.hand.some(cid => getCard(cid).type !== 'spell')) return true
   // Has open or focused breach to prep a spell
-  if (p.hand.some(cid => getCard(cid).type === 'spell') &&
-    p.breaches.some(b => isPresentBreach(b) && (b.opened || b.focusedThisTurn) &&
-      b.prepSpells.length < getPlayerTurnEffects(p).prepSpellLimit)) return true
+  if (p.breaches.some(b => isPresentBreach(b) && b.prepSpells.length < getPlayerTurnEffects(p).prepSpellLimit &&
+    p.hand.some(cid => {
+      const card = getCard(cid)
+      return card.type === 'spell' && (b.opened || b.focusedThisTurn || card.prepToClosedBreach)
+    }))) return true
 
   // A Power card's To Discard action remains a legal Main Phase action even
   // when the player has no Aether left. Keep it in the action check so an
   // Aether or Charge payment cannot end the phase before this interrupt.
   if (getNemesisDiscardActions(g, playerId).length > 0) return true
+
+  // A prepped spell such as Arcane Nexus can expose a once-per-turn Main
+  // Phase action even when the player has no cards to play or buy. Keep the
+  // turn open so the clickable action is not skipped by auto-end logic.
+  if (getPreppedCardActions(g, playerId).length > 0) return true
 
   const aether = getSpendableAether(p, 'general')
 

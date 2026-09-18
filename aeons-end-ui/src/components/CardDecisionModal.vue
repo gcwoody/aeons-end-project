@@ -19,6 +19,11 @@ const selectedTurnOrder = ref<number[]>([])
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
 const isDirectBoardCardDecision = computed(() => isBoardCardSelectionActive())
+const reviewedCardId = computed(() => {
+  const current = decision.value
+  if (current?.kind !== 'choose_one' || state.game?.pendingEffect?.awaiting?.kind !== 'review_top_cards') return null
+  return state.game.pendingEffect.reviewingTopCard?.cardId ?? null
+})
 type DirectBoardCardDecision = Extract<PendingDecision, { kind: 'select_cards' | 'select_collective_cards' }>
 const boardCardDecision = computed<DirectBoardCardDecision | null>(() => {
   const current = decision.value
@@ -227,11 +232,33 @@ function confirmNemesisDraw() {
     </div>
   </div>
 
-  <div v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'" class="overlay decision-overlay">
+  <div v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'" class="overlay decision-overlay">
     <div ref="modalEl" class="overlay-card decision-modal draggable-modal" :class="{ dragging }" :style="{ ...modalStyle, '--decision-columns': decisionColumns }" @pointerdown="startDrag">
       <h2>{{ decision.prompt }}</h2>
 
-      <div v-if="decision.kind === 'choose_one'" class="decision-options">
+      <template v-if="decision.kind === 'choose_one' && reviewedCardId">
+        <p class="decision-hint">
+          {{ playerName(state.game?.pendingEffect?.reviewingTopCard?.playerId ?? decision.playerId) }} revealed this card from the top of their deck.
+        </p>
+        <div class="review-top-card">
+          <img v-if="cardImageUrl(reviewedCardId)" :src="cardImageUrl(reviewedCardId)" :alt="getCard(reviewedCardId).name" draggable="false" />
+          <span v-else>{{ getCard(reviewedCardId).name }}</span>
+        </div>
+        <div class="decision-options">
+          <button
+            v-for="option in decision.options"
+            :key="option.id"
+            class="btn primary decision-option"
+            :class="{ unavailable: option.disabled }"
+            :disabled="option.disabled"
+            @click="answer({ kind: 'choose_one', optionId: option.id })"
+          >
+            {{ option.label }}
+          </button>
+        </div>
+      </template>
+
+      <div v-else-if="decision.kind === 'choose_one'" class="decision-options">
         <button
           v-for="option in decision.options"
           :key="option.id"
@@ -246,7 +273,13 @@ function confirmNemesisDraw() {
       </div>
 
       <div v-else-if="decision.kind === 'choose_optional'" class="decision-options">
-        <button class="btn primary decision-option" @click="answer({ kind: 'choose_optional', accepted: true })">
+        <button
+          class="btn primary decision-option"
+          :class="{ unavailable: decision.accept.disabled }"
+          :disabled="decision.accept.disabled"
+          :title="decision.accept.disabled ? 'This option is not available right now.' : undefined"
+          @click="answer({ kind: 'choose_optional', accepted: true })"
+        >
           {{ decision.accept.label }}
         </button>
         <button class="btn decision-option" @click="answer({ kind: 'choose_optional', accepted: false })">

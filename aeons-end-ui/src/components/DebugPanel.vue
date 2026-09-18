@@ -1,14 +1,17 @@
 <script setup lang="ts">
 import { computed, ref, reactive, onMounted, onBeforeUnmount } from 'vue'
 import { getPlayer, toRoman } from '@engine/engine'
-import { getCard, INITIAL_CARDS, MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
-import type { GameState } from '@engine/types'
+import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
+import type { CardDef, GameState } from '@engine/types'
 import { useGame } from '../game/useGame'
+import { cardImageUrl } from '../card-images'
+import DebugCardPicker from './DebugCardPicker.vue'
+import CardHoverPreview from './CardHoverPreview.vue'
 
 const { state, toggleDebug, clearSaves } = useGame()
 
 const panelEl = ref<HTMLElement | null>(null)
-const panelPosition = reactive({ x: 24, y: 24, width: 380, height: 600 })
+const panelPosition = reactive({ x: 24, y: 24, width: 680, height: 760 })
 const interaction = ref<{
   type: 'drag' | 'resize'
   pointerX: number
@@ -112,11 +115,15 @@ const players = computed(() => state.game?.players ?? [])
 const nemesis = computed(() => state.game!.nemesis)
 const gravehold = computed(() => state.game!.gravehold)
 
-const allCards = computed(() => [...Object.keys(INITIAL_CARDS), ...Object.keys(MARKET_CARDS)])
+const allCards = computed<CardDef[]>(() => {
+  const ids = [...Object.keys(INITIAL_CARDS), ...Object.keys(ALL_MARKET_CARDS)]
+  return [...new Set(ids)].map(cardId => getCard(cardId))
+})
 const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId => {
   const card = getCard(cardId)
   return card.type === 'attack' || card.type === 'minion' || card.type === 'power'
 }))
+const allNemesisCardDefs = computed<CardDef[]>(() => allNemesisCards.value.map(cardId => getCard(cardId)))
 const addPlayer = ref('')
 const addZone = ref<'hand' | 'deck' | 'discard'>('hand')
 const addCard = ref('crystal')
@@ -234,28 +241,56 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="debug-section">
-        <span class="debug-label">Add card</span>
-        <select v-model="addCard">
-          <option v-for="cid in allCards" :key="cid" :value="cid">{{ cid }} — {{ getCard(cid).name }}</option>
-        </select>
-        <select v-model="addPlayer">
-          <option v-for="p in players" :key="p.id" :value="p.id">{{ p.mageType }} ({{ p.id }})</option>
-        </select>
-        <select v-model="addZone">
-          <option value="hand">hand</option>
-          <option value="deck">deck</option>
-          <option value="discard">discard</option>
-        </select>
-        <button class="btn small" @click="addCardToPlayer()">Add</button>
+        <DebugCardPicker v-model="addCard" :cards="allCards" title="Add card" />
+        <div class="debug-card-selected" aria-live="polite">
+          <CardHoverPreview v-if="cardImageUrl(addCard)" :card-id="addCard" :preview-width="210" :preview-height="315">
+            <img :src="cardImageUrl(addCard)" :alt="getCard(addCard).name" draggable="false" />
+          </CardHoverPreview>
+          <div>
+            <span class="debug-label">Selected</span>
+            <strong>{{ getCard(addCard).name }}</strong>
+            <span class="debug-hint">{{ getCard(addCard).type }} · {{ getCard(addCard).cost }} Aether</span>
+          </div>
+        </div>
+        <div class="debug-row debug-add-controls">
+          <label>
+            Player
+            <select v-model="addPlayer" aria-label="Debug card player">
+              <option value="" disabled>Select player</option>
+              <option v-for="p in players" :key="p.id" :value="p.id">{{ p.mageType }} ({{ p.id }})</option>
+            </select>
+          </label>
+          <label>
+            Zone
+            <select v-model="addZone" aria-label="Debug card zone">
+              <option value="hand">Hand</option>
+              <option value="deck">Deck</option>
+              <option value="discard">Discard</option>
+            </select>
+          </label>
+          <button class="btn small" :disabled="!addPlayer" @click="addCardToPlayer()">Add Card</button>
+        </div>
       </div>
 
       <div class="debug-section">
-        <span class="debug-label">Add Nemesis card</span>
-        <select v-model="addNemesisCard">
-          <option v-for="cid in allNemesisCards" :key="cid" :value="cid">
-            {{ cid }} — {{ getCard(cid).name }} ({{ getCard(cid).type }})
-          </option>
-        </select>
+        <DebugCardPicker
+          v-model="addNemesisCard"
+          :cards="allNemesisCardDefs"
+          title="Add Nemesis card"
+          search-placeholder="Search Nemesis cards..."
+          :show-cost="false"
+          :global-shortcut="false"
+        />
+        <div class="debug-card-selected" aria-live="polite">
+          <CardHoverPreview v-if="cardImageUrl(addNemesisCard)" :card-id="addNemesisCard" :preview-width="210" :preview-height="315">
+            <img :src="cardImageUrl(addNemesisCard)" :alt="getCard(addNemesisCard).name" draggable="false" />
+          </CardHoverPreview>
+          <div>
+            <span class="debug-label">Selected</span>
+            <strong>{{ getCard(addNemesisCard).name }}</strong>
+            <span class="debug-hint">{{ getCard(addNemesisCard).type }} card</span>
+          </div>
+        </div>
         <span class="debug-hint">Minion and Power cards enter play; Attack cards go to the top of the Nemesis deck.</span>
         <button class="btn small" @click="addCardToNemesis()">Add to Nemesis</button>
       </div>

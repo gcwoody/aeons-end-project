@@ -1,0 +1,141 @@
+import { expect, test } from '@playwright/test'
+
+const newMarketCards = [
+  'clouded_sapphire', 'jade', 'searing_ruby', 'sifters_pearl',
+  'blasting_staff', 'focusing_orb', 'mages_talisman', 'unstable_prism',
+  'amplify_vision', 'chaos_arc', 'consuming_void', 'dark_fire',
+  'feral_lightning', 'ignite', 'oblivion_swell', 'phoenix_flame',
+  'spectral_echo', 'wildfire_whip',
+]
+
+async function openDebug(page: import('@playwright/test').Page) {
+  await page.keyboard.press('Control+d')
+  await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
+}
+
+test('Debug card picker searches by image and supports the slash shortcut', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await openDebug(page)
+
+  const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
+  const picker = addCardSection.locator('.debug-card-picker')
+  const search = picker.getByRole('searchbox', { name: 'Search debug cards' })
+  await expect(picker.locator('.debug-card-option')).toHaveCount(0)
+  await page.keyboard.press('/')
+  await expect(search).toBeFocused()
+  await search.fill('phoenix')
+  await expect(picker.locator('.debug-card-option')).toHaveCount(1)
+  await expect(picker.locator('img[alt="Phoenix Flame"]')).toBeVisible()
+  await picker.locator('.debug-card-option').hover()
+  await expect(page.locator('.card-hover-preview img[alt="Phoenix Flame"]')).toBeVisible()
+  await picker.locator('.debug-card-option').click()
+  await expect(addCardSection.locator('.debug-card-selected')).toContainText('Phoenix Flame')
+
+  await search.fill('')
+  await picker.getByRole('button', { name: 'Spell', exact: true }).click()
+  await expect(picker.locator('.debug-card-option')).toHaveCount(17)
+})
+
+test('Debug Tools exposes every added Wave 1 market card and renders it', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await openDebug(page)
+
+  const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
+  const cardPicker = addCardSection.locator('.debug-card-picker')
+  const playerSelect = addCardSection.getByLabel('Debug card player')
+  await playerSelect.selectOption('wave1_JIAN')
+  await addCardSection.getByLabel('Debug card zone').selectOption('hand')
+  for (const type of ['Gem', 'Relic', 'Spell']) {
+    await cardPicker.locator('.debug-card-group-toggle').filter({ hasText: type }).click()
+  }
+  for (const cardId of newMarketCards) {
+    const alt = cardId === 'mages_talisman' ? "Mage's Talisman" : cardId === 'sifters_pearl' ? "Sifter's Pearl" : cardId
+      .split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+    await cardPicker.locator('.debug-card-option').filter({ has: page.locator(`img[alt="${alt}"]`) }).first().click()
+    await addCardSection.getByRole('button', { name: 'Add Card', exact: true }).click()
+  }
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+  await page.locator('.char-btn').filter({ hasText: 'jian' }).click()
+
+  for (const cardId of newMarketCards) {
+    const alt = cardId === 'mages_talisman' ? "Mage's Talisman" : cardId === 'sifters_pearl' ? "Sifter's Pearl" : cardId
+      .split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
+    await expect(page.locator(`.hand img[alt="${alt}"]`)).toHaveCount(1)
+  }
+})
+
+test('Searing Ruby shows spell-only Aether in the player control bar', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await openDebug(page)
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  debugState.selectedPlayer = player.id
+  debugState.phase = 'main'
+  debugState.game.currentTurn = player.id
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  player.hand = ['searing_ruby']
+  player.playedThisTurn = []
+  player.bonusAether = 0
+  player.regularAetherSpent = 0
+  player.condAetherSpent = {}
+  player.conditionalAetherEarned = {}
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.hand .card').filter({ has: page.locator('img[alt="Searing Ruby"]') }).click()
+  await expect(page.locator('.aether')).toContainText('1 spell aether')
+})
+
+test("Sifter's Pearl shows the revealed card in the decision modal", async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await openDebug(page)
+
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  const ally = debugState.game.players[1]
+  debugState.selectedPlayer = player.id
+  debugState.phase = 'main'
+  debugState.game.currentTurn = player.id
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  player.hand = ['sifters_pearl']
+  player.playedThisTurn = []
+  player.deck = ['jade']
+  player.discard = []
+  player.bonusAether = 0
+  ally.deck = []
+  ally.discard = []
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.hand .card').filter({ has: page.locator("img[alt=\"Sifter's Pearl\"]") }).click()
+  await expect(page.locator('.decision-modal')).toBeVisible()
+  await expect(page.locator('.review-top-card img[alt="Jade"]')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Discard the revealed card' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Return it to the top of the deck' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Discard the revealed card' }).click()
+  await expect(page.locator('.review-top-card')).toHaveCount(0)
+  await expect(page.locator('.decision-modal')).toHaveCount(0)
+})

@@ -2,10 +2,15 @@
 import { computed, ref, watch } from 'vue'
 import { useGame } from '../game/useGame'
 import { useModalDrag } from '../game/useModalDrag'
-import { MAGES, NEMESES } from '@engine/data'
+import { MAGES, NEMESES, ALL_MARKET_CARDS, MARKET_SLOT_TYPES } from '@engine/data'
+import type { MarketSetupConfig } from '@engine/types'
+import { cardImageUrl, nemesisMatImageUrl } from '../card-images'
+import { mageImageUrls } from '../mage-images'
+import CardHoverPreview from './CardHoverPreview.vue'
 
 const {
   state, newGame, resumeGame,
+  rerollMarketTemplate,
   requestDeleteSave, cancelDeleteSave, deleteSave,
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
@@ -14,17 +19,84 @@ const mageOptions = computed(() => Object.values(MAGES))
 const player2MageOptions = computed(() => mageOptions.value.filter(mage => mage.type !== state.mage1))
 const nemesisOptions = computed(() => Object.values(NEMESES))
 const duplicateMage = computed(() => state.mage1 === state.mage2)
+const marketCards = computed(() => Object.values(ALL_MARKET_CARDS)
+  .sort((a, b) => a.type.localeCompare(b.type) || a.cost - b.cost || a.name.localeCompare(b.name)))
+const marketSlotLabels = ['Gem 1', 'Gem 2', 'Gem 3', 'Relic 1', 'Relic 2', 'Spell 1', 'Spell 2', 'Spell 3', 'Spell 4']
+const marketSlotTypes = MARKET_SLOT_TYPES
+const replacementSlot = ref<number | null>(null)
+function cardsForSlot(index: number) {
+  return marketCards.value.filter(card => card.type === marketSlotTypes[index])
+}
+const replacementCards = computed(() => {
+  const index = replacementSlot.value
+  if (index === null) return []
+  return cardsForSlot(index)
+})
+const replacementSlotLabel = computed(() => replacementSlot.value === null ? '' : marketSlotLabels[replacementSlot.value]!)
+const replacementSlotType = computed(() => replacementSlot.value === null ? '' : marketSlotTypes[replacementSlot.value]!)
+const replacementCurrentId = computed(() => replacementSlot.value === null ? '' : state.marketSlots[replacementSlot.value] ?? '')
+const mage1Preview = computed(() => mageImageUrls(state.mage1))
+const mage2Preview = computed(() => mageImageUrls(state.mage2))
+const nemesisPreview = computed(() => nemesisMatImageUrl(state.nemesisType, 'front'))
+const marketSetupValid = computed(() => state.marketSlots.length === 9
+  && new Set(state.marketSlots).size === 9
+  && state.marketSlots.every((cardId, index) =>
+    !!ALL_MARKET_CARDS[cardId] && ALL_MARKET_CARDS[cardId].type === marketSlotTypes[index]))
 
-watch(() => [state.mage1, state.mage2], () => {
+function randomChoice<T>(items: T[]): T | undefined {
+  return items[Math.floor(Math.random() * items.length)]
+}
+
+function randomizeMage(player: 1 | 2) {
+  const currentOtherMage = player === 1 ? state.mage2 : state.mage1
+  const currentMage = player === 1 ? state.mage1 : state.mage2
+  const alternatives = mageOptions.value.filter(mage =>
+    mage.type !== currentOtherMage && mage.type !== currentMage)
+  const candidates = alternatives.length > 0
+    ? alternatives
+    : mageOptions.value.filter(mage => mage.type !== currentOtherMage)
+  const selected = randomChoice(candidates)
+  if (!selected) return
+  if (player === 1) state.mage1 = selected.type
+  else state.mage2 = selected.type
+}
+
+function randomizeNemesis() {
+  const candidates = nemesisOptions.value.filter(nemesis => nemesis.type !== state.nemesisType)
+  const selected = randomChoice(candidates.length > 0 ? candidates : nemesisOptions.value)
+  if (selected) state.nemesisType = selected.type
+}
+
+watch(() => [state.mage1, state.mage2, state.marketMode, ...state.marketSlots], () => {
   selectionError.value = ''
 })
 
 function startSelectedGame() {
   selectionError.value = duplicateMage.value
     ? 'This Mage has already been selected by another player.'
-    : ''
+    : !marketSetupValid.value ? 'Market Setup must contain nine different cards.' : ''
   if (selectionError.value) return
-  newGame(state.mage1, state.mage2, state.nemesisType, state.nemesisDifficulty)
+  const marketSetup: MarketSetupConfig = {
+    mode: 'template1',
+    slots: [...state.marketSlots],
+  }
+  newGame(state.mage1, state.mage2, state.nemesisType, state.nemesisDifficulty, marketSetup)
+}
+
+function openReplacement(index: number) {
+  replacementSlot.value = index
+}
+
+function closeReplacement() {
+  replacementSlot.value = null
+}
+
+function replaceMarketCard(cardId: string) {
+  const index = replacementSlot.value
+  if (index === null) return
+  if (!replacementCards.value.some(card => card.id === cardId)) return
+  state.marketSlots[index] = cardId
+  replacementSlot.value = null
 }
 
 function saveTime(timestamp: number): string {
@@ -38,45 +110,115 @@ function turnLabel(turn: string): string {
 
 <template>
   <div class="setup">
-    <h1>Aeon's End — Digital Demo</h1>
-    <p style="color: var(--muted)">Two players vs one Nemesis · Six turn-order cards</p>
-    <div class="row">
-      <label>
-        Player 1
-        <select v-model="state.mage1">
-          <option v-for="mage in mageOptions" :key="mage.type" :value="mage.type">
-            {{ mage.type }} ({{ mage.abilityName }})
-          </option>
-        </select>
-      </label>
-      <label>
-        Player 2
-        <select v-model="state.mage2">
-          <option v-for="mage in player2MageOptions" :key="mage.type" :value="mage.type">
-            {{ mage.type }} ({{ mage.abilityName }})
-          </option>
-        </select>
-      </label>
-      <label>
-        Nemesis
-        <select v-model="state.nemesisType" aria-label="Nemesis">
-          <option v-for="nemesis in nemesisOptions" :key="nemesis.type" :value="nemesis.type">
-            {{ nemesis.name }}
-          </option>
-        </select>
-      </label>
-      <label>
-        Nemesis Difficulty
-        <select v-model="state.nemesisDifficulty" aria-label="Nemesis Difficulty">
-          <option value="standard">Standard</option>
-          <option value="increased">Increased</option>
-        </select>
-      </label>
-    </div>
+    <header class="setup-header">
+      <h1>Aeon's End — Digital Demo</h1>
+      <p>Two players vs one Nemesis · Six turn-order cards</p>
+    </header>
     <p v-if="selectionError || duplicateMage" class="setup-error">
       {{ selectionError || 'This Mage has already been selected by another player.' }}
     </p>
-    <div class="row">
+    <main class="setup-layout">
+      <section class="setup-mage-column setup-character-column" aria-label="Mage selection">
+        <label>
+          Player 1 Mage
+          <span class="setup-select-row">
+          <select v-model="state.mage1" aria-label="Player 1 Mage">
+            <option v-for="mage in mageOptions" :key="mage.type" :value="mage.type">
+              {{ mage.type }}
+            </option>
+          </select>
+          <button type="button" class="btn small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Random</button>
+          </span>
+        </label>
+        <article class="setup-preview-card">
+          <img v-if="mage1Preview" :src="mage1Preview.front" :alt="`${state.mage1} mage mat`" draggable="false" />
+        </article>
+        <label>
+          Player 2 Mage
+          <span class="setup-select-row">
+          <select v-model="state.mage2" aria-label="Player 2 Mage">
+            <option v-for="mage in player2MageOptions" :key="mage.type" :value="mage.type">
+              {{ mage.type }}
+            </option>
+          </select>
+          <button type="button" class="btn small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Random</button>
+          </span>
+        </label>
+        <article class="setup-preview-card">
+          <img v-if="mage2Preview" :src="mage2Preview.front" :alt="`${state.mage2} mage mat`" draggable="false" />
+        </article>
+      </section>
+
+      <section class="setup-nemesis-column setup-character-column" aria-label="Nemesis selection">
+        <label>
+          Nemesis
+          <span class="setup-select-row">
+          <select v-model="state.nemesisType" aria-label="Nemesis">
+            <option v-for="nemesis in nemesisOptions" :key="nemesis.type" :value="nemesis.type">
+              {{ nemesis.name }}
+            </option>
+          </select>
+          <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis">Random</button>
+          </span>
+        </label>
+        <label>
+          Nemesis Difficulty
+          <select v-model="state.nemesisDifficulty" aria-label="Nemesis Difficulty">
+            <option value="standard">Standard</option>
+            <option value="increased">Increased</option>
+          </select>
+        </label>
+        <article class="setup-preview-card nemesis-preview-card">
+          <img v-if="nemesisPreview" :src="nemesisPreview" :alt="`${state.nemesisType} nemesis mat`" draggable="false" />
+        </article>
+      </section>
+
+      <section class="market-setup" aria-label="Market Setup">
+        <div class="market-setup-toolbar">
+          <h2>Market Setup</h2>
+          <div class="market-template-controls">
+            <select v-model="state.marketMode" aria-label="Market Setup Template">
+              <option value="template1">Template One</option>
+            </select>
+            <button
+              type="button"
+              class="btn small"
+              aria-label="Refresh semi-random market"
+              @click="rerollMarketTemplate"
+            >
+              Refresh
+            </button>
+          </div>
+        </div>
+        <p class="setup-hint">Template One: Gems ≤3 / 4 / ≥5 Aether · Relics ≤3 / ≥4 Aether · Spells 3 / 4 / 5 / ≥6 Aether.</p>
+        <div class="market-slot-grid">
+          <CardHoverPreview
+            v-for="(label, index) in marketSlotLabels"
+            :key="label"
+            :card-id="state.marketSlots[index]"
+            :preview-width="280"
+            :preview-height="394"
+            :preview-delay="200"
+          >
+            <button
+              type="button"
+              class="market-slot-card"
+              :aria-label="`${label}: ${ALL_MARKET_CARDS[state.marketSlots[index]]?.name ?? 'Choose a card'}. Click to replace.`"
+              @click="openReplacement(index)"
+            >
+              <img
+                v-if="cardImageUrl(state.marketSlots[index])"
+                :src="cardImageUrl(state.marketSlots[index])"
+                :alt="ALL_MARKET_CARDS[state.marketSlots[index]]?.name ?? 'Market card'"
+                draggable="false"
+              />
+              <span v-else class="market-slot-missing">Choose a card</span>
+            </button>
+          </CardHoverPreview>
+        </div>
+      </section>
+    </main>
+    <div class="setup-start-row">
       <button class="btn primary" style="font-size: 15px; padding: 10px 28px" @click="startSelectedGame">
         Start Game
       </button>
@@ -105,6 +247,37 @@ function turnLabel(turn: string): string {
         <div class="overlay-actions">
           <button class="btn danger" @click="deleteSave(state.deleteSaveId!)">Delete</button>
           <button class="btn" @click="cancelDeleteSave">Cancel</button>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="replacementSlot !== null" class="overlay setup-market-overlay" role="dialog" aria-modal="true" aria-labelledby="market-picker-title" @click.self="closeReplacement">
+      <div class="overlay-card setup-market-picker">
+        <div class="setup-market-picker-head">
+          <h2 id="market-picker-title">Choose {{ replacementSlotLabel }}</h2>
+          <button type="button" class="btn small" aria-label="Close market card picker" @click="closeReplacement">Close</button>
+        </div>
+        <p class="setup-hint">Choose one {{ replacementSlotType }}. Cards already used in another slot are unavailable.</p>
+        <div class="market-picker-grid">
+          <CardHoverPreview
+            v-for="card in replacementCards"
+            :key="card.id"
+            :card-id="card.id"
+            :preview-width="280"
+            :preview-height="394"
+            :preview-delay="200"
+          >
+            <button
+              type="button"
+              class="market-picker-card"
+              :aria-label="`Choose ${card.name}`"
+              :class="{ selected: card.id === replacementCurrentId, unavailable: card.id !== replacementCurrentId && state.marketSlots.includes(card.id) }"
+              :disabled="card.id !== replacementCurrentId && state.marketSlots.includes(card.id)"
+              @click="replaceMarketCard(card.id)"
+            >
+              <img v-if="cardImageUrl(card.id)" :src="cardImageUrl(card.id)" :alt="card.name" draggable="false" />
+            </button>
+          </CardHoverPreview>
         </div>
       </div>
     </div>

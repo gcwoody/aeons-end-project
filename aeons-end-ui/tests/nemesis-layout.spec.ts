@@ -1,5 +1,15 @@
 import { test, expect } from '@playwright/test'
 
+const defaultMarketPiles = [
+  ['vriswood_amber', 7], ['diamond_cluster', 4], ['burning_opal', 5],
+  ['flexing_dagger', 2], ['bottled_vortex', 3],
+  ['lava_tendril', 5], ['essence_theft', 5], ['planar_insight', 6], ['arcane_nexus', 7],
+]
+
+function useDefaultMarket(game: any) {
+  game.market.piles = defaultMarketPiles.map(([cardId, remaining]) => ({ cardId, remaining }))
+}
+
 test('Nemesis board proportions, five asset regions, HP space and pile interactions', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -148,7 +158,7 @@ test('Prince of Gluttons displays and sells the top Devoured card directly', asy
   await expect(page.getByRole('img', { name: 'Prince of Gluttons mat' })).toBeVisible()
   await expect(page.getByLabel('Devoured Pile', { exact: true })).toBeVisible()
   await expect(page.locator('.nemesis-specific-pile')).toBeVisible()
-  await expect(page.locator('.nemesis-specific-pile img')).toHaveAttribute('alt', "V'riswood Amber")
+  await expect(page.locator('.nemesis-specific-pile img')).toHaveCount(1)
   await expect(page.locator('.pile-modal')).toHaveCount(0)
 
   await page.keyboard.press('Control+d')
@@ -162,6 +172,8 @@ test('Prince of Gluttons displays and sells the top Devoured card directly', asy
   debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'main'
   debugState.game.players[0].bonusAether = 3
+  useDefaultMarket(debugState.game)
+  debugState.game.nemesis.strikeDeck = ['vriswood_amber', 'diamond_cluster', 'burning_opal']
   await stateField.fill(JSON.stringify(debugState))
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
@@ -213,9 +225,11 @@ test('Lobotomize highlights spell supply piles after its Devour option is chosen
   const debugState = JSON.parse(await stateField.inputValue())
   const playerId = debugState.game.players[0].id
   debugState.phase = 'nemesis_draw'
+  debugState.pendingNemesis = null
   debugState.selectedPlayer = playerId
   debugState.game.currentTurn = 'nemesis'
   debugState.game.currentPhase = 'nemesis_draw'
+  debugState.game.nemesisResolution = null
   debugState.game.pendingDecision = {
     id: 'lobotomize-effect', playerId, prompt: 'Choose the Lobotomize effect', kind: 'choose_one',
     options: [
@@ -236,6 +250,7 @@ test('Lobotomize highlights spell supply piles after its Devour option is chosen
       ],
     },
   }
+  useDefaultMarket(debugState.game)
   await stateField.fill(JSON.stringify(debugState))
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()

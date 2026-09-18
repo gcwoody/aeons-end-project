@@ -149,12 +149,19 @@ test('Kadir can stack two spells on one Breach in the UI', async ({ page }) => {
   const kadirSection = page.locator('.debug-section').filter({ hasText: 'kadir (wave1_KADIR)' })
   await kadirSection.locator('input[type="number"]').nth(1).fill('5')
   const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
+  const cardPicker = addCardSection.locator('.debug-card-picker')
+  const playerSelect = addCardSection.getByLabel('Debug card player')
+  const zoneSelect = addCardSection.getByLabel('Debug card zone')
+  for (const type of ['Gem', 'Relic', 'Spell']) {
+    await cardPicker.locator('.debug-card-group-toggle').filter({ hasText: type }).click()
+  }
   for (const playerId of ['wave1_KADIR', 'wave1_BRAMA']) {
     for (const cardId of ['spark', 'flare']) {
-      await addCardSection.locator('select').nth(0).selectOption(cardId)
-      await addCardSection.locator('select').nth(1).selectOption(playerId)
-      await addCardSection.locator('select').nth(2).selectOption('hand')
-      await addCardSection.getByRole('button', { name: 'Add', exact: true }).click()
+      const cardName = cardId === 'spark' ? 'Spark' : 'Flare'
+      await cardPicker.locator('.debug-card-option').filter({ has: page.locator(`img[alt="${cardName}"]`) }).click()
+      await playerSelect.selectOption(playerId)
+      await zoneSelect.selectOption('hand')
+      await addCardSection.getByRole('button', { name: 'Add Card', exact: true }).click()
     }
   }
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
@@ -208,6 +215,42 @@ test('prepped spells can move between Breaches and swap positions during Main Ph
 
   await expect(page.locator('.breach[data-breach-index="1"] img[alt="Flare"]')).toBeVisible()
   await expect(page.locator('.breach[data-breach-index="2"] img[alt="Spark"]')).toBeVisible()
+})
+
+test('Feral Lightning can move onto a closed Breach during Main Phase', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = []
+    game.players[0].breaches[0].opened = true
+    game.players[0].breaches[0].prepSpells = ['feral_lightning']
+    game.players[0].breaches[1].opened = false
+    game.players[0].breaches[1].focusedThisTurn = false
+    game.players[0].breaches[1].prepSpells = []
+  }, 'main')
+
+  const source = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  const target = page.locator('.breach[data-breach-index="2"]')
+  await expect(source).toHaveClass(/repositionable-spell/)
+  await expect(target).not.toHaveClass(/drag-target/)
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  expect(sourceBox).not.toBeNull()
+  expect(targetBox).not.toBeNull()
+  await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + targetBox!.height / 2, { steps: 8 })
+  await expect(target).toHaveClass(/move-drag-target/)
+  await page.mouse.up()
+
+  await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(0)
+  await expect(page.locator('.breach[data-breach-index="2"] img[alt="Feral Lightning"]')).toBeVisible()
 })
 
 test('prepped spells remain movable during discard order before the turn fully ends', async ({ page }) => {
@@ -340,6 +383,94 @@ test('a prepped spell shows its damage preview while hovered during Casting Phas
   await expect(badge).toHaveText('1')
 })
 
+test('Oblivion Swell highlights and grants Aether when its prepped spell is clicked', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = ['crystal']
+    game.players[0].bonusAether = 0
+    game.players[0].turnEffects.usedPreppedEffects = []
+    game.players[0].breaches[0].opened = true
+    game.players[0].breaches[0].prepSpells = ['oblivion_swell']
+  }, 'main')
+
+  const spell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  await expect(spell).toHaveClass(/manual-prepped-action/)
+  await spell.click()
+  await expect(spell).not.toHaveClass(/manual-prepped-action/)
+  await expect(page.locator('.aether')).toContainText('Aether 1')
+})
+
+test('Focusing Orb selects a Breach directly from highlighted board targets', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = ['focusing_orb']
+    game.players[0].playedThisTurn = []
+    game.players[0].bonusAether = 0
+  }, 'main')
+
+  await page.locator('.hand .card').filter({ has: page.locator('img[alt="Focusing Orb"]') }).click()
+  await page.getByRole('button', { name: "Focus any player's closed breach" }).click()
+  await expect(page.locator('.non-blocking-selection-modal')).toHaveCount(0)
+  const target = page.locator('.breach-token-wrap.decision-breach-target').first()
+  await expect(target).toBeVisible()
+  await target.click()
+  await expect(page.locator('.breach-token-wrap.decision-breach-target')).toHaveCount(0)
+})
+
+test('Wildfire Whip is a repeatable blue prepped action that requires two Aether', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = []
+    game.players[0].bonusAether = 4
+    game.players[0].regularAetherSpent = 0
+    game.players[0].breaches[0].opened = true
+    game.players[0].breaches[0].prepSpells = ['wildfire_whip']
+    game.players[1].breaches[0].prepSpells = ['spark']
+  }, 'main')
+
+  const spell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  await expect(spell).toHaveClass(/repeatable-prepped-action/)
+  await spell.click()
+  await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveClass(/repeatable-prepped-action/)
+  await expect(page.locator('.aether')).toContainText('2')
+  await expect(page.locator('.breach-spell-card-frame.ability-prepped-spell')).toHaveCount(1)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.pendingDecision = null
+    game.pendingEffect = null
+    game.players[0].bonusAether = 1
+    game.players[0].regularAetherSpent = 0
+    game.players[0].breaches[0].prepSpells = ['wildfire_whip']
+  }, 'main')
+  const unavailableSpell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  await expect(unavailableSpell).toHaveClass(/repeatable-prepped-action/)
+  await unavailableSpell.click()
+  await expect(page.locator('.decision-modal')).toHaveCount(0)
+})
+
 test('Flexing Dagger disables its breach-cost option when all breaches are open', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
@@ -361,6 +492,26 @@ test('Flexing Dagger disables its breach-cost option when all breaches are open'
   await expect(unavailableOption).toBeDisabled()
   await expect(unavailableOption).toHaveClass(/unavailable/)
   await expect(page.getByRole('button', { name: 'Destroy this to deal 1 damage' })).toBeEnabled()
+})
+
+test('Unstable Prism disables its play-Gem option when the hand has no Gems', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = ['unstable_prism']
+  }, 'main')
+
+  await page.locator('.hand .card').filter({ has: page.locator('img[alt="Unstable Prism"]') }).click()
+  const playGemOption = page.getByRole('button', { name: 'Play a gem in hand twice, then destroy it' })
+  await expect(playGemOption).toBeDisabled()
+  await expect(playGemOption).toHaveClass(/unavailable/)
+  await expect(page.getByRole('button', { name: 'Gain 2 Aether' })).toBeEnabled()
 })
 
 test('Flexing Dagger destroys its played copy instead of an identical card in hand', async ({ page }) => {
@@ -449,13 +600,13 @@ test('Debug Tools can add Nemesis cards to play or the deck top', async ({ page 
   await page.keyboard.press('Control+d')
   await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
   const nemesisSection = page.locator('.debug-section').filter({ hasText: 'Add Nemesis card' })
-  const cardSelect = nemesisSection.locator('select').first()
-  await cardSelect.selectOption('venomite')
-  await nemesisSection.getByRole('button', { name: 'Add to Nemesis', exact: true }).click()
-  await cardSelect.selectOption('agony_field')
-  await nemesisSection.getByRole('button', { name: 'Add to Nemesis', exact: true }).click()
-  await cardSelect.selectOption('slaughter')
-  await nemesisSection.getByRole('button', { name: 'Add to Nemesis', exact: true }).click()
+  const nemesisPicker = nemesisSection.locator('.debug-card-picker')
+  const nemesisSearch = nemesisPicker.getByRole('searchbox', { name: 'Search debug cards' })
+  for (const [query, cardName] of [['venomite', 'Venomite'], ['agony field', 'Agony Field'], ['slaughter', 'Slaughter']] as const) {
+    await nemesisSearch.fill(query)
+    await nemesisPicker.locator('.debug-card-option').filter({ has: page.locator(`img[alt="${cardName}"]`) }).click()
+    await nemesisSection.getByRole('button', { name: 'Add to Nemesis', exact: true }).click()
+  }
 
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const debugState = JSON.parse(await page.locator('.debug-panel textarea').inputValue())

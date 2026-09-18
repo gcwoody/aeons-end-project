@@ -12,16 +12,20 @@ import {
   getConditionalAetherByType,
   resolvePreppedEffects,
   getPreppedCardActions, activatePreppedCardAction as engineActivatePreppedCardAction,
+  activatePreppedSpellAction as engineActivatePreppedSpellAction,
   resolvePendingDecision as engineResolvePendingDecision,
   canPlayerAct, canActivateAbilityDuringMain, toRoman,
   advanceNemesisTurn, getNemesisDiscardActions, discardNemesisPower,
   nemesisDrawCard, nemesisResolveAttack,
-  checkGameOver, checkPlayerDeath,
+  checkGameOver, checkPlayerDeath, resolvePlayerExhaustion,
 } from '@engine/engine'
-import { createTwoPlayerScenario, getCard } from '@engine/data'
+import {
+  createTwoPlayerScenario, getCard, defaultMarketSetup, DEFAULT_MARKET_SLOTS,
+  resolveMarketCardIds,
+} from '@engine/data'
 import type {
   CardChoice, CollectiveCardChoice, GameState, NemesisDifficulty, PendingDecisionAnswer,
-  PendingDecision, PlayerId, PlayerState, PreppedSpellChoice,
+  PendingDecision, PlayerId, PlayerState, PreppedSpellChoice, MarketSetupConfig,
 } from '@engine/types'
 
 export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'nemesis_target' | 'gameover'
@@ -96,6 +100,8 @@ const state = reactive({
   mage2: 'brama',
   nemesisType: 'rageborne',
   nemesisDifficulty: 'standard' as NemesisDifficulty,
+  marketMode: 'template1' as MarketSetupConfig['mode'],
+  marketSlots: resolveMarketCardIds({ mode: 'template1', slots: [] }),
 })
 
 const SAVE_KEY = 'aeons-end-saves-v3'
@@ -192,6 +198,18 @@ function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefine
 
   if (decision.kind === 'select_prepped_spell' || decision.kind === 'select_prepped_spells') {
     return soleCandidateOwner(decision.candidates.map(candidate => candidate.playerId))
+  }
+
+  if (decision.kind === 'select_breach') {
+    return soleCandidateOwner(decision.candidates.map(candidate => candidate.playerId))
+  }
+
+  if (decision.kind === 'select_exhaust_breach') {
+    return soleCandidateOwner(decision.candidates.map(candidate => candidate.playerId))
+  }
+
+  if (decision.kind === 'choose_one' && state.game?.pendingEffect?.awaiting?.kind === 'review_top_cards') {
+    return state.game.pendingEffect.reviewingTopCard?.playerId ?? decision.playerId
   }
 
   return null
@@ -408,7 +426,14 @@ function aetherInfo(p: PlayerState) {
   }
   let condAvail = 0
   for (const v of Object.values(conds)) condAvail += v
-  return { total, available: regularAvail + condAvail, regularAvail, gemAether: conds['gem'] ?? 0, conds }
+  return {
+    total,
+    available: regularAvail + condAvail,
+    regularAvail,
+    gemAether: conds['gem'] ?? 0,
+    spellAether: conds['spell'] ?? 0,
+    conds,
+  }
 }
 
 // ===== Undo (Ctrl+Z, max 5 steps) =====
@@ -445,6 +470,7 @@ function beforeAction(): Snapshot | null {
 
 function finishAction(previous: Snapshot | null) {
   if (!previous || !state.game) return
+  if (state.game.gameOver) state.phase = 'gameover'
   const current = snapshot()
   const unchanged = JSON.stringify(previous.game) === JSON.stringify(current.game)
     && previous.phase === current.phase
@@ -501,11 +527,13 @@ function enterMainPhase() {
   const messages = resolvePreppedEffects(g, p.id, 'casting_phase_end')
   for (const message of messages) pushLog(message, 'info')
   if (g.pendingDecision || g.pendingEffect) return
+  if (g.gameOver) { state.phase = 'gameover'; return }
   state.phase = 'main'
   // Ability activation is validated by the engine, so persist the phase
   // transition before main-phase actions become available.
   syncEnginePhaseWithUi()
   resolveMainPhasePreppedEffects()
+  if (g.gameOver) { state.phase = 'gameover'; return }
   maybeAutoEnd()
 }
 
@@ -533,13 +561,14 @@ export function newGame(
   m2: string,
   nemesisType = state.nemesisType,
   nemesisDifficulty = state.nemesisDifficulty,
+  marketSetup: MarketSetupConfig = { mode: state.marketMode, slots: [...state.marketSlots] },
 ) {
   state.activeSaveId = null
   autoSaveEnabled = false
   state.exitPrompt = false
   state.nemesisType = nemesisType
   state.nemesisDifficulty = nemesisDifficulty
-  const scenario = createTwoPlayerScenario([m1, m2], nemesisType, nemesisDifficulty)
+  const scenario = createTwoPlayerScenario([m1, m2], nemesisType, nemesisDifficulty, marketSetup)
   const g = reactive(createGame(scenario)) as GameState
   state.game = g
   state.log = []
@@ -549,6 +578,8 @@ export function newGame(
   state.prepTarget = null
   state.selectedPlayer = g.players[0]!.id
   state.discardRemaining = []
+  state.marketMode = scenario.marketSetup?.mode ?? defaultMarketSetup().mode
+  state.marketSlots = [...(scenario.marketSetup?.slots ?? DEFAULT_MARKET_SLOTS)]
   state.helpOpen = false
   state.viewPile = null
   undoStack.length = 0
@@ -560,6 +591,12 @@ export function newGame(
   }
   startTurn(g)
   beginTurn()
+}
+
+/** Reroll the nine slots for the Setup screen's semi-random market template. */
+export function rerollMarketTemplate() {
+  state.marketMode = 'template1'
+  state.marketSlots = resolveMarketCardIds({ mode: 'template1', slots: [] })
 }
 
 /** Restore a selected saved game from localStorage. */
@@ -578,6 +615,8 @@ export function resumeGame(saveId?: string): boolean {
     state.pendingPreppedSpells = []
     state.pendingBoardCards = []
     state.discardRemaining = [...save.discardRemaining]
+    state.marketMode = save.game.scenario.marketSetup?.mode ?? 'manual'
+    state.marketSlots = [...(save.game.scenario.marketSetup?.slots ?? DEFAULT_MARKET_SLOTS)]
     state.prepTarget = null
     state.exitPrompt = false
     state.log = []
@@ -647,6 +686,8 @@ function resetToSetup() {
   state.helpOpen = false
   state.viewPile = null
   state.debugOpen = false
+  state.marketMode = 'template1'
+  state.marketSlots = resolveMarketCardIds({ mode: 'template1', slots: [] })
   undoStack.length = 0
 }
 
@@ -820,6 +861,16 @@ export function activatePreppedCardAction(choice: CardChoice) {
   const previous = beforeAction()
   const msg = engineActivatePreppedCardAction(state.game, cp().id, choice)
   if (msg) pushLog(msg, msg.startsWith('Returned ') ? 'ok' : 'warn')
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
+/** Activate a Main Phase while-prepped effect by clicking the spell on its Breach. */
+export function activatePreppedSpellAction(breachIndex: number, spellIndex: number) {
+  if (!state.game || !canActMain.value) return
+  const previous = beforeAction()
+  const messages = engineActivatePreppedSpellAction(state.game, cp().id, breachIndex, spellIndex)
+  for (const message of messages) pushLog(message, message.startsWith('That ') || message.startsWith('Resolve ') ? 'warn' : 'ok')
   maybeAutoEnd()
   finishAction(previous)
 }
@@ -1002,8 +1053,20 @@ export function nemesisChooseTarget(target: PlayerId | 'gravehold') {
     : displayName(getPlayer(g, target).mageType)
   pushLog(`Nemesis attacks ${targetLabel}: ${msg}`, 'warn')
   if (target !== 'gravehold') {
-    const d = checkPlayerDeath(g, target)
-    if (d) pushLog(d, 'warn')
+    const excess = Math.max(0, -getPlayer(g, target).hp)
+    const d = checkPlayerDeath(g, target, true)
+    if (d) {
+      pushLog(d, 'warn')
+      for (const message of resolvePlayerExhaustion(g, target, excess)) pushLog(message, 'warn')
+    }
+  }
+  if (g.pendingDecision || g.pendingEffect) {
+    // The attack itself has already been applied; leave the effect decision
+    // visible while the exhaustion sequence (including the Breach choice)
+    // completes, without retaining the legacy card adapter.
+    state.pendingNemesis = null
+    finishAction(previous)
+    return
   }
   state.pendingNemesis = null
   const over = checkGameOver(g)
@@ -1098,12 +1161,14 @@ export function buyNemesisSpecificTopCard() {
 export function useGame() {
   return {
     state,
+    rerollMarketTemplate,
     newGame, resumeGame, clearSave, clearSaves,
     requestDeleteSave, cancelDeleteSave, deleteSave,
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
     returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, buyNemesisSpecificTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
+    activatePreppedSpellAction,
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, nemesisChooseTarget, discardNemesisCard, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, openPile, openNemesisSpecificPile, closePile,

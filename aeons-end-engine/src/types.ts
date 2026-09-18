@@ -26,9 +26,18 @@ export type EffectAmount =
       amountPerSpell: number
     }
   | {
+      kind: 'per_adjacent_prepped_spell'
+      base: number
+      amountPerSpell: number
+    }
+  | {
       kind: 'per_empty_market_pile'
       base: number
       amountPerPile: number
+    }
+  | {
+      /** Cost of the card selected by the immediately preceding card-selection effect. */
+      kind: 'last_selection_cost'
     }
   | { kind: 'current_minion_life' }
 
@@ -55,6 +64,20 @@ export type CardEffectCondition =
       /** True when the player still has a present breach that is not open. */
       kind: 'has_unopened_breach'
     }
+  | { kind: 'all_breaches_opened' }
+  | { kind: 'has_charge'; amount: number }
+  | { kind: 'has_aether'; amount: number }
+  | { kind: 'has_card_in_hand'; cardType: 'gem' | 'relic' | 'spell' }
+  /** True when the immediately preceding card-selection effect selected at least one card. */
+  | { kind: 'last_selection_nonempty' }
+  /** True when the immediately preceding optional choice was accepted. */
+  | { kind: 'last_optional_accepted' }
+
+/** A conditional amount added to one existing damage instance. */
+export interface AdditionalDamage {
+  amount: EffectAmount
+  condition?: CardEffectCondition
+}
 
 export type CardEffectTrigger =
   | { kind: 'on_gain' }
@@ -107,6 +130,15 @@ export interface PreppedSpellChoice {
   cardName: string
 }
 
+export interface BreachChoice {
+  playerId: PlayerId
+  breachIndex: number
+  playerName: string
+  focusCost: number
+  focusCount: number
+  focusToOpen: number
+}
+
 export interface TurnOrderCardChoice {
   index: number
   cardId: string
@@ -151,6 +183,8 @@ export interface PendingEffectResolution {
   awaiting?: CardEffect
   /** Bonus damage granted by the breach where a spell was cast. */
   spellDamageBonus?: number
+  /** One-time "additional damage" bonus granted by an effect such as Blasting Staff. */
+  spellAdditionalDamageBonus?: number
   /** Whether the spell has an explicit damage instance to receive the bonus. */
   spellDamageEffectSeen?: boolean
   /** Phase that created a prepped-spell resolution, when applicable. */
@@ -167,6 +201,16 @@ export interface PendingEffectResolution {
   revealedStrikeCardId?: string
   /** Spell cast that remains on its breach until the cast effect sequence finishes. */
   pendingSpellCast?: PendingSpellCast
+  /** Number/cost of cards selected by the previous optional card effect. */
+  lastSelectedCardCount?: number
+  lastSelectedCardCost?: number
+  /** Result of the most recent optional choice in this effect frame. */
+  lastOptionalAccepted?: boolean
+  /** Players still waiting to reveal a top deck card for a review effect. */
+  reviewTopPlayerIds?: PlayerId[]
+  reviewingTopCard?: { playerId: PlayerId; cardId: string }
+  /** Hand card selected for a play-card-from-hand effect. */
+  selectedCardId?: string
 }
 
 export interface PendingSpellCast {
@@ -218,6 +262,8 @@ export type PendingDecision = PendingDecisionBase & (
       kind: 'select_prepped_spell'
       candidates: PreppedSpellChoice[]
     }
+  | { kind: 'select_breach'; candidates: BreachChoice[] }
+  | { kind: 'select_exhaust_breach'; candidates: BreachChoice[] }
   | {
       kind: 'select_prepped_spells'
       candidates: PreppedSpellChoice[]
@@ -294,6 +340,8 @@ export type PendingDecisionAnswer =
   | { kind: 'choose_optional'; accepted: boolean }
   | { kind: 'select_cards'; choices: CardChoice[] }
   | { kind: 'select_prepped_spell'; choice: PreppedSpellChoice }
+  | { kind: 'select_breach'; choice: BreachChoice }
+  | { kind: 'select_exhaust_breach'; choice: BreachChoice }
   | { kind: 'select_prepped_spells'; choices: PreppedSpellChoice[] }
   | { kind: 'select_collective_cards'; choices: CollectiveCardChoice[] }
   | { kind: 'select_life_target'; target: LifeTargetRef }
@@ -331,6 +379,7 @@ export interface CardEffectOption {
 /** A small, serializable vocabulary for reusable card rules. */
 export type CardEffect =
   | { kind: 'gain_aether'; amount: number }
+  | { kind: 'spend_aether'; amount: number }
   | { kind: 'gain_charge'; amount: number; target: 'self' | 'allies_collectively' }
   | { kind: 'review_turn_order_deck' }
   | {
@@ -340,7 +389,13 @@ export type CardEffect =
       returnChoice?: boolean
     }
   | { kind: 'gain_conditional_aether'; amount: number; condition: string }
-  | { kind: 'deal_damage'; amount: EffectAmount; target: DamageTargetScope }
+  | {
+      kind: 'deal_damage'
+      amount: EffectAmount
+      target: DamageTargetScope
+      /** Bonuses described as "additional damage" share this effect's target and instance. */
+      additionalDamage?: AdditionalDamage[]
+    }
   | {
       kind: 'deal_player_damage'
       amount: EffectAmount
@@ -375,6 +430,9 @@ export type CardEffect =
       kind: 'discard_cards'
       source: 'hand'
       amount: number
+      minAmount?: number
+      maxAmount?: number
+      cardType?: 'gem' | 'relic' | 'spell'
       target?: PlayerTargetScope
       selection?: PlayerSelectionRule
     }
@@ -403,7 +461,26 @@ export type CardEffect =
       source: 'self' | CardSelectionSource
       minAmount?: number
       maxAmount?: number
+      cardType?: 'gem' | 'relic' | 'spell'
     }
+  | { kind: 'conditional'; condition: CardEffectCondition; effects: CardEffect[] }
+  | {
+      kind: 'focus_breach'
+      target: 'self' | 'any_player'
+      selection?: 'choose' | 'lowest_focus_cost'
+    }
+  | { kind: 'review_top_cards' }
+  | {
+      kind: 'deal_damage_from_last_selection'
+      target: DamageTargetScope
+      amountPerCard: number
+      base?: number
+    }
+  | { kind: 'deal_damage_from_last_selection_cost'; target: DamageTargetScope; base?: number }
+  | { kind: 'play_card_from_hand'; cardType: 'gem'; times: number; destroy: boolean }
+  | { kind: 'play_card_instance'; cardId: string; destroyAfter: boolean; recordPlay?: boolean }
+  | { kind: 'destroy_played_card'; cardId: string; playerId?: PlayerId }
+  | { kind: 'lose_charge'; amount: number }
   | {
       kind: 'choose_one'
       prompt: string
@@ -413,6 +490,10 @@ export type CardEffect =
       kind: 'choose_optional'
       prompt: string
       effects: CardEffect[]
+      /** Disable the accept option when a nested card-selection effect has no valid cards. */
+      disableIfUnavailable?: boolean
+      /** Disable the accept option when this condition is not currently met. */
+      acceptCondition?: CardEffectCondition
     }
   | {
       kind: 'modify_next_breach_cost'
@@ -428,8 +509,11 @@ export type CardEffect =
   | { kind: 'place_revealed_turn_order_card' }
   | {
       kind: 'cast_prepped_spell'
-      source: 'any_prepped_spell' | 'selected_prepped_spell'
-      discard: boolean
+      source: 'any_prepped_spell' | 'selected_prepped_spell' | 'prepped_spell_prepped_this_turn'
+      /** Cast spells are discarded by default; set false only for explicit
+       * effects such as Jian's Black Mirror first cast. */
+      discard?: boolean
+      bonusDamage?: number
     }
   /** Shuffle a selected player turn-order card back into the deck and damage its owner. */
   | { kind: 'shuffle_turn_order_card'; damage: number }
@@ -443,6 +527,12 @@ export type CardEffect =
   | { kind: 'finalize_spell_cast' }
   /** Perform the active Nemesis' complete Unleash sequence. */
   | { kind: 'unleash'; amount?: number }
+  /** Internal exhaustion sequence marker. The player has already reached zero life. */
+  | { kind: 'exhaust_player'; playerId: PlayerId; overflowDamage: number }
+  /** Internal marker that asks the exhausted player to choose a Breach to destroy. */
+  | { kind: 'destroy_exhausted_breach'; playerId: PlayerId; overflowDamage: number }
+  /** Internal marker that applies the final exhaustion consequences. */
+  | { kind: 'finish_exhaustion'; playerId: PlayerId; overflowDamage: number }
   /** Generic Nemesis counter operations used by reusable Nemesis effects. */
   | { kind: 'gain_nemesis_counter'; counter: string; amount: number }
   | { kind: 'lose_nemesis_counter'; counter: string; amount: number }
@@ -466,6 +556,8 @@ export interface CardEffectBlock {
   effects: CardEffect[]
   condition?: CardEffectCondition
   oncePerTurn?: boolean
+  /** Main-phase effects that wait for an explicit click on the prepped spell. */
+  manualActivation?: boolean
   /** Pause for player confirmation before resolving a mandatory prepped effect. */
   requiresConfirmation?: boolean
 }
@@ -477,6 +569,7 @@ export interface CardDef {
   cost: number
   set: string
   effects?: CardEffectBlock[]
+  prepToClosedBreach?: boolean
 }
 
 export interface GemCard extends CardDef {
@@ -538,6 +631,14 @@ export interface NemesisEffectBlock {
 
 export type NemesisDifficulty = 'standard' | 'increased'
 
+export type MarketSetupMode = 'manual' | 'template1'
+
+export interface MarketSetupConfig {
+  mode: MarketSetupMode
+  /** Exactly nine card IDs for manual setup; template1 may leave this empty. */
+  slots: string[]
+}
+
 /**
  * Serializable setup for the currently supported two-player scenario.
  *
@@ -555,6 +656,7 @@ export interface ScenarioConfig {
   turnOrderDeckSize: 6
   playerTurnOrderCardsPerPlayer: 2
   nemesisTurnOrderCards: 2
+  marketSetup?: MarketSetupConfig
 }
 
 export interface NemesisDef {
@@ -586,6 +688,8 @@ export interface BreachState {
   present?: boolean
   opened: boolean
   prepSpells: string[]
+  /** Parallel flags used by effects that target spells prepped this turn. */
+  preppedThisTurn?: boolean[]
   focusDirection: Direction
   focusCost: number
   focusCount: number
@@ -696,6 +800,8 @@ export interface NemesisResolutionState {
   controllerPlayerId?: string
   /** The current Main Phase card has been visibly confirmed by the player. */
   mainEffectConfirmed?: boolean
+  /** A depleted Power remains in play until all of its effects finish. */
+  activePowerPendingDiscard?: boolean
 }
 
 export interface GameState {

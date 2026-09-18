@@ -39,7 +39,7 @@ JSON 存档、Resume 和 Ctrl+Z 恢复。
 | Mage 数据和 Ability 组合 | `aeons-end-engine/src/data/wave1/mage.ts` |
 | Nemesis 卡牌和定义 | `aeons-end-engine/src/data/wave1/nemesis.ts` |
 | Nemesis 专属规则模块和注册表 | `aeons-end-engine/src/nemesis/*.ts` |
-| 统一出口、初始/市场卡表、Common Breach 费用 | `aeons-end-engine/src/data.ts` |
+| 统一出口、初始/市场卡表、商店设置和 Common Breach 费用 | `aeons-end-engine/src/data.ts` |
 | 状态、效果、触发器、决策类型 | `aeons-end-engine/src/types.ts` |
 | 回合流程、效果解释器、规则判定 | `aeons-end-engine/src/engine.ts` |
 | 引擎回归 | `aeons-end-engine/src/tests/stage*.test.ts` |
@@ -88,6 +88,12 @@ JSON 存档、Resume 和 Ctrl+Z 恢复。
   不应被 Kadir 这类普通弃牌选择复用。
 - 所有可拖动弹窗：使用 `useModalDrag.ts`；层级参数集中在 `style.css` 顶部。
 - 卡牌预览：使用 `CardHoverPreview.vue`，特殊场景通过 props 禁用或调整延迟。
+
+Wave 1 的 27 张可选商店卡都在 `ALL_MARKET_CARDS`（并由 `MARKET_CARDS` 导出）中注册；
+`DEFAULT_MARKET_SLOTS` 保留原先九张默认预设以兼容旧测试和存档。`resolveMarketCardIds()` 负责把引擎层的手动九槽位或
+Template 1（Gem ≤3/4/≥5、Relic ≤3/≥4、Spell 3/4/5/≥6）解析成实际商店；Setup 目前只暴露 Template 1，九宫格槽位可逐张替换。新增卡牌时
+同时更新 `documents/wave1-supply-catalog.json`、`documents/wave1-supply-wiki-rules.md`，并运行
+`cd aeons-end-ui; npm run generate:images`。
 
 ## 新增内容的实际流程
 
@@ -155,7 +161,7 @@ Nemesis specific 都按数组的顶牌到最底牌、从左到右每 5 张显示
 
 - 固定两名玩家、一个 Nemesis。
 - 回合顺序牌固定 6 张：每名玩家 2 张，Nemesis 2 张；下一轮由玩家数组重新生成。
-- Setup 可以从已注册的 Mage 和 Nemesis 中选择，也可选择 Standard 或 Increased Nemesis 难度；目前 Nemesis 注册表包括 Rageborne 和 Prince of Gluttons。Prince 的 Increased 难度会在第一回合前逐次要求玩家选择额外 Devour 的 9 张供应牌。
+- Setup 可以从已注册的 Mage 和 Nemesis 中选择，也可选择 Standard 或 Increased Nemesis 难度；市场以 Template 1 图片九宫格显示，玩家可逐槽替换牌。引擎仍支持手动配置供测试和存档使用；目前 Nemesis 注册表包括 Rageborne 和 Prince of Gluttons。Prince 的 Increased 难度会在第一回合前逐次要求玩家选择额外 Devour 的 9 张供应牌。
 - 玩家 ID 由 Mage 的 Wave 和类型生成，例如 `wave1_JIAN`。它会进入回合顺序牌、目标选择、
   存档和撤销快照，不要在新代码中写 `p1` / `p2`。
 - 同一个 Mage 不能被两个玩家选择。UI 会过滤第二个选择框并显示错误，引擎的
@@ -183,7 +189,7 @@ Nemesis specific 都按数组的顶牌到最底牌、从左到右每 5 张显示
 两人场景和稳定玩家 ID 已完成，接下来按小步推进：
 
 1. 新增第三个 Nemesis，先创建自己的卡牌数据、规则模块和测试，按需复用公共效果与决策流程。
-2. 只有当第三个 Nemesis 与现有 Nemesis 具有完全相同的规则语义时，才进一步抽取公共 Hook；
+2. 新增商店卡时先查阅 `documents/wave1-supply-catalog.json` 的资料和 `CardEffect` 词汇；只有当第三个 Nemesis 或新卡与现有规则具有完全相同的语义时，才进一步抽取公共 Hook；
    不因为表面相似就强行合并专属机制。
 3. 新增图片后运行 `cd aeons-end-ui; npm run generate:images`，脚本会检查已注册数据是否都有对应图片。
 4. 最后再设计 1、3、4 人场景的 ScenarioConfig，而不是现在为未确定的规则预留行为。

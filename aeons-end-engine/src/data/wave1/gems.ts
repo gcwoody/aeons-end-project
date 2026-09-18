@@ -158,9 +158,55 @@ export const burningOpal: GemCard = {
         prompt: 'Discard a card to let an ally draw a card?',
         effects: [
           { kind: 'discard_cards', source: 'hand', amount: 1 },
-          { kind: 'draw_cards', amount: 1, target: 'ally' },
+          {
+            kind: 'conditional',
+            condition: { kind: 'last_selection_nonempty' },
+            effects: [{ kind: 'draw_cards', amount: 1, target: 'ally' }],
+          },
         ],
       },
+    ],
+  }],
+}
+
+export const cloudedSapphire: GemCard = {
+  id: 'clouded_sapphire', name: 'Clouded Sapphire', type: 'gem', cost: 6, set: 'wave1',
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [
+      { kind: 'gain_aether', amount: 3 },
+      {
+        kind: 'conditional',
+        condition: { kind: 'card_play_count_this_turn', cardId: 'clouded_sapphire', comparison: 'equals', count: 1 },
+        effects: [{ kind: 'gain_charge', amount: 1, target: 'allies_collectively' }],
+      },
+    ],
+  }],
+}
+
+export const jade: GemCard = {
+  id: 'jade', name: 'Jade', type: 'gem', cost: 2, set: 'wave1',
+  effects: [{ trigger: { kind: 'on_play' }, effects: [{ kind: 'gain_aether', amount: 2 }] }],
+}
+
+export const searingRuby: GemCard = {
+  id: 'searing_ruby', name: 'Searing Ruby', type: 'gem', cost: 4, set: 'wave1',
+  effects: [{
+    trigger: { kind: 'on_play' },
+      effects: [
+        { kind: 'gain_aether', amount: 2 },
+        { kind: 'gain_conditional_aether', amount: 1, condition: 'spell' },
+    ],
+  }],
+}
+
+export const siftersPearl: GemCard = {
+  id: 'sifters_pearl', name: "Sifter's Pearl", type: 'gem', cost: 3, set: 'wave1',
+  effects: [{
+    trigger: { kind: 'on_play' },
+    effects: [
+      { kind: 'gain_aether', amount: 2 },
+      { kind: 'review_top_cards' },
     ],
   }],
 }
@@ -179,4 +225,8 @@ export const MARKET_GEM_CARDS: Record<string, CardDef> = {
   vriswood_amber: vriswoodAmber,
   diamond_cluster: diamondCluster,
   burning_opal: burningOpal,
+  clouded_sapphire: cloudedSapphire,
+  jade,
+  searing_ruby: searingRuby,
+  sifters_pearl: siftersPearl,
 }

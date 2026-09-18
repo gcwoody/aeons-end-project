@@ -94,6 +94,40 @@ function testPersistentAndPowerEffects(): void {
     'Power resolution repeats the complete Unleash effect four times')
   assertEqual(powerGame.nemesis.counters.fury, 2, 'End-of-turn Strike applies its configured Fury loss')
   assert(powerGame.nemesis.discard.includes('blood_cry'), 'Resolved Power enters the Nemesis discard pile')
+
+  const bleedGame = nemesisGame()
+  bleedGame.players[1]!.breaches[0]!.prepSpells = ['spark', 'flare']
+  bleedGame.nemesis.playArea = [{
+    cardId: 'bleed_static', cardType: 'power', placedAt: 1,
+    instanceId: 'bleed-static:1', enteredOnNemesisTurn: 0, powerTokens: 1,
+  }]
+  advanceNemesisMain(bleedGame)
+  assertEqual(bleedGame.players[1]!.hp, bleedGame.players[1]!.maxHp - 4,
+    'Bleed Static deals two damage per prepped spell to the selected player')
+
+  const decisionPowerGame = nemesisGame()
+  decisionPowerGame.nemesis.playArea = [{
+    cardId: 'woven_sky', cardType: 'power', placedAt: 1,
+    instanceId: 'woven-sky:decision:1', enteredOnNemesisTurn: 0, powerTokens: 1,
+  }]
+  const beforePowerDecision = advanceNemesisMain(decisionPowerGame)
+  assert(beforePowerDecision.some(message => message.includes('Power depleted for Woven Sky')),
+    'A depleted Power starts resolving before its decision')
+  const powerDecision = decisionPowerGame.pendingDecision
+  assert(powerDecision?.kind === 'select_player_target', 'Woven Sky pauses for a player target')
+  assert(decisionPowerGame.nemesis.playArea.some(card => card.cardId === 'woven_sky'),
+    'A Power remains in play while its effect decision is pending')
+  assert(!decisionPowerGame.nemesis.discard.includes('woven_sky'),
+    'A pending Power effect does not move the card to discard early')
+  const completedPower = resolvePendingDecision(decisionPowerGame, powerDecision.id, {
+    kind: 'select_player_target', target: powerDecision.targets[0]!,
+  })
+  assert(completedPower.length > 0 && !decisionPowerGame.pendingDecision && !decisionPowerGame.pendingEffect,
+    'The pending Power effect completes after choosing its target')
+  assert(!decisionPowerGame.nemesis.playArea.some(card => card.cardId === 'woven_sky'),
+    'The Power leaves play after all effects finish')
+  assertEqual(decisionPowerGame.nemesis.discard[0], 'woven_sky',
+    'The completed Power enters the Nemesis discard pile last')
 }
 
 function testStrikeEffectsAndMinionDamageRule(): void {

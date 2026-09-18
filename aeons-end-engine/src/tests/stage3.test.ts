@@ -4,9 +4,12 @@ import {
   discardNemesisPower,
   drawStrikeCard,
   getNemesisDiscardActions,
+  gainLife,
+  getLifeTargets,
   resolveEffects,
   resolvePendingDecision,
   returnStrikeCardToDeck,
+  sufferPlayerDamage,
 } from '../engine'
 import type { GameState } from '../types'
 
@@ -121,10 +124,67 @@ function testPlayerExcessDamage(): void {
   assertEqual(game.gravehold.hp, 24, 'Excess damage reduces Gravehold by twice the excess')
 }
 
+function testExhaustionSequenceAndBreachChoice(): void {
+  const game = mainPhaseGame()
+  const player = game.players[0]!
+  player.hp = 1
+  player.charge = 3
+  player.breaches[0]!.prepSpells = ['spark']
+  player.breaches[0]!.preppedThisTurn = [true]
+
+  const messages = resolveEffects(game, player.id, [{
+    kind: 'deal_player_damage', amount: 2, target: 'self',
+  }])
+  assert(messages.some(message => message.includes('unleashes twice')), 'Lethal damage starts the ordered exhaustion sequence')
+  assertEqual(game.nemesis.counters.fury, 3, 'Exhaustion performs Unleash twice')
+  assertEqual(game.pendingDecision?.kind, 'select_exhaust_breach', 'Exhaustion asks which Breach to destroy')
+  assertEqual(player.hp, 0, 'Exhausted player HP is clamped to zero')
+  assertEqual(player.charge, 3, 'Charge remains until the Breach choice is resolved')
+
+  const decision = game.pendingDecision!
+  if (decision.kind !== 'select_exhaust_breach') throw new Error('Expected exhaustion Breach decision')
+  const choice = decision.candidates[0]!
+  const completed = resolvePendingDecision(game, decision.id, { kind: 'select_exhaust_breach', choice })
+  assert(completed.some(message => message.includes('charge is reset to 0')), 'Exhaustion resets charge after the Breach choice')
+  assertEqual(player.breaches[0]!.present, false, 'Selected Breach is removed but its slot remains')
+  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Prepared spells leave a destroyed Breach')
+  assertEqual(player.discard[0], 'spark', 'Prepared spells enter the discard pile')
+  assertEqual(player.charge, 0, 'Exhausted player charge is reset')
+  assertEqual(game.gravehold.hp, 28, 'Excess damage is doubled against Gravehold after exhaustion')
+}
+
+function testExhaustedDamageAndHealingRules(): void {
+  const game = mainPhaseGame()
+  const exhausted = game.players[0]!
+  exhausted.exhausted = true
+  exhausted.hp = 0
+  const before = game.gravehold.hp
+  const damageMessage = sufferPlayerDamage(game, exhausted.id, 2)
+  assert(damageMessage.includes('Gravehold takes 4 damage'), 'Damage to an exhausted Mage is doubled against Gravehold')
+  assertEqual(exhausted.hp, 0, 'Exhausted Mage life remains at zero')
+  assertEqual(game.gravehold.hp, before - 4, 'Exhausted damage reduces Gravehold by twice the amount')
+  assertEqual(getLifeTargets(game, exhausted.id, 'any_player').some(target =>
+    target.kind === 'player' && target.playerId === exhausted.id), false,
+  'Exhausted Mages are excluded from life targets')
+  const healMessage = gainLife(game, { kind: 'player', playerId: exhausted.id }, 3)
+  assert(healMessage?.includes('cannot gain life'), 'Direct healing of an exhausted Mage is rejected')
+  assertEqual(exhausted.hp, 0, 'Rejected healing does not change exhausted life')
+
+  const other = game.players[1]!
+  other.hp = 5
+  const messages = resolveEffects(game, exhausted.id, [{
+    kind: 'deal_player_damage', amount: 1, target: 'any_player', selection: 'lowest_hp',
+  }])
+  assert(messages.some(message => message.includes(other.mageType)), 'Lowest-life damage chooses a non-exhausted Mage')
+  assertEqual(other.hp, 4, 'Lowest-life damage skips exhausted Mages')
+}
+
 testNemesisCountersAndUnleash()
 testStrikeDeckRecycleAndReturn()
 testToDiscardPausesBeforePayment()
 testToDiscardRejectsInsufficientPayment()
 testToDiscardSupportsPreppedSpellCosts()
 testPlayerExcessDamage()
+testExhaustionSequenceAndBreachChoice()
+testExhaustedDamageAndHealingRules()
 console.log('Stage 3 Nemesis effects, targets, and To Discard tests passed.')

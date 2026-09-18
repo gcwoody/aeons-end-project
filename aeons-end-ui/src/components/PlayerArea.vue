@@ -14,7 +14,7 @@ const {
   state, displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast,
   canActivateAbilityInMain,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
-  activatePreppedCardAction, preppedCardActions,
+  activatePreppedCardAction, activatePreppedSpellAction, preppedCardActions,
   isPendingPreppedSpellSelected, togglePendingPreppedSpell,
   getBoardCardSelection, isPendingBoardCardSelected, togglePendingBoardCard,
   playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, endTurn, toMainPhase,
@@ -39,6 +39,9 @@ const handOffset = ref(0)
 const draggedSpellId = ref<string | null>(null)
 const draggedSpellIndex = ref<number | null>(null)
 const draggedPreppedSpell = ref<{ breachIndex: number; spellIndex: number } | null>(null)
+// A real drag should not also trigger the click handler when the pointer is
+// released. A short click still activates a while-prepped spell normally.
+const suppressSpellClick = ref(false)
 const dragPosition = ref({ x: 0, y: 0 })
 let dragPointerId = -1
 let dragStartX = 0
@@ -63,14 +66,23 @@ const phaseLabel = computed(() => {
 
 const DIR: Record<string, string> = { east: '→', south: '↓', west: '←', north: '↑' }
 
-const canPrep = (b: BreachState) =>
+const canPrep = (b: BreachState, cardId = draggedSpellId.value ?? '') =>
   b.present !== false && canActMain.value
     && b.prepSpells.length < player.value.turnEffects.prepSpellLimit
-    && (b.opened || b.focusedThisTurn)
+    && (b.opened || b.focusedThisTurn || !!cardId && getCard(cardId).prepToClosedBreach)
 
-const canMovePreppedTo = (b: BreachState) =>
-  b.present !== false && canRepositionPrepped.value && (b.opened || b.focusedThisTurn)
-    && (!draggedPreppedSpell.value || draggedPreppedSpell.value.breachIndex !== b.index)
+const canMovePreppedSpellTo = (
+  b: BreachState,
+  source = draggedPreppedSpell.value,
+) => {
+  if (b.present === false || !canRepositionPrepped.value || !source) return false
+  if (source.breachIndex === b.index) return false
+  const sourceBreach = player.value.breaches.find(item => item.index === source?.breachIndex)
+  const sourceCardId = sourceBreach?.prepSpells[source.spellIndex]
+  return b.opened || b.focusedThisTurn || !!sourceCardId && getCard(sourceCardId).prepToClosedBreach
+}
+
+const canMovePreppedTo = (b: BreachState) => canMovePreppedSpellTo(b)
 
 const isMustCastBreach = (b: BreachState) =>
   canCast.value && !state.game?.pendingDecision && b.prepSpells.length > 0 && getCastableSpells(state.game!, player.value.id)
@@ -154,6 +166,34 @@ function isPreppedActionCard(index: number, cardId: string): boolean {
   return preppedCardActions.value.some(action =>
     action.choices.some(choice =>
       choice.zone === 'played_this_turn' && choice.index === index && choice.cardId === cardId))
+}
+
+function isPreppedSpellAction(b: BreachState, spellIndex: number): boolean {
+  return preppedCardActions.value.some(action =>
+    action.kind === 'activate_effect'
+      && action.breachIndex === b.index
+      && action.spellIndex === spellIndex)
+}
+
+/** Identify repeatable Main Phase while-prepped effects even when their
+ * activation condition is currently unavailable (for example, Wildfire Whip
+ * with less than two Aether). This keeps the card visibly actionable while
+ * preventing a click from falling through to normal spell casting. */
+function isRepeatablePreppedSpell(b: BreachState, spellIndex: number): boolean {
+  if (!isMain.value || !isCurrentSelected.value) return false
+  const cardId = b.prepSpells[spellIndex]
+  if (!cardId) return false
+  return (getCard(cardId).effects ?? []).some(block =>
+    block.trigger.kind === 'while_prepped'
+      && block.trigger.phase === 'main_phase'
+      && block.manualActivation === true
+      && block.oncePerTurn !== true)
+}
+
+function isDecisionBreachTarget(b: BreachState): boolean {
+  const decision = state.game?.pendingDecision
+  return (decision?.kind === 'select_breach' || decision?.kind === 'select_exhaust_breach')
+    && decision.candidates.some(choice => choice.playerId === player.value.id && choice.breachIndex === b.index)
 }
 
 function boardCardChoice(zone: 'hand' | 'played_this_turn', index: number, cardId: string) {
@@ -249,6 +289,7 @@ function updateHandAlignment() {
 function startSpellPointerDrag(i: number, event: PointerEvent) {
   if (boardCardChoice('hand', i, player.value.hand[i] ?? '')) return
   if (event.button !== 0 || !canActMain.value || getCard(player.value.hand[i]).type !== 'spell') return
+  suppressSpellClick.value = false
   const source = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
   dragCardWidth = source?.width ?? 122
   dragCardHeight = source?.height ?? 178
@@ -269,6 +310,7 @@ function startPreppedSpellDrag(b: BreachState, spellIndex: number, event: Pointe
   if (event.button !== 0 || !canRepositionPrepped.value || state.game?.pendingDecision || b.present === false) return
   const cardId = b.prepSpells[spellIndex]
   if (!cardId) return
+  suppressSpellClick.value = false
   const source = event.currentTarget instanceof HTMLElement ? event.currentTarget.getBoundingClientRect() : null
   dragCardWidth = source?.width ?? 122
   dragCardHeight = source?.height ?? 178
@@ -291,6 +333,7 @@ function handleSpellPointerMove(event: PointerEvent) {
   const distance = Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY)
   if (distance > 5) {
     draggingSpell.value = true
+    suppressSpellClick.value = true
   }
   if (draggingSpell.value) event.preventDefault()
 }
@@ -349,13 +392,18 @@ function finishSpellPointerDrag(event: PointerEvent) {
       ...candidate,
       breach: player.value.breaches.find(item => item.index === Number(candidate.element.dataset.breachIndex)),
     }))
-    .filter(candidate => !!candidate.breach && canPrep(candidate.breach))
+    .filter(candidate => !!candidate.breach && canPrep(candidate.breach, draggedSpellId.value ?? ''))
     .sort((a, b) => b.area - a.area || Number(a.element.dataset.breachIndex) - Number(b.element.dataset.breachIndex))[0]?.element
   const target = preppedSource
     ? targetSpell?.breach ?? breachTarget
     : handBreachTarget
   const breachIndex = target ? Number(target.dataset.breachIndex) : NaN
   const targetSpellIndex = targetSpell ? Number(targetSpell.element.dataset.spellIndex) : undefined
+  const preppedTargetBreach = preppedSource
+    ? player.value.breaches.find(item => item.index === breachIndex)
+    : null
+  const canDropPreppedTarget = !!preppedTargetBreach
+    && canMovePreppedSpellTo(preppedTargetBreach, preppedSource)
   const handRect = handElement.value?.getBoundingClientRect()
   const handOverlap = handRect ? overlapArea(draggedRect, handRect) : 0
   removeSpellPointerListeners()
@@ -364,12 +412,19 @@ function finishSpellPointerDrag(event: PointerEvent) {
   draggedSpellIndex.value = null
   draggedPreppedSpell.value = null
   if (wasDragging) {
+    // Browsers may still dispatch click after a pointer drag. Keep the flag
+    // until that synthetic click is consumed, then clear it as a fallback for
+    // releases outside the card.
+    suppressSpellClick.value = true
+    window.setTimeout(() => { suppressSpellClick.value = false }, 0)
+  }
+  if (wasDragging) {
     if (preppedSource) {
       if (handOverlap > 0) {
         returnPreppedSpellToHand(preppedSource.breachIndex, preppedSource.spellIndex)
       } else {
         const breach = player.value.breaches.find((item) => item.index === breachIndex)
-        if (breach && breach.index !== preppedSource.breachIndex && canMovePreppedTo(breach)) {
+        if (breach && breach.index !== preppedSource.breachIndex && canDropPreppedTarget) {
           movePreppedSpell(preppedSource.breachIndex, preppedSource.spellIndex, breach.index, targetSpellIndex)
         }
       }
@@ -379,7 +434,7 @@ function finishSpellPointerDrag(event: PointerEvent) {
         // A hand spell uses the normal prep flow even if the target Breach
         // already contains a spell. Multi-spell Breaches can still stack;
         // an existing spell is never replaced by a hand drag.
-        if (canPrep(breach)) prepSpell(spellIndex, breach.index)
+        if (canPrep(breach, player.value.hand[spellIndex])) prepSpell(spellIndex, breach.index)
       }
     }
   }
@@ -392,6 +447,7 @@ function cancelSpellPointerDrag() {
   draggedSpellIndex.value = null
   draggedPreppedSpell.value = null
   state.prepTarget = null
+  suppressSpellClick.value = false
 }
 
 function removeSpellPointerListeners() {
@@ -421,6 +477,19 @@ onBeforeUnmount(() => {
 
 function clickBreach(b: BreachState) {
   if (b.present === false) return
+  const breachDecision = state.game?.pendingDecision
+  if (breachDecision?.kind === 'select_breach') {
+    const choice = breachDecision.candidates.find(candidate =>
+      candidate.playerId === player.value.id && candidate.breachIndex === b.index)
+    if (choice) resolveDecision({ kind: 'select_breach', choice })
+    return
+  }
+  if (breachDecision?.kind === 'select_exhaust_breach') {
+    const choice = breachDecision.candidates.find(candidate =>
+      candidate.playerId === player.value.id && candidate.breachIndex === b.index)
+    if (choice) resolveDecision({ kind: 'select_exhaust_breach', choice })
+    return
+  }
   if (isMandatoryPreppedEffect(b)) {
     return
   }
@@ -436,6 +505,10 @@ function confirmMandatoryPreppedEffect(b: BreachState) {
 
 function clickSpellFrame(b: BreachState, spellIndex: number) {
   if (b.present === false) return
+  if (suppressSpellClick.value) {
+    suppressSpellClick.value = false
+    return
+  }
   const pendingChoice = pendingPreppedSpellChoice(b, spellIndex)
   if (pendingChoice) {
     togglePendingPreppedSpell(pendingChoice)
@@ -448,6 +521,13 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
   }
   if (isMandatoryPreppedEffect(b, spellIndex)) {
     confirmMandatoryPreppedEffect(b)
+    return
+  }
+  if (isRepeatablePreppedSpell(b, spellIndex) && !isPreppedSpellAction(b, spellIndex)) {
+    return
+  }
+  if (isPreppedSpellAction(b, spellIndex)) {
+    activatePreppedSpellAction(b.index, spellIndex)
     return
   }
   if (isCastableBreach(b)) castSpell(b.index, spellIndex)
@@ -488,7 +568,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         :data-breach-index="b.index"
       >
         <template v-if="b.present !== false">
-        <div class="breach-token-wrap">
+        <div class="breach-token-wrap" :class="{ 'decision-breach-target': isDecisionBreachTarget(b) }">
           <img
             class="breach-token"
             :src="breachImageUrl(b)"
@@ -519,9 +599,11 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
               'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
               'ability-prepped-spell': !!preppedSpellCastChoice(b, spellIndex),
               'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
-              'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
-              'pending-cast-spell': pendingCastSpell(b, spellIndex),
-            }"
+                  'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
+                  'pending-cast-spell': pendingCastSpell(b, spellIndex),
+                  'manual-prepped-action': isPreppedSpellAction(b, spellIndex),
+                  'repeatable-prepped-action': isRepeatablePreppedSpell(b, spellIndex),
+                }"
           >
             <CardHoverPreview :card-id="spellId">
               <div
@@ -537,6 +619,8 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                   'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
                   'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
                   'pending-cast-spell': pendingCastSpell(b, spellIndex),
+                  'manual-prepped-action': isPreppedSpellAction(b, spellIndex),
+                  'repeatable-prepped-action': isRepeatablePreppedSpell(b, spellIndex),
                   'repositionable-spell': canRepositionPrepped && !state.game?.pendingDecision,
                 }"
               >
@@ -661,7 +745,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       </div>
       <div class="controls-main">
         <span class="aether">
-          Aether {{ aether.regularAvail }}<template v-if="aether.gemAether > 0"> · {{ aether.gemAether }} gem aether</template>
+          Aether {{ aether.regularAvail }}<template v-if="aether.gemAether > 0"> · {{ aether.gemAether }} gem aether</template><template v-if="aether.spellAether > 0"> · {{ aether.spellAether }} spell aether</template>
         </span>
         <template v-if="isCurrentSelected">
           <button v-if="isCasting" class="btn" @click="toMainPhase">Start Main Phase →</button>

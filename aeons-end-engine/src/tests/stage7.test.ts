@@ -6,6 +6,7 @@ import {
   getBreachActionCosts,
   getPreppedCardActions,
   activatePreppedCardAction,
+  activatePreppedSpellAction,
   getConditionalAetherByType,
   playCard,
   resolvePendingDecision,
@@ -66,7 +67,7 @@ function testSupplyData(): void {
     planar_insight: { type: 'spell', cost: 6 },
     arcane_nexus: { type: 'spell', cost: 7 },
   }
-  assertEqual(Object.keys(MARKET_CARDS).length, 9, 'Nine market cards are registered')
+  assertEqual(Object.keys(MARKET_CARDS).length, 27, 'All Wave 1 market cards are registered')
   for (const [cardId, definition] of Object.entries(expected)) {
     const card = getCard(cardId)
     assertEqual(card.type, definition.type, `${cardId} type`)
@@ -413,14 +414,15 @@ function testSpellEffects(): void {
   }]
   assert(castSpell(targeted, targeted.players[0]!.id, 1)?.includes('Cast Lava Tendril'), 'Lava Tendril can target a minion')
   assertEqual(targeted.pendingDecision?.kind, 'select_damage_target', 'Damage target selection is exposed')
-  assertEqual(targeted.players[0]!.breaches[0]!.prepSpells[0], 'lava_tendril', 'A targeted spell remains visible on its breach while awaiting its target')
+  assertEqual(targeted.players[0]!.breaches[0]!.prepSpells.length, 0, 'A cast spell leaves its breach before its target is resolved')
+  assertEqual(targeted.players[0]!.discard[0], 'lava_tendril', 'A cast spell enters discard before its target is resolved')
   resolvePendingDecision(targeted, targeted.pendingDecision!.id, {
     kind: 'select_damage_target',
     target: { kind: 'minion', id: 'minion:1', placedAt: 1, cardId: 'bane_sire', label: 'Bane Sire' },
   })
   assertEqual(targeted.nemesis.playArea.length, 0, 'Selected minion is defeated by damage')
-  assertEqual(targeted.players[0]!.breaches[0]!.prepSpells.length, 0, 'The spell leaves its breach only after the target is confirmed')
-  assertEqual(targeted.players[0]!.discard[0], 'lava_tendril', 'The resolved spell enters discard after target confirmation')
+  assertEqual(targeted.players[0]!.breaches[0]!.prepSpells.length, 0, 'The spell remains removed from its Breach after target confirmation')
+  assertEqual(targeted.players[0]!.discard[0], 'lava_tendril', 'The resolved spell remains on top of discard')
 
   const planar = freshGame()
   planar.players[0]!.breaches[0]!.prepSpells = ['planar_insight']
@@ -562,6 +564,32 @@ function testPreppedSpellRepositionDoesNotKeepMainPhaseOpen(): void {
   assertEqual(player.breaches[1]!.prepSpells.join(','), 'spark', 'The spell reaches the newly available Breach')
 }
 
+function testClosedBreachRepositionForSpecialSpell(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  player.breaches[0]!.prepSpells = ['feral_lightning']
+  player.breaches[1]!.opened = false
+  player.breaches[1]!.focusedThisTurn = false
+
+  assert(
+    movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Moved Feral Lightning'),
+    'Feral Lightning can be moved onto a closed Breach',
+  )
+  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Moving Feral Lightning clears its source Breach')
+  assertEqual(player.breaches[1]!.prepSpells.join(','), 'feral_lightning', 'Feral Lightning reaches the closed Breach')
+
+  const regular = freshGame()
+  const regularPlayer = regular.players[0]!
+  regularPlayer.breaches[0]!.prepSpells = ['spark']
+  regularPlayer.breaches[1]!.opened = false
+  regularPlayer.breaches[1]!.focusedThisTurn = false
+  assertEqual(
+    movePreppedSpell(regular, regularPlayer.id, 1, 0, 2),
+    'The target Breach is not available for preparation',
+    'Regular spells still cannot be moved onto a closed Breach',
+  )
+}
+
 function testPreppedOncePerTurnAndTargets(): void {
   const game = freshGame()
   const player = game.players[0]!
@@ -584,6 +612,62 @@ function testPreppedOncePerTurnAndTargets(): void {
   assert(playCard(afterPrep, afterPrepPlayer.id, 'crystal')?.includes('Played Crystal'), 'Crystal can be played after prep')
   assertEqual(getPreppedCardActions(afterPrep, afterPrepPlayer.id).length, 1, 'A gem played after prep is selectable')
   assert(damageTarget(game).id === 'nemesis', 'Damage target reference is serializable')
+}
+
+function testManualWhilePreppedSpellAction(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  player.hand = []
+  player.breaches[0]!.prepSpells = ['oblivion_swell']
+
+  assertEqual(resolvePreppedEffects(game, player.id, 'main_phase').length, 0, 'Oblivion Swell waits for a click in Main Phase')
+  assertEqual(game.pendingDecision, null, 'Oblivion Swell does not open an optional-effect modal')
+  const actions = getPreppedCardActions(game, player.id)
+  assertEqual(actions.length, 1, 'Oblivion Swell exposes one clickable spell action')
+  assertEqual(actions[0]!.kind, 'activate_effect', 'Oblivion Swell action targets the prepped spell')
+  assert(canPlayerAct(game, player.id), 'A manual while-prepped action keeps the Main Phase open')
+
+  const messages = activatePreppedSpellAction(game, player.id, 1, 0)
+  assert(messages.some(message => message.includes('gains 1 Aether')), 'Clicking Oblivion Swell grants one Aether')
+  assertEqual(player.bonusAether, 1, 'Oblivion Swell grants exactly one Aether')
+  assertEqual(getPreppedCardActions(game, player.id).length, 0, 'Oblivion Swell cannot be activated twice in one turn')
+}
+
+function testRepeatableWhilePreppedSpellAction(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  const ally = game.players[1]!
+  game.nemesis.hp = 20
+  player.bonusAether = 4
+  player.hand = []
+  player.breaches[0]!.prepSpells = ['wildfire_whip']
+  ally.breaches[0]!.prepSpells = ['spark']
+
+  assertEqual(resolvePreppedEffects(game, player.id, 'main_phase').length, 0, 'Wildfire Whip waits for a click in Main Phase')
+  const action = getPreppedCardActions(game, player.id)[0]
+  assert(action?.repeatable === true, 'Wildfire Whip exposes a repeatable clickable action')
+  const firstMessages = activatePreppedSpellAction(game, player.id, 1, 0)
+  assert(firstMessages.some(message => message.includes('spends 2 Aether')), 'Wildfire Whip spends two Aether on each activation')
+  assertEqual(player.regularAetherSpent, 2, 'Wildfire Whip records two spent Aether after activation')
+  assertEqual(game.pendingDecision?.kind, 'select_prepped_spell', 'Wildfire Whip asks which prepped spell to cast')
+  resolvePendingDecision(game, game.pendingDecision!.id, {
+    kind: 'select_prepped_spell',
+    choice: { playerId: ally.id, breachIndex: 1, spellIndex: 0, cardId: 'spark', cardName: 'Spark' },
+  })
+  assertEqual(game.pendingDecision, null, 'Wildfire Whip resolves the selected spell without a second modal')
+  assertEqual(ally.breaches[0]!.prepSpells.length, 0, 'Wildfire Whip removes the selected spell from its Breach')
+  assertEqual(ally.discard[0], 'spark', 'Wildfire Whip puts the cast spell into its owner discard pile')
+  assert(getPreppedCardActions(game, player.id).length === 1, 'Wildfire Whip remains available after its first activation')
+
+  const insufficient = freshGame()
+  const insufficientPlayer = insufficient.players[0]!
+  insufficientPlayer.bonusAether = 1
+  insufficientPlayer.breaches[0]!.prepSpells = ['wildfire_whip']
+  assertEqual(getPreppedCardActions(insufficient, insufficientPlayer.id).length, 0,
+    'Wildfire Whip is not clickable without two Aether')
+  const noOpMessages = activatePreppedSpellAction(insufficient, insufficientPlayer.id, 1, 0)
+  assert(noOpMessages[0]?.includes('no available'), 'Wildfire Whip rejects activation without enough Aether')
+  assertEqual(insufficientPlayer.regularAetherSpent, 0, 'Wildfire Whip does not spend insufficient Aether')
 }
 
 function testReturnedGemKeepsPlayCount(): void {
@@ -928,7 +1012,10 @@ function run(): void {
   testMovePreppedSpell()
   testHandAndBreachSpellTransfers()
   testPreppedSpellRepositionDoesNotKeepMainPhaseOpen()
+  testClosedBreachRepositionForSpecialSpell()
   testPreppedOncePerTurnAndTargets()
+  testManualWhilePreppedSpellAction()
+  testRepeatableWhilePreppedSpellAction()
   testReturnedGemKeepsPlayCount()
   testTurnReset()
   testPlayerDeckRecycle()
