@@ -43,3 +43,14 @@ Desktop.ini
 # pictures
 *.png
 *.jpg
+
+# Production image assets required by the Vite build.
+# Keep the local image-database default ignored, but publish the assets that
+# generate-image-imports.mjs imports into the friend preview bundle.
+!image-database/cards/
+!image-database/cards/wave1/
+!image-database/cards/wave1/**/*.png
+!image-database/cards/wave1/**/*.jpg
+!image-database/common breach/
+!image-database/common breach/**/*.png
+!image-database/common breach/**/*.jpg
