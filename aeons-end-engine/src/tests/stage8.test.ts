@@ -15,6 +15,8 @@ import {
   resolvePendingDecision,
 } from '../engine'
 
+declare const console: { log(message?: unknown): void }
+
 function assert(condition: unknown, message: string): void {
   if (!condition) throw new Error(message)
 }

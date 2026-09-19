@@ -302,11 +302,13 @@ npm run test:e2e
 | --- | --- | --- |
 | 阶段 0：冻结发布范围 | 已完成 | 工作区已确认干净；`handoff.md` 已移除；已创建并推送 `friend-preview` 分支。 |
 | 阶段 1：整理正式文档 | 已完成 | README、dev-guide 已更新；已新增 `design/deployment-guide.md`；三个过时的阶段性 plan 已从 `design/` 主目录移除。提交为 `195e6f0`。 |
-| 阶段 2：生产构建和部署配置 | 待执行 | 尚未新增 `vercel.json`，也尚未运行生产构建或连接 Vercel。执行时以 `friend-preview` 为基线。 |
+| 阶段 2：生产构建和部署配置 | 已完成 | 已新增 `aeons-end-ui/vercel.json` SPA rewrite；引擎测试、前端锁定依赖安装、`vue-tsc`、图片映射生成和 Vite production build 全部通过。尚未连接 Vercel。 |
 | 阶段 3：安全、隐私和公开范围 | 待执行 | 尚未完成正式发布范围确认。 |
 | 阶段 4：发布前测试 | 待执行 | 尚未完成本轮发布验收。 |
 | 阶段 5：Vercel Preview 部署 | 待执行 | 尚未创建 Vercel Preview。 |
 | 阶段 6：朋友试玩交付 | 待执行 | 尚未向朋友提供试玩地址。 |
+
+阶段二执行备注：引擎测试首先发现 `stage8.test.ts` 缺少 Node 环境下的 `console` 类型声明，已用测试文件内的最小声明修复；修复后所有引擎回归测试通过。前端依赖安装曾被本机残留的 esbuild/Rollup 构建进程锁定，结束明确属于本项目的进程后，`npm ci`、类型检查和生产构建均成功。
 
 ## Git 版本约定（发布完成后仍需保留）
 
