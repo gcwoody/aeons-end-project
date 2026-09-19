@@ -304,15 +304,15 @@ npm run test:e2e
 | 阶段 1：整理正式文档 | 已完成 | README、dev-guide 已更新；已新增 `design/deployment-guide.md`；三个过时的阶段性 plan 已从 `design/` 主目录移除。提交为 `195e6f0`。 |
 | 阶段 2：生产构建和部署配置 | 已完成 | 已新增 `aeons-end-ui/vercel.json` SPA rewrite；引擎测试、前端锁定依赖安装、`vue-tsc`、图片映射生成和 Vite production build 全部通过。尚未连接 Vercel。 |
 | 阶段 3：安全、隐私和公开范围 | 已完成 | GitHub 仓库已确认 Private；分享范围已确认仅限一位朋友试玩；本地源码、存储、网络和依赖审计完成。 |
-| 阶段 4：发布前测试 | 部分完成 | 引擎回归、前端类型检查、生产构建和关键人工 Preview 流程通过；完整 Playwright 受本机 Chromium/Chrome 进程环境阻塞，尚未取得全量自动化绿灯。 |
-| 阶段 5：Vercel Preview 部署 | 待执行 | 尚未创建 Vercel Preview。 |
+| 阶段 4：发布前测试 | 已完成 | 引擎回归、前端类型检查、生产构建和关键人工 Preview 流程均通过；完整 Playwright 受本机 Chromium/Chrome 进程环境阻塞，但不影响本轮人工发布验收。 |
+| 阶段 5：Vercel Preview 部署 | 执行中 | 已确认 Vercel 构建配置和 GitHub 远程仓库，下一步创建并验证 Preview Deployment。 |
 | 阶段 6：朋友试玩交付 | 待执行 | 尚未向朋友提供试玩地址。 |
 
 阶段二执行备注：引擎测试首先发现 `stage8.test.ts` 缺少 Node 环境下的 `console` 类型声明，已用测试文件内的最小声明修复；修复后所有引擎回归测试通过。前端依赖安装曾被本机残留的 esbuild/Rollup 构建进程锁定，结束明确属于本项目的进程后，`npm ci`、类型检查和生产构建均成功。
 
 阶段三执行备注：已扫描工作区和 Git 跟踪文件，没有发现 `.env`、密钥、证书、凭据或 Token；应用没有 API、账号、Cookie 或 WebSocket，存档只写入浏览器 `localStorage`。前端运行时依赖的 `npm audit --omit=dev` 结果为 0 个漏洞；完整开发依赖的 esbuild/Vite 告警只影响本地开发服务器，已让 Vite 默认绑定 `127.0.0.1`。当前 friend preview 保留 Ctrl+D 作为信任测试功能，但不把它当作安全边界。GitHub 仓库权限和素材授权需要仓库所有者在外部确认。
 
-阶段四执行备注：本轮人工 Preview 已验证 Setup 的 Mage/Nemesis 图片选择、Template 1 槽位替换、Prince Increased Difficulty 的 Devour 高亮决策、Rageborne 开局、Tab/Q/W/Space 快捷键、牌堆弹窗层级和主要图片布局。`npm test`、`npx vue-tsc --noEmit` 与 `npm run build` 均通过。完整 Playwright 首次使用系统 Chrome 时未正常收尾；改用 Playwright 自带 Chromium 后，54 个用例全部在浏览器启动阶段报 `spawn UNKNOWN`，直接运行 Chromium 也报告 Windows 并行配置错误。该阻塞属于本机浏览器运行环境，不能作为产品测试失败或通过。
+阶段四执行备注：本轮人工 Preview 已验证 Setup 的 Mage/Nemesis 图片选择、Template 1 槽位替换、Prince Increased Difficulty 的 Devour 高亮决策、Rageborne 开局、Tab/Q/W/Space 快捷键、牌堆弹窗层级和主要图片布局。`npm test`、`npx vue-tsc --noEmit` 与 `npm run build` 均通过。完整 Playwright 首次使用系统 Chrome 时未正常收尾；改用 Playwright 自带 Chromium 后，54 个用例全部在浏览器启动阶段报 `spawn UNKNOWN`，直接运行 Chromium 也报告 Windows 并行配置错误。该阻塞属于本机浏览器运行环境，不能作为产品测试失败或通过。用户已完成人工验收，阶段四通过。
 
 ## Git 版本约定（发布完成后仍需保留）
 
