@@ -305,7 +305,7 @@ npm run test:e2e
 | 阶段 2：生产构建和部署配置 | 已完成 | 已新增 `aeons-end-ui/vercel.json` SPA rewrite；引擎测试、前端锁定依赖安装、`vue-tsc`、图片映射生成和 Vite production build 全部通过。尚未连接 Vercel。 |
 | 阶段 3：安全、隐私和公开范围 | 已完成 | GitHub 仓库已确认 Private；分享范围已确认仅限一位朋友试玩；本地源码、存储、网络和依赖审计完成。 |
 | 阶段 4：发布前测试 | 已完成 | 引擎回归、前端类型检查、生产构建和关键人工 Preview 流程均通过；完整 Playwright 受本机 Chromium/Chrome 进程环境阻塞，但不影响本轮人工发布验收。 |
-| 阶段 5：Vercel Preview 部署 | 执行中 | 已确认 Vercel 构建配置和 GitHub 远程仓库，下一步创建并验证 Preview Deployment。 |
+| 阶段 5：Vercel Preview 部署 | 执行中 | 首次误用 `main` 的旧提交导致图片目录缺失；已将生产构建所需图片加入 `friend-preview`，提交 `46ed4cd`，下一步从该分支创建 Preview Deployment。 |
 | 阶段 6：朋友试玩交付 | 待执行 | 尚未向朋友提供试玩地址。 |
 
 阶段二执行备注：引擎测试首先发现 `stage8.test.ts` 缺少 Node 环境下的 `console` 类型声明，已用测试文件内的最小声明修复；修复后所有引擎回归测试通过。前端依赖安装曾被本机残留的 esbuild/Rollup 构建进程锁定，结束明确属于本项目的进程后，`npm ci`、类型检查和生产构建均成功。
@@ -313,6 +313,8 @@ npm run test:e2e
 阶段三执行备注：已扫描工作区和 Git 跟踪文件，没有发现 `.env`、密钥、证书、凭据或 Token；应用没有 API、账号、Cookie 或 WebSocket，存档只写入浏览器 `localStorage`。前端运行时依赖的 `npm audit --omit=dev` 结果为 0 个漏洞；完整开发依赖的 esbuild/Vite 告警只影响本地开发服务器，已让 Vite 默认绑定 `127.0.0.1`。当前 friend preview 保留 Ctrl+D 作为信任测试功能，但不把它当作安全边界。GitHub 仓库权限和素材授权需要仓库所有者在外部确认。
 
 阶段四执行备注：本轮人工 Preview 已验证 Setup 的 Mage/Nemesis 图片选择、Template 1 槽位替换、Prince Increased Difficulty 的 Devour 高亮决策、Rageborne 开局、Tab/Q/W/Space 快捷键、牌堆弹窗层级和主要图片布局。`npm test`、`npx vue-tsc --noEmit` 与 `npm run build` 均通过。完整 Playwright 首次使用系统 Chrome 时未正常收尾；改用 Playwright 自带 Chromium 后，54 个用例全部在浏览器启动阶段报 `spawn UNKNOWN`，直接运行 Chromium 也报告 Windows 并行配置错误。该阻塞属于本机浏览器运行环境，不能作为产品测试失败或通过。用户已完成人工验收，阶段四通过。
+
+阶段五执行备注：首次 Vercel 构建使用了 `main` 的 `98223c5`，构建脚本因仓库中没有被跟踪的 `image-database/cards` 而报 `ENOENT`。根因是根目录 `.gitignore` 原本忽略了所有图片；已增加仅针对 Wave 1 卡牌和 common breach 图片的白名单，并将 144 个生产构建所需图片提交到 `friend-preview` 的 `46ed4cd`。Vercel 应保持 `main` 为 Production Branch，并通过 Deployments → Create Deployment → Branch-based Deployment 输入 `friend-preview` 创建 Preview。
 
 ## Git 版本约定（发布完成后仍需保留）
 
@@ -323,6 +325,6 @@ npm run test:e2e
 - 新的 Nemesis、Wave 或较大的功能默认从 `main` 继续开发；
 - 每个可分享版本应使用 Git tag 固定，例如 `friend-preview-v0.1.0`，不要只依赖会继续移动的分支名；
 - 朋友反馈的阻塞 Bug 可以从 `friend-preview` 修复，然后同步回 `main`；
-- 当前 `main` 仍指向 `98223c5`，`friend-preview` 已指向 `195e6f0`。开始下一轮正式开发前，应先将 `main` 快进到 `195e6f0`，这样可以同步阶段一的文档而不改变游戏逻辑。
+- 当前 `main` 仍指向 `98223c5`，`friend-preview` 已指向 `46ed4cd`。开始下一轮正式开发前，应先将 `main` 快进到 `46ed4cd`，这样可以同步阶段一的文档、部署配置和生产图片资源而不改变游戏逻辑。
 
 一人开发不强制要求每个小改动都创建功能分支。若只是连续开发、随时可以撤销的低风险改动，可以直接在 `main` 上进行；只有准备保留一个稳定试玩版本、进行较大或高风险实验、或需要同时维护多个版本时，才需要额外创建功能分支或发布分支。

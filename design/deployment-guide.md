@@ -24,6 +24,8 @@
 
 由于 `aeons-end-ui/vite.config.ts` 通过 `@engine` 引用 `../aeons-end-engine/src`，而 `prebuild` 会执行 `../scripts/generate-image-imports.mjs`，必须允许构建阶段读取 Root Directory 外部的源码和脚本。Vercel 的 Monorepo 设置中打开 “Include source files outside of the Root Directory in the Build Step”。
 
+图片资源也必须存在于远程 Git 提交中。根目录默认忽略图片文件，但 `friend-preview` 已对白名单中的 Wave 1 卡牌和 `image-database/common breach` 图片取消忽略；不要在 Vercel 上使用只包含本地图片的工作区快照。
+
 ## Vite SPA 路由
 
 当前应用是单页应用。若直接刷新非根路径返回 404，在 `aeons-end-ui/vercel.json` 增加：
