@@ -85,6 +85,7 @@ const state = reactive({
   pendingPreppedSpells: [] as PreppedSpellChoice[],
   pendingBoardCards: [] as BoardCardSelection[],
   exitPrompt: false,
+  endTurnWarningVisible: false,
   mage1: 'jian',
   mage2: 'brama',
   nemesisType: 'rageborne',
@@ -479,6 +480,7 @@ export function undo() {
   state.discardRemaining = [...s.discardRemaining]
   state.helpOpen = false
   state.viewPile = null
+  state.endTurnWarningVisible = false
   pushLog('Undid last action')
 }
 
@@ -551,6 +553,7 @@ export function newGame(
   state.activeSaveId = null
   autoSaveEnabled = false
   state.exitPrompt = false
+  state.endTurnWarningVisible = false
   state.nemesisType = nemesisType
   state.nemesisDifficulty = nemesisDifficulty
   const scenario = createTwoPlayerScenario([m1, m2], nemesisType, nemesisDifficulty, marketSetup)
@@ -602,6 +605,7 @@ export function resumeGame(saveId?: string): boolean {
     state.marketSlots = [...(save.game.scenario.marketSetup?.slots ?? DEFAULT_MARKET_SLOTS)]
     state.prepTarget = null
     state.exitPrompt = false
+    state.endTurnWarningVisible = false
     state.log = []
     undoStack.length = 0
     for (const savedSnapshot of save.undoStack) undoStack.push(cloneSnapshot(savedSnapshot))
@@ -647,7 +651,10 @@ export function deleteSave(saveId: string) {
 }
 
 export function requestExit() {
-  if (state.game) state.exitPrompt = true
+  if (state.game) {
+    state.endTurnWarningVisible = false
+    state.exitPrompt = true
+  }
 }
 
 export function cancelExit() {
@@ -661,6 +668,7 @@ function resetToSetup() {
   autoSaveEnabled = false
   state.deleteSaveId = null
   state.exitPrompt = false
+  state.endTurnWarningVisible = false
   state.pendingPreppedSpells = []
   state.pendingBoardCards = []
   state.prepTarget = null
@@ -968,6 +976,21 @@ export function endTurn() {
   finishAction(previous)
 }
 
+/** Request the end of Main Phase, warning first when legal actions remain. */
+export function requestEndTurn() {
+  if (state.phase !== 'main') return
+  if (state.endTurnWarningVisible) {
+    state.endTurnWarningVisible = false
+    endTurn()
+    return
+  }
+  if (playerCanAct.value) {
+    state.endTurnWarningVisible = true
+    return
+  }
+  endTurn()
+}
+
 export function clickDiscardCard(index: number) {
   if (state.phase !== 'discard_order') return
   if (index < 0 || index >= state.discardRemaining.length) return
@@ -1101,7 +1124,7 @@ export function useGame() {
     buyCard, buyNemesisSpecificTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     activatePreppedSpellAction,
     movePreppedSpell, returnPreppedSpellToHand,
-    endTurn, discardNemesisCard, undo, aetherInfo, toRoman,
+    endTurn, requestEndTurn, discardNemesisCard, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, openPile, openNemesisSpecificPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,

@@ -17,7 +17,7 @@ const {
   activatePreppedCardAction, activatePreppedSpellAction, preppedCardActions,
   isPendingPreppedSpellSelected, togglePendingPreppedSpell,
   getBoardCardSelection, isPendingBoardCardSelected, togglePendingBoardCard,
-  playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, endTurn, toMainPhase,
+  playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, requestEndTurn, toMainPhase,
   selectPlayer, clickDiscardCard, openPile, resolveDecision, toggleHelp,
 } = useGame()
 
@@ -39,6 +39,7 @@ const handOffset = ref(0)
 const draggedSpellId = ref<string | null>(null)
 const draggedSpellIndex = ref<number | null>(null)
 const draggedPreppedSpell = ref<{ breachIndex: number; spellIndex: number } | null>(null)
+const endTurnActionElement = ref<HTMLElement | null>(null)
 // A real drag should not also trigger the click handler when the pointer is
 // released. A short click still activates a while-prepped spell normally.
 const suppressSpellClick = ref(false)
@@ -196,6 +197,17 @@ function isRepeatablePreppedSpell(b: BreachState, spellIndex: number): boolean {
       && block.trigger.phase === 'main_phase'
       && block.manualActivation === true
       && block.oncePerTurn !== true)
+}
+
+function handleEndTurn() {
+  requestEndTurn()
+}
+
+function dismissEndTurnWarning(event: PointerEvent) {
+  if (!state.endTurnWarningVisible) return
+  const target = event.target
+  if (target instanceof Node && endTurnActionElement.value?.contains(target)) return
+  state.endTurnWarningVisible = false
 }
 
 function isDecisionBreachTarget(b: BreachState): boolean {
@@ -467,6 +479,7 @@ function removeSpellPointerListeners() {
 
 onBeforeUnmount(removeSpellPointerListeners)
 onMounted(() => {
+  window.addEventListener('pointerdown', dismissEndTurnWarning)
   window.addEventListener('resize', updateHandAlignment)
   if (handElement.value && typeof ResizeObserver !== 'undefined') {
     handResizeObserver = new ResizeObserver(updateHandAlignment)
@@ -476,7 +489,12 @@ onMounted(() => {
 })
 watch(() => player.value?.hand.length, () => nextTick(updateHandAlignment))
 watch(() => state.selectedPlayer, () => nextTick(updateHandAlignment))
+watch(
+  [() => state.phase, () => state.selectedPlayer, () => state.game?.currentTurn],
+  () => { state.endTurnWarningVisible = false },
+)
 onBeforeUnmount(() => {
+  window.removeEventListener('pointerdown', dismissEndTurnWarning)
   window.removeEventListener('resize', updateHandAlignment)
   handResizeObserver?.disconnect()
   if (handAlignmentFrame !== null) cancelAnimationFrame(handAlignmentFrame)
@@ -760,7 +778,12 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           <template v-if="isMain">
             <button class="btn small" :disabled="player.charge >= player.chargeThreshold" @click="gainCharge(1)">Charge</button>
             <button class="btn small" @click="playAllGems">Play All Gems</button>
-            <button class="btn primary" @click="endTurn">End Turn</button>
+            <span ref="endTurnActionElement" class="end-turn-action">
+              <button class="btn primary" @click="handleEndTurn">End Turn</button>
+              <span v-if="state.endTurnWarningVisible" class="end-turn-warning" role="status">
+                Actions remain. End turn anyway?
+              </span>
+            </span>
           </template>
         </template>
         <button

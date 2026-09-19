@@ -188,7 +188,7 @@ function turnLabel(turn: string): string {
               {{ mage.type }}
             </option>
           </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Random</button>
+          <button type="button" class="btn small setup-random-button" aria-label="Reroll First Mage" @click="randomizeMage(1)">Reroll</button>
           </span>
         </label>
         <button
@@ -207,7 +207,7 @@ function turnLabel(turn: string): string {
               {{ mage.type }}
             </option>
           </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Random</button>
+          <button type="button" class="btn small setup-random-button" aria-label="Reroll Second Mage" @click="randomizeMage(2)">Reroll</button>
           </span>
         </label>
         <button
@@ -229,7 +229,7 @@ function turnLabel(turn: string): string {
               {{ nemesis.name }}
             </option>
           </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis">Random</button>
+          <button type="button" class="btn small setup-random-button" aria-label="Reroll Nemesis" @click="randomizeNemesis">Reroll</button>
           </span>
         </label>
         <label>
@@ -259,10 +259,10 @@ function turnLabel(turn: string): string {
             <button
               type="button"
               class="btn small"
-              aria-label="Refresh semi-random market"
+              aria-label="Reroll semi-random market"
               @click="rerollMarketTemplate"
             >
-              Refresh
+              Reroll
             </button>
           </div>
         </div>

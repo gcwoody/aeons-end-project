@@ -14,7 +14,7 @@ import { useModalDrag } from './game/useModalDrag'
 const {
   state, undo, toggleDebug, selectPlayer, openPile, closePile,
   closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
-  toMainPhase, endTurn, resolveDecision,
+  toMainPhase, requestEndTurn, resolveDecision,
 } = useGame()
 
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
@@ -70,7 +70,7 @@ function onKeydown(e: KeyboardEvent) {
     e.preventDefault()
     if (e.repeat) return
     if (state.phase === 'casting') toMainPhase()
-    else endTurn()
+    else requestEndTurn()
     return
   }
   if (e.key === 'Escape' && state.game) {

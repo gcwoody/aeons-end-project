@@ -1,4 +1,5 @@
 :root {
+  --viewport-height: 100vh;
   --breach-radius: 24%;
   --breach-size: clamp(96px, 10vw, 132px);
   --breach-spell-width: 88%;
@@ -13,7 +14,7 @@
   --breach-action-space: 36px;
   /* Three rows of 5:7 cards plus their grid chrome, sized from the
      available viewport height on larger displays. */
-  --market-width: max(368px, calc((100vh - 600px) * .714 - 3px));
+  --market-width: max(368px, calc((var(--viewport-height) - 600px) * .714 - 3px));
   --market-card-radius: 8px;
   --market-card-ratio: .71;
   --mage-mat-ratio: 840 / 604;
@@ -64,6 +65,10 @@
   --z-exit: 1000;
 }
 
+@supports (height: 100dvh) {
+  :root { --viewport-height: 100dvh; }
+}
+
 * { box-sizing: border-box; }
 
 /* The game uses pointer interactions instead of native text/image dragging. */
@@ -103,7 +108,7 @@ body {
 .app {
   display: grid;
   grid-template-columns: 1fr 300px;
-  height: 100vh;
+  height: var(--viewport-height);
   width: 100vw;
 }
 .app:has(.log-col.collapsed) { grid-template-columns: 1fr 38px; }
@@ -281,8 +286,11 @@ body {
 /* ===== Nemesis area ===== */
 .top-section {
   display: flex;
-  flex: 0 0 max(518px, calc(100vh - 600px));
-  height: max(518px, calc(100vh - 600px));
+  /* Let the top board consume exactly the space left after the player area.
+     The previous fixed viewport formula could leave a few pixels of overflow
+     on fullscreen desktop viewports, producing a nearly empty scrollbar. */
+  flex: 1 1 0;
+  height: auto;
   min-height: 0;
   border-bottom: 1px solid var(--border);
 }
@@ -466,8 +474,10 @@ body {
 .market-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, minmax(0, 1fr));
   gap: 6px;
-  align-content: start;
+  align-content: stretch;
+  align-items: center;
   flex: 1;
   min-height: 0;
   overflow: visible;
@@ -475,7 +485,10 @@ body {
 .pile {
   position: relative;
   aspect-ratio: 5 / 7;
-  width: 100%;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  justify-self: center;
   border: 0;
   border-radius: var(--market-card-radius);
   background: #171c2c;
@@ -982,7 +995,7 @@ body {
 }
 .nemesis-mat-modal-frame .mage-modal-image { object-fit: contain; border-radius: 9px; }
 .nemesis-reveal-overlay { z-index: var(--z-decision); }
-.nemesis-reveal-modal { min-width: min(360px, calc(100vw - 24px)); max-height: calc(100vh - 24px); overflow: auto; }
+.nemesis-reveal-modal { min-width: min(360px, calc(100vw - 24px)); max-height: calc(var(--viewport-height) - 24px); overflow: auto; }
 .nemesis-reveal-card {
   width: min(252px, 58vw);
   height: min(378px, 68vh);
@@ -1031,6 +1044,40 @@ body {
   gap: 10px;
   justify-content: center;
   min-height: 32px;
+}
+.end-turn-action {
+  position: relative;
+  display: inline-flex;
+}
+.end-turn-warning {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 2;
+  width: max-content;
+  max-width: min(260px, 42vw);
+  padding: 8px 10px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
+.end-turn-warning::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-right: 1px solid var(--accent);
+  border-bottom: 1px solid var(--accent);
+  background: var(--panel);
+  transform: rotate(45deg);
 }
 .controls-status {
   display: flex;
@@ -1354,9 +1401,9 @@ body {
 
 /* ===== Setup ===== */
 .setup {
-  height: 100vh;
+  height: var(--viewport-height);
   min-height: 0;
-  max-height: 100vh;
+  max-height: var(--viewport-height);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -1420,7 +1467,7 @@ body {
   --market-panel-width: 500px;
   width: var(--setup-layout-width);
   /* One knob for the shared height of all three setup columns. */
-  --setup-layout-height: clamp(460px, calc(100vh - 300px), 620px);
+  --setup-layout-height: clamp(460px, calc(var(--viewport-height) - 300px), 620px);
   height: var(--setup-layout-height);
   min-height: 0;
 }
