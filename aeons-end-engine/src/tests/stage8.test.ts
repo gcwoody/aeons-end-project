@@ -418,12 +418,12 @@ function testNewCardEffectPrimitives(): void {
   otherReviewPlayer.deck = ['clouded_sapphire']
   playCard(reviewGame, reviewPlayer.id, 'sifters_pearl')
   const firstReview = reviewGame.pendingDecision
-  assert(firstReview?.kind === 'choose_one' && firstReview.playerId === reviewPlayer.id, 'Sifter asks the first player to resolve their revealed card')
+  assert(firstReview?.kind === 'choose_one' && reviewGame.pendingEffect?.reviewingTopCard?.playerId === reviewPlayer.id, 'Sifter records the first revealed card owner')
   assertEqual(reviewGame.pendingEffect?.reviewingTopCard?.cardId, 'jade', 'Sifter keeps the revealed card available for the image modal')
   if (!firstReview || firstReview.kind !== 'choose_one') return
   resolvePendingDecision(reviewGame, firstReview.id, { kind: 'choose_one', optionId: 'keep' })
   const secondReview = reviewGame.pendingDecision
-  assert(secondReview?.kind === 'choose_one' && secondReview.playerId === otherReviewPlayer.id, 'Sifter switches the review choice to the other player')
+  assert(secondReview?.kind === 'choose_one' && reviewGame.pendingEffect?.reviewingTopCard?.playerId === otherReviewPlayer.id, 'Sifter switches the revealed card owner')
   if (!secondReview || secondReview.kind !== 'choose_one') return
   resolvePendingDecision(reviewGame, secondReview.id, { kind: 'choose_one', optionId: 'discard' })
   assertEqual(reviewPlayer.deck[0], 'jade', 'Keeping a reviewed card returns it to the top of its deck')

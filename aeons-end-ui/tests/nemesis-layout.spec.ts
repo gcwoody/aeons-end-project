@@ -111,6 +111,39 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   await expect(page.locator('.nemesis-mat-wrap.damage-target')).toHaveCount(0)
 })
 
+test('opening the Nemesis mat transfers focus before Mage shortcuts switch the board', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  // Remove startup interrupts so the focus behavior is isolated from turn resolution.
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'main'
+  debugState.selectedPlayer = debugState.game.players[0].id
+  debugState.game.currentTurn = debugState.game.players[0].id
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.getByRole('button', { name: 'Open Rageborne mat' }).click()
+  await expect(page.locator('.nemesis-mat-modal-frame')).toBeVisible()
+  await expect.poll(() => page.evaluate(() => ({
+    activeIsModal: document.activeElement?.classList.contains('draggable-modal'),
+    triggerFocused: document.querySelector('.nemesis-mat-wrap') === document.activeElement,
+  }))).toEqual({ activeIsModal: true, triggerFocused: false })
+
+  await page.keyboard.press('Digit2')
+  await expect(page.locator('.mage-image')).toHaveAttribute('alt', 'brama mage board')
+  await expect.poll(() => page.evaluate(() => document.activeElement?.classList.contains('draggable-modal'))).toBe(true)
+})
+
 test('To Discard does not show or retain the Power card preview', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -146,6 +179,50 @@ test('To Discard does not show or retain the Power card preview', async ({ page 
   await page.mouse.move(10, 10)
   await discardButton.hover()
   await expect(page.locator('.card-hover-preview')).toHaveCount(0)
+})
+
+test('an Attack stays in the Nemesis Area while its effect decision is pending', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  const [firstPlayer, secondPlayer] = debugState.game.players
+  debugState.phase = 'nemesis_draw'
+  debugState.selectedPlayer = firstPlayer.id
+  debugState.game.currentTurn = 'nemesis'
+  debugState.game.currentPhase = 'nemesis_draw'
+  debugState.game.nemesis.discard = []
+  debugState.game.nemesis.playArea = [
+    { instanceId: 'skewer:99', cardId: 'skewer', cardType: 'attack', placedAt: 99 },
+  ]
+  debugState.game.nemesisResolution = {
+    step: 'draw', mainQueue: [], mainIndex: 0,
+    drawnCardId: 'skewer', drawnCardRevealed: true, drawnCardProcessed: true,
+    drawnCardResponseHandled: true, activeCardInstanceId: 'skewer:99',
+    activeCardId: 'skewer', activeCardPendingDiscard: true,
+  }
+  debugState.game.pendingDecision = {
+    id: 'skewer-target', prompt: 'Choose a player to suffer damage', kind: 'select_player_target',
+    targets: [{ playerId: firstPlayer.id }, { playerId: secondPlayer.id }],
+  }
+  debugState.game.pendingEffect = {
+    sourceCardId: 'skewer', remainingEffects: [],
+    awaiting: { kind: 'deal_player_damage', amount: 3, target: 'any_player' },
+    nemesisResume: true,
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const attackCard = page.locator('.nemesis-play-card.nemesis-attack')
+  await expect(attackCard).toBeVisible()
+  await attackCard.hover()
+  await expect(page.locator('.card-hover-preview img[alt="Skewer"]')).toBeVisible()
 })
 
 test('Prince of Gluttons displays and sells the top Devoured card directly', async ({ page }) => {
@@ -225,7 +302,6 @@ test('Lobotomize highlights spell supply piles after its Devour option is chosen
   const debugState = JSON.parse(await stateField.inputValue())
   const playerId = debugState.game.players[0].id
   debugState.phase = 'nemesis_draw'
-  debugState.pendingNemesis = null
   debugState.selectedPlayer = playerId
   debugState.game.currentTurn = 'nemesis'
   debugState.game.currentPhase = 'nemesis_draw'

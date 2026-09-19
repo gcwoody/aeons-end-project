@@ -29,6 +29,7 @@
   --relic: #e0af68;
   --nemesis: #f7768e;
   --danger: #f7768e;
+  --player-hp: #8f0e1f;
   --ok: #9ece6a;
   --warn: #e0af68;
   /* Global backdrop used by every modal overlay. Lower alpha shows more of the board. */
@@ -167,6 +168,7 @@ body {
 .btn.danger { color: var(--danger); border-color: rgba(247, 118, 142, .55); }
 .btn.danger:hover:not(:disabled) { border-color: var(--danger); background: rgba(247, 118, 142, .1); }
 .btn.small { padding: 3px 9px; font-size: 12px; }
+.draggable-modal:focus { outline: none; }
 
 .badge {
   font-size: 10px;
@@ -647,7 +649,8 @@ body {
   border-radius: 50%;
   background: rgba(72, 77, 88, .78);
   color: #fff;
-  font-size: clamp(14px, 4vw, 22px);
+  /* Leave room for conditional previews such as "1/3" inside the badge. */
+  font-size: clamp(11px, 3.2vw, 17px);
   font-weight: 700;
   line-height: 1;
   transform: translate(-50%, -50%);
@@ -1190,7 +1193,13 @@ body {
   min-height: 52px;
   padding-block: 14px;
   font-size: 15px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
 }
+.player-target-vitals { color: var(--player-hp); font-size: 13px; font-weight: 700; opacity: 1; }
 .prepped-spell-option { display: flex; align-items: center; gap: 10px; text-align: left; }
 .prepped-spell-option img { width: 42px; height: 63px; object-fit: cover; border-radius: 4px; }
 .decision-card-zone {
@@ -1500,6 +1509,7 @@ body {
 .market-slot-missing { display: grid; place-items: center; width: 100%; min-height: 120px; border: 1px dashed var(--border); color: var(--muted); font-size: 11px; }
 .setup-market-overlay { z-index: var(--z-decision); }
 .setup-market-picker { width: min(960px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow-y: auto; }
+.setup-market-picker:focus { outline: none; }
 .setup-market-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .setup-market-picker-head h2 { margin: 0; }
 .market-picker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
@@ -1717,6 +1727,7 @@ body {
   font-size: 13px;
 }
 .debug-panel.interacting { user-select: none; }
+.debug-panel:focus { outline: none; }
 .debug-head {
   display: flex;
   justify-content: space-between;

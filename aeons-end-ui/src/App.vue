@@ -34,6 +34,12 @@ function onKeydown(e: KeyboardEvent) {
   }
   if (!state.game || e.ctrlKey || e.metaKey || e.altKey || isEditableTarget(e.target)) return
 
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault()
+    cycleDisplayedPlayer()
+    return
+  }
+
   // Deliberately use the physical Digit keys, never the numeric keypad.
   if (e.code.startsWith('Digit')) {
     const playerIndex = Number(e.code.slice('Digit'.length)) - 1
@@ -113,6 +119,14 @@ function togglePlayerPile(pile: 'deck' | 'discard') {
   else openPile(pile)
 }
 
+function cycleDisplayedPlayer() {
+  const players = state.game?.players ?? []
+  if (players.length === 0) return
+  const currentIndex = players.findIndex(player => player.id === state.selectedPlayer)
+  const nextIndex = (currentIndex + 1 + players.length) % players.length
+  selectPlayer(players[nextIndex]!.id)
+}
+
 onMounted(() => window.addEventListener('keydown', onKeydown))
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
@@ -144,9 +158,10 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <h3>Keyboard Shortcuts</h3>
           <div class="help-list">
             <div class="help-row"><kbd>ESC</kbd><span>Open the exit menu. Press it again to close an open dialog.</span></div>
-            <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to five steps.</span></div>
+            <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to ten steps.</span></div>
             <div class="help-row"><kbd>Ctrl + D</kbd><span>Toggle Debug Tools.</span></div>
             <div class="help-row"><kbd>1–4</kbd><span>Switch the mage currently shown on the board.</span></div>
+            <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
             <div class="help-row"><kbd>Space</kbd><span>Confirm a revealed Nemesis card, start Main Phase, or end the current Main Phase.</span></div>

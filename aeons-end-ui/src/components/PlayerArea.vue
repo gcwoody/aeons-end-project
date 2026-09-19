@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellDamagePreview, toRoman } from '@engine/engine'
+import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellDamagePreviewRange, toRoman } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import type { BreachState } from '@engine/types'
@@ -59,7 +59,6 @@ const phaseLabel = computed(() => {
     discard_order: 'Discard Phase · Card Order',
     nemesis_main: 'Nemesis Main Phase',
     nemesis_draw: 'Nemesis Draw Phase',
-    nemesis_target: 'Nemesis Turn · Target Selection',
     gameover: 'Game Over',
   }[state.phase])
 })
@@ -136,7 +135,7 @@ const spellDamagePreview = (b: BreachState, spellIndex = 0) => {
   const pending = state.game.pendingEffect?.pendingSpellCast
   if (pendingCastSpell(b, spellIndex) && pending) {
     const casterId = state.game.pendingEffect?.effectPlayerId ?? pending.playerId
-    return getSpellDamagePreview(state.game, casterId, player.value.id, b.index, spellIndex)
+    return getSpellDamagePreviewRange(state.game, casterId, player.value.id, b.index, spellIndex)
   }
 
   // Ability and card effects can ask the player to choose any player's
@@ -146,13 +145,22 @@ const spellDamagePreview = (b: BreachState, spellIndex = 0) => {
   const castChoice = preppedSpellCastChoice(b, spellIndex)
   const decision = state.game.pendingDecision
   if (castChoice && decision?.kind === 'select_prepped_spell') {
-    return getSpellDamagePreview(state.game, decision.playerId, player.value.id, b.index, spellIndex)
+    const casterId = state.game.pendingEffect?.effectPlayerId
+      ?? state.game.pendingEffect?.sourcePlayerId
+      ?? castChoice.playerId
+    return getSpellDamagePreviewRange(state.game, casterId, player.value.id, b.index, spellIndex)
   }
 
   // During casting, preview a prepped spell only while its card is hovered.
   // A pending decision belongs to another interaction and must not show a stale preview.
   if (!isCasting.value || !canCast.value || state.game.pendingDecision) return null
-  return getSpellDamagePreview(state.game, player.value.id, player.value.id, b.index, spellIndex)
+  return getSpellDamagePreviewRange(state.game, player.value.id, player.value.id, b.index, spellIndex)
+}
+
+const spellDamagePreviewLabel = (b: BreachState, spellIndex = 0) => {
+  const preview = spellDamagePreview(b, spellIndex)
+  if (!preview) return null
+  return preview.min === preview.max ? `${preview.min}` : `${preview.min}/${preview.max}`
 }
 
 const typeClass = (cid: string) =>
@@ -627,12 +635,12 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                 <img v-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />
                 <span v-else>[{{ getCard(spellId).name }}]</span>
                 <span
-                  v-if="spellDamagePreview(b, spellIndex) !== null"
+                  v-if="spellDamagePreviewLabel(b, spellIndex) !== null"
                   class="spell-damage-badge"
                   :class="{ 'spell-damage-badge-hover': !pendingCastSpell(b, spellIndex), 'spell-damage-badge-active': pendingCastSpell(b, spellIndex) }"
-                  :aria-label="`Upcoming damage: ${spellDamagePreview(b, spellIndex)}`"
+                  :aria-label="`Upcoming damage: ${spellDamagePreviewLabel(b, spellIndex)}`"
                 >
-                  {{ spellDamagePreview(b, spellIndex) }}
+                  {{ spellDamagePreviewLabel(b, spellIndex) }}
                 </span>
               </div>
             </CardHoverPreview>
@@ -650,10 +658,10 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       <span class="label">Played</span>
       <template v-if="isDiscard">
         <CardHoverPreview
-          v-for="(cid, i) in state.discardRemaining" :key="cid + i"
+          v-for="(cid, i) in state.discardRemaining" :key="`discard-slot-${i}`"
           :card-id="cid"
         >
-          <div class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]" @click="clickDiscardCard(cid)">
+          <div class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]" @click="clickDiscardCard(i)">
             <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
             <div v-else class="cname">{{ getCard(cid).name }}</div>
           </div>

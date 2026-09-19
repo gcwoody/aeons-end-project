@@ -168,15 +168,16 @@ export interface PendingDecisionContext {
 }
 
 export interface PendingDecisionBase {
+  /** Global decision state; submission authority is outside the rule engine. */
   id: string
-  playerId: PlayerId
   prompt: string
   context?: PendingDecisionContext
 }
 
 /** Serializable continuation data used while an effect waits for a choice. */
 export interface PendingEffectResolution {
-  playerId: PlayerId
+  /** Mage whose card/effect created this resolution. Nemesis effects may omit it. */
+  sourcePlayerId?: PlayerId
   sourceCardId?: string
   remainingEffects: CardEffect[]
   lastGainedCardId?: string
@@ -702,7 +703,8 @@ export interface BreachState {
 // ===== Nemesis Cards In Play =====
 export interface NemesisCardInPlay {
   cardId: string
-  cardType: 'minion' | 'power'
+  /** Attacks are shown here temporarily while their effects resolve. */
+  cardType: 'attack' | 'minion' | 'power'
   placedAt: number
   instanceId?: string
   enteredOnNemesisTurn?: number
@@ -796,12 +798,10 @@ export interface NemesisResolutionState {
   drawnCardRevealed?: boolean
   drawnCardResponseHandled?: boolean
   drawnCardCancelled?: boolean
-  /** Player who owns the Nemesis response controls when a decision is needed. */
-  controllerPlayerId?: string
   /** The current Main Phase card has been visibly confirmed by the player. */
   mainEffectConfirmed?: boolean
-  /** A depleted Power remains in play until all of its effects finish. */
-  activePowerPendingDiscard?: boolean
+  /** A revealed Attack or depleted Power remains in play until all effects finish. */
+  activeCardPendingDiscard?: boolean
 }
 
 export interface GameState {

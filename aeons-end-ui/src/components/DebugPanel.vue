@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, reactive, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { getPlayer, toRoman } from '@engine/engine'
 import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
 import type { CardDef, GameState } from '@engine/types'
@@ -166,7 +166,7 @@ const jsonText = ref('')
 function loadCurrentJson() {
   jsonText.value = JSON.stringify({
     game: state.game, phase: state.phase, selectedPlayer: state.selectedPlayer,
-    pendingNemesis: state.pendingNemesis, discardRemaining: state.discardRemaining,
+    discardRemaining: state.discardRemaining,
   }, null, 2)
 }
 function applyJson() {
@@ -179,7 +179,6 @@ function applyJson() {
       state.game.currentPhase = state.phase
     }
     state.selectedPlayer = data.selectedPlayer ?? state.game.players[0]?.id ?? ''
-    state.pendingNemesis = data.pendingNemesis ?? null
     state.discardRemaining = data.discardRemaining ?? []
   } catch (e: any) {
     alert(`Invalid JSON: ${e.message}`)
@@ -196,6 +195,10 @@ onMounted(() => {
   window.addEventListener('resize', handleViewportResize)
 })
 
+watch(() => state.debugOpen, (open) => {
+  if (open) nextTick(() => panelEl.value?.focus({ preventScroll: true }))
+})
+
 onBeforeUnmount(() => {
   stopInteraction()
   window.removeEventListener('resize', handleViewportResize)
@@ -207,6 +210,7 @@ onBeforeUnmount(() => {
     v-if="state.debugOpen && state.game"
     ref="panelEl"
     class="debug-panel"
+    tabindex="-1"
     :class="{ interacting: interaction }"
     :style="panelStyle"
     @pointerdown="startDrag"

@@ -24,6 +24,7 @@ const reviewedCardId = computed(() => {
   if (current?.kind !== 'choose_one' || state.game?.pendingEffect?.awaiting?.kind !== 'review_top_cards') return null
   return state.game.pendingEffect.reviewingTopCard?.cardId ?? null
 })
+const reviewedCardOwnerId = computed(() => state.game?.pendingEffect?.reviewingTopCard?.playerId ?? null)
 type DirectBoardCardDecision = Extract<PendingDecision, { kind: 'select_cards' | 'select_collective_cards' }>
 const boardCardDecision = computed<DirectBoardCardDecision | null>(() => {
   const current = decision.value
@@ -33,6 +34,12 @@ const boardCardDecision = computed<DirectBoardCardDecision | null>(() => {
 const isDirectMarketDecision = computed(() =>
   decision.value?.kind === 'select_market_pile' || decision.value?.kind === 'select_setup_devour_pile',
 )
+const showsPlayerLife = computed(() => {
+  const current = decision.value
+  const awaiting = state.game?.pendingEffect?.awaiting
+  return (current?.kind === 'select_player_target' && awaiting?.kind === 'deal_player_damage')
+    || (current?.kind === 'select_life_target' && awaiting?.kind === 'gain_life')
+})
 
 watch(() => decision.value?.id, () => {
   selectedCardKeys.value = []
@@ -157,6 +164,11 @@ function lifeTargetName(target: { kind: string; playerId?: string }): string {
   return target.kind === 'gravehold' ? 'Gravehold' : 'Nemesis'
 }
 
+function playerLifeLabel(playerId: string): string {
+  const player = state.game?.players.find(candidate => candidate.id === playerId)
+  return player ? `HP ${player.hp}/${player.maxHp}` : ''
+}
+
 function answer(kind: PendingDecisionAnswer) {
   resolveDecision(kind)
 }
@@ -237,8 +249,11 @@ function confirmNemesisDraw() {
       <h2>{{ decision.prompt }}</h2>
 
       <template v-if="decision.kind === 'choose_one' && reviewedCardId">
-        <p class="decision-hint">
-          {{ playerName(state.game?.pendingEffect?.reviewingTopCard?.playerId ?? decision.playerId) }} revealed this card from the top of their deck.
+        <p class="decision-hint" v-if="reviewedCardOwnerId">
+          {{ playerName(reviewedCardOwnerId) }} revealed this card from the top of their deck.
+        </p>
+        <p class="decision-hint" v-else>
+          A card was revealed from the top of a deck.
         </p>
         <div class="review-top-card">
           <img v-if="cardImageUrl(reviewedCardId)" :src="cardImageUrl(reviewedCardId)" :alt="getCard(reviewedCardId).name" draggable="false" />
@@ -381,7 +396,8 @@ function confirmNemesisDraw() {
           class="btn primary decision-option player-target-option"
           @click="answer({ kind: 'select_player_target', target })"
         >
-          {{ playerTargetLabel(target.playerId) }}
+          <span>{{ playerTargetLabel(target.playerId) }}</span>
+          <span v-if="showsPlayerLife" class="player-target-vitals">{{ playerLifeLabel(target.playerId) }}</span>
         </button>
       </div>
 
@@ -389,10 +405,11 @@ function confirmNemesisDraw() {
         <button
           v-for="target in decision.targets"
           :key="target.kind === 'player' ? target.playerId : target.kind"
-          class="btn primary decision-option"
+          class="btn primary decision-option player-target-option"
           @click="answer({ kind: 'select_life_target', target })"
         >
-          {{ lifeTargetName(target) }}
+          <span>{{ lifeTargetName(target) }}</span>
+          <span v-if="showsPlayerLife && target.kind === 'player'" class="player-target-vitals">{{ playerLifeLabel(target.playerId ?? '') }}</span>
         </button>
       </div>
 

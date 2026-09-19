@@ -67,6 +67,25 @@ function testAttackEffectAndUnleash(): void {
   assertEqual(game.nemesis.counters.fury, 2, 'Slaughter unleashes once')
   assert(game.nemesis.discard.includes('slaughter'), 'Resolved Attack enters the Nemesis discard pile')
 
+  const pausedAttackGame = nemesisGame()
+  pausedAttackGame.nemesis.deck = ['skewer']
+  advanceNemesisTurn(pausedAttackGame)
+  confirmNemesisDraw(pausedAttackGame)
+  const pausedMessages = advanceNemesisTurn(pausedAttackGame)
+  assert(pausedMessages.some(message => message.includes('Drew Attack: Skewer')), 'Skewer starts resolving as an Attack')
+  assert(pausedAttackGame.pendingDecision?.kind === 'select_player_target', 'Skewer pauses for its player target')
+  assert(pausedAttackGame.nemesis.playArea.some(card => card.cardId === 'skewer' && card.cardType === 'attack'),
+    'An Attack remains visible in the Nemesis play area while its effect is pending')
+  assert(!pausedAttackGame.nemesis.discard.includes('skewer'), 'A pending Attack is not discarded early')
+  const targetDecision = pausedAttackGame.pendingDecision
+  assert(targetDecision?.kind === 'select_player_target', 'Skewer target decision is available')
+  resolvePendingDecision(pausedAttackGame, targetDecision.id, {
+    kind: 'select_player_target', target: targetDecision.targets[0]!,
+  })
+  assert(!pausedAttackGame.nemesis.playArea.some(card => card.cardId === 'skewer'),
+    'The Attack leaves play after its effects finish')
+  assertEqual(pausedAttackGame.nemesis.discard[0], 'skewer', 'The completed Attack enters the Nemesis discard pile')
+
   const repeatedUnleashGame = nemesisGame()
   resolveEffects(repeatedUnleashGame, repeatedUnleashGame.players[0]!.id, [{ kind: 'unleash', amount: 2 }])
   assertEqual(repeatedUnleashGame.nemesis.counters.fury, 3,

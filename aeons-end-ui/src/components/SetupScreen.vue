@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useGame } from '../game/useGame'
 import { useModalDrag } from '../game/useModalDrag'
 import { MAGES, NEMESES, ALL_MARKET_CARDS, MARKET_SLOT_TYPES } from '@engine/data'
@@ -24,6 +24,7 @@ const marketCards = computed(() => Object.values(ALL_MARKET_CARDS)
 const marketSlotLabels = ['Gem 1', 'Gem 2', 'Gem 3', 'Relic 1', 'Relic 2', 'Spell 1', 'Spell 2', 'Spell 3', 'Spell 4']
 const marketSlotTypes = MARKET_SLOT_TYPES
 const replacementSlot = ref<number | null>(null)
+const replacementPickerEl = ref<HTMLElement | null>(null)
 function cardsForSlot(index: number) {
   return marketCards.value.filter(card => card.type === marketSlotTypes[index])
 }
@@ -90,6 +91,11 @@ function openReplacement(index: number) {
 function closeReplacement() {
   replacementSlot.value = null
 }
+
+watch(replacementSlot, (slot) => {
+  if (slot === null) return
+  nextTick(() => replacementPickerEl.value?.focus({ preventScroll: true }))
+})
 
 function replaceMarketCard(cardId: string) {
   const index = replacementSlot.value
@@ -252,7 +258,7 @@ function turnLabel(turn: string): string {
     </div>
 
     <div v-if="replacementSlot !== null" class="overlay setup-market-overlay" role="dialog" aria-modal="true" aria-labelledby="market-picker-title" @click.self="closeReplacement">
-      <div class="overlay-card setup-market-picker">
+      <div ref="replacementPickerEl" class="overlay-card setup-market-picker" tabindex="-1">
         <div class="setup-market-picker-head">
           <h2 id="market-picker-title">Choose {{ replacementSlotLabel }}</h2>
           <button type="button" class="btn small" aria-label="Close market card picker" @click="closeReplacement">Close</button>

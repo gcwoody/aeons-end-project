@@ -24,7 +24,6 @@ export const princeOfGluttonsRules: NemesisRuleModule = {
     const candidates = marketPileChoices(game).filter(candidate => candidate.remaining > 0)
     if (candidates.length === 0) return
     game.pendingDecision = createDecision(
-      game.players[0]!.id,
       `Choose a supply pile to Devour (${additionalChoices} remaining)`,
       'select_setup_devour_pile',
       { candidates, remainingChoices: additionalChoices },

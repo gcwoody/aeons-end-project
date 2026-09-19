@@ -1,13 +1,10 @@
-import type {
-  CardEffect, GameState, MarketPileChoice, NemesisDef, PendingDecision, PlayerId,
-} from '../types'
+import type { CardEffect, GameState, MarketPileChoice, NemesisDef, PendingDecision } from '../types'
 
 export interface NemesisRuleContext {
   game: GameState
   definition: NemesisDef
   marketPileChoices: (game: GameState, cardType?: 'gem' | 'relic' | 'spell') => MarketPileChoice[]
   createDecision: (
-    playerId: PlayerId,
     prompt: string,
     kind: PendingDecision['kind'],
     details: Record<string, unknown>,

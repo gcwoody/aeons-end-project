@@ -16,8 +16,7 @@ import {
   resolvePendingDecision as engineResolvePendingDecision,
   canPlayerAct, canActivateAbilityDuringMain, toRoman,
   advanceNemesisTurn, getNemesisDiscardActions, discardNemesisPower,
-  nemesisDrawCard, nemesisResolveAttack,
-  checkGameOver, checkPlayerDeath, resolvePlayerExhaustion,
+  checkGameOver,
 } from '@engine/engine'
 import {
   createTwoPlayerScenario, getCard, defaultMarketSetup, DEFAULT_MARKET_SLOTS,
@@ -28,21 +27,13 @@ import type {
   PendingDecision, PlayerId, PlayerState, PreppedSpellChoice, MarketSetupConfig,
 } from '@engine/types'
 
-export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'nemesis_target' | 'gameover'
+export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'gameover'
 
 export interface LogEntry { id: number; text: string; kind: 'info' | 'ok' | 'warn' }
-
-export interface DrawnCard {
-  cardId: string
-  cardName: string
-  tier: number
-  damage: number
-}
 
 interface Snapshot {
   game: GameState
   phase: UiPhase
-  pendingNemesis: DrawnCard | null
   prepTarget: number | null
   selectedPlayer: PlayerId
   discardRemaining: string[]
@@ -63,7 +54,6 @@ interface StoredSave extends SaveSummary {
   game: GameState
   phase: UiPhase
   selectedPlayer: PlayerId
-  pendingNemesis: DrawnCard | null
   discardRemaining: string[]
   /** The most recent undo snapshots, persisted so resume keeps Ctrl+Z history. */
   undoStack: Snapshot[]
@@ -80,7 +70,6 @@ const state = reactive({
   game: null as GameState | null,
   phase: 'setup' as UiPhase,
   log: [] as LogEntry[],
-  pendingNemesis: null as DrawnCard | null,
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
@@ -115,7 +104,7 @@ function displayName(id: string): string {
 }
 
 const undoStack: Snapshot[] = []
-const MAX_UNDO = 5
+const MAX_UNDO = 10
 
 function saveSummary(save: StoredSave): SaveSummary {
   const currentPlayer = save.game.players.find(player => player.id === save.currentTurn)
@@ -170,8 +159,9 @@ function boardCardSelections(): BoardCardSelection[] {
   }
   if (decision.kind === 'select_cards') {
     const playerId = state.game?.pendingEffect?.effectPlayerId
+      ?? state.game?.pendingEffect?.sourcePlayerId
       ?? state.game?.pendingNemesisDiscard?.playerId
-      ?? decision.playerId
+    if (!playerId) return []
     return decision.candidates.map(choice => ({ playerId, choice }))
   }
   return []
@@ -188,8 +178,9 @@ function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefine
 
   if (decision.kind === 'select_cards') {
     return state.game?.pendingEffect?.effectPlayerId
+      ?? state.game?.pendingEffect?.sourcePlayerId
       ?? state.game?.pendingNemesisDiscard?.playerId
-      ?? decision.playerId
+      ?? null
   }
 
   if (decision.kind === 'select_collective_cards') {
@@ -209,7 +200,7 @@ function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefine
   }
 
   if (decision.kind === 'choose_one' && state.game?.pendingEffect?.awaiting?.kind === 'review_top_cards') {
-    return state.game.pendingEffect.reviewingTopCard?.playerId ?? decision.playerId
+    return state.game.pendingEffect.reviewingTopCard?.playerId ?? null
   }
 
   return null
@@ -347,7 +338,6 @@ function saveCurrentGame(force = false) {
       game: state.game,
       phase: state.phase,
       selectedPlayer: state.selectedPlayer,
-      pendingNemesis: null,
       discardRemaining: [],
       undoStack: [],
     }
@@ -363,7 +353,6 @@ function saveCurrentGame(force = false) {
   save.game = JSON.parse(JSON.stringify(state.game)) as GameState
   save.phase = state.phase
   save.selectedPlayer = state.selectedPlayer
-  save.pendingNemesis = state.pendingNemesis ? { ...state.pendingNemesis } : null
   save.discardRemaining = [...state.discardRemaining]
   save.undoStack = undoStack.map(cloneSnapshot)
   persistStoredSaves()
@@ -376,7 +365,7 @@ syncSaveList()
 watch(
   () => (state.game ? JSON.stringify({
     game: state.game, phase: state.phase, selectedPlayer: state.selectedPlayer,
-    pendingNemesis: state.pendingNemesis, discardRemaining: state.discardRemaining,
+    discardRemaining: state.discardRemaining,
   }) : ''),
   (s) => {
     if (s) saveCurrentGame()
@@ -436,13 +425,12 @@ function aetherInfo(p: PlayerState) {
   }
 }
 
-// ===== Undo (Ctrl+Z, max 5 steps) =====
+// ===== Undo (Ctrl+Z, max 10 steps) =====
 
 function snapshot(): Snapshot {
   return {
     game: JSON.parse(JSON.stringify(state.game)) as GameState,
     phase: state.phase,
-    pendingNemesis: state.pendingNemesis ? { ...state.pendingNemesis } : null,
     prepTarget: state.prepTarget,
     selectedPlayer: state.selectedPlayer,
     discardRemaining: [...state.discardRemaining],
@@ -453,7 +441,6 @@ function cloneSnapshot(source: Snapshot): Snapshot {
   return {
     game: JSON.parse(JSON.stringify(source.game)) as GameState,
     phase: source.phase,
-    pendingNemesis: source.pendingNemesis ? { ...source.pendingNemesis } : null,
     prepTarget: source.prepTarget,
     selectedPlayer: source.selectedPlayer,
     discardRemaining: Array.isArray(source.discardRemaining) ? [...source.discardRemaining] : [],
@@ -474,7 +461,6 @@ function finishAction(previous: Snapshot | null) {
   const current = snapshot()
   const unchanged = JSON.stringify(previous.game) === JSON.stringify(current.game)
     && previous.phase === current.phase
-    && JSON.stringify(previous.pendingNemesis) === JSON.stringify(current.pendingNemesis)
     && previous.prepTarget === current.prepTarget
     && previous.selectedPlayer === current.selectedPlayer
     && JSON.stringify(previous.discardRemaining) === JSON.stringify(current.discardRemaining)
@@ -486,7 +472,6 @@ export function undo() {
   if (!s || !state.game) { pushLog('Nothing to undo', 'warn'); return }
   state.game = reactive(s.game) as GameState
   state.phase = s.phase
-  state.pendingNemesis = s.pendingNemesis
   state.pendingPreppedSpells = []
   state.pendingBoardCards = []
   state.prepTarget = s.prepTarget
@@ -572,7 +557,6 @@ export function newGame(
   const g = reactive(createGame(scenario)) as GameState
   state.game = g
   state.log = []
-  state.pendingNemesis = null
   state.pendingPreppedSpells = []
   state.pendingBoardCards = []
   state.prepTarget = null
@@ -611,7 +595,6 @@ export function resumeGame(saveId?: string): boolean {
     state.phase = save.phase
     syncEnginePhaseWithUi()
     state.selectedPlayer = save.selectedPlayer
-    state.pendingNemesis = save.pendingNemesis
     state.pendingPreppedSpells = []
     state.pendingBoardCards = []
     state.discardRemaining = [...save.discardRemaining]
@@ -678,7 +661,6 @@ function resetToSetup() {
   autoSaveEnabled = false
   state.deleteSaveId = null
   state.exitPrompt = false
-  state.pendingNemesis = null
   state.pendingPreppedSpells = []
   state.pendingBoardCards = []
   state.prepTarget = null
@@ -924,10 +906,11 @@ export function activateAbility() {
 
 // ===== End of turn + discard ordering =====
 
-function moveToDiscard(cardId: string) {
+function moveToDiscard(index: number) {
   const p = cp()
-  const i = p.playedThisTurn.indexOf(cardId)
-  if (i !== -1) p.playedThisTurn.splice(i, 1)
+  const cardId = p.playedThisTurn[index]
+  if (!cardId) return
+  p.playedThisTurn.splice(index, 1)
   p.discard.unshift(cardId) // each card goes to the top of the discard pile
 }
 
@@ -985,12 +968,11 @@ export function endTurn() {
   finishAction(previous)
 }
 
-export function clickDiscardCard(cardId: string) {
+export function clickDiscardCard(index: number) {
   if (state.phase !== 'discard_order') return
-  const idx = state.discardRemaining.indexOf(cardId)
-  if (idx === -1) return
-  state.discardRemaining.splice(idx, 1)
-  moveToDiscard(cardId)
+  if (index < 0 || index >= state.discardRemaining.length) return
+  state.discardRemaining.splice(index, 1)
+  moveToDiscard(index)
   if (state.discardRemaining.length === 0) {
     finalizeDraw()
     return
@@ -999,18 +981,6 @@ export function clickDiscardCard(cardId: string) {
   if (new Set(state.discardRemaining).size === 1) {
     autoDiscardRemaining()
   }
-}
-
-function nemesisReveal() {
-  const g = state.game!
-  const card = nemesisDrawCard(g)
-  if (!card) {
-    pushLog('Nemesis deck is empty — no card drawn this turn', 'warn')
-    startTurn(g)
-    beginTurn()
-    return
-  }
-  state.pendingNemesis = card
 }
 
 /** Continue the serializable Nemesis state machine after a UI decision. */
@@ -1040,45 +1010,6 @@ function continueNemesisTurn() {
   } else {
     state.phase = g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
   }
-}
-
-export function nemesisChooseTarget(target: PlayerId | 'gravehold') {
-  const g = state.game!
-  const card = state.pendingNemesis
-  if (!card) return
-  const previous = beforeAction()
-  const msg = nemesisResolveAttack(g, target, card.damage)
-  const targetLabel = target === 'gravehold'
-    ? 'Gravehold'
-    : displayName(getPlayer(g, target).mageType)
-  pushLog(`Nemesis attacks ${targetLabel}: ${msg}`, 'warn')
-  if (target !== 'gravehold') {
-    const excess = Math.max(0, -getPlayer(g, target).hp)
-    const d = checkPlayerDeath(g, target, true)
-    if (d) {
-      pushLog(d, 'warn')
-      for (const message of resolvePlayerExhaustion(g, target, excess)) pushLog(message, 'warn')
-    }
-  }
-  if (g.pendingDecision || g.pendingEffect) {
-    // The attack itself has already been applied; leave the effect decision
-    // visible while the exhaustion sequence (including the Breach choice)
-    // completes, without retaining the legacy card adapter.
-    state.pendingNemesis = null
-    finishAction(previous)
-    return
-  }
-  state.pendingNemesis = null
-  const over = checkGameOver(g)
-  if (over) {
-    pushLog(over, 'warn')
-    state.phase = 'gameover'
-    finishAction(previous)
-    return
-  }
-  startTurn(g)
-  beginTurn()
-  finishAction(previous)
 }
 
 // ===== Derived state =====
@@ -1170,7 +1101,7 @@ export function useGame() {
     buyCard, buyNemesisSpecificTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     activatePreppedSpellAction,
     movePreppedSpell, returnPreppedSpellToHand,
-    endTurn, nemesisChooseTarget, discardNemesisCard, undo, aetherInfo, toRoman,
+    endTurn, discardNemesisCard, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, openPile, openNemesisSpecificPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,

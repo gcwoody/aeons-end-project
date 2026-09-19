@@ -91,7 +91,14 @@ export function useModalDrag() {
   watch(modalEl, (element) => {
     resizeObserver?.disconnect()
     resizeObserver = null
-    if (!element || typeof ResizeObserver === 'undefined') return
+    if (!element) return
+    // Move focus into every draggable modal as soon as it is mounted. Without
+    // this, the button that opened the modal keeps the browser focus ring
+    // visible behind the overlay and keyboard shortcuts can leave a stale
+    // outline on the underlying board.
+    element.tabIndex = -1
+    requestAnimationFrame(() => element.focus({ preventScroll: true }))
+    if (typeof ResizeObserver === 'undefined') return
     resizeObserver = new ResizeObserver(clampToViewport)
     resizeObserver.observe(element)
     requestAnimationFrame(clampToViewport)

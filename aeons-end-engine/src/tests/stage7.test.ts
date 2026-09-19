@@ -22,7 +22,9 @@ import {
   startTurn,
   canActivateAbilityDuringMain,
   canPlayerAct,
-  nemesisResolveAttack,
+  dealDamage,
+  sufferPlayerDamage,
+  getSpellDamagePreviewRange,
 } from '../engine'
 import { arcaneNexus, getCard, INITIAL_CARDS, MARKET_CARDS, MAGES } from '../data'
 import type { CardChoice, DamageTargetRef, GameState, PendingDecisionAnswer } from '../types'
@@ -213,8 +215,8 @@ function testStage3AbilityTriggers(): void {
   assert(phaedraxaGame.damagePrevention, 'Phaedraxa protection lasts through the current turn')
   const protectedHp = phaedraxa.hp
   const protectedGravehold = phaedraxaGame.gravehold.hp
-  nemesisResolveAttack(phaedraxaGame, phaedraxa.id, 3)
-  nemesisResolveAttack(phaedraxaGame, 'gravehold', 3)
+  sufferPlayerDamage(phaedraxaGame, phaedraxa.id, 3)
+  dealDamage(phaedraxaGame, { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' }, 3)
   assertEqual(phaedraxa.hp, protectedHp, 'Phaedraxa prevents player damage')
   assertEqual(phaedraxaGame.gravehold.hp, protectedGravehold, 'Phaedraxa prevents Gravehold damage')
   phaedraxaGame.turnOrderDeck = [phaedraxaGame.players[1]!.id]
@@ -834,6 +836,9 @@ function testMageAbilities(): void {
   flareGame.currentPhase = 'casting'
   flareGame.turnOrderDeck = [flareGame.players[1]!.id]
   flareGame.nemesis.hp = 20
+  const flareRange = getSpellDamagePreviewRange(flareGame, flareMage.id, flareMage.id, 1)
+  assertEqual(flareRange?.min, 1, 'Flare preview shows its guaranteed Nemesis-card damage')
+  assertEqual(flareRange?.max, 3, 'Flare preview shows its possible Player-card damage')
   castSpell(flareGame, flareMage.id, 1)
   assertEqual(flareGame.pendingDecision?.kind, 'confirm_turn_order_reveal', 'Flare pauses to confirm its revealed card')
   resolvePendingDecision(flareGame, flareGame.pendingDecision!.id, {
@@ -886,7 +891,7 @@ function testKadirMultiSpellPreparation(): void {
 
   assert(activateAbility(game, kadir.id)?.includes('Otherworldly Gate activated'), 'Kadir activates during an ally main phase')
   assertEqual(game.pendingDecision?.kind, 'select_cards', 'Kadir asks which discard spells to return')
-  assertEqual(game.pendingDecision?.playerId, activePlayer.id, 'Kadir gives the choice to the active player')
+  assert(!('playerId' in (game.pendingDecision ?? {})), 'Kadir decision is global rather than permission-bound')
   const returnDecision = game.pendingDecision!
   assert(returnDecision.kind === 'select_cards', 'Kadir return decision has card choices')
   assertEqual(returnDecision.layout, 'simple', 'Kadir uses a plain discard selection layout')

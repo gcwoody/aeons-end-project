@@ -24,7 +24,7 @@ Read it before making changes.
   fix the UI layer (composables/components) instead.
 
 ## UI conventions
-- **Ctrl+Z** undoes the last user operation (max 5 steps, keyboard shortcut only, no button).
+- **Ctrl+Z** undoes the last user operation (max 10 steps, keyboard shortcut only, no button).
 - **Ctrl+D** toggles the debug panel (edit HP/charge, add cards, toggle breaches, export/import JSON).
 - The game **auto-saves** to localStorage; the Setup screen offers "Resume Game" when a save exists.
 - A player turn **auto-ends** when the player has no legal actions — checked when the

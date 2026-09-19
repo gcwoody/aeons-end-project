@@ -118,7 +118,28 @@ function testNemesisResolutionIsSerializable(): void {
   assertEqual(restored.nemesis.counters.fury, 1, 'Nemesis counters survive JSON round-trip')
 }
 
+function testLethalGraveholdDamageStopsNemesisTurn(): void {
+  const game = nemesisGame()
+  game.gravehold.hp = 2
+  game.nemesis.deck = ['cauterizer']
+  game.nemesis.playArea = [{
+    cardId: 'needlemaw', cardType: 'minion', placedAt: 1,
+    instanceId: 'needlemaw:1', enteredOnNemesisTurn: -1, lifeTokens: 11,
+  }]
+
+  const messages = advanceNemesisMain(game)
+  assert(game.gameOver, 'Lethal Gravehold damage ends the game immediately')
+  assertEqual(game.winner, 'nemesis', 'Gravehold destruction awards the game to the Nemesis')
+  assertEqual(game.gravehold.hp, 0, 'Lethal persistent damage clamps Gravehold HP at zero')
+  assert(game.nemesis.deck.includes('cauterizer'), 'Nemesis does not draw another card after game over')
+  assert(!game.nemesis.playArea.some(card => card.cardId === 'cauterizer'),
+    'Nemesis does not place a later card after game over')
+  assert(!messages.some(message => message.includes('Drew Minion: Cauterizer')),
+    'Nemesis Main Phase does not continue into the Draw Phase after game over')
+}
+
 testNemesisMainAndDrawOrder()
 testDrawnCardsEnterWithFreshCounters()
 testNemesisResolutionIsSerializable()
+testLethalGraveholdDamageStopsNemesisTurn()
 console.log('Stage 2 Nemesis phase and lifecycle tests passed.')

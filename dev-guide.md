@@ -3,7 +3,7 @@
 > 这是给独立开发者和 Codex 使用的主开发指南。新对话请先阅读根目录的 `handoff.md`；需要查看弹窗遮挡、`z-index` 或
 > stacking context 时，再打开 [`design/ui-layering-guide.md`](design/ui-layering-guide.md)。
 
-更新时间：2026-09-13
+更新时间：2026-09-18
 
 ## 先记住三条
 
@@ -30,6 +30,19 @@ Vue components + style.css → 显示、拖拽、弹窗和布局
 引擎与 UI 的边界是最重要的扩展边界：规则结果必须由引擎决定，UI 只能提交操作。
 需要玩家选择时，引擎写入 `pendingDecision` / `pendingEffect`；这两个字段可以被
 JSON 存档、Resume 和 Ctrl+Z 恢复。
+
+### 决策上下文约定
+
+`pendingDecision` 是全局待处理状态，不包含“决策玩家”或点击权限字段。当前 demo
+由一个操作者控制两个 Mage；未来联机时，任意客户端都可以提交一个仍然有效的答案，
+由会话层负责并发校验和广播，规则引擎不保存客户端身份。
+
+效果暂停状态中的 `PendingEffectResolution.sourcePlayerId` 只表示效果来源的 Mage，
+Nemesis 作为来源时可以为空；`effectPlayerId` 表示当前效果上下文需要的 Mage。真正的
+受影响玩家、卡牌所属者、裂隙或支付者必须继续使用候选项、目标字段、
+`reviewingTopCard.playerId`、`PendingSpellCast.playerId` 或
+`PendingNemesisDiscard.playerId` 等业务字段，不能借用一个隐藏的决策权限字段。
+UI 只有在候选项明确指向唯一角色时才自动切换显示角色；没有唯一目标时保留当前角色。
 
 ## 文件地图：改功能去哪找
 
@@ -148,6 +161,11 @@ Nemesis 专属牌堆的 UI 由 `NemesisSpecificPile.vue` 统一渲染：在
 `--nemesis-specific-pile-radius`、`--nemesis-specific-pile-gap` 和
 `--nemesis-specific-pile-asset-padding`。
 
+Nemesis 抽到的 Attack 在确认后会临时加入 `nemesis.playArea`，因此可以和 Minion/Power
+一样由 `NemesisArea.vue` 展示并悬停预览。它的效果帧完全结束后才移入 Nemesis discard；
+这段暂停状态由 `NemesisResolutionState.activeCardPendingDiscard` 保存。不要在 Attack
+刚抽到或刚打开决策弹窗时提前写入 discard。
+
 `CardSelectionPanel.vue` 会按手牌、弃牌等来源分组。一个来源的标签只显示一次，
 并在该来源所有牌行的左侧垂直居中；不要在每个五张牌的行中重复加入标签。
 
@@ -178,7 +196,6 @@ Nemesis specific 都按数组的顶牌到最底牌、从左到右每 5 张显示
 | --- | --- | --- |
 | `engine.ts:buildScenarioTurnOrder()` | 只接受双玩家配置，但牌数和玩家 ID 都来自 `ScenarioConfig`/`players` | 开始实现 1、3、4 人规则时扩展 Scenario 类型 |
 | Nemesis 规则模块 | 每个 Nemesis 可以拥有独立的 setup、Unleash 和回合 Hook；主引擎只保留公共执行流程 | 新 Nemesis 证明某个 Hook 具有相同语义时，再提升到公共模块 |
-| `engine.ts:nemesisDrawCard()` 与 `useGame.ts:pendingNemesis` | 为现有 UI/测试保留的 Nemesis 抽牌入口；主流程使用 `nemesisResolution` | 改动 Nemesis 抽牌流程时先确认调用者，再统一入口 |
 | 图片映射 | 由 `scripts/generate-image-imports.mjs` 扫描图片目录，并根据已注册的卡牌、Mage、Nemesis 数据生成映射；只导入实际使用的资源 | 新增或重命名数据/图片后运行 `cd aeons-end-ui; npm run generate:images`；不要手改生成文件 |
 
 以下不算坏的硬编码：卡牌费用、起始牌、Breach 方向和图片文件名属于数据配置；

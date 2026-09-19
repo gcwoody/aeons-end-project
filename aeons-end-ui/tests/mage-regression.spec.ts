@@ -278,6 +278,33 @@ test('prepped spells remain movable during discard order before the turn fully e
   await expect(page.locator('.breach[data-breach-index="2"] img[alt="Spark"]')).toBeVisible()
 })
 
+test('discarding a duplicate card preserves the remaining Played order', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = []
+    game.players[0].playedThisTurn = ['flexing_dagger', 'crystal', 'crystal', 'flexing_dagger']
+  }, 'main')
+
+  await page.getByRole('button', { name: 'End Turn', exact: true }).click()
+  await expect(page.getByText('Discard Phase · Card Order', { exact: true })).toBeVisible()
+  const playedCards = page.locator('.played-row .card img')
+  await expect.poll(() => playedCards.evaluateAll(images => images.map(image => image.alt))).toEqual([
+    'Flexing Dagger', 'Crystal', 'Crystal', 'Flexing Dagger',
+  ])
+
+  await playedCards.nth(3).click()
+  await expect.poll(() => playedCards.evaluateAll(images => images.map(image => image.alt))).toEqual([
+    'Flexing Dagger', 'Crystal', 'Crystal',
+  ])
+})
+
 test('a hand spell does not replace a prepped spell, while a prepped spell can return to hand', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
@@ -381,6 +408,31 @@ test('a prepped spell shows its damage preview while hovered during Casting Phas
   await spell.hover()
   await expect(badge).toBeVisible()
   await expect(badge).toHaveText('1')
+})
+
+test('Flare shows a conditional damage range before the next turn-order card is revealed', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'casting'
+    for (const breach of game.players[0].breaches) breach.prepSpells = []
+    game.players[0].breaches[0].opened = true
+    game.players[0].breaches[0].prepSpells = ['flare']
+    game.turnOrderDeck = [game.players[1].id]
+    game.nemesis.playArea = []
+  }, 'casting')
+
+  const spell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  const badge = spell.locator('.spell-damage-badge')
+  await expect(badge).toHaveText('1/3')
+  await spell.hover()
+  await expect(badge).toBeVisible()
+  await expect(badge).toHaveText('1/3')
 })
 
 test('Oblivion Swell highlights and grants Aether when its prepped spell is clicked', async ({ page }) => {
@@ -625,27 +677,30 @@ test('saved games retain the undo history after resume', async ({ page }) => {
   await applyDebugGameState(page, game => {
     game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
-    game.players[0].hand = ['crystal', 'crystal']
-    game.players[0].bonusAether = 3
+    game.players[0].hand = Array.from({ length: 12 }, () => 'crystal')
+    game.players[0].bonusAether = 0
     game.players[0].playedThisTurn = []
   }, 'main')
 
-  await page.locator('.hand .card').first().click({ force: true })
-  await expect(page.locator('.played-row img[alt="Crystal"]')).toBeVisible()
+  const handCard = page.locator('.hand .card').first()
+  for (let action = 0; action < 12; action++) {
+    await handCard.click({ force: true })
+    await expect(page.locator('.played-row img[alt="Crystal"]')).toHaveCount(action + 1)
+  }
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Save & Exit' }).click()
   const savedHistoryLength = await page.evaluate(() => {
     const saves = JSON.parse(localStorage.getItem('aeons-end-saves-v3') ?? '[]')
     return saves[0]?.undoStack?.length ?? 0
   })
-  expect(savedHistoryLength).toBeGreaterThanOrEqual(1)
+  expect(savedHistoryLength).toBe(10)
   await page.getByRole('button', { name: 'Resume Game' }).click()
-  await page.keyboard.press('Control+z')
+  for (let action = 0; action < 10; action++) await page.keyboard.press('Control+z')
 
   await page.keyboard.press('Control+d')
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const resumedState = JSON.parse(await page.locator('.debug-panel textarea').inputValue())
-  expect(resumedState.game.players[0].playedThisTurn).toEqual([])
+  expect(resumedState.game.players[0].playedThisTurn).toHaveLength(2)
 })
 
 test('hand stays inside its column and scrolls horizontally with the wheel', async ({ page }) => {
@@ -810,6 +865,10 @@ test('number, Q, and W shortcuts switch the shown mage and open player piles abo
   await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeVisible()
   await page.keyboard.press('2')
   await expect(page.locator('.controls-status .turn')).toHaveText('brama')
+  await page.keyboard.press('Tab')
+  await expect(page.locator('.controls-status .turn')).toHaveText('jian')
+  await page.keyboard.press('Tab')
+  await expect(page.locator('.controls-status .turn')).toHaveText('brama')
   await page.keyboard.press('q')
   await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeHidden()
   await expect(page.locator('.pile-modal h3')).toContainText('Deck')
@@ -842,6 +901,57 @@ test('number, Q, and W shortcuts switch the shown mage and open player piles abo
     pile: Number(getComputedStyle(document.querySelector('.pile-viewer-overlay')!).zIndex),
     decision: Number(getComputedStyle(document.querySelector('.decision-overlay')!).zIndex),
   }))).toEqual({ pile: 130, decision: 120 })
+})
+
+test('damage and life target decisions show each mage\'s current life', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    const [first, second] = game.players
+    first.hp = 7
+    second.hp = 4
+    game.currentTurn = first.id
+    game.currentPhase = 'main'
+    game.pendingDecision = {
+      id: 'damage-life-1', playerId: first.id, prompt: 'Choose a player to suffer damage',
+      kind: 'select_player_target',
+      targets: game.players.map((player: any) => ({ kind: 'player', playerId: player.id })),
+    }
+    game.pendingEffect = {
+      sourcePlayerId: first.id, effectPlayerId: first.id, remainingEffects: [],
+      awaiting: { kind: 'deal_player_damage', amount: 2, target: 'any_player' },
+    }
+  }, 'main')
+
+  const damageTargets = page.locator('.player-target-option')
+  await expect(damageTargets).toHaveCount(2)
+  await expect(damageTargets.nth(0)).toContainText('HP 7/')
+  await expect(damageTargets.nth(1)).toContainText('HP 4/')
+
+  await applyDebugGameState(page, game => {
+    const [first, second] = game.players
+    game.currentTurn = first.id
+    game.currentPhase = 'main'
+    game.pendingDecision = {
+      id: 'life-target-1', playerId: first.id, prompt: 'Choose a life target',
+      kind: 'select_life_target',
+      targets: game.players.map((player: any) => ({ kind: 'player', playerId: player.id })),
+    }
+    game.pendingEffect = {
+      sourcePlayerId: first.id, effectPlayerId: first.id, remainingEffects: [],
+      awaiting: { kind: 'gain_life', amount: 2, target: 'any_player' },
+    }
+    second.hp = 4
+  }, 'main')
+
+  const lifeTargets = page.locator('.player-target-option')
+  await expect(lifeTargets).toHaveCount(2)
+  await expect(lifeTargets.nth(0)).toContainText('HP 7/')
+  await expect(lifeTargets.nth(1)).toContainText('HP 4/')
 })
 
 test('Space advances from Casting to Main and ends the Main Phase', async ({ page }) => {
@@ -888,13 +998,11 @@ test('Space confirms a revealed Nemesis card', async ({ page }) => {
   await resolveStartupInterrupts(page)
 
   await applyDebugGameState(page, game => {
-    const controller = game.players[0]
     game.currentTurn = 'nemesis'
     game.currentPhase = 'nemesis_draw'
     game.pendingEffect = null
     game.pendingDecision = {
       id: 'nemesis-draw-confirm',
-      playerId: controller.id,
       kind: 'confirm_nemesis_draw',
       prompt: 'Nemesis drew Bane Sire',
       cardId: 'bane_sire',
@@ -905,7 +1013,6 @@ test('Space confirms a revealed Nemesis card', async ({ page }) => {
       step: 'draw',
       mainQueue: [],
       mainIndex: 0,
-      controllerPlayerId: controller.id,
       drawnCardId: 'bane_sire',
       drawnCardRevealed: true,
     }
