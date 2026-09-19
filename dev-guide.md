@@ -1,9 +1,10 @@
 # 开发者地图（dev-guide）
 
-> 这是给独立开发者和 Codex 使用的主开发指南。新对话请先阅读根目录的 `handoff.md`；需要查看弹窗遮挡、`z-index` 或
-> stacking context 时，再打开 [`design/ui-layering-guide.md`](design/ui-layering-guide.md)。
+> 这是给独立开发者和 Codex 使用的主开发指南。项目不再依赖临时 `handoff.md`；新对话先阅读
+> [`README.md`](README.md) 和本指南。需要查看弹窗遮挡、`z-index` 或 stacking context 时，再打开
+> [`design/ui-layering-guide.md`](design/ui-layering-guide.md)。
 
-更新时间：2026-09-18
+更新时间：2026-09-19
 
 ## 先记住三条
 
