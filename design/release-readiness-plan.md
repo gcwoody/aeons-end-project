@@ -303,12 +303,14 @@ npm run test:e2e
 | 阶段 0：冻结发布范围 | 已完成 | 工作区已确认干净；`handoff.md` 已移除；已创建并推送 `friend-preview` 分支。 |
 | 阶段 1：整理正式文档 | 已完成 | README、dev-guide 已更新；已新增 `design/deployment-guide.md`；三个过时的阶段性 plan 已从 `design/` 主目录移除。提交为 `195e6f0`。 |
 | 阶段 2：生产构建和部署配置 | 已完成 | 已新增 `aeons-end-ui/vercel.json` SPA rewrite；引擎测试、前端锁定依赖安装、`vue-tsc`、图片映射生成和 Vite production build 全部通过。尚未连接 Vercel。 |
-| 阶段 3：安全、隐私和公开范围 | 待执行 | 尚未完成正式发布范围确认。 |
+| 阶段 3：安全、隐私和公开范围 | 进行中 | 本地源码、存储、网络和依赖审计已完成；运行时依赖无漏洞，开发依赖的 esbuild/Vite 告警已记录并通过本地绑定缓解。仍待确认 GitHub 仓库 Private 状态和素材使用范围。 |
 | 阶段 4：发布前测试 | 待执行 | 尚未完成本轮发布验收。 |
 | 阶段 5：Vercel Preview 部署 | 待执行 | 尚未创建 Vercel Preview。 |
 | 阶段 6：朋友试玩交付 | 待执行 | 尚未向朋友提供试玩地址。 |
 
 阶段二执行备注：引擎测试首先发现 `stage8.test.ts` 缺少 Node 环境下的 `console` 类型声明，已用测试文件内的最小声明修复；修复后所有引擎回归测试通过。前端依赖安装曾被本机残留的 esbuild/Rollup 构建进程锁定，结束明确属于本项目的进程后，`npm ci`、类型检查和生产构建均成功。
+
+阶段三执行备注：已扫描工作区和 Git 跟踪文件，没有发现 `.env`、密钥、证书、凭据或 Token；应用没有 API、账号、Cookie 或 WebSocket，存档只写入浏览器 `localStorage`。前端运行时依赖的 `npm audit --omit=dev` 结果为 0 个漏洞；完整开发依赖的 esbuild/Vite 告警只影响本地开发服务器，已让 Vite 默认绑定 `127.0.0.1`。当前 friend preview 保留 Ctrl+D 作为信任测试功能，但不把它当作安全边界。GitHub 仓库权限和素材授权需要仓库所有者在外部确认。
 
 ## Git 版本约定（发布完成后仍需保留）
 

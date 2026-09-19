@@ -11,6 +11,8 @@ export default defineConfig({
     },
   },
   server: {
+    // Keep the development server local; do not expose it to the LAN by default.
+    host: '127.0.0.1',
     fs: {
       allow: [fileURLToPath(new URL('..', import.meta.url))],
     },

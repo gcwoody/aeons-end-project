@@ -84,6 +84,16 @@ npm run preview
 
 普通试玩版可以在发布前隐藏调试入口；即使隐藏，前端状态仍然可以被浏览器开发者工具修改，因此不能把客户端状态当作可信数据。内部测试 Preview 可以继续保留 Ctrl+D。
 
+## 阶段三安全审计记录
+
+- 当前仓库没有被 Git 跟踪的 `.env`、密钥、证书、凭据或 Token 文件。
+- 前端没有应用 API、WebSocket、Cookie、账号或服务端请求；`localStorage` 只保存本地游戏状态和撤销历史。
+- 引擎依赖审计通过；前端使用 `npm audit --omit=dev` 检查运行时依赖，结果为 0 个漏洞。
+- 完整前端开发依赖仍报告 esbuild/Vite 开发服务器相关告警，当前审计结果显示暂无可用修复。它属于本地开发工具链，不会进入 Vercel 的静态运行时资源；Vite 配置已默认绑定 `127.0.0.1`，不要使用 `--host 0.0.0.0` 对外暴露开发服务器。
+- 当前 `friend-preview` 保留 Ctrl+D，定位为信任朋友使用的测试 Preview；它不是权限控制，任何浏览器用户都可以修改客户端状态。若以后公开发布，应重新评估是否隐藏。
+- GitHub 仓库是否为 Private 需要在 GitHub Settings 中由仓库所有者确认；本地环境无法可靠读取该远程设置。
+- Aeon’s End 卡牌和角色图片的版权、商标和授权范围不由代码审计覆盖；当前只按非官方、非商业朋友试玩范围处理。
+
 ## 官方参考
 
 - [Vite on Vercel](https://vercel.com/docs/frameworks/frontend/vite)
