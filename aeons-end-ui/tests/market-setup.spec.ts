@@ -77,6 +77,40 @@ test('Setup previews follow Mage and Nemesis selections', async ({ page }) => {
   await expect(previews.nth(2)).not.toHaveAttribute('src', initialNemesis ?? '')
 })
 
+test('Mage mat images open a picker and sync the Mage dropdown', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const mageSelect = page.getByLabel('Player 1 Mage', { exact: true })
+  await expect(mageSelect).toHaveValue('jian')
+  await page.getByRole('button', { name: 'Choose Player 1 Mage' }).click()
+  await expect(page.getByRole('dialog', { name: 'Choose Player 1 Mage' })).toBeVisible()
+  await expect(page.locator('.mage-picker-card')).toHaveCount(8)
+
+  await page.getByRole('button', { name: 'Choose Adelheim Mage' }).click()
+  await expect(mageSelect).toHaveValue('adelheim')
+  await expect(page.getByRole('dialog', { name: 'Choose Player 1 Mage' })).toHaveCount(0)
+  await expect(page.getByRole('img', { name: 'adelheim mage mat' })).toBeVisible()
+})
+
+test('Nemesis mat image opens a picker and syncs the Nemesis dropdown', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const nemesisSelect = page.getByLabel('Nemesis', { exact: true })
+  await expect(nemesisSelect).toHaveValue('rageborne')
+  await page.getByRole('button', { name: 'Choose Nemesis' }).click()
+  await expect(page.getByRole('dialog', { name: 'Choose Nemesis' })).toBeVisible()
+  await expect(page.locator('.nemesis-picker-card')).toHaveCount(2)
+
+  await page.getByRole('button', { name: 'Choose Prince of Gluttons Nemesis' }).click()
+  await expect(nemesisSelect).toHaveValue('prince_of_gluttons')
+  await expect(page.getByRole('dialog', { name: 'Choose Nemesis' })).toHaveCount(0)
+  await expect(page.getByRole('img', { name: 'prince_of_gluttons nemesis mat' })).toBeVisible()
+})
+
 test('Setup randomizes Mages and Nemesis without changing difficulty', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())

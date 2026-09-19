@@ -25,6 +25,10 @@ const marketSlotLabels = ['Gem 1', 'Gem 2', 'Gem 3', 'Relic 1', 'Relic 2', 'Spel
 const marketSlotTypes = MARKET_SLOT_TYPES
 const replacementSlot = ref<number | null>(null)
 const replacementPickerEl = ref<HTMLElement | null>(null)
+const magePickerPlayer = ref<1 | 2 | null>(null)
+const magePickerEl = ref<HTMLElement | null>(null)
+const nemesisPickerOpen = ref(false)
+const nemesisPickerEl = ref<HTMLElement | null>(null)
 function cardsForSlot(index: number) {
   return marketCards.value.filter(card => card.type === marketSlotTypes[index])
 }
@@ -39,6 +43,11 @@ const replacementCurrentId = computed(() => replacementSlot.value === null ? '' 
 const mage1Preview = computed(() => mageImageUrls(state.mage1))
 const mage2Preview = computed(() => mageImageUrls(state.mage2))
 const nemesisPreview = computed(() => nemesisMatImageUrl(state.nemesisType, 'front'))
+const magePickerTitle = computed(() => magePickerPlayer.value === null
+  ? ''
+  : `Choose Player ${magePickerPlayer.value} Mage`)
+const magePickerCurrent = computed(() => magePickerPlayer.value === 1 ? state.mage1 : magePickerPlayer.value === 2 ? state.mage2 : '')
+const nemesisPickerTitle = 'Choose Nemesis'
 const marketSetupValid = computed(() => state.marketSlots.length === 9
   && new Set(state.marketSlots).size === 9
   && state.marketSlots.every((cardId, index) =>
@@ -97,12 +106,58 @@ watch(replacementSlot, (slot) => {
   nextTick(() => replacementPickerEl.value?.focus({ preventScroll: true }))
 })
 
+watch(magePickerPlayer, (player) => {
+  if (player === null) return
+  nextTick(() => magePickerEl.value?.focus({ preventScroll: true }))
+})
+
+watch(nemesisPickerOpen, (open) => {
+  if (!open) return
+  nextTick(() => nemesisPickerEl.value?.focus({ preventScroll: true }))
+})
+
 function replaceMarketCard(cardId: string) {
   const index = replacementSlot.value
   if (index === null) return
   if (!replacementCards.value.some(card => card.id === cardId)) return
   state.marketSlots[index] = cardId
   replacementSlot.value = null
+}
+
+function openMagePicker(player: 1 | 2) {
+  magePickerPlayer.value = player
+}
+
+function closeMagePicker() {
+  magePickerPlayer.value = null
+}
+
+function mageOptionDisabled(mageType: string) {
+  if (magePickerPlayer.value === null || mageType === magePickerCurrent.value) return false
+  const otherMage = magePickerPlayer.value === 1 ? state.mage2 : state.mage1
+  return mageType === otherMage
+}
+
+function selectMage(mageType: string) {
+  const player = magePickerPlayer.value
+  if (player === null || mageOptionDisabled(mageType)) return
+  if (player === 1) state.mage1 = mageType
+  else state.mage2 = mageType
+  magePickerPlayer.value = null
+}
+
+function openNemesisPicker() {
+  nemesisPickerOpen.value = true
+}
+
+function closeNemesisPicker() {
+  nemesisPickerOpen.value = false
+}
+
+function selectNemesis(nemesisType: string) {
+  if (!nemesisOptions.value.some(nemesis => nemesis.type === nemesisType)) return
+  state.nemesisType = nemesisType
+  nemesisPickerOpen.value = false
 }
 
 function saveTime(timestamp: number): string {
@@ -136,9 +191,14 @@ function turnLabel(turn: string): string {
           <button type="button" class="btn small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Random</button>
           </span>
         </label>
-        <article class="setup-preview-card">
+        <button
+          type="button"
+          class="setup-preview-card setup-mage-preview"
+          aria-label="Choose Player 1 Mage"
+          @click="openMagePicker(1)"
+        >
           <img v-if="mage1Preview" :src="mage1Preview.front" :alt="`${state.mage1} mage mat`" draggable="false" />
-        </article>
+        </button>
         <label>
           Player 2 Mage
           <span class="setup-select-row">
@@ -150,9 +210,14 @@ function turnLabel(turn: string): string {
           <button type="button" class="btn small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Random</button>
           </span>
         </label>
-        <article class="setup-preview-card">
+        <button
+          type="button"
+          class="setup-preview-card setup-mage-preview"
+          aria-label="Choose Player 2 Mage"
+          @click="openMagePicker(2)"
+        >
           <img v-if="mage2Preview" :src="mage2Preview.front" :alt="`${state.mage2} mage mat`" draggable="false" />
-        </article>
+        </button>
       </section>
 
       <section class="setup-nemesis-column setup-character-column" aria-label="Nemesis selection">
@@ -174,9 +239,14 @@ function turnLabel(turn: string): string {
             <option value="increased">Increased</option>
           </select>
         </label>
-        <article class="setup-preview-card nemesis-preview-card">
+        <button
+          type="button"
+          class="setup-preview-card setup-nemesis-preview nemesis-preview-card"
+          aria-label="Choose Nemesis"
+          @click="openNemesisPicker"
+        >
           <img v-if="nemesisPreview" :src="nemesisPreview" :alt="`${state.nemesisType} nemesis mat`" draggable="false" />
-        </article>
+        </button>
       </section>
 
       <section class="market-setup" aria-label="Market Setup">
@@ -282,6 +352,81 @@ function turnLabel(turn: string): string {
               @click="replaceMarketCard(card.id)"
             >
               <img v-if="cardImageUrl(card.id)" :src="cardImageUrl(card.id)" :alt="card.name" draggable="false" />
+            </button>
+          </CardHoverPreview>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="magePickerPlayer !== null" class="overlay setup-mage-overlay" role="dialog" aria-modal="true" aria-labelledby="mage-picker-title" @click.self="closeMagePicker">
+      <div ref="magePickerEl" class="overlay-card setup-mage-picker" tabindex="-1">
+        <div class="setup-market-picker-head">
+          <h2 id="mage-picker-title">{{ magePickerTitle }}</h2>
+          <button type="button" class="btn small" aria-label="Close Mage picker" @click="closeMagePicker">Close</button>
+        </div>
+        <div class="mage-picker-grid">
+          <CardHoverPreview
+            v-for="mage in mageOptions"
+            :key="mage.type"
+            :image-url="mageImageUrls(mage.type)?.front"
+            :image-alt="`${mage.type} mage mat`"
+            :preview-width="840"
+            :preview-height="604"
+            :preview-delay="200"
+            preview-class="mage-preview"
+            :disabled="mageOptionDisabled(mage.type)"
+          >
+            <button
+              type="button"
+              class="mage-picker-card"
+              :aria-label="`Choose ${mage.type} Mage`"
+              :class="{ selected: mage.type === magePickerCurrent }"
+              :disabled="mageOptionDisabled(mage.type)"
+              @click="selectMage(mage.type)"
+            >
+              <img
+                v-if="mageImageUrls(mage.type)?.front"
+                :src="mageImageUrls(mage.type)!.front"
+                :alt="`${mage.type} mage mat`"
+                draggable="false"
+              />
+            </button>
+          </CardHoverPreview>
+        </div>
+      </div>
+    </div>
+
+    <div v-if="nemesisPickerOpen" class="overlay setup-nemesis-overlay" role="dialog" aria-modal="true" aria-labelledby="nemesis-picker-title" @click.self="closeNemesisPicker">
+      <div ref="nemesisPickerEl" class="overlay-card setup-nemesis-picker" tabindex="-1">
+        <div class="setup-market-picker-head">
+          <h2 id="nemesis-picker-title">{{ nemesisPickerTitle }}</h2>
+          <button type="button" class="btn small" aria-label="Close Nemesis picker" @click="closeNemesisPicker">Close</button>
+        </div>
+        <div class="nemesis-picker-grid">
+          <CardHoverPreview
+            v-for="nemesis in nemesisOptions"
+            :key="nemesis.type"
+            :image-url="nemesisMatImageUrl(nemesis.type, 'front')"
+            :image-alt="`${nemesis.name} nemesis mat`"
+            :preview-width="630"
+            :preview-height="840"
+            :preview-delay="200"
+            image-object-fit="contain"
+            preview-class="nemesis-mat-preview"
+          >
+            <button
+              type="button"
+              class="nemesis-picker-card"
+              :aria-label="`Choose ${nemesis.name} Nemesis`"
+              :class="{ selected: nemesis.type === state.nemesisType }"
+              @click="selectNemesis(nemesis.type)"
+            >
+              <img
+                v-if="nemesisMatImageUrl(nemesis.type, 'front')"
+                :src="nemesisMatImageUrl(nemesis.type, 'front')"
+                :alt="`${nemesis.name} nemesis mat`"
+                draggable="false"
+              />
             </button>
           </CardHoverPreview>
         </div>
