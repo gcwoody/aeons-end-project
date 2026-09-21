@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { cardImageUrl } from '../card-images'
 import { chunkCards } from '../game/pile-layout'
+import CardHoverPreview from './CardHoverPreview.vue'
 
 export interface CardSelectionItem {
   key: string
@@ -66,17 +67,21 @@ function toggle(key: string): void {
           class="pile-row decision-card-row"
           :style="{ '--choice-columns': row.length }"
         >
-          <button
+          <CardHoverPreview
             v-for="choice in row"
             :key="choice.key"
-            class="decision-card-choice"
-            :class="{ selected: isSelected(choice.key) }"
-            type="button"
-            @click="toggle(choice.key)"
+            :card-id="choice.cardId"
           >
-            <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />
-            <span v-else>{{ choice.cardName }}</span>
-          </button>
+            <button
+              class="decision-card-choice"
+              :class="{ selected: isSelected(choice.key) }"
+              type="button"
+              @click="toggle(choice.key)"
+            >
+              <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />
+              <span v-else>{{ choice.cardName }}</span>
+            </button>
+          </CardHoverPreview>
         </div>
       </div>
     </div>

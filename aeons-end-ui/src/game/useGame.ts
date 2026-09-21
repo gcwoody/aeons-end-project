@@ -13,6 +13,7 @@ import {
   resolvePreppedEffects,
   getPreppedCardActions, activatePreppedCardAction as engineActivatePreppedCardAction,
   activatePreppedSpellAction as engineActivatePreppedSpellAction,
+  getPlayerCardInPlayActions, activatePlayerCardInPlayAction as engineActivatePlayerCardInPlayAction,
   resolvePendingDecision as engineResolvePendingDecision,
   canPlayerAct, canActivateAbilityDuringMain, toRoman,
   advanceNemesisTurn, getNemesisDiscardActions, discardNemesisPower,
@@ -73,7 +74,7 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
-  viewPile: null as 'deck' | 'discard' | 'nemesis_specific' | null,
+  viewPile: null as 'deck' | 'discard' | 'nemesis_specific' | 'player_cards_in_play' | null,
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
   debugOpen: false,
@@ -138,11 +139,11 @@ function boardCardSelectionKey(selection: BoardCardSelection): string {
 function usesBoardCardSelection(decision = state.game?.pendingDecision): boolean {
   if (decision?.kind === 'select_cards') {
     return decision.candidates.length > 0 && decision.candidates.every(choice =>
-      choice.zone === 'hand' || choice.zone === 'played_this_turn')
+      choice.zone === 'hand' || choice.zone === 'played_this_turn' || choice.zone === 'swap_zone')
   }
   if (decision?.kind === 'select_collective_cards') {
     return decision.candidates.length > 0 && decision.candidates.every(item =>
-      item.choice.zone === 'hand' || item.choice.zone === 'played_this_turn')
+      item.choice.zone === 'hand' || item.choice.zone === 'played_this_turn' || item.choice.zone === 'swap_zone')
   }
   return false
 }
@@ -207,7 +208,7 @@ function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefine
   return null
 }
 
-/** Return a board-resident hand or played-card candidate, if this card is selectable now. */
+/** Return a board-resident hand, played, or Swap zone candidate, if selectable now. */
 export function getBoardCardSelection(
   playerId: PlayerId, zone: CardChoice['zone'], index: number, cardId: string,
 ): BoardCardSelection | null {
@@ -400,6 +401,7 @@ function cp(): PlayerState {
 /** Tracks the displayed Aether breakdown: regular vs conditional. */
 function aetherInfo(p: PlayerState) {
   const total = getTotalAether(p)
+  const tokenTotal = p.aetherTokens ?? 0
   const remainingConditional = getAllRemainingConditional(p)
   const conditionalTypes = new Set([
     ...Object.keys(remainingConditional),
@@ -409,7 +411,7 @@ function aetherInfo(p: PlayerState) {
   for (const type of conditionalTypes) {
     conditionalEarned += getConditionalAetherByType(p, type)
   }
-  const regularAvail = Math.max(0, (total - conditionalEarned) - p.regularAetherSpent)
+  const regularAvail = Math.max(0, (total - tokenTotal - conditionalEarned) - p.regularAetherSpent)
   const conds: Record<string, number> = {}
   for (const [k, v] of Object.entries(remainingConditional)) {
     if (v > 0) conds[k] = v
@@ -418,7 +420,8 @@ function aetherInfo(p: PlayerState) {
   for (const v of Object.values(conds)) condAvail += v
   return {
     total,
-    available: regularAvail + condAvail,
+    available: regularAvail + condAvail + tokenTotal,
+    aetherTokens: p.aetherTokens ?? 0,
     regularAvail,
     gemAether: conds['gem'] ?? 0,
     spellAether: conds['spell'] ?? 0,
@@ -782,6 +785,15 @@ export function openPile(pile: 'deck' | 'discard') {
   state.viewPile = pile
 }
 
+/** Open the displayed player's face-up in-play cards for action selection. */
+export function openPlayerCardsInPlayPile() {
+  const cards = displayPlayer.value?.playerCardsInPlay ?? []
+  if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis'
+    || state.game.pendingDecision || state.game.pendingEffect || cards.length < 2) return
+  closeDismissibleOverlays()
+  state.viewPile = 'player_cards_in_play'
+}
+
 /** Open the currently configured face-up Nemesis specific pile for inspection. */
 export function openNemesisSpecificPile() {
   closeDismissibleOverlays()
@@ -861,6 +873,18 @@ export function activatePreppedSpellAction(breachIndex: number, spellIndex: numb
   const previous = beforeAction()
   const messages = engineActivatePreppedSpellAction(state.game, cp().id, breachIndex, spellIndex)
   for (const message of messages) pushLog(message, message.startsWith('That ') || message.startsWith('Resolve ') ? 'warn' : 'ok')
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
+/** Activate a Main Phase action exposed by a face-up Mage-specific card in play. */
+export function activatePlayerCardInPlayAction(cardIndex: number, ownerId: PlayerId = state.selectedPlayer) {
+  if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis' || state.game.pendingDecision || state.game.pendingEffect) return
+  const previous = beforeAction()
+  const messages = engineActivatePlayerCardInPlayAction(state.game, ownerId, cardIndex)
+  for (const message of messages) {
+    pushLog(message, message.startsWith('That ') || message.startsWith('Resolve ') ? 'warn' : 'ok')
+  }
   maybeAutoEnd()
   finishAction(previous)
 }
@@ -1083,6 +1107,11 @@ export const preppedCardActions = computed(() => {
   return getPreppedCardActions(state.game, state.game.currentTurn)
 })
 
+export const playerCardInPlayActions = computed(() => {
+  if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis') return []
+  return getPlayerCardInPlayActions(state.game, state.selectedPlayer)
+})
+
 export const nemesisDiscardActions = computed(() => {
   if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis') return []
   return getNemesisDiscardActions(state.game, state.game.currentTurn)
@@ -1123,14 +1152,15 @@ export function useGame() {
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, buyNemesisSpecificTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     activatePreppedSpellAction,
+    activatePlayerCardInPlayAction,
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, requestEndTurn, discardNemesisCard, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, openPile, openNemesisSpecificPile, closePile,
+    selectPlayer, clickDiscardCard, openPile, openPlayerCardsInPlayPile, openNemesisSpecificPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,
     togglePendingBoardCard, confirmPendingBoardCards, skipPendingBoardCards,
     castableSpells, buyables, playerCanAct,
-    displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast, preppedCardActions, nemesisDiscardActions,
+    displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast, preppedCardActions, playerCardInPlayActions, nemesisDiscardActions,
     canActivateAbilityInMain,
   }
 }

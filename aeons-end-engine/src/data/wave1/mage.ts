@@ -11,6 +11,22 @@ export interface MageDef {
   startHand: string[]
   startDeck: string[]
   breaches: BreachState[]
+  /** Face-up Mage-specific cards placed in the Swap zone during setup. */
+  swapZone?: string[]
+  /** Reserve the shared Swap zone even when it starts empty. */
+  hasSwapZone?: boolean
+  /** Reserve the shared Develop zone even when it starts empty. */
+  hasDevelopZone?: boolean
+  /** Whether the UI should reserve a face-down Mage-specific deck column. */
+  hasSpecificDeck?: boolean
+  /** Optional display name for the Mage-specific deck (for example, Dezmodia's Stash). */
+  specificDeckName?: string
+  /** Initial cards for the Mage-specific deck. */
+  specificDeck?: string[]
+  /** Shuffle the initial Mage-specific deck during setup. */
+  specificDeckShuffled?: boolean
+  /** Optional card-back family used by the Mage-specific deck UI. */
+  specificDeckBack?: 'treasure_1' | 'treasure_2' | 'treasure_3' | 'player'
 }
 
 type BreachFactory = (

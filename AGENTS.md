@@ -24,6 +24,12 @@ Read it before making changes.
   fix the UI layer (composables/components) instead.
 
 ## UI conventions
+- **Border rendering:** Every visible CSS pixel border, outline, and outline-style
+  box-shadow stroke must be **2px** wide. Do not introduce 1px visual borders;
+  use `--pixel-border-width` in `aeons-end-ui/src/style.css` for normal borders.
+- **Card visuals:** Every card rendered in the game, including cards inside
+  decision/selection modals and face-down cards, must use the shared card
+  border-radius variables/classes. Do not introduce square-corner card visuals.
 - **Ctrl+Z** undoes the last user operation (max 10 steps, keyboard shortcut only, no button).
 - **Ctrl+D** toggles the debug panel (edit HP/charge, add cards, toggle breaches, export/import JSON).
 - The game **auto-saves** to localStorage; the Setup screen offers "Resume Game" when a save exists.

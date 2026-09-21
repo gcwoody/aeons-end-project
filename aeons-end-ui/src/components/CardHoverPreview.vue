@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onBeforeUnmount, watch } from 'vue'
+import { ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 
@@ -41,7 +41,11 @@ function updatePosition(clientX: number, clientY: number) {
 }
 
 function startPreview(event: MouseEvent) {
-  if (props.disabled) return
+  if (props.disabled || isSpellDragging()) return
+  // A set-next-to-supply Treasure is rendered inside the supply card's own
+  // preview wrapper. Dismiss every other wrapper first so only the card under
+  // the pointer can own the preview, even while moving between nested cards.
+  window.dispatchEvent(new Event('card-preview-dismiss'))
   clearTimeout(showTimer)
   previewSize.value = {
     width: props.previewWidth ?? 210,
@@ -59,8 +63,24 @@ function isPreviewDisabledTarget(target: EventTarget | null): boolean {
   return target instanceof Element && Boolean(target.closest('[data-card-preview-disabled]'))
 }
 
+function isNestedPreviewEvent(event: MouseEvent): boolean {
+  const current = event.currentTarget
+  const target = event.target
+  if (!(current instanceof Element) || !(target instanceof Element)) return false
+  const nearestPreview = target.closest('.card-hover-wrap')
+  return Boolean(nearestPreview && nearestPreview !== current)
+}
+
+function isSpellDragging(): boolean {
+  return typeof document !== 'undefined' && document.body.classList.contains('spell-dragging')
+}
+
 function handleMouseOver(event: MouseEvent) {
-  if (props.disabled || isPreviewDisabledTarget(event.target)) {
+  // Nested CardHoverPreview wrappers are used by Treasure cards placed over a
+  // supply pile. Let the innermost wrapper own the hover event so the supply
+  // card and the Treasure cannot open competing previews.
+  if (isNestedPreviewEvent(event)) return
+  if (props.disabled || isSpellDragging() || isPreviewDisabledTarget(event.target)) {
     stopPreview()
     return
   }
@@ -85,7 +105,18 @@ function stopPreview() {
   window.removeEventListener('wheel', resizePreview)
 }
 
-onBeforeUnmount(stopPreview)
+function dismissFromSpellDrag() {
+  stopPreview()
+}
+
+onMounted(() => {
+  window.addEventListener('card-preview-dismiss', dismissFromSpellDrag)
+})
+
+onBeforeUnmount(() => {
+  stopPreview()
+  window.removeEventListener('card-preview-dismiss', dismissFromSpellDrag)
+})
 watch(() => props.disabled, (disabled) => {
   if (disabled) stopPreview()
 })

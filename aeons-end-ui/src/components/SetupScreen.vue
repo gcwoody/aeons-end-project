@@ -16,7 +16,12 @@ const {
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 const selectionError = ref('')
 const mageOptions = computed(() => Object.values(MAGES))
-const player2MageOptions = computed(() => mageOptions.value.filter(mage => mage.type !== state.mage1))
+const mageWaves = computed(() => [...new Set(mageOptions.value.map(mage => mage.wave))].sort((a, b) => a - b))
+const mage1Wave = ref(mageOptions.value.find(mage => mage.type === state.mage1)?.wave ?? mageWaves.value[0] ?? 1)
+const mage2Wave = ref(mageOptions.value.find(mage => mage.type === state.mage2)?.wave ?? mageWaves.value[0] ?? 1)
+const magePickerWave = ref(mage1Wave.value)
+const mage1Options = computed(() => mageOptions.value.filter(mage => mage.wave === mage1Wave.value))
+const player2MageOptions = computed(() => mageOptions.value.filter(mage => mage.wave === mage2Wave.value && mage.type !== state.mage1))
 const nemesisOptions = computed(() => Object.values(NEMESES))
 const duplicateMage = computed(() => state.mage1 === state.mage2)
 const marketCards = computed(() => Object.values(ALL_MARKET_CARDS)
@@ -81,6 +86,15 @@ watch(() => [state.mage1, state.mage2, state.marketMode, ...state.marketSlots], 
   selectionError.value = ''
 })
 
+watch(() => state.mage1, (type) => {
+  const wave = MAGES[type]?.wave
+  if (wave !== undefined) mage1Wave.value = wave
+})
+watch(() => state.mage2, (type) => {
+  const wave = MAGES[type]?.wave
+  if (wave !== undefined) mage2Wave.value = wave
+})
+
 function startSelectedGame() {
   selectionError.value = duplicateMage.value
     ? 'This Mage has already been selected by another player.'
@@ -126,6 +140,7 @@ function replaceMarketCard(cardId: string) {
 
 function openMagePicker(player: 1 | 2) {
   magePickerPlayer.value = player
+  magePickerWave.value = MAGES[player === 1 ? state.mage1 : state.mage2]?.wave ?? mageWaves.value[0] ?? 1
 }
 
 function closeMagePicker() {
@@ -145,6 +160,8 @@ function selectMage(mageType: string) {
   else state.mage2 = mageType
   magePickerPlayer.value = null
 }
+
+const magePickerOptions = computed(() => mageOptions.value.filter(mage => mage.wave === magePickerWave.value))
 
 function openNemesisPicker() {
   nemesisPickerOpen.value = true
@@ -182,9 +199,12 @@ function turnLabel(turn: string): string {
       <section class="setup-mage-column setup-character-column" aria-label="Mage selection">
         <label>
           Player 1 Mage
+          <span class="wave-tabs" role="tablist" aria-label="Player 1 Mage Wave">
+            <button v-for="wave in mageWaves" :key="`p1-wave-${wave}`" type="button" role="tab" :aria-selected="mage1Wave === wave" :class="{ active: mage1Wave === wave }" @click="mage1Wave = wave">Wave {{ wave }}</button>
+          </span>
           <span class="setup-select-row">
           <select v-model="state.mage1" aria-label="Player 1 Mage">
-            <option v-for="mage in mageOptions" :key="mage.type" :value="mage.type">
+            <option v-for="mage in mage1Options" :key="mage.type" :value="mage.type">
               {{ mage.type }}
             </option>
           </select>
@@ -201,6 +221,9 @@ function turnLabel(turn: string): string {
         </button>
         <label>
           Player 2 Mage
+          <span class="wave-tabs" role="tablist" aria-label="Player 2 Mage Wave">
+            <button v-for="wave in mageWaves" :key="`p2-wave-${wave}`" type="button" role="tab" :aria-selected="mage2Wave === wave" :class="{ active: mage2Wave === wave }" @click="mage2Wave = wave">Wave {{ wave }}</button>
+          </span>
           <span class="setup-select-row">
           <select v-model="state.mage2" aria-label="Player 2 Mage">
             <option v-for="mage in player2MageOptions" :key="mage.type" :value="mage.type">
@@ -364,9 +387,12 @@ function turnLabel(turn: string): string {
           <h2 id="mage-picker-title">{{ magePickerTitle }}</h2>
           <button type="button" class="btn small" aria-label="Close Mage picker" @click="closeMagePicker">Close</button>
         </div>
+        <div class="wave-tabs mage-picker-wave-tabs" role="tablist" aria-label="Mage Wave">
+          <button v-for="wave in mageWaves" :key="`picker-wave-${wave}`" type="button" role="tab" :aria-selected="magePickerWave === wave" :class="{ active: magePickerWave === wave }" @click="magePickerWave = wave">Wave {{ wave }}</button>
+        </div>
         <div class="mage-picker-grid">
           <CardHoverPreview
-            v-for="mage in mageOptions"
+            v-for="mage in magePickerOptions"
             :key="mage.type"
             :image-url="mageImageUrls(mage.type)?.front"
             :image-alt="`${mage.type} mage mat`"

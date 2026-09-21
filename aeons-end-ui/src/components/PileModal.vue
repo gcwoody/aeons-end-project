@@ -8,17 +8,25 @@ import { chunkCards, groupPileCards, pileRowLabel, type PileKind } from '../game
 import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
 
-const { state, displayPlayer, closePile } = useGame()
+const { state, displayPlayer, closePile, playerCardInPlayActions, activatePlayerCardInPlayAction } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
 const title = computed(() => {
   if (state.viewPile === 'nemesis_specific') {
     return getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.label
   }
+  if (state.viewPile === 'player_cards_in_play') return 'Player Cards in Play'
   return state.viewPile === 'deck' ? 'Deck' : 'Discard'
 })
+const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
+const playerCardEntries = computed(() =>
+  (displayPlayer.value?.playerCardsInPlay ?? [])
+    .map((cardId, cardIndex) => ({ cardId, cardIndex }))
+    .filter(({ cardIndex }) => displayPlayer.value?.playerCardSupplyTargets?.[cardIndex] == null),
+)
 const cards = computed(() => {
   if (state.viewPile === 'nemesis_specific') return state.game?.nemesis.strikeDeck ?? []
+  if (state.viewPile === 'player_cards_in_play') return playerCardEntries.value.map(entry => entry.cardId)
   return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
 })
 
@@ -43,6 +51,28 @@ function rowLabel(groupIndex: number): string {
 }
 
 const usesRowLabels = computed(() => playerPileKind.value !== null)
+
+const isPlayerCardsInPlay = computed(() => state.viewPile === 'player_cards_in_play')
+
+function playerCardActionAvailable(index: number, cardId: string): boolean {
+  return playerCardInPlayActions.value.some(action => action.cardIndex === index && action.cardId === cardId)
+}
+
+function cardIndexInPile(groupIndex: number, cardIndex: number): number {
+  const visibleIndex = groups.value.slice(0, groupIndex).reduce((total, group) => total + group.length, 0) + cardIndex
+  return isPlayerCardsInPlay.value
+    ? playerCardEntries.value[visibleIndex]?.cardIndex ?? visibleIndex
+    : visibleIndex
+}
+
+function selectPileCard(groupIndex: number, cardIndex: number) {
+  if (!isPlayerCardsInPlay.value) return
+  const index = cardIndexInPile(groupIndex, cardIndex)
+  const cardId = cards.value[index]
+  if (!cardId || !playerCardActionAvailable(index, cardId)) return
+  closePile()
+  activatePlayerCardInPlayAction(index)
+}
 </script>
 
 <template>
@@ -50,7 +80,7 @@ const usesRowLabels = computed(() => playerPileKind.value !== null)
     <div ref="modalEl" class="overlay-card pile-modal draggable-modal" :class="{ dragging, 'pile-modal-with-labels': usesRowLabels }" :style="{ ...modalStyle, '--pile-columns': columns }" @pointerdown="startDrag">
       <h3>
         {{ title }}
-        <span class="muted">(top → bottom)</span>
+        <span class="muted">{{ orderLabel }}</span>
       </h3>
       <div v-if="cards.length === 0" class="empty">— empty —</div>
       <div v-else class="pile-rows">
@@ -62,7 +92,16 @@ const usesRowLabels = computed(() => playerPileKind.value !== null)
         >
           <span v-if="usesRowLabels" class="pile-row-label">{{ rowLabel(gi) }}</span>
           <CardHoverPreview v-for="(cid, i) in group" :key="cid + i" :card-id="cid">
-            <div class="pile-card" :class="{ 'pile-card-image': cardImageUrl(cid) }">
+            <div
+              class="pile-card"
+              :class="{
+                'pile-card-image': cardImageUrl(cid),
+                'player-card-in-play-choice': isPlayerCardsInPlay,
+                'player-card-in-play-action': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
+                'player-card-in-play-disabled': isPlayerCardsInPlay && !playerCardActionAvailable(cardIndexInPile(gi, i), cid),
+              }"
+              @click="selectPileCard(gi, i)"
+            >
               <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
               <span v-else>{{ getCard(cid).name }}</span>
             </div>

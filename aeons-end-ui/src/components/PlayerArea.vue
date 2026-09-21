@@ -2,11 +2,10 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellDamagePreviewRange, toRoman } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl } from '../card-images'
-import type { BreachState } from '@engine/types'
+import { cardImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-images'
+import type { BreachState, CardChoice } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
-import FaceUpPileCard from './FaceUpPileCard.vue'
 import { breachImageUrl, breachRotation } from '../breach-images'
 import MageBoard from './MageBoard.vue'
 
@@ -15,10 +14,11 @@ const {
   canActivateAbilityInMain,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
   activatePreppedCardAction, activatePreppedSpellAction, preppedCardActions,
+  activatePlayerCardInPlayAction, playerCardInPlayActions,
   isPendingPreppedSpellSelected, togglePendingPreppedSpell,
   getBoardCardSelection, isPendingBoardCardSelected, togglePendingBoardCard,
   playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, requestEndTurn, toMainPhase,
-  selectPlayer, clickDiscardCard, openPile, resolveDecision, toggleHelp,
+  selectPlayer, clickDiscardCard, openPile, openPlayerCardsInPlayPile, resolveDecision, toggleHelp,
 } = useGame()
 
 const players = computed(() => state.game?.players ?? [])
@@ -33,6 +33,26 @@ const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order')
 const discardTopCard = computed(() => player.value.discard[0] ?? null)
+const swapZoneCards = computed(() => player.value.swapZone ?? [])
+const developZoneCards = computed(() => player.value.developZone ?? [])
+const mageDefinition = computed(() => MAGES[player.value?.mageType ?? ''])
+const hasSwapZone = computed(() => mageDefinition.value?.hasSwapZone === true || swapZoneCards.value.length > 0)
+const hasDevelopZone = computed(() => mageDefinition.value?.hasDevelopZone === true || developZoneCards.value.length > 0)
+const hasSpecificDeck = computed(() => mageDefinition.value?.hasSpecificDeck === true)
+const specificDeckName = computed(() => mageDefinition.value?.specificDeckName ?? 'Specific Deck')
+const specificDeckCards = computed(() => player.value.specificDeck ?? [])
+const playerCardPlacementsInPlay = computed(() =>
+  (player.value.playerCardsInPlay ?? [])
+    .map((cardId, cardIndex) => ({ cardId, cardIndex }))
+    .filter(({ cardIndex }) => player.value.playerCardSupplyTargets?.[cardIndex] == null),
+)
+const playerCardsInPlay = computed(() => playerCardPlacementsInPlay.value.map(({ cardId }) => cardId))
+const hasPlayerCardsInPlay = computed(() => playerCardsInPlay.value.length > 0)
+const specificDeckBackImage = computed(() =>
+  mageDefinition.value?.specificDeckBack
+    ? specificDeckBackUrl(mageDefinition.value.specificDeckBack)
+    : undefined,
+)
 const draggingSpell = ref(false)
 const handElement = ref<HTMLElement | null>(null)
 const handOffset = ref(0)
@@ -164,8 +184,32 @@ const spellDamagePreviewLabel = (b: BreachState, spellIndex = 0) => {
   return preview.min === preview.max ? `${preview.min}` : `${preview.min}/${preview.max}`
 }
 
-const typeClass = (cid: string) =>
-  getCard(cid).type === 'gem' ? 'gem' : getCard(cid).type === 'relic' ? 'relic' : 'spell'
+const typeClass = (cid: string) => {
+  const type = getCard(cid).type
+  if (type === 'gem' || type === 'relic' || type === 'treasure') return type
+  return 'spell'
+}
+
+const isFaceDownPreppedSpell = (b: BreachState, spellIndex: number) =>
+  b.preppedSpellFaceDown?.[spellIndex] === true
+
+const draggedPreppedSpellFaceDown = computed(() => {
+  const source = draggedPreppedSpell.value
+  if (!source) return false
+  const breach = player.value.breaches.find(item => item.index === source.breachIndex)
+  return !!breach && isFaceDownPreppedSpell(breach, source.spellIndex)
+})
+
+const draggedSpellPreviewUrl = computed(() => {
+  const cardId = draggedSpellId.value
+  if (!cardId) return undefined
+  return draggedPreppedSpellFaceDown.value ? playerCardBackUrl() : cardImageUrl(cardId)
+})
+
+const isDraggedPreppedSpell = (b: BreachState, spellIndex: number) =>
+  draggingSpell.value
+    && draggedPreppedSpell.value?.breachIndex === b.index
+    && draggedPreppedSpell.value?.spellIndex === spellIndex
 
 function breachCosts(b: BreachState) {
   return getBreachActionCosts(state.game!, player.value.id, b.index) ?? { focus: 0, open: 0 }
@@ -216,7 +260,7 @@ function isDecisionBreachTarget(b: BreachState): boolean {
     && decision.candidates.some(choice => choice.playerId === player.value.id && choice.breachIndex === b.index)
 }
 
-function boardCardChoice(zone: 'hand' | 'played_this_turn', index: number, cardId: string) {
+function boardCardChoice(zone: CardChoice['zone'], index: number, cardId: string) {
   return getBoardCardSelection(player.value.id, zone, index, cardId)
 }
 
@@ -233,6 +277,39 @@ function clickPlayedCard(index: number) {
   activatePreppedCardAction({
     zone: 'played_this_turn', index, cardId, cardName: getCard(cardId).name,
   })
+}
+
+function clickSwapZoneCard(index: number) {
+  const cardId = swapZoneCards.value[index]
+  if (!cardId) return
+  const boardChoice = boardCardChoice('swap_zone', index, cardId)
+  if (boardChoice) togglePendingBoardCard(boardChoice)
+}
+
+function isPlayerCardInPlayAction(index: number, cardId: string): boolean {
+  const placement = playerCardPlacementsInPlay.value[index]
+  return !!placement && placement.cardId === cardId && playerCardInPlayActions.value.some(action =>
+    action.cardIndex === placement.cardIndex && action.cardId === cardId,
+  )
+}
+
+function playerCardPowerTokens(index: number): number {
+  const placement = playerCardPlacementsInPlay.value[index]
+  return placement ? player.value.playerCardPowerTokens?.[placement.cardIndex] ?? 0 : 0
+}
+
+function clickPlayerCardInPlay(index: number) {
+  if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis' || state.game.pendingDecision || state.game.pendingEffect) return
+  if (playerCardsInPlay.value.length > 1) {
+    const hasVisibleAction = playerCardPlacementsInPlay.value.some((placement, visibleIndex) =>
+      isPlayerCardInPlayAction(visibleIndex, placement.cardId),
+    )
+    if (hasVisibleAction) openPlayerCardsInPlayPile()
+    return
+  }
+  const placement = playerCardPlacementsInPlay.value[index]
+  if (!placement || !isPlayerCardInPlayAction(index, placement.cardId)) return
+  activatePlayerCardInPlayAction(placement.cardIndex)
 }
 
 function clickHand(i: number) {
@@ -283,6 +360,14 @@ function handleHandWheel(event: WheelEvent) {
   const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
   handScrollTarget = Math.min(Math.max(0, handScrollTarget + event.deltaY * 1.1), maxScroll)
   if (handScrollFrame === null) handScrollFrame = requestAnimationFrame(animateHandScroll)
+}
+
+function handleZoneWheel(event: WheelEvent) {
+  const zone = event.currentTarget
+  if (!(zone instanceof HTMLElement) || zone.scrollWidth <= zone.clientWidth || event.deltaY === 0) return
+  event.preventDefault()
+  event.stopPropagation()
+  zone.scrollLeft = Math.min(Math.max(0, zone.scrollLeft + event.deltaY * 1.1), zone.scrollWidth - zone.clientWidth)
 }
 
 let handAlignmentFrame: number | null = null
@@ -352,10 +437,25 @@ function handleSpellPointerMove(event: PointerEvent) {
   dragPosition.value = { x: event.clientX, y: event.clientY }
   const distance = Math.hypot(event.clientX - dragStartX, event.clientY - dragStartY)
   if (distance > 5) {
-    draggingSpell.value = true
+    if (!draggingSpell.value) {
+      draggingSpell.value = true
+      // A real drag is a modal pointer interaction: close any preview that
+      // was already visible and prevent the click produced on release from
+      // activating whichever card is underneath the pointer.
+      window.dispatchEvent(new Event('card-preview-dismiss'))
+      window.addEventListener('click', blockSpellDragClick, true)
+    }
     suppressSpellClick.value = true
   }
   if (draggingSpell.value) event.preventDefault()
+}
+
+function blockSpellDragClick(event: MouseEvent) {
+  if (!suppressSpellClick.value) return
+  event.preventDefault()
+  event.stopImmediatePropagation()
+  suppressSpellClick.value = false
+  window.removeEventListener('click', blockSpellDragClick, true)
 }
 
 function finishSpellPointerDrag(event: PointerEvent) {
@@ -426,6 +526,13 @@ function finishSpellPointerDrag(event: PointerEvent) {
     && canMovePreppedSpellTo(preppedTargetBreach, preppedSource)
   const handRect = handElement.value?.getBoundingClientRect()
   const handOverlap = handRect ? overlapArea(draggedRect, handRect) : 0
+  // Face-down Conjured spells may move between legal Breaches, but must remain
+  // in play. This guard protects against a release over the hand creating an
+  // extra card and bypassing Conjure's top-of-deck fallback.
+  const sourceFaceDown = preppedSource
+    ? player.value.breaches.find(item => item.index === preppedSource.breachIndex)
+      ?.preppedSpellFaceDown?.[preppedSource.spellIndex] === true
+    : false
   removeSpellPointerListeners()
   draggingSpell.value = false
   draggedSpellId.value = null
@@ -436,12 +543,17 @@ function finishSpellPointerDrag(event: PointerEvent) {
     // until that synthetic click is consumed, then clear it as a fallback for
     // releases outside the card.
     suppressSpellClick.value = true
-    window.setTimeout(() => { suppressSpellClick.value = false }, 0)
+    window.setTimeout(() => {
+      suppressSpellClick.value = false
+      window.removeEventListener('click', blockSpellDragClick, true)
+    }, 0)
   }
   if (wasDragging) {
     if (preppedSource) {
       if (handOverlap > 0) {
-        returnPreppedSpellToHand(preppedSource.breachIndex, preppedSource.spellIndex)
+        if (!sourceFaceDown) {
+          returnPreppedSpellToHand(preppedSource.breachIndex, preppedSource.spellIndex)
+        }
       } else {
         const breach = player.value.breaches.find((item) => item.index === breachIndex)
         if (breach && breach.index !== preppedSource.breachIndex && canDropPreppedTarget) {
@@ -462,6 +574,7 @@ function finishSpellPointerDrag(event: PointerEvent) {
 
 function cancelSpellPointerDrag() {
   removeSpellPointerListeners()
+  window.removeEventListener('click', blockSpellDragClick, true)
   draggingSpell.value = false
   draggedSpellId.value = null
   draggedSpellIndex.value = null
@@ -489,11 +602,21 @@ onMounted(() => {
 })
 watch(() => player.value?.hand.length, () => nextTick(updateHandAlignment))
 watch(() => state.selectedPlayer, () => nextTick(updateHandAlignment))
+watch(draggingSpell, (dragging) => {
+  if (typeof document !== 'undefined') {
+    document.body.classList.toggle('spell-dragging', dragging)
+  }
+  if (dragging && typeof window !== 'undefined') {
+    window.dispatchEvent(new Event('card-preview-dismiss'))
+  }
+})
 watch(
   [() => state.phase, () => state.selectedPlayer, () => state.game?.currentTurn],
   () => { state.endTurnWarningVisible = false },
 )
 onBeforeUnmount(() => {
+  window.removeEventListener('click', blockSpellDragClick, true)
+  if (typeof document !== 'undefined') document.body.classList.remove('spell-dragging')
   window.removeEventListener('pointerdown', dismissEndTurnWarning)
   window.removeEventListener('resize', updateHandAlignment)
   handResizeObserver?.disconnect()
@@ -568,8 +691,8 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       :style="{ left: `${dragPosition.x}px`, top: `${dragPosition.y}px` }"
     >
       <img
-        v-if="cardImageUrl(draggedSpellId)"
-        :src="cardImageUrl(draggedSpellId)"
+        v-if="draggedSpellPreviewUrl"
+        :src="draggedSpellPreviewUrl"
         :alt="getCard(draggedSpellId).name"
         draggable="false"
       />
@@ -631,13 +754,14 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                   'repeatable-prepped-action': isRepeatablePreppedSpell(b, spellIndex),
                 }"
           >
-            <CardHoverPreview :card-id="spellId">
+            <CardHoverPreview :card-id="spellId" :image-url="isFaceDownPreppedSpell(b, spellIndex) ? cardImageUrl(spellId) : undefined">
               <div
                 class="breach-spell-card-frame"
                 @click.stop="clickSpellFrame(b, spellIndex)"
                 @pointerdown="startPreppedSpellDrag(b, spellIndex, $event)"
                 :data-spell-index="spellIndex"
                 :class="{
+                  'dragging-prepped-spell': isDraggedPreppedSpell(b, spellIndex),
                   'castable-spell': isCastableBreach(b),
                   'must-cast-spell': isMustCastBreach(b),
                   'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
@@ -650,7 +774,8 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                   'repositionable-spell': canRepositionPrepped && !state.game?.pendingDecision,
                 }"
               >
-                <img v-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />
+                <img v-if="isFaceDownPreppedSpell(b, spellIndex)" :src="playerCardBackUrl()" alt="Face-down conjured spell" />
+                <img v-else-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />
                 <span v-else>[{{ getCard(spellId).name }}]</span>
                 <span
                   v-if="spellDamagePreviewLabel(b, spellIndex) !== null"
@@ -672,48 +797,157 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       </div>
     </div>
 
-    <div class="played-row">
-      <span class="label">Played</span>
-      <template v-if="isDiscard">
-        <CardHoverPreview
-          v-for="(cid, i) in state.discardRemaining" :key="`discard-slot-${i}`"
-          :card-id="cid"
-        >
-          <div class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]" @click="clickDiscardCard(i)">
-            <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-            <div v-else class="cname">{{ getCard(cid).name }}</div>
+    <div class="played-zones" :class="{ 'has-swap-zone': hasSwapZone, 'has-develop-zone': hasDevelopZone }">
+      <section v-if="hasSwapZone" class="played-zone played-zone-swap">
+        <span class="label">Swap Zone</span>
+        <div class="zone-card-scroll" @wheel="handleZoneWheel">
+          <div class="zone-card-track">
+            <CardHoverPreview
+              v-for="(cid, i) in swapZoneCards" :key="`swap-${cid}-${i}`"
+              :card-id="cid"
+            >
+              <div
+                class="card small"
+                :class="[typeClass(cid), {
+                  'card-image': cardImageUrl(cid),
+                  'pending-board-card': !!boardCardChoice('swap_zone', i, cid),
+                  'pending-board-card-selected': !!boardCardChoice('swap_zone', i, cid) && isPendingBoardCardSelected(boardCardChoice('swap_zone', i, cid)!),
+                }]"
+                @click="clickSwapZoneCard(i)"
+              >
+                <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+                <div v-else class="cname">{{ getCard(cid).name }}</div>
+              </div>
+            </CardHoverPreview>
+            <span v-if="swapZoneCards.length === 0" class="empty">— empty —</span>
           </div>
-        </CardHoverPreview>
-        <span v-if="state.discardRemaining.length === 0" class="empty">— done —</span>
-      </template>
-      <template v-else>
-        <CardHoverPreview
-          v-for="(cid, i) in player.playedThisTurn" :key="cid + i"
-          :card-id="cid"
-        >
-          <div
-            class="card small"
-            :class="[typeClass(cid), {
-              'card-image': cardImageUrl(cid),
-              'prepped-action': isPreppedActionCard(i, cid),
-              'pending-board-card': !!boardCardChoice('played_this_turn', i, cid),
-              'pending-board-card-selected': !!boardCardChoice('played_this_turn', i, cid) && isPendingBoardCardSelected(boardCardChoice('played_this_turn', i, cid)!),
-            }]"
-            @click="clickPlayedCard(i)"
-          >
-            <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-            <div v-else class="cname">{{ getCard(cid).name }}</div>
+        </div>
+      </section>
+
+      <section class="played-zone played-zone-center">
+        <span class="label">Played</span>
+        <div class="played-card-scroll" @wheel="handleZoneWheel">
+          <div class="zone-card-track">
+            <template v-if="isDiscard">
+              <CardHoverPreview
+                v-for="(cid, i) in state.discardRemaining" :key="`discard-slot-${i}`"
+                :card-id="cid"
+              >
+                <div class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]" @click="clickDiscardCard(i)">
+                  <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+                  <div v-else class="cname">{{ getCard(cid).name }}</div>
+                </div>
+              </CardHoverPreview>
+              <span v-if="state.discardRemaining.length === 0" class="empty">— done —</span>
+            </template>
+            <template v-else>
+              <CardHoverPreview
+                v-for="(cid, i) in player.playedThisTurn" :key="cid + i"
+                :card-id="cid"
+              >
+                <div
+                  class="card small"
+                  :class="[typeClass(cid), {
+                    'card-image': cardImageUrl(cid),
+                    'prepped-action': isPreppedActionCard(i, cid),
+                    'pending-board-card': !!boardCardChoice('played_this_turn', i, cid),
+                    'pending-board-card-selected': !!boardCardChoice('played_this_turn', i, cid) && isPendingBoardCardSelected(boardCardChoice('played_this_turn', i, cid)!),
+                  }]"
+                  @click="clickPlayedCard(i)"
+                >
+                  <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+                  <div v-else class="cname">{{ getCard(cid).name }}</div>
+                </div>
+              </CardHoverPreview>
+              <span v-if="player.playedThisTurn.length === 0" class="empty">— none —</span>
+            </template>
           </div>
-        </CardHoverPreview>
-        <span v-if="player.playedThisTurn.length === 0" class="empty">— none —</span>
-      </template>
+        </div>
+      </section>
+
+      <section v-if="hasDevelopZone" class="played-zone played-zone-develop">
+        <span class="label">Develop Zone</span>
+        <div class="zone-card-scroll" @wheel="handleZoneWheel">
+          <div class="zone-card-track">
+            <CardHoverPreview
+              v-for="(cid, i) in developZoneCards" :key="`develop-${cid}-${i}`"
+              :card-id="cid"
+            >
+              <div class="card small" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]">
+                <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
+                <div v-else class="cname">{{ getCard(cid).name }}</div>
+              </div>
+            </CardHoverPreview>
+            <span v-if="developZoneCards.length === 0" class="empty">— empty —</span>
+          </div>
+        </div>
+      </section>
     </div>
 
-    <div class="hand-row">
+    <div
+      class="hand-row"
+      :class="{
+        'has-specific-deck': hasSpecificDeck,
+        'has-player-cards-in-play': hasPlayerCardsInPlay,
+      }"
+    >
       <MageBoard :mage-type="player.mageType" />
-      <div class="deck-pile clickable" @click="openPile('deck')">
-        <span class="label">Deck</span>
-        <span class="count">{{ player.deck.length }}</span>
+      <div
+        v-if="hasSpecificDeck"
+        class="deck-pile player-specific-deck-pile"
+        :class="{ 'has-cards': specificDeckCards.length > 0 }"
+        :aria-label="`Open ${specificDeckName}`"
+      >
+        <img
+          v-if="specificDeckCards.length > 0 && specificDeckBackImage"
+          class="specific-deck-back"
+          :src="specificDeckBackImage"
+          :alt="specificDeckName"
+          draggable="false"
+        />
+        <span class="player-pile-count">{{ specificDeckCards.length }}</span>
+      </div>
+      <div
+        v-if="hasPlayerCardsInPlay"
+        class="player-cards-in-play-pile"
+        aria-label="Player cards in play"
+      >
+        <div class="player-card-stack">
+          <CardHoverPreview
+            v-for="(placement, i) in playerCardPlacementsInPlay"
+            :key="`player-in-play-${placement.cardId}-${placement.cardIndex}`"
+            :card-id="placement.cardId"
+          >
+            <div
+              class="card small player-in-play-card"
+              :class="[typeClass(placement.cardId), {
+                'card-image': cardImageUrl(placement.cardId),
+                'in-play-action': playerCardsInPlay.length === 1 && isPlayerCardInPlayAction(i, placement.cardId),
+              }]"
+              :style="{ '--stack-index': i }"
+                @click="clickPlayerCardInPlay(i)"
+              >
+                <img v-if="cardImageUrl(placement.cardId)" :src="cardImageUrl(placement.cardId)" :alt="getCard(placement.cardId).name" draggable="false" />
+                <div v-else class="cname">{{ getCard(placement.cardId).name }}</div>
+                <span v-if="playerCardPowerTokens(i) > 0" class="player-card-power-token">Power {{ playerCardPowerTokens(i) }}</span>
+              </div>
+          </CardHoverPreview>
+        </div>
+      </div>
+      <div
+        class="deck-pile clickable player-deck-pile"
+        :class="{ 'has-cards': player.deck.length > 0 }"
+        @click="openPile('deck')"
+      >
+        <img
+          v-if="player.deck.length > 0"
+          class="player-pile-card"
+          :src="playerCardBackUrl()"
+          alt="Player deck"
+          draggable="false"
+        />
+        <span v-if="player.deck.length > 0" class="player-pile-count">{{ player.deck.length }}</span>
+        <span v-else class="player-empty-pile-label">Deck 0</span>
       </div>
       <div ref="handElement" class="hand" :style="{ '--hand-offset': `${handOffset}px` }" @wheel="handleHandWheel">
         <CardHoverPreview
@@ -737,14 +971,25 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           </div>
         </CardHoverPreview>
       </div>
-      <div class="discard-pile clickable player-discard-pile" @click="openPile('discard')" @contextmenu.prevent="openPile('discard')">
-        <span class="label">Discard {{ player.discard.length }}</span>
-        <FaceUpPileCard
-          v-if="discardTopCard"
-          display-class="player-discard-face-up"
-          :card-id="discardTopCard"
-          :ariaLabel="`Open ${player.mageType} discard pile`"
-        />
+      <div
+        class="discard-pile clickable player-discard-pile"
+        :class="{ 'has-cards': player.discard.length > 0 }"
+        @click="openPile('discard')"
+        @contextmenu.prevent="openPile('discard')"
+      >
+        <CardHoverPreview v-if="discardTopCard" :card-id="discardTopCard">
+          <div class="player-pile-card player-discard-top-card">
+            <img
+              v-if="cardImageUrl(discardTopCard)"
+              :src="cardImageUrl(discardTopCard)"
+              :alt="getCard(discardTopCard).name"
+              draggable="false"
+            />
+            <span v-else class="cname">{{ getCard(discardTopCard).name }}</span>
+          </div>
+        </CardHoverPreview>
+        <span v-if="player.discard.length > 0" class="player-pile-count">{{ player.discard.length }}</span>
+        <span v-else class="player-empty-pile-label">Discard 0</span>
       </div>
     </div>
 
@@ -773,6 +1018,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         <span class="aether">
           Aether {{ aether.regularAvail }}<template v-if="aether.gemAether > 0"> · {{ aether.gemAether }} gem aether</template><template v-if="aether.spellAether > 0"> · {{ aether.spellAether }} spell aether</template>
         </span>
+        <span v-if="aether.aetherTokens > 0" class="aether-token-status">Aether Token {{ aether.aetherTokens }}</span>
         <template v-if="isCurrentSelected">
           <button v-if="isCasting" class="btn" @click="toMainPhase">Start Main Phase →</button>
           <template v-if="isMain">

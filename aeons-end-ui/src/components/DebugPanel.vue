@@ -117,7 +117,11 @@ const gravehold = computed(() => state.game!.gravehold)
 
 const allCards = computed<CardDef[]>(() => {
   const ids = [...Object.keys(INITIAL_CARDS), ...Object.keys(ALL_MARKET_CARDS)]
-  return [...new Set(ids)].map(cardId => getCard(cardId))
+  // Treasure cards live only in Mage-specific decks / Player cards in play;
+  // they are not legal cards for the normal hand/deck/discard debug tool.
+  return [...new Set(ids)]
+    .map(cardId => getCard(cardId))
+    .filter(card => card.type !== 'treasure')
 })
 const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId => {
   const card = getCard(cardId)
@@ -131,6 +135,8 @@ const addNemesisCard = ref(allNemesisCards.value[0] ?? '')
 
 function addCardToPlayer() {
   if (!addPlayer.value) return
+  const card = getCard(addCard.value)
+  if (card.type === 'treasure') return
   const p = getPlayer(state.game!, addPlayer.value)
   p[addZone.value].push(addCard.value)
 }

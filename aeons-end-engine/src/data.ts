@@ -16,7 +16,11 @@ import {
   amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
   phoenixFlame, spectralEcho, wildfireWhip,
 } from './data/wave1/spells'
-import { createMages, MAGE_UNIQUE_CARDS } from './data/wave1/mage'
+import { createMages, MAGE_UNIQUE_CARDS as WAVE1_MAGE_UNIQUE_CARDS } from './data/wave1/mage'
+import type { MageDef } from './data/wave1/mage'
+import { createNook, NOOK_CARDS, NOOK_UNIQUE_CARDS } from './data/wave9/nook'
+import { createIndira, INDIRA_CARDS, INDIRA_UNIQUE_CARDS } from './data/wave9/indira'
+import { createDezmodia, DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS } from './data/wave9/dezmodia'
 import {
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
@@ -32,13 +36,22 @@ export {
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
   amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
   phoenixFlame, spectralEcho, wildfireWhip,
-  MAGE_UNIQUE_CARDS,
+  NOOK_CARDS, NOOK_UNIQUE_CARDS,
+  INDIRA_CARDS, INDIRA_UNIQUE_CARDS,
+  DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS,
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
   BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER, PRINCE_OF_GLUTTONS_UNIQUE_CARDS, PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
   buildRageborneDeck, buildRageborneStrikeDeck, buildPrinceOfGluttonsDeck,
 }
 export type { MageDef } from './data/wave1/mage'
+
+export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
+  ...WAVE1_MAGE_UNIQUE_CARDS,
+  nook: NOOK_UNIQUE_CARDS,
+  indira: INDIRA_UNIQUE_CARDS,
+  dezmodia: DEZMODIA_UNIQUE_CARDS,
+}
 
 export function getNemesisDefinition(type: string) {
   return NEMESES[type]
@@ -81,6 +94,9 @@ export function createTwoPlayerScenario(
 export const INITIAL_CARDS: Record<string, CardDef> = {
   ...INITIAL_GEM_CARDS,
   ...INITIAL_SPELL_CARDS,
+  ...NOOK_CARDS,
+  ...INDIRA_CARDS,
+  ...DEZMODIA_CARDS,
 }
 
 export const ALL_MARKET_CARDS: Record<string, CardDef> = {
@@ -206,39 +222,43 @@ function calcOpenCosts(startDir: Direction, focusCost: number): Record<Direction
 
 export function makeBreach(
   index: number, opened: boolean, startDir: Direction | null, present = true,
+  special?: 'transfer',
 ): BreachState {
   if (!present) {
     return {
-      index, present: false, opened: false, prepSpells: [], preppedThisTurn: [],
+      index, present: false, opened: false, prepSpells: [], preppedThisTurn: [], preppedSpellFaceDown: [],
       focusDirection: 'north', focusCost: 0, focusCount: 0, focusToOpen: 0,
       openCost: { east: 0, south: 0, west: 0, north: 0 },
       focusedThisTurn: false,
-      damageBonus: 0,
+      damageBonus: 0, special,
     }
   }
   if (opened) {
     return {
-      index, present: true, opened: true, prepSpells: [], preppedThisTurn: [],
+      index, present: true, opened: true, prepSpells: [], preppedThisTurn: [], preppedSpellFaceDown: [],
       focusDirection: 'north', focusCost: 0, focusCount: 0, focusToOpen: 0,
       openCost: { east: 0, south: 0, west: 0, north: 0 },
       focusedThisTurn: false,
-      damageBonus: index >= 3 ? 1 : 0,
+      damageBonus: index >= 3 ? 1 : 0, special,
     }
   }
   const dir = startDir!
   const resolvedFocusCost = COMMON_BREACH_FOCUS_COSTS[index] ?? 0
   const commonOpenCosts = COMMON_BREACH_OPEN_COSTS[index]
   return {
-    index, present: true, opened: false, prepSpells: [], preppedThisTurn: [],
+    index, present: true, opened: false, prepSpells: [], preppedThisTurn: [], preppedSpellFaceDown: [],
     focusDirection: dir, focusCost: resolvedFocusCost, focusCount: 0,
     focusToOpen: focusesToOpen(dir),
     openCost: commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost),
     focusedThisTurn: false,
-    damageBonus: index >= 3 ? 1 : 0,
+    damageBonus: index >= 3 ? 1 : 0, special,
   }
 }
 
 const wave1Mages = createMages(makeBreach)
+export const nook = createNook(makeBreach)
+export const indira = createIndira(makeBreach)
+export const dezmodia = createDezmodia(makeBreach)
 export const jian = wave1Mages.jian
 export const brama = wave1Mages.brama
 export const xaxos = wave1Mages.xaxos
@@ -247,4 +267,4 @@ export const kadir = wave1Mages.kadir
 export const lash = wave1Mages.lash
 export const mist = wave1Mages.mist
 export const phaedraxa = wave1Mages.phaedraxa
-export const MAGES = wave1Mages
+export const MAGES: Record<string, MageDef> = { ...wave1Mages, nook, indira, dezmodia }

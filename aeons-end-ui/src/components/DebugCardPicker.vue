@@ -4,8 +4,8 @@ import type { CardDef } from '@engine/types'
 import { cardImageUrl } from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 
-type SupplyCardType = 'gem' | 'relic' | 'spell'
-type PickerType = SupplyCardType | 'attack' | 'minion' | 'power'
+type CardPickerType = 'gem' | 'relic' | 'spell' | 'treasure'
+type PickerType = CardPickerType | 'attack' | 'minion' | 'power'
 type FilterType = 'all' | PickerType
 
 const props = withDefaults(defineProps<{
@@ -65,10 +65,13 @@ watch([search, filter], () => {
 })
 
 function typeLabel(type: string): string {
-  return type.charAt(0).toUpperCase() + type.slice(1)
+  return type === 'treasure' ? 'Treasure' : type.charAt(0).toUpperCase() + type.slice(1)
 }
 
 function cardMeta(card: CardDef): string {
+  if (card.type === 'treasure') {
+    return `Treasure Level ${card.treasureLevel ?? 2}`
+  }
   const cost = props.showCost && Number.isFinite(card.cost) ? ` · ${card.cost} Aether` : ''
   return `${typeLabel(card.type)}${cost}`
 }

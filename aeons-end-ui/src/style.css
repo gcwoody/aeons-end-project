@@ -6,9 +6,10 @@
   --breach-spell-offset-x: 0%;
   --breach-spell-offset-y: -20%;
   --hand-card-height: 178px;
+  --hand-card-width: 122px;
   --hand-row-height: 190px;
   --played-card-height: 82px;
-  --played-row-height: 94px;
+  --played-row-height: 130px;
   --breach-spell-height: 82px;
   --breach-spell-stack-step: 41px;
   --breach-action-space: 36px;
@@ -17,6 +18,7 @@
   --market-width: max(368px, calc((var(--viewport-height) - 600px) * .714 - 3px));
   --market-card-radius: 8px;
   --market-card-ratio: .71;
+  --card-radius: 9px;
   --mage-mat-ratio: 840 / 604;
   --nemesis-mat-ratio: .75;
   --mage-radius: 12px;
@@ -25,6 +27,7 @@
   --panel: #1b2030;
   --panel-2: #232a3d;
   --border: #2f3850;
+  --pixel-border-width: 2px;
   --text: #dfe4f0;
   --muted: #8b93a7;
   --accent: #7aa2ff;
@@ -51,10 +54,11 @@
   --z-board-spell: 3;
   --z-played: 6;
   --z-local-hover: 10;
+  --z-card-hover: 490;
   --z-controls: 500;
   --z-hand-row: 40;
   --z-overlay: 50;
-  --z-drag-preview: 100;
+  --z-drag-preview: 550;
   --z-help: 110;
   --z-decision: 120;
   --z-pile-viewer: 130;
@@ -121,7 +125,7 @@ body {
   overflow-y: auto;
 }
 .log-col {
-  border-left: 1px solid var(--border);
+  border-left: var(--pixel-border-width) solid var(--border);
   background: var(--panel);
   height: 100%;
   overflow: hidden;
@@ -148,7 +152,7 @@ body {
 
 .panel {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 10px;
   padding: 10px 12px;
 }
@@ -163,7 +167,7 @@ body {
 .btn {
   background: var(--panel-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 7px;
   padding: 6px 12px;
   font-size: 13px;
@@ -183,7 +187,7 @@ body {
   font-size: 10px;
   padding: 1px 6px;
   border-radius: 4px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   color: var(--muted);
 }
 .badge.gem { color: var(--gem); border-color: var(--gem); }
@@ -194,7 +198,7 @@ body {
   height: 10px;
   border-radius: 5px;
   background: #10141f;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   overflow: hidden;
   flex: 1;
   min-width: 40px;
@@ -213,7 +217,7 @@ body {
   gap: 16px;
   min-height: 56px;
   padding: 10px 14px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--pixel-border-width) solid var(--border);
   background: var(--panel);
 }
 .turn-status-content {
@@ -249,7 +253,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 7px;
   background: #10141f;
   color: var(--muted);
@@ -292,7 +296,7 @@ body {
   flex: 1 1 0;
   height: auto;
   min-height: 0;
-  border-bottom: 1px solid var(--border);
+  border-bottom: var(--pixel-border-width) solid var(--border);
 }
 .top-main {
   flex: 1;
@@ -308,7 +312,7 @@ body {
   padding: 10px 14px;
   background: var(--panel);
   flex: 1;
-  min-height: 190px;
+  min-height: 0;
   overflow: hidden;
   container-type: size;
 }
@@ -333,7 +337,7 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 9px;
   background: #151a29;
   padding: 0;
@@ -341,7 +345,7 @@ body {
   color: inherit;
   font: inherit;
 }
-.nemesis-mat-wrap.damage-target { border: 2px solid #e6c84f; box-shadow: 0 0 0 1px rgba(230, 200, 79, .35); }
+.nemesis-mat-wrap.damage-target { border: 2px solid #e6c84f; box-shadow: 0 0 0 var(--pixel-border-width) rgba(230, 200, 79, .35); }
 .nemesis-mat-image {
   display: block;
   width: 100%;
@@ -358,7 +362,7 @@ body {
 }
 .nemesis-sub-board {
   flex: 0 0 calc(100cqh * var(--sub-board-ratio));
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 9px;
   display: grid;
   place-items: center;
@@ -370,13 +374,17 @@ body {
   min-width: 0;
   min-height: 0;
   display: grid;
-  grid-template-rows: minmax(120px, 1fr) minmax(210px, 1fr);
+  /* Both rows must be allowed to shrink with the available top-board height.
+     Fixed minimums made the play cards extend below the Nemesis area on short
+     windows, where the player controls then covered their lower edge. */
+  grid-template-rows: minmax(0, .4fr) minmax(0, .6fr);
   gap: 10px;
 }
-.nemesis-assets-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.nemesis-assets-row { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; min-width: 0; min-height: 0; overflow: hidden; }
 .nemesis-asset {
   min-width: 0;
-  border: 1px solid var(--border);
+  min-height: 0;
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   background: #151a29;
   padding: 10px 6px;
@@ -384,6 +392,7 @@ body {
   flex-direction: column;
   justify-content: center;
   gap: 8px;
+  overflow: hidden;
   color: inherit;
   font: inherit;
 }
@@ -397,7 +406,7 @@ body {
 .nemesis-asset { align-items: center; text-align: center; }
 .nemesis-specific-pile-asset {
   /* Change this one value to scale any face-up Nemesis specific pile. */
-  --nemesis-specific-pile-size: 112px;
+  --nemesis-specific-pile-size: clamp(32px, 24cqh, 112px);
   --nemesis-specific-pile-radius: 5px;
   --nemesis-specific-pile-gap: 0px;
   --nemesis-specific-pile-asset-padding: 4px;
@@ -408,7 +417,7 @@ body {
 }
 .face-up-pile-card {
   padding: 0;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 5px;
   background: #151a29;
   overflow: hidden;
@@ -426,7 +435,7 @@ body {
 .fury-asset strong { color: var(--warn); }
 .pile-box {
   flex: 1;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   background: #151a29;
   padding: 8px 10px;
@@ -438,18 +447,18 @@ body {
 .pile-count { font-size: 22px; font-weight: 700; }
 .pile-top { color: var(--spell); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.nemesis-play { min-width: 0; min-height: 0; border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; overflow: visible; }
+.nemesis-play { min-width: 0; min-height: 0; border: var(--pixel-border-width) solid var(--border); border-radius: 8px; padding: 8px 10px; display: flex; flex-direction: column; overflow: visible; }
 .nemesis-play-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
 .nemesis-play-order { color: var(--muted); font-size: 10px; }
 .nemesis-play .empty { color: var(--muted); font-size: 12px; font-style: italic; }
 /* Lower this inset to enlarge Nemesis Play Area cards; increase it to leave more vertical breathing room. */
 .nemesis-card-scroll { --nemesis-card-height-inset: 2px; flex: 1 1 auto; min-height: 0; min-width: 0; display: flex; align-items: stretch; overflow-x: auto; overflow-y: visible; scrollbar-gutter: stable; padding: 4px 2px; }
 .nemesis-card-track { min-width: 100%; height: 100%; min-height: 0; display: flex; align-items: center; justify-content: flex-start; gap: 10px; width: max-content; }
-.nemesis-play-card { position: relative; flex: 0 0 auto; width: auto; height: calc(100% - var(--nemesis-card-height-inset)); aspect-ratio: 108 / 158; min-height: 0; max-height: 100%; border: 1px solid var(--border); border-radius: 7px; background: #151a29; overflow: visible; transition: transform .1s, border-color .12s; z-index: 1; cursor: pointer; }
-.nemesis-play-card:hover { transform: translateY(-3px); z-index: var(--z-local-hover); }
-.nemesis-play-card.discardable { border: 2px solid var(--warn); box-shadow: 0 0 0 1px rgba(224, 175, 104, .35) inset; }
-.nemesis-play-card.damage-target { border: 2px solid #e6c84f; box-shadow: 0 0 0 1px rgba(230, 200, 79, .35); }
-.nemesis-play-card.effect-target { border: 2px solid var(--must-cast); box-shadow: 0 0 0 1px rgba(255, 48, 48, .35); }
+.nemesis-play-card { position: relative; flex: 0 0 auto; width: auto; height: calc(100% - var(--nemesis-card-height-inset)); aspect-ratio: 108 / 158; min-height: 0; max-height: 100%; border: var(--pixel-border-width) solid var(--border); border-radius: 7px; background: #151a29; overflow: visible; transition: transform .1s, border-color .12s; z-index: 1; cursor: pointer; }
+.nemesis-play-card:hover { transform: translateY(-3px); z-index: var(--z-card-hover); }
+.nemesis-play-card.discardable { border: 2px solid var(--warn); box-shadow: 0 0 0 var(--pixel-border-width) rgba(224, 175, 104, .35) inset; }
+.nemesis-play-card.damage-target { border: 2px solid #e6c84f; box-shadow: 0 0 0 var(--pixel-border-width) rgba(230, 200, 79, .35); }
+.nemesis-play-card.effect-target { border: 2px solid var(--must-cast); box-shadow: 0 0 0 var(--pixel-border-width) rgba(255, 48, 48, .35); }
 .nemesis-play-card > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
 .nemesis-card-meta { position: absolute; right: 3px; bottom: 3px; left: 3px; display: flex; justify-content: space-between; align-items: center; gap: 3px; pointer-events: none; }
 .nemesis-card-meta > span { padding: 2px 4px; border-radius: 4px; background: rgba(18, 21, 29, .9); color: var(--text); font-size: 10px; }
@@ -480,7 +489,7 @@ body {
   align-items: center;
   flex: 1;
   min-height: 0;
-  overflow: visible;
+  overflow: hidden;
 }
 .pile {
   position: relative;
@@ -510,11 +519,49 @@ body {
   object-fit: cover;
   border-radius: var(--market-card-radius);
 }
+.pile:has(.market-set-card-overlay) {
+  /* Let a set Treasure keep its own four rounded corners instead of being
+     clipped by the supply pile's bottom-right corner. */
+  overflow: visible;
+}
 .pile.can-buy:hover,
 .pile.can-buy:focus-visible {
   position: relative;
-  z-index: var(--z-local-hover);
+  z-index: var(--z-card-hover);
   transform: translateY(-3px);
+}
+.market-set-card-overlay {
+  position: absolute;
+  z-index: calc(2 + var(--set-card-index, 0));
+  right: 0;
+  bottom: 0;
+  width: 50%;
+  height: 50%;
+  display: block;
+  overflow: hidden;
+  border-radius: var(--market-card-radius);
+  pointer-events: auto;
+}
+.market-set-card-overlay img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.market-set-card-overlay-action {
+  cursor: pointer;
+}
+.market-set-card-overlay-action::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  border: var(--pixel-border-width) solid var(--ok);
+  border-radius: inherit;
+  pointer-events: none;
 }
 .pile:not(.can-buy) { opacity: .5; cursor: default; }
 .pile.decision-market-choice {
@@ -524,13 +571,17 @@ body {
 }
 .pile.decision-market-choice:hover,
 .pile.decision-market-choice:focus-visible {
-  z-index: var(--z-local-hover);
+  z-index: var(--z-card-hover);
   transform: translateY(-3px);
   box-shadow: 0 0 0 2px rgba(230, 200, 79, .28);
 }
 .pile.pile-empty {
   visibility: hidden;
   pointer-events: none;
+}
+.pile.pile-empty.decision-market-choice {
+  visibility: visible;
+  pointer-events: auto;
 }
 .pile .cname { font-size: 12px; font-weight: 600; padding: 4px; text-align: center; position: relative; }
 .pile .remaining {
@@ -565,7 +616,7 @@ body {
   gap: 8px;
   align-items: center;
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   padding: 6px 12px;
   cursor: pointer;
@@ -601,7 +652,7 @@ body {
   align-items: center;
   gap: 6px;
 }
-.breach.absent { pointer-events: none; }
+.breach.absent { display: none; pointer-events: none; }
 .breach-token-wrap {
   width: 100%;
   height: var(--breach-size);
@@ -687,7 +738,7 @@ body {
 .breach-spell-card-frame.castable-spell { border: 2px solid #e6c84f; }
 .breach-spell-card-frame.manual-prepped-action {
   border: 2px solid var(--ok);
-  box-shadow: 0 0 0 1px rgba(97, 218, 151, .35) inset;
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(97, 218, 151, .35) inset;
   cursor: pointer;
 }
 .breach-spell-card-frame.manual-prepped-action:hover { border-color: var(--ok); }
@@ -695,7 +746,7 @@ body {
 .breach-spell-card-frame.pending-prepped-spell { border: 2px solid #e6c84f; cursor: pointer; }
 .breach-spell-card-frame.repeatable-prepped-action {
   border: 2px solid var(--accent);
-  box-shadow: 0 0 0 1px rgba(122, 162, 255, .38) inset;
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(122, 162, 255, .38) inset;
   cursor: pointer;
 }
 .breach-spell-card-frame.repeatable-prepped-action:hover { border-color: #9abaff; }
@@ -710,11 +761,15 @@ body {
 }
 .breach-spell-card-frame.repositionable-spell { cursor: grab; }
 .breach-spell-card-frame.repositionable-spell:active { cursor: grabbing; }
+.breach-spell-card-frame.dragging-prepped-spell {
+  visibility: hidden;
+  pointer-events: none;
+}
 .breach-spell-card-frame.must-cast-spell { border: 2px solid var(--must-cast); }
 .breach.mandatory-prepped-effect { cursor: default; }
 .breach-spell-card-frame.mandatory-prepped-effect {
   border: 2px solid var(--must-cast);
-  box-shadow: 0 0 0 1px rgba(255, 48, 48, .35) inset;
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(255, 48, 48, .35) inset;
   cursor: pointer;
 }
 .breach-spell-card-frame span {
@@ -724,6 +779,13 @@ body {
   place-items: center;
   padding: 8px;
   text-align: center;
+}
+.breach-spell-card-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
 }
 .breach .spell:has(img) {
   position: absolute;
@@ -745,36 +807,97 @@ body {
   font-size: 12px;
 }
 
-.played-row {
+.played-zones {
   position: relative;
   z-index: var(--z-played);
-  display: flex;
-  gap: 8px;
-  align-items: center;
+  display: grid;
+  /* The Played column spans the full row unless a Mage explicitly needs one
+     or both side zones. When a side zone exists, keeping a three-column grid
+     leaves Played in the true screen-center column. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
   justify-content: center;
   height: var(--played-row-height);
   min-height: var(--played-row-height);
   max-height: var(--played-row-height);
   overflow: visible;
-  border: 1px dashed var(--border);
-  border-radius: 9px;
-  padding: 6px 10px;
 }
-.played-row .label, .deck-pile .label, .discard-pile .label {
+.played-zones.has-swap-zone,
+.played-zones.has-develop-zone {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.played-zones:not(.has-swap-zone):not(.has-develop-zone) .played-zone-center {
+  grid-column: 1;
+}
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center,
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center {
+  grid-column: 2;
+}
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-swap {
+  grid-column: 1;
+}
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-develop {
+  grid-column: 3;
+}
+/* Hovered cards are the highest board content, but remain below Controls. */
+.played-zones:has(.card:hover) { z-index: var(--z-card-hover); }
+.played-zone {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  border: var(--pixel-border-width) dashed var(--border);
+  border-radius: 9px;
+  padding: 5px 7px;
+  overflow: visible;
+}
+.played-zone .label, .deck-pile .label, .discard-pile .label {
   color: var(--muted);
   font-size: 11px;
   text-transform: uppercase;
   letter-spacing: 1px;
 }
-.played-row:has(.card:hover) { z-index: var(--z-local-hover); }
-.played-row .empty { color: var(--muted); font-size: 12px; font-style: italic; }
+.played-zone:has(.card:hover) { z-index: var(--z-local-hover); }
+.played-zone .empty { color: var(--muted); font-size: 12px; font-style: italic; }
+.zone-card-scroll, .played-card-scroll {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: 10px;
+  align-items: stretch;
+  /* The inner track handles centering and horizontal overflow. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  /* Horizontal scrolling clips vertically too, so reserve the full lift plus
+     the two-pixel card border above every mini card. */
+  padding: 6px 1px 0;
+}
+.zone-card-track {
+  display: flex;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  /* Auto margins center short rows and collapse to zero when the row overflows. */
+  margin-inline: auto;
+}
+.zone-card-scroll .card, .played-card-scroll .card { flex: 0 0 auto; }
+.zone-card-scroll::-webkit-scrollbar, .played-card-scroll::-webkit-scrollbar { height: 8px; }
 
 .hand-row {
   position: relative;
   /* Keep lifted hand cards above the played row and bottom controls. */
   z-index: var(--z-hand-row);
   display: grid;
-  grid-template-columns: 270px 120px 1fr 120px;
+  --hand-column: 3;
+  --discard-column: 4;
+  grid-template-columns: 270px var(--hand-card-width) 1fr var(--hand-card-width);
   grid-template-rows: var(--hand-row-height);
   height: var(--hand-row-height);
   gap: 12px;
@@ -782,6 +905,22 @@ body {
   min-height: 0;
   max-height: var(--hand-row-height);
 }
+.hand-row.has-specific-deck:not(.has-player-cards-in-play) {
+  --hand-column: 4;
+  --discard-column: 5;
+  grid-template-columns: 270px var(--hand-card-width) var(--hand-card-width) 1fr var(--hand-card-width);
+}
+.hand-row.has-player-cards-in-play:not(.has-specific-deck) {
+  --hand-column: 4;
+  --discard-column: 5;
+  grid-template-columns: 270px var(--hand-card-width) var(--hand-card-width) 1fr var(--hand-card-width);
+}
+.hand-row.has-specific-deck.has-player-cards-in-play {
+  --hand-column: 5;
+  --discard-column: 6;
+  grid-template-columns: 270px var(--hand-card-width) var(--hand-card-width) var(--hand-card-width) 1fr var(--hand-card-width);
+}
+.hand-row:has(.card:hover) { z-index: var(--z-card-hover); }
 .mage-area {
   height: 100%;
   min-width: 0;
@@ -814,7 +953,7 @@ body {
   text-align: center;
 }
 .deck-pile, .discard-pile {
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 9px;
   background: #151a29;
   padding: 8px;
@@ -827,13 +966,175 @@ body {
   z-index: var(--z-board-interaction);
 }
 .deck-pile .count, .discard-pile .count { font-size: 26px; font-weight: 700; }
+.deck-pile .pile-count { color: var(--muted); font-size: 10px; }
 .discard-pile .top { color: var(--spell); font-size: 11px; text-align: center; }
-.discard-pile { grid-column: 4; }
+.discard-pile { grid-column: var(--discard-column); }
 .player-discard-pile { padding: 5px; gap: 2px; overflow: visible; }
-.player-discard-face-up { width: min(100%, 100px); aspect-ratio: 108 / 158; }
+.specific-deck-back {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+  object-fit: cover;
+}
+.player-specific-deck-pile {
+  min-width: 0;
+  height: var(--hand-card-height);
+  align-self: center;
+  padding: 0;
+  overflow: hidden;
+}
+.player-pile-count {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(11, 16, 32, .7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.player-deck-pile,
+.player-discard-pile {
+  height: var(--hand-card-height);
+  align-self: center;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.player-specific-deck-pile.has-cards,
+.player-deck-pile.has-cards,
+.player-discard-pile.has-cards,
+.player-cards-in-play-pile {
+  /* Non-empty piles use the card itself as the visual boundary, just like
+     cards in hand. The surrounding grid cell must not add a second frame. */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.player-empty-pile-label {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.player-pile-card {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+}
+.player-discard-top-card img {
+  object-fit: cover;
+}
+.player-discard-top-card {
+  background: #151a29;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+}
+.player-discard-top-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
+}
+.player-discard-top-card .cname {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 8px;
+  color: var(--text);
+  text-align: center;
+}
+.player-cards-in-play-pile {
+  position: relative;
+  /* Keep the card's own border above neighboring hand-row cells. The parent
+     row still remains below Controls through the global stacking order. */
+  z-index: var(--z-card-hover);
+  min-width: 0;
+  height: var(--hand-card-height);
+  align-self: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  /* The card itself owns the rounded border; the grid cell is not a second
+     frame around it. The preview is teleported to body. */
+  overflow: visible;
+}
+.player-card-stack {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.player-card-stack .card-hover-wrap {
+  position: absolute;
+  inset: 0;
+  display: block;
+  /* Every card fills the pile; later cards are placed above earlier cards. */
+  transform: none;
+  z-index: calc(var(--stack-index, 0) + 1);
+}
+.player-in-play-card {
+  /* Establish the containing block before hover so absolutely positioned
+     badges never jump when the generic .card:hover rule runs. */
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+}
+.player-in-play-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.player-in-play-card.in-play-action {
+  border-color: var(--ok);
+  cursor: pointer;
+}
+.player-in-play-card.in-play-action:hover { border-color: var(--ok); }
+.player-card-power-token {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  z-index: 3;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(18, 21, 29, .9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
 
 .hand {
-  grid-column: 3;
+  grid-column: var(--hand-column);
   grid-row: 1;
   position: relative;
   z-index: calc(var(--z-hand-row) + 1);
@@ -852,15 +1153,15 @@ body {
   min-width: 0;
   max-width: 100%;
   /* Reserve a few pixels above the cards so their hover lift is not clipped. */
-  padding: 4px 2px 0 var(--hand-offset, 0px);
+  padding: 6px 2px 0 var(--hand-offset, 0px);
 }
-.hand:has(.card:hover) { z-index: var(--z-overlay); }
+.hand:has(.card:hover) { z-index: var(--z-card-hover); }
 .hand .card { flex: 0 0 auto; }
 .hand::-webkit-scrollbar { height: 8px; }
 
 .card {
-  border: 1px solid var(--border);
-  border-radius: 9px;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
   padding: 10px 12px;
   min-width: 118px;
   cursor: pointer;
@@ -871,11 +1172,10 @@ body {
 }
 .card:hover {
   position: relative;
-  z-index: calc(var(--z-overlay) + 10);
+  z-index: var(--z-card-hover);
   transform: translateY(-3px);
   border-color: var(--border);
 }
-.hand .card:hover { border-color: var(--border); }
 .hand .card.spell-draggable { cursor: grab; }
 .hand .card.spell-draggable.dragging,
 .hand .card.spell-draggable:active { cursor: grabbing; }
@@ -883,23 +1183,23 @@ body {
 .hand .card.dragging { border-color: var(--border); box-shadow: none; }
 .card.selected { border-color: var(--border); box-shadow: none; }
 .card .cname { font-weight: 600; font-size: 13px; }
-.card.gem, .card.spell, .card.relic { border-top: 1px solid var(--border); }
+.card.gem, .card.spell, .card.relic { border-top: var(--pixel-border-width) solid var(--border); }
 .card.small { min-width: 0; padding: 6px 10px; cursor: pointer; }
 .card.small.clickable:hover { border-color: var(--border); }
-.played-row .card.prepped-action {
+.played-zone-center .card.prepped-action {
   border: 2px solid var(--ok);
-  box-shadow: 0 0 0 1px rgba(97, 218, 151, .35) inset;
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(97, 218, 151, .35) inset;
 }
-.played-row .card.prepped-action:hover { border-color: var(--ok); }
+.played-zone-center .card.prepped-action:hover { border-color: var(--ok); }
 .card-hover-wrap { display: contents; }
 .card.card-image {
-  width: 122px;
-  min-width: 122px;
+  width: var(--hand-card-width);
+  min-width: var(--hand-card-width);
   height: var(--hand-card-height);
   padding: 0;
   overflow: hidden;
 }
-.played-row .card.card-image {
+.played-zone .card.card-image {
   width: auto;
   min-width: 0;
   height: var(--played-card-height);
@@ -909,6 +1209,19 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
+}
+/* Keep player-in-play cards full-size even when they also carry the generic
+   image-card class. The card image must fill its entire pile. */
+.player-in-play-card.card.card-image,
+.player-in-play-card.card {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+}
+.player-cards-in-play-pile .player-in-play-card:hover {
+  transform: none;
 }
 
 .spell-drag-preview {
@@ -923,6 +1236,16 @@ body {
   overflow: hidden;
   box-shadow: 0 12px 24px rgba(0, 0, 0, .35);
   background: #171c2c;
+}
+
+/* A spell drag owns the pointer. Other card surfaces must not react to
+   hover/click while the card is travelling across the board. */
+body.spell-dragging .card-hover-wrap,
+body.spell-dragging .card-hover-wrap > * {
+  pointer-events: none !important;
+}
+body.spell-dragging .card-hover-preview {
+  visibility: hidden;
 }
 .spell-drag-preview img {
   display: block;
@@ -1000,7 +1323,7 @@ body {
   width: min(252px, 58vw);
   height: min(378px, 68vh);
   margin: 14px auto;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   overflow: hidden;
   background: #151a29;
@@ -1023,7 +1346,7 @@ body {
   gap: 10px;
   align-items: center;
   justify-content: center;
-  border-top: 1px solid var(--border);
+  border-top: var(--pixel-border-width) solid var(--border);
   background: var(--panel);
   padding-top: 10px;
   padding-bottom: 10px;
@@ -1057,7 +1380,7 @@ body {
   width: max-content;
   max-width: min(260px, 42vw);
   padding: 8px 10px;
-  border: 1px solid var(--accent);
+  border: var(--pixel-border-width) solid var(--accent);
   border-radius: 8px;
   background: var(--panel);
   color: var(--text);
@@ -1074,8 +1397,8 @@ body {
   bottom: -6px;
   width: 10px;
   height: 10px;
-  border-right: 1px solid var(--accent);
-  border-bottom: 1px solid var(--accent);
+  border-right: var(--pixel-border-width) solid var(--accent);
+  border-bottom: var(--pixel-border-width) solid var(--accent);
   background: var(--panel);
   transform: rotate(45deg);
 }
@@ -1089,6 +1412,7 @@ body {
 .controls > .btn,
 .controls .btn { height: 32px; }
 .controls .aether { color: var(--gem); font-size: 13px; }
+.controls .aether-token-status { color: #f3cf35; font-size: 13px; font-weight: 700; }
 .help-button {
   position: absolute;
   right: 0;
@@ -1120,7 +1444,7 @@ body {
 }
 .overlay-card {
   background: var(--panel);
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 12px;
   padding: 26px 32px;
   text-align: center;
@@ -1203,7 +1527,13 @@ body {
   box-sizing: border-box;
   overflow: auto;
 }
-.decision-modal h2 { max-width: 860px; }
+.decision-modal h2 {
+  max-width: min(640px, calc(100vw - 72px));
+  margin-inline: auto;
+  line-height: 1.25;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
 .decision-options {
   display: flex;
   gap: 10px;
@@ -1223,12 +1553,18 @@ body {
   width: min(210px, 58vw);
   height: min(315px, 54vh);
   margin: 14px auto;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
   overflow: hidden;
   background: #151a29;
 }
-.review-top-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.review-top-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--card-radius);
+}
 .review-top-card span {
   display: grid;
   width: 100%;
@@ -1265,11 +1601,14 @@ body {
   column-gap: 10px;
   align-items: center;
   margin: 12px 0;
-  padding: 2px 12px;
-  border: 1px solid var(--border);
+  /* The horizontal scroller clips vertical overflow. This top inset keeps a
+     selected card's lifted two-pixel border fully visible. */
+  padding: 6px 12px;
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 10px;
   background: rgba(255, 255, 255, .012);
   overflow-x: auto;
+  margin-inline: auto;
 }
 .decision-card-group h3 {
   margin: 14px 0 6px;
@@ -1296,10 +1635,12 @@ body {
   height: 123px;
   justify-self: center;
   padding: 0;
-  overflow: visible;
+  /* Clip the card face to the rounded frame so lifted selection borders keep
+     all four corner pixels intact. */
+  overflow: hidden;
   color: var(--text);
   background: var(--panel-2);
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 7px;
   cursor: pointer;
 }
@@ -1308,13 +1649,15 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: inherit;
 }
 .decision-card-choice.selected {
-  z-index: var(--z-local-hover);
+  z-index: var(--z-card-hover);
   border: 2px solid var(--ok);
   box-shadow: 0 0 0 2px var(--ok) inset;
   transform: translateY(-3px);
 }
+.decision-card-choice:hover { z-index: var(--z-card-hover); }
 .decision-card-zone-label {
   align-self: center;
   color: var(--muted);
@@ -1324,13 +1667,14 @@ body {
   line-height: 1.2;
   text-align: left;
 }
-.decision-card-rows { display: flex; flex-direction: column; align-items: flex-start; gap: 14px; }
+.decision-card-rows { display: flex; flex-direction: column; align-items: center; gap: 14px; }
 
 /* Each row reserves columns only for the cards it actually contains. */
 .decision-card-zone .decision-card-row {
   width: max-content;
   margin: 0;
   grid-template-columns: repeat(var(--choice-columns), minmax(0, 82px));
+  justify-content: center;
 }
 
 @media (max-width: 520px) {
@@ -1369,7 +1713,7 @@ body {
   gap: 6px;
   width: 82px;
   height: 64px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   background: var(--panel-2);
   color: var(--text);
@@ -1434,7 +1778,7 @@ body {
   gap: 16px;
   padding: 10px 12px;
   margin-top: 8px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   background: var(--panel);
   text-align: left;
@@ -1446,11 +1790,25 @@ body {
 .setup label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
 .setup-select-row { display: flex; align-items: stretch; gap: 6px; }
 .setup-select-row select { flex: 1 1 auto; min-width: 0; }
+.wave-tabs { display: flex; flex-wrap: wrap; gap: 6px; }
+.wave-tabs button {
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--muted);
+  padding: 4px 8px;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.wave-tabs button:hover, .wave-tabs button:focus-visible { border-color: var(--accent); color: var(--text); }
+.wave-tabs button.active { border-color: var(--accent); background: var(--panel); color: var(--text); }
+.mage-picker-wave-tabs { margin-top: 14px; }
 .setup-random-button { flex: 0 0 auto; white-space: nowrap; }
 .setup select {
   background: var(--panel-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 7px;
   padding: 8px 12px;
   font-size: 14px;
@@ -1477,7 +1835,7 @@ body {
   flex-direction: column;
   gap: 8px;
   padding: 12px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 10px;
   background: var(--panel);
 }
@@ -1544,7 +1902,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: contain;
-  border-radius: 9px;
+  border-radius: var(--card-radius);
 }
 .market-setup {
   /* Compact grid knobs: adjust slot width or the gap without recalculating the layout. */
@@ -1558,7 +1916,7 @@ body {
   width: 100%;
   justify-self: stretch;
   padding: 14px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 10px;
   background: var(--panel);
 }
@@ -1610,7 +1968,7 @@ body {
   object-fit: cover;
   border-radius: var(--market-card-radius);
 }
-.market-slot-missing { display: grid; place-items: center; width: 100%; min-height: 120px; border: 1px dashed var(--border); color: var(--muted); font-size: 11px; }
+.market-slot-missing { display: grid; place-items: center; width: 100%; min-height: 120px; border: var(--pixel-border-width) dashed var(--border); color: var(--muted); font-size: 11px; }
 .setup-market-overlay { z-index: var(--z-decision); }
 .setup-market-picker { width: min(960px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow-y: auto; }
 .setup-market-picker:focus { outline: none; }
@@ -1629,7 +1987,7 @@ body {
   flex-direction: column;
   gap: 0;
   padding: 5px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   background: var(--panel-2);
   color: var(--text);
@@ -1646,7 +2004,7 @@ body {
   min-width: 0;
   display: block;
   padding: 5px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
   background: var(--panel-2);
   color: var(--text);
@@ -1662,8 +2020,8 @@ body {
   min-width: 0;
   display: block;
   padding: 5px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
   background: var(--panel-2);
   color: var(--text);
   cursor: pointer;
@@ -1709,7 +2067,7 @@ body {
   box-shadow: 0 0 0 2px #f3c64e;
   cursor: pointer;
 }
-.breach-token-wrap.decision-breach-target:hover { box-shadow: 0 0 0 3px #79e38b; }
+.breach-token-wrap.decision-breach-target:hover { box-shadow: 0 0 0 var(--pixel-border-width) #79e38b; }
 
 /* ===== Clickable piles ===== */
 .deck-pile.clickable, .discard-pile.clickable { cursor: pointer; }
@@ -1757,7 +2115,7 @@ body {
   white-space: nowrap;
 }
 .pile-card {
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 6px;
   padding: 6px 12px;
   background: #151a29;
@@ -1775,6 +2133,20 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.pile-card.player-card-in-play-choice {
+  cursor: pointer;
+}
+.pile-card.player-card-in-play-choice.player-card-in-play-action {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(158, 206, 106, .28) inset;
+}
+.pile-card.player-card-in-play-choice.player-card-in-play-disabled {
+  cursor: not-allowed;
+  opacity: .62;
+}
+.pile-card.player-card-in-play-choice.player-card-in-play-action:hover {
+  border-color: var(--ok);
 }
 
 @media (max-width: 520px) {
@@ -1796,13 +2168,14 @@ body {
   }
 }
 
-.card.small.selected { border: 2px solid var(--ok); box-shadow: 0 0 0 1px var(--ok) inset; }
+.card.small.selected { border: 2px solid var(--ok); box-shadow: 0 0 0 var(--pixel-border-width) var(--ok) inset; }
 .card.pending-board-card {
   border: 2px solid #e6c84f;
   cursor: pointer;
 }
 .card.pending-board-card-selected {
-  z-index: var(--z-local-hover);
+  /* Selected board cards stay in the same top board layer as hovered cards. */
+  z-index: var(--z-card-hover);
   border-color: var(--ok);
   box-shadow: 0 0 0 2px rgba(158, 206, 106, .35);
   transform: translateY(-3px);
@@ -1845,7 +2218,7 @@ body {
   justify-self: start;
   min-width: 70px;
   padding: 3px 7px;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 4px;
   background: var(--bg);
   color: var(--text);
@@ -1864,10 +2237,10 @@ body {
   max-height: calc(100vh - 16px);
   overflow: hidden;
   background: var(--panel);
-  border: 1px solid var(--accent);
+  border: var(--pixel-border-width) solid var(--accent);
   border-radius: 10px;
   padding: 14px;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, .5), 0 0 0 1px rgba(122, 162, 255, .16);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .5), 0 0 0 var(--pixel-border-width) rgba(122, 162, 255, .16);
   z-index: var(--z-debug);
   font-size: 13px;
 }
@@ -1884,7 +2257,7 @@ body {
 .debug-head h3 { margin: 0; }
 .debug-content { min-height: 0; height: calc(100% - 38px); overflow-y: auto; padding-right: 3px; }
 .debug-section {
-  border-top: 1px solid var(--border);
+  border-top: var(--pixel-border-width) solid var(--border);
   padding: 10px 0;
   display: flex;
   flex-direction: column;
@@ -1900,7 +2273,7 @@ body {
 .debug-section select, .debug-section textarea {
   background: var(--panel-2);
   color: var(--text);
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 6px;
   font-size: 12px;
   font-family: inherit;
@@ -1914,7 +2287,7 @@ body {
 .debug-card-filters .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(122, 162, 255, .12); }
 .debug-card-groups { display: flex; flex-direction: column; gap: 9px; }
 .debug-card-group { display: flex; flex-direction: column; gap: 4px; }
-.debug-card-group-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 7px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
+.debug-card-group-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 7px; border: var(--pixel-border-width) solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
 .debug-card-group-toggle:hover { border-color: var(--accent); }
 .debug-card-group-label { color: var(--muted); font-size: 10px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase; }
 .debug-card-group-count { color: var(--muted); font-size: 10px; }
@@ -1927,7 +2300,7 @@ body {
   flex-direction: column;
   gap: 3px;
   align-items: stretch;
-  border: 1px solid var(--border);
+  border: var(--pixel-border-width) solid var(--border);
   border-radius: 6px;
   background: var(--panel-2);
   color: var(--text);
@@ -1941,7 +2314,7 @@ body {
 .debug-card-fallback { display: grid; place-items: center; padding: 5px; box-sizing: border-box; color: var(--muted); font-size: 10px; text-align: center; }
 .debug-card-option-name { overflow: hidden; font-size: 10px; font-weight: 700; line-height: 1.15; text-overflow: ellipsis; white-space: nowrap; }
 .debug-card-option-meta { color: var(--muted); font-size: 9px; line-height: 1.1; white-space: nowrap; }
-.debug-card-selected { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--panel-2); }
+.debug-card-selected { display: flex; align-items: center; gap: 8px; min-height: 58px; padding: 6px; border: var(--pixel-border-width) solid var(--border); border-radius: 6px; background: var(--panel-2); }
 .debug-card-selected img { width: 38px; height: 54px; border-radius: 3px; object-fit: cover; }
 .debug-card-selected > div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .debug-card-selected strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

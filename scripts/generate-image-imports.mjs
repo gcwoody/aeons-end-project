@@ -62,7 +62,7 @@ async function walkSourceFiles(directory) {
 
 function extractRegisteredCardIds(source) {
   const ids = new Set()
-  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|attack|minion|power|strike)['"]/g
+  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|attack|minion|power|strike)['"]/g
   const factoryCardPattern = /\bmake(?:Nemesis|Strike)Card\(\s*['"]([a-z0-9_]+)['"]/g
   for (const pattern of [directCardPattern, factoryCardPattern]) {
     for (const match of source.matchAll(pattern)) ids.add(match[1])
@@ -71,9 +71,9 @@ function extractRegisteredCardIds(source) {
 }
 
 function extractMageTypes(source) {
-  const mageSource = source.match(/(?:const|export const)\s+MAGES[\s\S]*$/)?.[0] ?? source
   const types = new Set()
-  for (const match of mageSource.matchAll(/\btype:\s*['"]([a-z0-9_]+)['"]/g)) types.add(match[1])
+  const mageDefinitionPattern = /\btype:\s*['"]([a-z0-9_]+)['"](?:(?!\btype:)[\s\S]){0,280}?\babilityName:/g
+  for (const match of source.matchAll(mageDefinitionPattern)) types.add(match[1])
   return [...types].sort()
 }
 
@@ -91,7 +91,9 @@ function indexBySlug(files, keyForFile) {
     if (!key) continue
     const existing = index.get(key)
     if (existing && existing !== file) {
-      throw new Error(`Duplicate image mapping for "${key}":\n- ${existing}\n- ${file}`)
+      // Earlier waves provide the canonical art when a later collection
+      // includes a reprint of an already registered card.
+      continue
     }
     index.set(key, file)
   }
@@ -105,8 +107,9 @@ function getCardImageIndex(files) {
     const isMagePortrait = relativePath.includes('/mages/') && /\s+(front|back)\.[^.]+$/i.test(baseName)
     const isNemesisMat = relativePath.includes('/nemesis/')
       && /\s+(front|back)\.[^.]+$/i.test(baseName)
-      && slug(baseName) === slug(relativePath.split('/').at(-2) ?? '')
-    return !isMagePortrait && !isNemesisMat
+      && slug(baseName).replace(/_beyond_the_breach$/, '') === slug(relativePath.split('/').at(-2) ?? '')
+    const isCardBack = /\s+back\.[^.]+$/i.test(baseName)
+    return !isMagePortrait && !isNemesisMat && !isCardBack
   }), (file) => slug(basename(file)))
 }
 
@@ -118,7 +121,7 @@ function getMageImageIndex(files) {
     const baseName = basename(file)
     const match = baseName.match(/^(.+)\s+(Front|Back)\.[^.]+$/i)
     if (!match) continue
-    const mageType = slug(match[1])
+    const mageType = slug(match[1]).replace(/_beyond_the_breach$/, '')
     const side = match[2].toLowerCase()
     const images = index.get(mageType) ?? {}
     if (images[side] && images[side] !== file) {
@@ -246,13 +249,9 @@ const [engineFiles, cardFiles, breachFiles] = await Promise.all([
 ])
 const engineSource = await readSourceFiles(engineFiles.filter((file) => file.endsWith('.ts')))
 const cardIds = extractRegisteredCardIds(engineSource)
-const mageFiles = engineFiles.filter((file) => basename(file).toLowerCase() === 'mage.ts')
 const nemesisFiles = engineFiles.filter((file) => basename(file).toLowerCase() === 'nemesis.ts')
-const [mageSource, nemesisSource] = await Promise.all([
-  readSourceFiles(mageFiles),
-  readSourceFiles(nemesisFiles),
-])
-const mageTypes = extractMageTypes(mageSource)
+const nemesisSource = await readSourceFiles(nemesisFiles)
+const mageTypes = extractMageTypes(engineSource)
 const nemesisTypes = extractNemesisTypes(nemesisSource)
 const cardImages = getCardImageIndex(cardFiles)
 const mageImages = getMageImageIndex(cardFiles)

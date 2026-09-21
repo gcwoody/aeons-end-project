@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { getCard } from '@engine/data'
+import { getCard, MAGES } from '@engine/data'
 import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, TurnOrderCardChoice } from '@engine/types'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
@@ -50,6 +50,12 @@ watch(() => decision.value?.id, () => {
 })
 
 const turnOrderLabels = computed(() => createTurnOrderLabels(state.game?.players ?? []))
+
+const specificDeckName = computed(() => {
+  const ownerId = state.game?.pendingEffect?.specificDeckReview?.playerId
+  const mageType = state.game?.players.find(player => player.id === ownerId)?.mageType
+  return MAGES[mageType ?? '']?.specificDeckName ?? 'Specific Deck'
+})
 
 function turnOrderCardLabel(cardId: string): string {
   return turnOrderActorLabel(cardId, turnOrderLabels.value)
@@ -103,7 +109,9 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
       cardName: choice.cardName,
       groupKey: choice.zone,
       groupLabel: choice.zone === 'hand' ? 'HAND'
-        : choice.zone === 'discard' ? 'DISCARD PILE' : 'PLAYED THIS TURN',
+        : choice.zone === 'discard' ? 'DISCARD PILE'
+          : choice.zone === 'swap_zone' ? 'SWAP ZONE'
+            : choice.zone === 'specific_deck' ? specificDeckName.value : 'PLAYED THIS TURN',
     }))
   }
   if (decision.value?.kind === 'select_collective_cards') {
@@ -173,6 +181,11 @@ function answer(kind: PendingDecisionAnswer) {
   resolveDecision(kind)
 }
 
+function skipPreppedSpell() {
+  if (decision.value?.kind !== 'select_prepped_spell' || !decision.value.allowSkip) return
+  answer({ kind: 'select_prepped_spell', choice: null })
+}
+
 function confirmNemesisDraw() {
   if (!decision.value || decision.value.kind !== 'confirm_nemesis_draw') return
   answer({ kind: 'confirm_nemesis_draw', accepted: true })
@@ -220,6 +233,16 @@ function confirmNemesisDraw() {
         >
           Confirm
         </button>
+      </div>
+    </div>
+  </div>
+
+  <div v-if="decision?.kind === 'select_prepped_spell' && decision.allowSkip" class="decision-overlay non-blocking-decision-overlay">
+    <div ref="modalEl" class="overlay-card decision-modal non-blocking-prepped-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+      <h2>{{ decision.prompt }}</h2>
+      <p class="decision-hint">Select a highlighted prepped spell on the player board to cast it, or skip to finish.</p>
+      <div class="decision-footer">
+        <button class="btn" @click="skipPreppedSpell">Skip</button>
       </div>
     </div>
   </div>
@@ -301,6 +324,22 @@ function confirmNemesisDraw() {
           {{ decision.skip.label }}
         </button>
       </div>
+
+      <template v-else-if="decision.kind === 'select_conjure_breach'">
+        <p class="decision-hint">Reveal the top card, then choose an eligible Breach to prepare it face-down.</p>
+        <div class="review-top-card">
+          <CardHoverPreview :card-id="decision.cardId">
+            <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
+            <span v-else>{{ getCard(decision.cardId).name }}</span>
+          </CardHoverPreview>
+        </div>
+        <div class="decision-options">
+          <button v-for="candidate in decision.candidates" :key="`${candidate.playerId}:${candidate.breachIndex}`" class="btn primary decision-option" @click="answer({ kind: 'select_conjure_breach', choice: candidate })">
+            Prep on Breach {{ candidate.breachIndex === 1 ? 'I' : candidate.breachIndex === 2 ? 'II' : candidate.breachIndex === 3 ? 'III' : 'IV' }}
+          </button>
+          <button class="btn decision-option" @click="answer({ kind: 'select_conjure_breach', choice: null })">Leave on Top</button>
+        </div>
+      </template>
 
       <CardSelectionPanel
         v-else-if="decision.kind === 'select_cards' || decision.kind === 'select_collective_cards'"

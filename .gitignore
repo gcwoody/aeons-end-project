@@ -51,6 +51,12 @@ Desktop.ini
 !image-database/cards/wave1/
 !image-database/cards/wave1/**/*.png
 !image-database/cards/wave1/**/*.jpg
+!image-database/cards/wave9/
+!image-database/cards/wave9/**/*.png
+!image-database/cards/wave9/**/*.jpg
 !image-database/common breach/
 !image-database/common breach/**/*.png
 !image-database/common breach/**/*.jpg
+
+# Resumable Wiki responses are generated locally by the collection scripts.
+/image-database/.cache/
