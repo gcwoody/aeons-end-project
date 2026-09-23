@@ -116,6 +116,7 @@ test.describe('Stage 5 visual acceptance', () => {
 
     const row = page.locator('.played-zones')
     const center = page.locator('.played-zone-center')
+    const swapScroll = page.locator('.played-zone-center .played-card-scroll')
     await expect(row).toHaveClass(/has-swap-zone/)
     await expect(row).not.toHaveClass(/has-develop-zone/)
     await expect(center.locator('.card')).toBeVisible()
@@ -138,12 +139,31 @@ test.describe('Stage 5 visual acceptance', () => {
 
     await page.keyboard.press('Control+d')
     await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+    const boundaryState = JSON.parse(await stateField.inputValue())
+    boundaryState.game.players[0].playedThisTurn = Array.from({ length: 6 }, () => 'crystal')
+    await stateField.fill(JSON.stringify(boundaryState))
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+    await expect(swapScroll).toHaveClass(/is-boundary-constrained/)
+    await expect(swapScroll).not.toHaveClass(/is-overflowing/)
+    const swapBoundary = await page.evaluate(() => {
+      const scrollElement = document.querySelector('.played-zone-center .played-card-scroll') as HTMLElement
+      const scroll = scrollElement.getBoundingClientRect()
+      const track = document.querySelector('.played-zone-center .zone-card-track')!.getBoundingClientRect()
+      const firstCard = document.querySelector('.played-zone-center .zone-card-track .card')!.getBoundingClientRect()
+      return { scrollLeft: scroll.left, trackLeft: track.left, firstLeft: firstCard.left, scrollWidth: scrollElement.scrollWidth, clientWidth: scrollElement.clientWidth }
+    })
+    expect(swapBoundary.trackLeft).toBeGreaterThanOrEqual(swapBoundary.scrollLeft - 1)
+    expect(swapBoundary.firstLeft).toBeGreaterThanOrEqual(swapBoundary.scrollLeft - 1)
+    expect(swapBoundary.scrollWidth).toBeLessThanOrEqual(swapBoundary.clientWidth + 1)
+
+    await page.keyboard.press('Control+d')
+    await page.getByRole('button', { name: 'Load Current', exact: true }).click()
     const overflowState = JSON.parse(await stateField.inputValue())
     overflowState.game.players[0].playedThisTurn = Array.from({ length: 16 }, () => 'crystal')
     await stateField.fill(JSON.stringify(overflowState))
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
-    const swapScroll = page.locator('.played-zone-center .played-card-scroll')
     await expect(swapScroll).toHaveClass(/is-overflowing/)
     const swapOverflow = await page.evaluate(() => {
       const scrollElement = document.querySelector('.played-zone-center .played-card-scroll') as HTMLElement
@@ -192,6 +212,7 @@ test.describe('Stage 5 visual acceptance', () => {
 
     const row = page.locator('.played-zones')
     const center = page.locator('.played-zone-center')
+    const developScroll = page.locator('.played-zone-center .played-card-scroll')
     await expect(row).not.toHaveClass(/has-swap-zone/)
     await expect(row).toHaveClass(/has-develop-zone/)
     await expect(center.locator('.card')).toBeVisible()
@@ -214,12 +235,31 @@ test.describe('Stage 5 visual acceptance', () => {
 
     await page.keyboard.press('Control+d')
     await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+    const boundaryState = JSON.parse(await stateField.inputValue())
+    boundaryState.game.players[0].playedThisTurn = Array.from({ length: 6 }, () => 'crystal')
+    await stateField.fill(JSON.stringify(boundaryState))
+    await page.getByRole('button', { name: 'Apply', exact: true }).click()
+    await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+    await expect(developScroll).toHaveClass(/is-boundary-constrained/)
+    await expect(developScroll).not.toHaveClass(/is-overflowing/)
+    const developBoundary = await page.evaluate(() => {
+      const scrollElement = document.querySelector('.played-zone-center .played-card-scroll') as HTMLElement
+      const scroll = scrollElement.getBoundingClientRect()
+      const track = document.querySelector('.played-zone-center .zone-card-track')!.getBoundingClientRect()
+      const lastCard = [...document.querySelectorAll('.played-zone-center .zone-card-track .card')].at(-1)!.getBoundingClientRect()
+      return { scrollRight: scroll.right, trackRight: track.right, lastRight: lastCard.right, scrollWidth: scrollElement.scrollWidth, clientWidth: scrollElement.clientWidth }
+    })
+    expect(developBoundary.trackRight).toBeLessThanOrEqual(developBoundary.scrollRight + 1)
+    expect(developBoundary.lastRight).toBeLessThanOrEqual(developBoundary.scrollRight + 1)
+    expect(developBoundary.scrollWidth).toBeLessThanOrEqual(developBoundary.clientWidth + 1)
+
+    await page.keyboard.press('Control+d')
+    await page.getByRole('button', { name: 'Load Current', exact: true }).click()
     const overflowState = JSON.parse(await stateField.inputValue())
     overflowState.game.players[0].playedThisTurn = Array.from({ length: 16 }, () => 'crystal')
     await stateField.fill(JSON.stringify(overflowState))
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
-    const developScroll = page.locator('.played-zone-center .played-card-scroll')
     await expect(developScroll).toHaveClass(/is-overflowing/)
     const developOverflow = await page.evaluate(() => {
       const scrollElement = document.querySelector('.played-zone-center .played-card-scroll') as HTMLElement

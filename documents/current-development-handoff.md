@@ -58,8 +58,8 @@ http://127.0.0.1:5173/?ui-gallery=1
 | 状态 | 区域分配 | Played 卡牌行为 |
 | --- | --- | --- |
 | Swap + Played + Develop | 三列各占 1/3 | Played 位于中间列，短内容居中 |
-| Swap + Played | Swap 左 1/3，Played 右 2/3 | 轨道左边界固定，卡牌向右增加，使用普通 LTR 横向滚动 |
-| Develop + Played | Played 左 2/3，Develop 右 1/3 | 轨道右侧锚定，使用 RTL 负 `scrollLeft` 滚动语义，首张可见卡牌对齐左边界 |
+| Swap + Played | Swap 左 1/3，Played 右 2/3 | 卡牌相对整行居中，轨道碰到 Played 左边界时钉在左侧并向右增加；只有超出 Played 整个可视宽度才显示普通 LTR 横向滚动条 |
+| Develop + Played | Played 左 2/3，Develop 右 1/3 | 卡牌相对整行居中，轨道碰到 Played 右边界时钉在右侧并向左增加；超出整栏后使用 RTL 负 `scrollLeft` 滚动语义 |
 | 只有 Played | Played 占整行 | 短内容相对整行居中 |
 
 侧边区域缺失时，卡牌居中基准仍然是整行屏幕中心，而不是 Played 自己那一列的中心。
@@ -71,6 +71,7 @@ http://127.0.0.1:5173/?ui-gallery=1
   - Played 的 `ZoneScroller` 在 Develop-only 状态传入 `overflow-anchor="end"`。
 - `aeons-end-ui/src/components/ZoneScroller.vue`
   - 使用 `ResizeObserver` 和 `MutationObserver` 检测内容是否溢出。
+  - Played 单侧布局另外计算屏幕中心到 Played 内边界的距离，在完整轨道碰到 Swap/Develop 一侧边界时提前加上 `is-boundary-constrained`；该状态与真正的 `is-overflowing` 分开，确保卡牌不被相邻区域遮住，同时仅在整个 Played 栏位放不下时出现滚动条。
   - 溢出时添加 `is-overflowing` 和 `--zone-overflow-distance`。
   - 普通滚动区域把滚轮垂直位移转换为横向滚动。
   - `overflowAnchor === 'end'` 时识别 RTL 的负 `scrollLeft` 范围，并在初始化、内容变化、窗口变化和滚轮操作后把首张可见卡牌对齐到视口边界。
@@ -143,4 +144,3 @@ npm run build
 4. 为新状态或新机制增加最小可复用组件/效果，并补充对应 Playwright 或引擎测试。
 5. 运行针对性测试，再运行 `npm run build`；较大的 UI 变化应更新 Gallery 或 `ui/screenshots/`。
 6. 最终交付时明确列出修改文件、测试命令和任何未解决的已知问题。
-

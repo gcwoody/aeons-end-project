@@ -102,7 +102,7 @@ function isKnownSpecificDeckCard(cardId: string): boolean {
   <ModalBase
     v-if="state.viewPile"
     overlay-class="pile-viewer-overlay"
-    :panel-ref="modalEl"
+    v-model:panel-ref="modalEl"
     :panel-class="['pile-modal', 'draggable-modal', { 'pile-modal-with-labels': usesRowLabels }]"
     :panel-style="{ ...modalStyle, '--pile-columns': columns }"
     :dragging="dragging"

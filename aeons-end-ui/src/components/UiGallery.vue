@@ -237,7 +237,7 @@ function cardName(cardId: string): string {
       unstyled
       overlay-class="ui-gallery-modal-overlay"
       panel-class="ui-gallery-modal"
-      :panel-ref="galleryModalEl"
+      v-model:panel-ref="galleryModalEl"
       data-gallery-modal
       @overlay-click="modal = null"
     >

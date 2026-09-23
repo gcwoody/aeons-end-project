@@ -105,7 +105,7 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 - 数量徽章固定在左上角，不能因 hover 或卡牌内容发生位移。
 - Played、Swap、Develop 短内容居中；内容溢出时横向滚动，不能裁切卡牌边界。
 - Swap、Develop 等区域是否出现由游戏状态决定，没有相关机制时隐藏。
-- 三个区域共用一排：全部存在时各占 1/3；缺少 Swap 时 Played 占左侧 2/3、Develop 占右侧 1/3；缺少 Develop 时 Swap 占左侧 1/3、Played 占右侧 2/3。单侧布局中 Played 卡牌仍以整行中心为基准；超过可用宽度后必须固定在 Played 边界内，Swap-only 向右增加、Develop-only 向左增加，并通过横向滚动查看溢出内容。
+- 三个区域共用一排：全部存在时各占 1/3；缺少 Swap 时 Played 占左侧 2/3、Develop 占右侧 1/3；缺少 Develop 时 Swap 占左侧 1/3、Played 占右侧 2/3。单侧布局中 Played 卡牌仍以整行中心为基准；卡牌轨道接触相邻侧区边界时就要钉在 Played 内侧边缘，Swap-only 向右增加、Develop-only 向左增加。只有轨道超过 Played 整个可视宽度时才显示横向滚动条。
 
 ### 弹窗
 

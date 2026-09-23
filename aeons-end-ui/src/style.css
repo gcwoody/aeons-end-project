@@ -916,14 +916,14 @@ body {
 .played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center .zone-card-track {
   left: calc(25% - var(--pixel-border-width) - 7px);
 }
-/* Once the track no longer fits, keep the side facing the other zone fixed:
-   Swap-only layouts grow to the right, while Develop-only layouts grow to
-   the left. This prevents cards from disappearing beyond the Played frame. */
-.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center .played-card-scroll.is-overflowing .zone-card-track {
+/* Once a centered track reaches the adjacent side-zone boundary, keep that
+   edge fixed. Cards then grow toward the open side; a scrollbar appears only
+   after the full Played viewport no longer contains the track. */
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center .played-card-scroll.is-boundary-constrained .zone-card-track {
   left: 0;
   transform: none;
 }
-.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .played-card-scroll.is-overflowing .zone-card-track {
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .played-card-scroll.is-boundary-constrained .zone-card-track {
   right: 0;
   left: auto;
   transform: none;

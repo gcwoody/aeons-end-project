@@ -205,7 +205,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="decision?.kind === 'confirm_nemesis_draw'"
     overlay-class="decision-overlay nemesis-reveal-overlay"
-    :panel-ref="modalEl"
+    v-model:panel-ref="modalEl"
     panel-class="nemesis-reveal-modal draggable-modal"
     :panel-style="modalStyle"
     :dragging="dragging"
@@ -231,7 +231,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="isDirectMarketDecision"
     overlay-class="decision-overlay non-blocking-decision-overlay non-blocking-market-selection-overlay"
-    :panel-ref="modalEl"
+    v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-selection-modal draggable-modal"
     :panel-style="modalStyle"
     :dragging="dragging"
@@ -244,7 +244,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spells'"
     overlay-class="decision-overlay non-blocking-decision-overlay"
-    :panel-ref="modalEl"
+    v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-prepped-modal draggable-modal"
     :panel-style="modalStyle"
     :dragging="dragging"
@@ -267,7 +267,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spell' && decision.allowSkip"
     overlay-class="decision-overlay non-blocking-decision-overlay"
-    :panel-ref="modalEl"
+    v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-prepped-modal draggable-modal"
     :panel-style="modalStyle"
     :dragging="dragging"
@@ -283,7 +283,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="boardCardDecision"
     overlay-class="decision-overlay non-blocking-decision-overlay"
-    :panel-ref="modalEl"
+    v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-selection-modal draggable-modal"
     :panel-style="modalStyle"
     :dragging="dragging"
@@ -309,7 +309,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'"
     overlay-class="decision-overlay"
-    :panel-ref="modalEl"
+    v-model:panel-ref="modalEl"
     panel-class="decision-modal draggable-modal"
     :panel-style="{ ...modalStyle, '--decision-columns': decisionColumns }"
     :dragging="dragging"

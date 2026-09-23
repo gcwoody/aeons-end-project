@@ -114,7 +114,7 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   await expect(page.locator('.nemesis-mat-wrap.damage-target')).toHaveCount(0)
 })
 
-test('opening the Nemesis mat transfers focus before Mage shortcuts switch the board', async ({ page }) => {
+test('Nemesis mat modal receives focus and remains draggable', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -141,6 +141,17 @@ test('opening the Nemesis mat transfers focus before Mage shortcuts switch the b
     activeIsModal: document.activeElement?.classList.contains('draggable-modal'),
     triggerFocused: document.querySelector('.nemesis-mat-wrap') === document.activeElement,
   }))).toEqual({ activeIsModal: true, triggerFocused: false })
+
+  const modal = page.locator('.mage-modal.draggable-modal')
+  const before = await modal.boundingBox()
+  expect(before).not.toBeNull()
+  await page.mouse.move(before!.x + 4, before!.y + 4)
+  await page.mouse.down()
+  await expect(modal).toHaveClass(/dragging/)
+  await page.mouse.move(before!.x + 44, before!.y + 34, { steps: 5 })
+  await page.mouse.up()
+  const after = await modal.boundingBox()
+  expect(after!.x).toBeGreaterThan(before!.x + 20)
 
   await page.keyboard.press('Digit2')
   await expect(page.locator('.mage-image')).toHaveAttribute('alt', 'brama mage board')

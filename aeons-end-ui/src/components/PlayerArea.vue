@@ -822,6 +822,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         <ZoneScroller
           class="played-card-scroll"
           :overflow-anchor="hasDevelopZone && !hasSwapZone ? 'end' : 'start'"
+          :center-boundary="hasSwapZone && !hasDevelopZone ? 'start' : hasDevelopZone && !hasSwapZone ? 'end' : undefined"
         >
           <div class="zone-card-track">
             <template v-if="isDiscard">

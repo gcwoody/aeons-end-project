@@ -221,7 +221,7 @@ onBeforeUnmount(() => {
     <ModalBase
       v-if="matModalOpen"
       overlay-class="mage-overlay"
-      :panel-ref="matModalEl"
+      v-model:panel-ref="matModalEl"
       panel-class="mage-modal draggable-modal"
       :panel-style="matModalStyle"
       :dragging="matDragging"
@@ -240,7 +240,7 @@ onBeforeUnmount(() => {
     <ModalBase
       v-if="discardModalOpen"
       overlay-class="decision-overlay"
-      :panel-ref="discardModalEl"
+      v-model:panel-ref="discardModalEl"
       panel-class="pile-modal pile-modal-no-labels draggable-modal"
       :panel-style="{ ...discardModalStyle, '--pile-columns': discardColumns }"
       :dragging="discardDragging"

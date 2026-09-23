@@ -343,7 +343,7 @@ function turnLabel(turn: string): string {
     <ModalBase
       v-if="state.deleteSaveId"
       overlay-class="save-delete-overlay"
-      :panel-ref="modalEl"
+      v-model:panel-ref="modalEl"
       panel-class="draggable-modal"
       :panel-style="modalStyle"
       :dragging="dragging"
@@ -360,7 +360,7 @@ function turnLabel(turn: string): string {
     <ModalBase
       v-if="replacementSlot !== null"
       overlay-class="setup-market-overlay"
-      :panel-ref="replacementPickerEl"
+      v-model:panel-ref="replacementPickerEl"
       panel-class="setup-market-picker"
       panel-aria-labelledby="market-picker-title"
       @overlay-click="closeReplacement"
@@ -396,7 +396,7 @@ function turnLabel(turn: string): string {
     <ModalBase
       v-if="magePickerPlayer !== null"
       overlay-class="setup-mage-overlay"
-      :panel-ref="magePickerEl"
+      v-model:panel-ref="magePickerEl"
       panel-class="setup-mage-picker"
       panel-aria-labelledby="mage-picker-title"
       @overlay-click="closeMagePicker"
@@ -442,7 +442,7 @@ function turnLabel(turn: string): string {
     <ModalBase
       v-if="nemesisPickerOpen"
       overlay-class="setup-nemesis-overlay"
-      :panel-ref="nemesisPickerEl"
+      v-model:panel-ref="nemesisPickerEl"
       panel-class="setup-nemesis-picker"
       panel-aria-labelledby="nemesis-picker-title"
       @overlay-click="closeNemesisPicker"

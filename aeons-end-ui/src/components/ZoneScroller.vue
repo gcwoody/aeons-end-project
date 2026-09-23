@@ -6,13 +6,16 @@ defineOptions({ inheritAttrs: true })
 const props = withDefaults(defineProps<{
   wheelScale?: number
   overflowAnchor?: 'start' | 'end'
+  centerBoundary?: 'start' | 'end'
 }>(), {
   wheelScale: 1.1,
   overflowAnchor: 'start',
+  centerBoundary: undefined,
 })
 
 const zoneElement = ref<HTMLElement | null>(null)
 const overflowing = ref(false)
+const boundaryConstrained = ref(false)
 const overflowDistance = ref(0)
 let resizeObserver: ResizeObserver | null = null
 let mutationObserver: MutationObserver | null = null
@@ -39,6 +42,24 @@ function updateOverflow() {
   const contentWidth = track?.getBoundingClientRect().width ?? zone.scrollWidth
   overflowDistance.value = Math.max(0, contentWidth - zone.clientWidth)
   overflowing.value = overflowDistance.value > 1
+
+  const row = zone.closest('.played-zones')
+  if (!track || !row || !props.centerBoundary) {
+    boundaryConstrained.value = false
+    return
+  }
+  const rowBounds = row.getBoundingClientRect()
+  const zoneBounds = zone.getBoundingClientRect()
+  const center = rowBounds.left + rowBounds.width / 2
+  const clipStart = zoneBounds.left + zone.clientLeft
+  const clipEnd = clipStart + zone.clientWidth
+  const roomToBoundary = props.centerBoundary === 'start'
+    ? center - clipStart
+    : clipEnd - center
+  // Played cards stay centered on the full row until their edge reaches the
+  // inner boundary beside the side zone. Clamp at that point, before the
+  // content is wide enough to require a scrollbar for the whole Played slot.
+  boundaryConstrained.value = contentWidth / 2 > roomToBoundary + 1
 }
 
 function observeOverflow() {
@@ -99,6 +120,14 @@ watch(overflowing, async (isOverflowing) => {
   if (props.overflowAnchor === 'end') alignEndAnchoredCards(zone)
 })
 
+watch([() => props.centerBoundary, () => props.overflowAnchor], async () => {
+  await nextTick()
+  const zone = zoneElement.value
+  if (!zone) return
+  updateOverflow()
+  if (props.overflowAnchor === 'end') alignEndAnchoredCards(zone)
+})
+
 onMounted(observeOverflow)
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
@@ -110,7 +139,11 @@ onBeforeUnmount(() => {
   <div
     ref="zoneElement"
     class="zone-scroller"
-    :class="{ 'is-overflowing': overflowing, 'is-end-anchored': props.overflowAnchor === 'end' }"
+    :class="{
+      'is-overflowing': overflowing,
+      'is-end-anchored': props.overflowAnchor === 'end',
+      'is-boundary-constrained': boundaryConstrained,
+    }"
     :style="{ '--zone-overflow-distance': `${overflowDistance}px` }"
     @wheel="handleWheel"
   >

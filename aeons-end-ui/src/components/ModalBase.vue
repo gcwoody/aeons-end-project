@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { onBeforeUnmount, ref, watch, type Ref, type StyleValue } from 'vue'
+import { onBeforeUnmount, ref, watch, type StyleValue } from 'vue'
 
 defineOptions({ inheritAttrs: false })
 
@@ -7,7 +7,7 @@ const props = defineProps<{
   overlayClass?: unknown
   panelClass?: unknown
   panelStyle?: StyleValue
-  panelRef?: Ref<HTMLElement | null>
+  panelRef?: HTMLElement | null
   panelAriaLabelledby?: string
   dragging?: boolean
   unstyled?: boolean
@@ -16,19 +16,20 @@ const props = defineProps<{
 const emit = defineEmits<{
   overlayClick: [event: MouseEvent]
   panelPointerdown: [event: PointerEvent]
+  'update:panelRef': [element: HTMLElement | null]
 }>()
 
 const panelEl = ref<HTMLElement | null>(null)
 
 watch(panelEl, (element) => {
-  if (props.panelRef) props.panelRef.value = element
+  emit('update:panelRef', element)
   if (!element) return
   element.tabIndex = -1
   requestAnimationFrame(() => element.focus({ preventScroll: true }))
 }, { immediate: true })
 
 onBeforeUnmount(() => {
-  if (props.panelRef?.value === panelEl.value) props.panelRef.value = null
+  if (props.panelRef === panelEl.value) emit('update:panelRef', null)
 })
 </script>
 

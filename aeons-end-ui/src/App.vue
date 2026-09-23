@@ -192,7 +192,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <ModalBase
       v-if="state.helpOpen"
       overlay-class="help-overlay"
-      :panel-ref="helpModalEl"
+      v-model:panel-ref="helpModalEl"
       panel-class="help-modal draggable-modal"
       :panel-style="helpModalStyle"
       :dragging="helpDragging"
@@ -224,7 +224,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <ModalBase
       v-if="state.exitPrompt"
       overlay-class="exit-overlay"
-      :panel-ref="exitModalEl"
+      v-model:panel-ref="exitModalEl"
       panel-class="draggable-modal"
       :panel-style="exitModalStyle"
       :dragging="exitDragging"
@@ -242,7 +242,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <ModalBase
       v-if="state.phase === 'gameover'"
       overlay-class="overlay"
-      :panel-ref="gameoverModalEl"
+      v-model:panel-ref="gameoverModalEl"
       panel-class="draggable-modal"
       :panel-style="gameoverModalStyle"
       :dragging="gameoverDragging"

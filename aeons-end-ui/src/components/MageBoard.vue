@@ -54,7 +54,7 @@ onBeforeUnmount(unregisterDismissibleOverlay)
     <ModalBase
       v-if="showModal && images"
       overlay-class="mage-overlay"
-      :panel-ref="modalEl"
+      v-model:panel-ref="modalEl"
       panel-class="mage-modal draggable-modal"
       :panel-style="modalStyle"
       :dragging="dragging"
