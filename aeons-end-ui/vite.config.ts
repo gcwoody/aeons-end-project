@@ -13,6 +13,10 @@ export default defineConfig({
   server: {
     // Keep the development server local; do not expose it to the LAN by default.
     host: '127.0.0.1',
+    // Keep one predictable development URL. Do not silently move to another
+    // port when a stale Vite process is still running.
+    port: 5173,
+    strictPort: true,
     fs: {
       allow: [fileURLToPath(new URL('..', import.meta.url))],
     },

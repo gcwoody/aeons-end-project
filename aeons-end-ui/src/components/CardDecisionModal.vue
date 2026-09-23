@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, TurnOrderCardChoice } from '@engine/types'
+import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
 import { cardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
 import { useModalDrag } from '../game/useModalDrag'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
+import ModalBase from './ModalBase.vue'
 
 const {
   state, resolveDecision, confirmPendingPreppedSpells,
@@ -19,12 +20,12 @@ const selectedTurnOrder = ref<number[]>([])
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
 const isDirectBoardCardDecision = computed(() => isBoardCardSelectionActive())
-const reviewedCardId = computed(() => {
+const revealedCardId = computed(() => {
   const current = decision.value
-  if (current?.kind !== 'choose_one' || state.game?.pendingEffect?.awaiting?.kind !== 'review_top_cards') return null
-  return state.game.pendingEffect.reviewingTopCard?.cardId ?? null
+  if (current?.kind !== 'choose_one' || state.game?.pendingEffect?.awaiting?.kind !== 'reveal_top_cards') return null
+  return state.game.pendingEffect.revealedTopCard?.cardId ?? null
 })
-const reviewedCardOwnerId = computed(() => state.game?.pendingEffect?.reviewingTopCard?.playerId ?? null)
+const revealedCardOwnerId = computed(() => state.game?.pendingEffect?.revealedTopCard?.playerId ?? null)
 type DirectBoardCardDecision = Extract<PendingDecision, { kind: 'select_cards' | 'select_collective_cards' }>
 const boardCardDecision = computed<DirectBoardCardDecision | null>(() => {
   const current = decision.value
@@ -33,6 +34,9 @@ const boardCardDecision = computed<DirectBoardCardDecision | null>(() => {
 })
 const isDirectMarketDecision = computed(() =>
   decision.value?.kind === 'select_market_pile' || decision.value?.kind === 'select_setup_devour_pile',
+)
+const isLargeSpecificDeckSelection = computed(() =>
+  decision.value?.kind === 'select_cards' && decision.value.source === 'specific_deck',
 )
 const showsPlayerLife = computed(() => {
   const current = decision.value
@@ -52,7 +56,7 @@ watch(() => decision.value?.id, () => {
 const turnOrderLabels = computed(() => createTurnOrderLabels(state.game?.players ?? []))
 
 const specificDeckName = computed(() => {
-  const ownerId = state.game?.pendingEffect?.specificDeckReview?.playerId
+  const ownerId = state.game?.pendingEffect?.specificDeckReveal?.playerId
   const mageType = state.game?.players.find(player => player.id === ownerId)?.mageType
   return MAGES[mageType ?? '']?.specificDeckName ?? 'Specific Deck'
 })
@@ -79,6 +83,11 @@ function confirmTurnOrder() {
   if (!decision.value || decision.value.kind !== 'reorder_turn_order') return
   if (selectedTurnOrder.value.length !== decision.value.cards.length) return
   answer({ kind: 'reorder_turn_order', order: [...selectedTurnOrder.value] })
+}
+
+function placeSpecificDeckCard(cardId: string, placement: SpecificDeckPlacement) {
+  if (decision.value?.kind !== 'place_specific_deck_card') return
+  answer({ kind: 'place_specific_deck_card', cardId, placement })
 }
 
 function resetTurnOrder() {
@@ -193,13 +202,20 @@ function confirmNemesisDraw() {
 </script>
 
 <template>
-  <div v-if="decision?.kind === 'confirm_nemesis_draw'" class="overlay decision-overlay nemesis-reveal-overlay">
-    <div ref="modalEl" class="overlay-card nemesis-reveal-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @click.stop @pointerdown="startDrag">
+  <ModalBase
+    v-if="decision?.kind === 'confirm_nemesis_draw'"
+    overlay-class="decision-overlay nemesis-reveal-overlay"
+    :panel-ref="modalEl"
+    panel-class="nemesis-reveal-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
       <h2>{{ decision.source === 'specific_deck' ? 'Nemesis Specific Deck Draw' : 'Nemesis Draw' }}</h2>
       <p class="decision-hint">
         {{ decision.source === 'specific_deck'
-          ? 'A card was drawn from the Nemesis specific deck. Review it, then click Confirm to resolve it.'
-          : 'A Nemesis card was drawn. Review it, then click Confirm to continue.' }}
+          ? 'A card was drawn from the Nemesis specific deck. Reveal it, then click Confirm to resolve it.'
+          : 'A Nemesis card was drawn. Reveal it, then click Confirm to continue.' }}
       </p>
       <div class="nemesis-reveal-card">
         <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
@@ -210,18 +226,30 @@ function confirmNemesisDraw() {
           Confirm
         </button>
       </div>
-    </div>
-  </div>
+  </ModalBase>
 
-  <div v-if="isDirectMarketDecision" class="decision-overlay non-blocking-decision-overlay non-blocking-market-selection-overlay">
-    <div ref="modalEl" class="overlay-card decision-modal non-blocking-selection-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+  <ModalBase
+    v-if="isDirectMarketDecision"
+    overlay-class="decision-overlay non-blocking-decision-overlay non-blocking-market-selection-overlay"
+    :panel-ref="modalEl"
+    panel-class="decision-modal non-blocking-selection-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
       <h2>{{ decision?.prompt }}</h2>
       <p class="decision-hint">Select a highlighted supply pile directly in the Market.</p>
-    </div>
-  </div>
+  </ModalBase>
 
-  <div v-if="decision?.kind === 'select_prepped_spells'" class="decision-overlay non-blocking-decision-overlay">
-    <div ref="modalEl" class="overlay-card decision-modal non-blocking-prepped-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+  <ModalBase
+    v-if="decision?.kind === 'select_prepped_spells'"
+    overlay-class="decision-overlay non-blocking-decision-overlay"
+    :panel-ref="modalEl"
+    panel-class="decision-modal non-blocking-prepped-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
       <h2>{{ decision.prompt }}</h2>
       <p class="decision-hint">Select prepped spells directly on the player boards. You can switch players while this panel remains open.</p>
       <div class="decision-footer">
@@ -234,21 +262,33 @@ function confirmNemesisDraw() {
           Confirm
         </button>
       </div>
-    </div>
-  </div>
+  </ModalBase>
 
-  <div v-if="decision?.kind === 'select_prepped_spell' && decision.allowSkip" class="decision-overlay non-blocking-decision-overlay">
-    <div ref="modalEl" class="overlay-card decision-modal non-blocking-prepped-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+  <ModalBase
+    v-if="decision?.kind === 'select_prepped_spell' && decision.allowSkip"
+    overlay-class="decision-overlay non-blocking-decision-overlay"
+    :panel-ref="modalEl"
+    panel-class="decision-modal non-blocking-prepped-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
       <h2>{{ decision.prompt }}</h2>
       <p class="decision-hint">Select a highlighted prepped spell on the player board to cast it, or skip to finish.</p>
       <div class="decision-footer">
         <button class="btn" @click="skipPreppedSpell">Skip</button>
       </div>
-    </div>
-  </div>
+  </ModalBase>
 
-  <div v-if="boardCardDecision" class="decision-overlay non-blocking-decision-overlay">
-    <div ref="modalEl" class="overlay-card decision-modal non-blocking-selection-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+  <ModalBase
+    v-if="boardCardDecision"
+    overlay-class="decision-overlay non-blocking-decision-overlay"
+    :panel-ref="modalEl"
+    panel-class="decision-modal non-blocking-selection-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
       <h2>{{ boardCardDecision.prompt }}</h2>
       <p class="decision-hint">Select highlighted cards directly on the player boards. You can switch players while this panel remains open.</p>
       <div class="decision-footer">
@@ -264,23 +304,29 @@ function confirmNemesisDraw() {
           </button>
         </div>
       </div>
-    </div>
-  </div>
+  </ModalBase>
 
-  <div v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'" class="overlay decision-overlay">
-    <div ref="modalEl" class="overlay-card decision-modal draggable-modal" :class="{ dragging }" :style="{ ...modalStyle, '--decision-columns': decisionColumns }" @pointerdown="startDrag">
+  <ModalBase
+    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'"
+    overlay-class="decision-overlay"
+    :panel-ref="modalEl"
+    panel-class="decision-modal draggable-modal"
+    :panel-style="{ ...modalStyle, '--decision-columns': decisionColumns }"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
       <h2>{{ decision.prompt }}</h2>
 
-      <template v-if="decision.kind === 'choose_one' && reviewedCardId">
-        <p class="decision-hint" v-if="reviewedCardOwnerId">
-          {{ playerName(reviewedCardOwnerId) }} revealed this card from the top of their deck.
+      <template v-if="decision.kind === 'choose_one' && revealedCardId">
+        <p class="decision-hint" v-if="revealedCardOwnerId">
+          {{ playerName(revealedCardOwnerId) }} revealed this card from the top of their deck.
         </p>
         <p class="decision-hint" v-else>
           A card was revealed from the top of a deck.
         </p>
-        <div class="review-top-card">
-          <img v-if="cardImageUrl(reviewedCardId)" :src="cardImageUrl(reviewedCardId)" :alt="getCard(reviewedCardId).name" draggable="false" />
-          <span v-else>{{ getCard(reviewedCardId).name }}</span>
+        <div class="reveal-top-card">
+          <img v-if="cardImageUrl(revealedCardId)" :src="cardImageUrl(revealedCardId)" :alt="getCard(revealedCardId).name" draggable="false" />
+          <span v-else>{{ getCard(revealedCardId).name }}</span>
         </div>
         <div class="decision-options">
           <button
@@ -293,6 +339,44 @@ function confirmNemesisDraw() {
           >
             {{ option.label }}
           </button>
+        </div>
+      </template>
+
+      <template v-else-if="decision.kind === 'place_specific_deck_card'">
+        <p class="decision-hint">Choose a card and return it to the top or bottom of {{ specificDeckName }}. The selected card leaves this reveal immediately.</p>
+        <div class="specific-deck-placement-grid">
+          <div
+            v-for="(card, index) in decision.cards"
+            :key="`${card.cardId}:${index}`"
+            class="specific-deck-placement-card"
+            :style="{ gridColumn: String(card.slot + 1) }"
+          >
+            <div class="specific-deck-reveal-card">
+              <img
+                v-if="cardImageUrl(card.cardId)"
+                :src="cardImageUrl(card.cardId)"
+                :alt="card.cardName"
+                draggable="false"
+              />
+              <span v-else>{{ card.cardName }}</span>
+            </div>
+            <div class="specific-deck-placement-actions">
+              <button
+                class="btn decision-option"
+                type="button"
+                @click="placeSpecificDeckCard(card.cardId, 'top')"
+              >
+                Return to Top
+              </button>
+              <button
+                class="btn decision-option"
+                type="button"
+                @click="placeSpecificDeckCard(card.cardId, 'bottom')"
+              >
+                Return to Bottom
+              </button>
+            </div>
+          </div>
         </div>
       </template>
 
@@ -327,7 +411,7 @@ function confirmNemesisDraw() {
 
       <template v-else-if="decision.kind === 'select_conjure_breach'">
         <p class="decision-hint">Reveal the top card, then choose an eligible Breach to prepare it face-down.</p>
-        <div class="review-top-card">
+        <div class="reveal-top-card">
           <CardHoverPreview :card-id="decision.cardId">
             <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
             <span v-else>{{ getCard(decision.cardId).name }}</span>
@@ -348,25 +432,26 @@ function confirmNemesisDraw() {
         :choices="selectionItems"
         :min="decision.min"
         :max="decision.max"
+        :large-cards="isLargeSpecificDeckSelection"
         @confirm="confirmSelectedCards"
         @skip="skipSelectedCards"
       />
 
       <template v-else-if="decision.kind === 'reorder_turn_order'">
-        <p class="decision-hint">Choose the order of the reviewed cards from top to bottom.</p>
-        <div class="turn-order-review-cards">
+        <p class="decision-hint">Choose the order of the revealed cards from top to bottom.</p>
+        <div class="turn-order-reveal-cards">
           <button
             v-for="card in decision.cards"
             :key="card.index"
-            class="turn-order-review-card"
+            class="turn-order-reveal-card"
             :class="{ selected: turnOrderCardPosition(card.index) !== null, nemesis: card.cardId === 'nemesis' }"
             @click="toggleTurnOrderCard(card)"
           >
-            <span class="turn-order-review-index">{{ turnOrderCardPosition(card.index) ?? '—' }}</span>
+            <span class="turn-order-reveal-index">{{ turnOrderCardPosition(card.index) ?? '—' }}</span>
             <span>{{ turnOrderCardLabel(card.cardId) }}</span>
           </button>
         </div>
-        <p class="turn-order-review-order">
+        <p class="turn-order-reveal-order">
           Top →
           <template v-if="selectedTurnOrder.length > 0">
             {{ selectedTurnOrderLabel() }}
@@ -391,11 +476,11 @@ function confirmNemesisDraw() {
 
       <template v-else-if="decision.kind === 'select_turn_order_card'">
         <p class="decision-hint">Choose a player's turn order card from the discard pile.</p>
-        <div class="turn-order-review-cards">
+        <div class="turn-order-reveal-cards">
           <button
             v-for="card in decision.cards"
             :key="card.index"
-            class="turn-order-review-card"
+            class="turn-order-reveal-card"
             @click="answer({ kind: 'select_turn_order_card', choice: card })"
           >
             {{ turnOrderCardLabel(card.cardId) }}
@@ -452,6 +537,5 @@ function confirmNemesisDraw() {
         </button>
       </div>
 
-    </div>
-  </div>
+  </ModalBase>
 </template>

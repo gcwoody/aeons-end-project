@@ -1,6 +1,6 @@
 # Aeon's End Digital Demo
 
-这是一个本地单机 Web Demo：两名 Mage 对抗一名 Nemesis。项目使用 Vue 3 + Vite 前端和共享的 TypeScript 规则引擎，当前版本主要覆盖 Wave 1 内容。
+这是一个本地单机 Web Demo：两名 Mage 对抗一名 Nemesis。项目使用 Vue 3 + Vite 前端和共享的 TypeScript 规则引擎，当前版本主要覆盖 Wave 1，以及已经接入的 Wave 9 内容。
 
 > 本项目是非官方的个人项目，不代表 Aeon's End 官方。项目中的卡牌、角色和相关图片素材仅用于当前 Demo 的测试与朋友试玩；公开发布或商业化前需要重新确认素材的授权、版权和商标范围。
 
@@ -14,6 +14,7 @@
 - 支持卡牌效果、目标决策、Breach、Nemesis 的 Attack/Power/Minion、Unleash 和当前已接入的 Nemesis 专属规则。
 - 支持 Save & Exit、Resume、浏览器刷新恢复，以及最多 10 步的 Ctrl+Z 撤销；撤销历史会随存档保留。
 - 支持 Ctrl+D 调试面板，用于测试生命、充能、卡牌、Breach 和 JSON 存档。
+- Wave 9 已接入 Nook、Indira、Dezmodia 及其对应的 Swap、Conjure、Specific Deck、Treasure 等机制。
 
 当前不是联机游戏：没有账号、服务器、数据库或多人同步。存档只保存在当前浏览器的 `localStorage` 中，清除网站数据会删除存档。
 
@@ -65,6 +66,7 @@ scripts/           图片映射生成脚本
 image-database/    卡牌、Mage Mat、Nemesis Mat 和 Breach 素材
 documents/         卡牌资料和抓取结果
 design/            当前有效的设计、发布和部署文档
+ui/                UI 统一开发指南和截图
 ```
 
 引擎原地修改一个 `GameState`；UI 使用 Vue `reactive()` 追踪状态。规则、资源、目标选择和中断恢复由引擎决定，组件只负责显示状态、收集输入并调用引擎。
@@ -72,7 +74,7 @@ design/            当前有效的设计、发布和部署文档
 ## 开发入口
 
 - 新增卡牌、Mage、Nemesis 或场景：先阅读 [dev-guide.md](dev-guide.md)。
-- 处理弹窗、悬停、拖拽和 `z-index`：阅读 [design/ui-layering-guide.md](design/ui-layering-guide.md)。
+- 处理 UI 组件、状态、布局、弹窗、悬停、拖拽和 `z-index`：阅读 [ui/ui-guide.md](ui/ui-guide.md)。
 - 进行发布前准备：阅读 [design/release-readiness-plan.md](design/release-readiness-plan.md)。
 - 配置或排查 Vercel：阅读 [design/deployment-guide.md](design/deployment-guide.md)。
 
@@ -86,7 +88,7 @@ design/            当前有效的设计、发布和部署文档
 | `Tab` | 循环切换当前显示的玩家 |
 | `Q` | 查看当前 Mage 的抽牌堆 |
 | `W` | 查看当前 Mage 的弃牌堆 |
-| `Space` | 确认 Nemesis 抽牌，或推进当前阶段 |
+| `Space` | 确认 Nemesis 抽牌、结算红框标记的 Nemesis 主阶段卡牌，或推进当前阶段 |
 | `Esc` | 打开或关闭退出菜单 |
 
 ## 发布说明

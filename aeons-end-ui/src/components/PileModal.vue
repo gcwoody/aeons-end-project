@@ -1,17 +1,30 @@
-<script setup lang="ts">
-import { computed } from 'vue'
-import { getCard } from '@engine/data'
-import { cardImageUrl } from '../card-images'
+﻿<script setup lang="ts">
+import { computed, onBeforeUnmount } from 'vue'
+import { getCard, MAGES } from '@engine/data'
+import { cardImageUrl, specificDeckBackUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
+import CardSurface from './CardSurface.vue'
+import ModalBase from './ModalBase.vue'
 import { chunkCards, groupPileCards, pileRowLabel, type PileKind } from '../game/pile-layout'
 import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
+import { registerDismissibleOverlay } from '../game/dismissible-overlays'
 
 const { state, displayPlayer, closePile, playerCardInPlayActions, activatePlayerCardInPlayAction } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
+const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
+  if (!state.viewPile) return false
+  closePile()
+  return true
+})
+onBeforeUnmount(unregisterDismissibleOverlay)
+
 const title = computed(() => {
+  if (state.viewPile === 'specific_deck') {
+    return MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckName ?? 'Specific Deck'
+  }
   if (state.viewPile === 'nemesis_specific') {
     return getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.label
   }
@@ -19,12 +32,18 @@ const title = computed(() => {
   return state.viewPile === 'deck' ? 'Deck' : 'Discard'
 })
 const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
+const isSpecificDeck = computed(() => state.viewPile === 'specific_deck')
+const specificDeckBackImage = computed(() =>
+  specificDeckBackUrl(MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckBack ?? 'player'),
+)
+const knownSpecificDeckCards = computed(() => new Set(displayPlayer.value?.knownSpecificDeckCards ?? []))
 const playerCardEntries = computed(() =>
   (displayPlayer.value?.playerCardsInPlay ?? [])
     .map((cardId, cardIndex) => ({ cardId, cardIndex }))
     .filter(({ cardIndex }) => displayPlayer.value?.playerCardSupplyTargets?.[cardIndex] == null),
 )
 const cards = computed(() => {
+  if (state.viewPile === 'specific_deck') return displayPlayer.value?.specificDeck ?? []
   if (state.viewPile === 'nemesis_specific') return state.game?.nemesis.strikeDeck ?? []
   if (state.viewPile === 'player_cards_in_play') return playerCardEntries.value.map(entry => entry.cardId)
   return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
@@ -73,11 +92,23 @@ function selectPileCard(groupIndex: number, cardIndex: number) {
   closePile()
   activatePlayerCardInPlayAction(index)
 }
+
+function isKnownSpecificDeckCard(cardId: string): boolean {
+  return knownSpecificDeckCards.value.has(cardId)
+}
 </script>
 
 <template>
-  <div v-if="state.viewPile" class="overlay pile-viewer-overlay" @click.self="closePile">
-    <div ref="modalEl" class="overlay-card pile-modal draggable-modal" :class="{ dragging, 'pile-modal-with-labels': usesRowLabels }" :style="{ ...modalStyle, '--pile-columns': columns }" @pointerdown="startDrag">
+  <ModalBase
+    v-if="state.viewPile"
+    overlay-class="pile-viewer-overlay"
+    :panel-ref="modalEl"
+    :panel-class="['pile-modal', 'draggable-modal', { 'pile-modal-with-labels': usesRowLabels }]"
+    :panel-style="{ ...modalStyle, '--pile-columns': columns }"
+    :dragging="dragging"
+    @overlay-click="closePile"
+    @panel-pointerdown="startDrag"
+  >
       <h3>
         {{ title }}
         <span class="muted">{{ orderLabel }}</span>
@@ -91,9 +122,13 @@ function selectPileCard(groupIndex: number, cardIndex: number) {
           :class="{ 'pile-row-labeled': usesRowLabels }"
         >
           <span v-if="usesRowLabels" class="pile-row-label">{{ rowLabel(gi) }}</span>
-          <CardHoverPreview v-for="(cid, i) in group" :key="cid + i" :card-id="cid">
-            <div
-              class="pile-card"
+          <template v-for="(cid, i) in group" :key="cid + i">
+          <CardHoverPreview v-if="!isSpecificDeck || isKnownSpecificDeckCard(cid)" :card-id="cid">
+            <CardSurface
+              base-class="pile-card"
+              size="pile"
+              :card-id="cid"
+              :image-alt="getCard(cid).name"
               :class="{
                 'pile-card-image': cardImageUrl(cid),
                 'player-card-in-play-choice': isPlayerCardsInPlay,
@@ -101,14 +136,26 @@ function selectPileCard(groupIndex: number, cardIndex: number) {
                 'player-card-in-play-disabled': isPlayerCardsInPlay && !playerCardActionAvailable(cardIndexInPile(gi, i), cid),
               }"
               @click="selectPileCard(gi, i)"
-            >
-              <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-              <span v-else>{{ getCard(cid).name }}</span>
-            </div>
+            />
           </CardHoverPreview>
+          <CardHoverPreview
+            v-else
+            :image-url="specificDeckBackImage"
+            :image-alt="`${title} card back`"
+          >
+            <CardSurface
+              base-class="pile-card"
+              size="pile"
+              class="pile-card-image specific-deck-unknown-card"
+              :image-url="specificDeckBackImage"
+              :image-alt="`${title} card back`"
+            >
+              <span v-if="!specificDeckBackImage">Unknown card</span>
+            </CardSurface>
+          </CardHoverPreview>
+          </template>
         </div>
       </div>
       <button class="btn" @click="closePile">Close</button>
-    </div>
-  </div>
+  </ModalBase>
 </template>

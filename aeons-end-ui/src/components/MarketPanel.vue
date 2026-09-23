@@ -51,6 +51,10 @@ function setCardsForPile(pileIndex: number): SetCardPlacement[] {
   )
 }
 
+function hasSetCards(pileIndex: number): boolean {
+  return setCardsForPile(pileIndex).length > 0
+}
+
 function setCardHasAction(placement: SetCardPlacement): boolean {
   if (!state.game) return false
   return getPlayerCardInPlayActions(state.game, placement.ownerId)
@@ -110,13 +114,38 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
           </button>
         </CardHoverPreview>
         <button
-          v-else-if="marketChoice(b.pileIndex)"
+          v-else-if="marketChoice(b.pileIndex) || hasSetCards(b.pileIndex)"
           type="button"
-          class="pile pile-empty decision-market-choice"
+          class="pile pile-empty"
+          :class="{
+            'decision-market-choice': !!marketChoice(b.pileIndex),
+            'has-set-card': hasSetCards(b.pileIndex),
+          }"
+          :disabled="marketDecision ? !marketChoice(b.pileIndex) : false"
           @click="onPileClick(b.pileIndex)"
         >
-          <img v-if="cardImageUrl(b.cardId)" :src="cardImageUrl(b.cardId)" :alt="b.cardName" draggable="false" />
-          <span class="remaining">0</span>
+          <template v-if="marketChoice(b.pileIndex)">
+            <img v-if="cardImageUrl(b.cardId)" :src="cardImageUrl(b.cardId)" :alt="b.cardName" draggable="false" />
+            <span class="remaining">0</span>
+          </template>
+          <CardHoverPreview
+            v-for="(setCard, setIndex) in setCardsForPile(b.pileIndex)"
+            :key="`set-empty-${setCard.ownerId}-${setCard.cardId}-${setCard.cardIndex}`"
+            :card-id="setCard.cardId"
+            :preview-width="280"
+            :preview-height="394"
+            :preview-delay="180"
+          >
+            <span
+              v-if="cardImageUrl(setCard.cardId)"
+              class="market-set-card-overlay"
+              :class="{ 'market-set-card-overlay-action': setCardHasAction(setCard) }"
+              :style="{ '--set-card-index': setIndex }"
+              @click="onSetCardClick($event, setCard)"
+            >
+              <img :src="cardImageUrl(setCard.cardId)" :alt="getCard(setCard.cardId).name" draggable="false" />
+            </span>
+          </CardHoverPreview>
         </button>
         <div v-else class="pile pile-empty" aria-hidden="true"></div>
       </template>

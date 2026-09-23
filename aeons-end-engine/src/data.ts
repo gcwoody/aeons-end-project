@@ -21,6 +21,7 @@ import type { MageDef } from './data/wave1/mage'
 import { createNook, NOOK_CARDS, NOOK_UNIQUE_CARDS } from './data/wave9/nook'
 import { createIndira, INDIRA_CARDS, INDIRA_UNIQUE_CARDS } from './data/wave9/indira'
 import { createDezmodia, DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS } from './data/wave9/dezmodia'
+import { wave9Crystal, wave9Spark } from './data/wave9/basic'
 import {
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
@@ -36,6 +37,7 @@ export {
   spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
   amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
   phoenixFlame, spectralEcho, wildfireWhip,
+  wave9Crystal, wave9Spark,
   NOOK_CARDS, NOOK_UNIQUE_CARDS,
   INDIRA_CARDS, INDIRA_UNIQUE_CARDS,
   DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS,
@@ -94,6 +96,8 @@ export function createTwoPlayerScenario(
 export const INITIAL_CARDS: Record<string, CardDef> = {
   ...INITIAL_GEM_CARDS,
   ...INITIAL_SPELL_CARDS,
+  wave9_crystal: wave9Crystal,
+  wave9_spark: wave9Spark,
   ...NOOK_CARDS,
   ...INDIRA_CARDS,
   ...DEZMODIA_CARDS,
@@ -184,6 +188,13 @@ export function resolveMarketCardIds(config?: MarketSetupConfig, random: RandomS
 
 export function getCard(id: string): CardDef {
   return INITIAL_CARDS[id] ?? ALL_MARKET_CARDS[id] ?? NEMESIS_CARDS[id]
+}
+
+/** Resolve wave-specific artwork for the shared Crystal and Spark starters. */
+export function resolveMageStartingCardId(wave: number, cardId: string): string {
+  if (cardId !== 'crystal' && cardId !== 'spark') return cardId
+  const waveVariant = `wave${wave}_${cardId}`
+  return INITIAL_CARDS[waveVariant] ? waveVariant : cardId
 }
 
 // ===== Breach Configuration =====

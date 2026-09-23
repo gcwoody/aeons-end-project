@@ -206,7 +206,7 @@ export const siftersPearl: GemCard = {
     trigger: { kind: 'on_play' },
     effects: [
       { kind: 'gain_aether', amount: 2 },
-      { kind: 'review_top_cards' },
+      { kind: 'reveal_top_cards' },
     ],
   }],
 }

@@ -41,7 +41,7 @@ function testSetupAndSpecificDeckAbility(): void {
   // Keep the shuffled setup deterministic for the action assertion below.
   dezmodia.specificDeck = ['corrupted_coil', 'calcified_electinium', 'fungal_network', 'ice_heart_shard', 'polished_dyaminium', 'runic_flute', 'time_cortex']
   assertEqual(MAGES.dezmodia?.abilityName, 'Pilfer the Past', 'Dezmodia is registered')
-  assertEqual(dezmodia.hand.join(','), 'vision_shard,crystal,crystal,spark,spark', 'Dezmodia starts with the documented hand')
+  assertEqual(dezmodia.hand.join(','), 'vision_shard,wave9_crystal,wave9_crystal,wave9_spark,wave9_spark', 'Dezmodia starts with the documented hand')
   assertEqual(dezmodia.deck[0], 'energized_stone', 'Dezmodia starts with Energized Stone on top of the deck')
   assertEqual(dezmodia.specificDeck?.length, 7, 'Dezmodia starts with seven Stash cards')
   assertEqual(dezmodia.playerCardsInPlay?.length, 0, 'Dezmodia starts with an empty Player cards in play area')
@@ -56,6 +56,8 @@ function testSetupAndSpecificDeckAbility(): void {
   const chosen = reveal.candidates.find(candidate => candidate.cardId === 'corrupted_coil')!
   const returned = reveal.candidates.find(candidate => candidate.cardId !== chosen.cardId)!
   resolvePendingDecision(game, reveal.id, { kind: 'select_cards', choices: [chosen] })
+  assert(dezmodia.knownSpecificDeckCards?.includes(chosen.cardId),
+    'Cards revealed by Pilfer the Past remain known when the Stash is inspected later')
   assertEqual(dezmodia.playerCardsInPlay?.[0], chosen.cardId, 'The selected Treasure enters Player cards in play')
   assertEqual(dezmodia.specificDeck?.length, 6, 'The Stash loses the selected and returned cards')
   assertEqual(dezmodia.specificDeck?.[dezmodia.specificDeck.length - 1], returned.cardId, 'The unselected revealed card goes to the Stash bottom')
@@ -77,14 +79,45 @@ function testVisionShardReturnsRevealedCards(): void {
   assertEqual(game.pendingDecision?.kind, 'choose_one', 'Vision Shard offers an OR choice')
   resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'choose_one', optionId: 'stash' })
   const first = game.pendingDecision
-  assert(first?.kind === 'choose_one', 'Vision Shard asks where to return the first revealed card')
-  resolvePendingDecision(game, first.id, { kind: 'choose_one', optionId: 'bottom' })
+  assert(first?.kind === 'place_specific_deck_card', 'Vision Shard reveals both cards for independent placement')
+  if (first?.kind !== 'place_specific_deck_card') return
+  const firstCard = first.cards[0]!
+  const secondCard = first.cards[1]!
+  resolvePendingDecision(game, first.id, { kind: 'place_specific_deck_card', cardId: firstCard.cardId, placement: 'bottom' })
   const second = game.pendingDecision
-  assert(second?.kind === 'choose_one', 'Vision Shard asks where to return the second revealed card')
-  resolvePendingDecision(game, second.id, { kind: 'choose_one', optionId: 'top' })
+  assert(second?.kind === 'place_specific_deck_card' && second.cards.length === 1,
+    'The placed card leaves the reveal while the other remains visible')
+  if (second?.kind !== 'place_specific_deck_card') return
+  resolvePendingDecision(game, second.id, { kind: 'place_specific_deck_card', cardId: secondCard.cardId, placement: 'top' })
   assertEqual(dezmodia.specificDeck?.length, original.length, 'Vision Shard keeps the Stash size unchanged')
   assertEqual(dezmodia.specificDeck?.[0], original[1], 'A revealed card returned to the top becomes the new top')
   assertEqual(dezmodia.specificDeck?.[dezmodia.specificDeck.length - 1], original[0], 'A revealed card returned to the bottom reaches the bottom')
+}
+
+function testVisionShardBottomOrderFollowsSelectionOrder(): void {
+  const game = freshGame()
+  const dezmodia = game.players[0]!
+  dezmodia.hand = ['vision_shard']
+  const original = [...(dezmodia.specificDeck ?? [])]
+  playCard(game, dezmodia.id, 'vision_shard')
+  resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'choose_one', optionId: 'stash' })
+  const first = game.pendingDecision!
+  assert(first.kind === 'place_specific_deck_card', 'Vision Shard exposes both cards for ordered placement')
+  const firstCard = first.cards[0]!
+  const secondCard = first.cards[1]!
+  assert(dezmodia.knownSpecificDeckCards?.includes(firstCard.cardId)
+    && dezmodia.knownSpecificDeckCards.includes(secondCard.cardId),
+  'Vision Shard records both revealed Stash cards as known information')
+  // Choose the second revealed card first; both cards then go to the bottom.
+  resolvePendingDecision(game, first.id, { kind: 'place_specific_deck_card', cardId: secondCard.cardId, placement: 'bottom' })
+  const second = game.pendingDecision!
+  assert(second.kind === 'place_specific_deck_card', 'The remaining revealed card stays selectable')
+  resolvePendingDecision(game, second.id, { kind: 'place_specific_deck_card', cardId: firstCard.cardId, placement: 'bottom' })
+  assertEqual(dezmodia.specificDeck?.[dezmodia.specificDeck.length - 2], secondCard.cardId,
+    'The first card selected for the bottom is placed before the next bottom card')
+  assertEqual(dezmodia.specificDeck?.[dezmodia.specificDeck.length - 1], firstCard.cardId,
+    'The second card selected for the bottom is placed last')
+  assertEqual(dezmodia.specificDeck?.length, original.length, 'Ordered placement preserves Stash size')
 }
 
 function testStashTreasureMechanics(): void {
@@ -114,6 +147,17 @@ function testStashTreasureMechanics(): void {
     resolvePendingDecision(game, decision.id, { kind: 'choose_optional', accepted: false })
   }
   assertEqual(dezmodia.hand.length, beforeHand + 1, 'Calcified Electinium moves the gained card to hand')
+
+  // An attached Treasure remains in its supply-pile slot after the pile is
+  // exhausted, and its empty-pile action becomes available to destroy it for
+  // four Charge.
+  game.market.piles[target.pileIndex]!.remaining = 0
+  const emptyPileAction = getPlayerCardInPlayActions(game, dezmodia.id)
+    .find(action => action.cardId === 'calcified_electinium')
+  assert(emptyPileAction, 'Calcified Electinium remains actionable when its target pile is empty')
+  activatePlayerCardInPlayAction(game, dezmodia.id, emptyPileAction.cardIndex)
+  assert(!dezmodia.playerCardsInPlay?.includes('calcified_electinium'),
+    'Calcified Electinium can be destroyed after its target pile empties')
 
   // Corrupted Coil supplies a token when a Breach opens, and unused tokens
   // are removed at the end of the turn.
@@ -147,6 +191,31 @@ function testStashTreasureMechanics(): void {
   const fungalChoice = fungalGame.pendingDecision!
   resolvePendingDecision(fungalGame, fungalChoice.id, { kind: 'choose_optional', accepted: false })
   assertEqual(fungalPlayer.playerCardPowerTokens?.[0], 1, 'Fungal Network gains a Power token after an ability resolves')
+}
+
+function testSetTreasureCannotChooseEmptySupplyPile(): void {
+  const game = freshGame()
+  const dezmodia = game.players[0]!
+  dezmodia.specificDeck = ['polished_dyaminium', 'fungal_network']
+  dezmodia.charge = dezmodia.chargeThreshold
+  activateAbility(game, dezmodia.id)
+  resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'choose_one', optionId: 'stash' })
+  const reveal = game.pendingDecision!
+  assert(reveal.kind === 'select_cards', 'Polished Dyaminium is revealed from the Stash')
+
+  // Exhaust a supply pile before the Treasure chooses its target. Empty piles
+  // must not appear as valid set-next-to targets.
+  const emptyPileIndex = 0
+  game.market.piles[emptyPileIndex]!.remaining = 0
+  const polished = reveal.candidates.find(candidate => candidate.cardId === 'polished_dyaminium')!
+  resolvePendingDecision(game, reveal.id, { kind: 'select_cards', choices: [polished] })
+  const pileDecision = game.pendingDecision
+  assert(pileDecision?.kind === 'select_market_pile',
+    'Polished Dyaminium asks for a supply-pile target')
+  assert(!pileDecision.candidates.some(candidate => candidate.pileIndex === emptyPileIndex),
+    'Empty supply piles are excluded from Treasure placement choices')
+  assert(pileDecision.candidates.every(candidate => candidate.remaining > 0),
+    'Every Treasure placement choice has cards remaining')
 }
 
 /** Treasure actions use the active player's state while remaining owned by Dezmodia. */
@@ -271,6 +340,8 @@ function testTreasureActionsUseActivePlayerContext(): void {
 testTreasureCatalog()
 testSetupAndSpecificDeckAbility()
 testVisionShardReturnsRevealedCards()
+testVisionShardBottomOrderFollowsSelectionOrder()
 testStashTreasureMechanics()
+testSetTreasureCannotChooseEmptySupplyPile()
 testTreasureActionsUseActivePlayerContext()
 console.log('Wave 9 Dezmodia tests passed')

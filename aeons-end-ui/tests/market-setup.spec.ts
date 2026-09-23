@@ -84,7 +84,7 @@ test('Mage mat images open a picker and sync the Mage dropdown', async ({ page }
 
   const mageSelect = page.getByLabel('Player 1 Mage', { exact: true })
   await expect(mageSelect).toHaveValue('jian')
-  await page.getByRole('button', { name: 'Choose Player 1 Mage' }).click()
+  await page.getByRole('button', { name: 'Choose First Mage' }).click()
   await expect(page.getByRole('dialog', { name: 'Choose Player 1 Mage' })).toBeVisible()
   await expect(page.locator('.mage-picker-card')).toHaveCount(8)
 

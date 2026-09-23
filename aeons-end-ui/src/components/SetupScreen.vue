@@ -7,6 +7,7 @@ import type { MarketSetupConfig } from '@engine/types'
 import { cardImageUrl, nemesisMatImageUrl } from '../card-images'
 import { mageImageUrls } from '../mage-images'
 import CardHoverPreview from './CardHoverPreview.vue'
+import ModalBase from './ModalBase.vue'
 
 const {
   state, newGame, resumeGame,
@@ -197,48 +198,48 @@ function turnLabel(turn: string): string {
     </p>
     <main class="setup-layout">
       <section class="setup-mage-column setup-character-column" aria-label="Mage selection">
-        <label>
-          Player 1 Mage
-          <span class="wave-tabs" role="tablist" aria-label="Player 1 Mage Wave">
+        <div class="setup-mage-field">
+          <label for="player1-mage-select">Player 1 Mage</label>
+          <span class="wave-tabs" role="tablist" aria-label="Mage Wave Tabs — First Player">
             <button v-for="wave in mageWaves" :key="`p1-wave-${wave}`" type="button" role="tab" :aria-selected="mage1Wave === wave" :class="{ active: mage1Wave === wave }" @click="mage1Wave = wave">Wave {{ wave }}</button>
           </span>
           <span class="setup-select-row">
-          <select v-model="state.mage1" aria-label="Player 1 Mage">
+          <select id="player1-mage-select" v-model="state.mage1" aria-label="Player 1 Mage">
             <option v-for="mage in mage1Options" :key="mage.type" :value="mage.type">
               {{ mage.type }}
             </option>
           </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Reroll First Mage" @click="randomizeMage(1)">Reroll</button>
+          <button type="button" class="btn small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Reroll</button>
           </span>
-        </label>
+        </div>
         <button
           type="button"
           class="setup-preview-card setup-mage-preview"
-          aria-label="Choose Player 1 Mage"
           @click="openMagePicker(1)"
         >
+          <span class="sr-only">Choose First Mage</span>
           <img v-if="mage1Preview" :src="mage1Preview.front" :alt="`${state.mage1} mage mat`" draggable="false" />
         </button>
-        <label>
-          Player 2 Mage
-          <span class="wave-tabs" role="tablist" aria-label="Player 2 Mage Wave">
+        <div class="setup-mage-field">
+          <label for="player2-mage-select">Player 2 Mage</label>
+          <span class="wave-tabs" role="tablist" aria-label="Mage Wave Tabs — Second Player">
             <button v-for="wave in mageWaves" :key="`p2-wave-${wave}`" type="button" role="tab" :aria-selected="mage2Wave === wave" :class="{ active: mage2Wave === wave }" @click="mage2Wave = wave">Wave {{ wave }}</button>
           </span>
           <span class="setup-select-row">
-          <select v-model="state.mage2" aria-label="Player 2 Mage">
+          <select id="player2-mage-select" v-model="state.mage2" aria-label="Player 2 Mage">
             <option v-for="mage in player2MageOptions" :key="mage.type" :value="mage.type">
               {{ mage.type }}
             </option>
           </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Reroll Second Mage" @click="randomizeMage(2)">Reroll</button>
+          <button type="button" class="btn small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Reroll</button>
           </span>
-        </label>
+        </div>
         <button
           type="button"
           class="setup-preview-card setup-mage-preview"
-          aria-label="Choose Player 2 Mage"
           @click="openMagePicker(2)"
         >
+          <span class="sr-only">Choose Second Mage</span>
           <img v-if="mage2Preview" :src="mage2Preview.front" :alt="`${state.mage2} mage mat`" draggable="false" />
         </button>
       </section>
@@ -252,7 +253,7 @@ function turnLabel(turn: string): string {
               {{ nemesis.name }}
             </option>
           </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Reroll Nemesis" @click="randomizeNemesis">Reroll</button>
+          <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis">Reroll</button>
           </span>
         </label>
         <label>
@@ -282,7 +283,7 @@ function turnLabel(turn: string): string {
             <button
               type="button"
               class="btn small"
-              aria-label="Reroll semi-random market"
+              aria-label="Refresh semi-random market"
               @click="rerollMarketTemplate"
             >
               Reroll
@@ -339,19 +340,31 @@ function turnLabel(turn: string): string {
       </article>
     </section>
 
-    <div v-if="state.deleteSaveId" class="overlay save-delete-overlay">
-      <div ref="modalEl" class="overlay-card draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+    <ModalBase
+      v-if="state.deleteSaveId"
+      overlay-class="save-delete-overlay"
+      :panel-ref="modalEl"
+      panel-class="draggable-modal"
+      :panel-style="modalStyle"
+      :dragging="dragging"
+      @panel-pointerdown="startDrag"
+    >
         <h2>Delete Saved Game?</h2>
         <p class="exit-copy">Are you sure you want to delete this saved game?</p>
         <div class="overlay-actions">
           <button class="btn danger" @click="deleteSave(state.deleteSaveId!)">Delete</button>
           <button class="btn" @click="cancelDeleteSave">Cancel</button>
         </div>
-      </div>
-    </div>
+    </ModalBase>
 
-    <div v-if="replacementSlot !== null" class="overlay setup-market-overlay" role="dialog" aria-modal="true" aria-labelledby="market-picker-title" @click.self="closeReplacement">
-      <div ref="replacementPickerEl" class="overlay-card setup-market-picker" tabindex="-1">
+    <ModalBase
+      v-if="replacementSlot !== null"
+      overlay-class="setup-market-overlay"
+      :panel-ref="replacementPickerEl"
+      panel-class="setup-market-picker"
+      panel-aria-labelledby="market-picker-title"
+      @overlay-click="closeReplacement"
+    >
         <div class="setup-market-picker-head">
           <h2 id="market-picker-title">Choose {{ replacementSlotLabel }}</h2>
           <button type="button" class="btn small" aria-label="Close market card picker" @click="closeReplacement">Close</button>
@@ -378,11 +391,16 @@ function turnLabel(turn: string): string {
             </button>
           </CardHoverPreview>
         </div>
-      </div>
-    </div>
+    </ModalBase>
 
-    <div v-if="magePickerPlayer !== null" class="overlay setup-mage-overlay" role="dialog" aria-modal="true" aria-labelledby="mage-picker-title" @click.self="closeMagePicker">
-      <div ref="magePickerEl" class="overlay-card setup-mage-picker" tabindex="-1">
+    <ModalBase
+      v-if="magePickerPlayer !== null"
+      overlay-class="setup-mage-overlay"
+      :panel-ref="magePickerEl"
+      panel-class="setup-mage-picker"
+      panel-aria-labelledby="mage-picker-title"
+      @overlay-click="closeMagePicker"
+    >
         <div class="setup-market-picker-head">
           <h2 id="mage-picker-title">{{ magePickerTitle }}</h2>
           <button type="button" class="btn small" aria-label="Close Mage picker" @click="closeMagePicker">Close</button>
@@ -419,11 +437,16 @@ function turnLabel(turn: string): string {
             </button>
           </CardHoverPreview>
         </div>
-      </div>
-    </div>
+    </ModalBase>
 
-    <div v-if="nemesisPickerOpen" class="overlay setup-nemesis-overlay" role="dialog" aria-modal="true" aria-labelledby="nemesis-picker-title" @click.self="closeNemesisPicker">
-      <div ref="nemesisPickerEl" class="overlay-card setup-nemesis-picker" tabindex="-1">
+    <ModalBase
+      v-if="nemesisPickerOpen"
+      overlay-class="setup-nemesis-overlay"
+      :panel-ref="nemesisPickerEl"
+      panel-class="setup-nemesis-picker"
+      panel-aria-labelledby="nemesis-picker-title"
+      @overlay-click="closeNemesisPicker"
+    >
         <div class="setup-market-picker-head">
           <h2 id="nemesis-picker-title">{{ nemesisPickerTitle }}</h2>
           <button type="button" class="btn small" aria-label="Close Nemesis picker" @click="closeNemesisPicker">Close</button>
@@ -456,7 +479,6 @@ function turnLabel(turn: string): string {
             </button>
           </CardHoverPreview>
         </div>
-      </div>
-    </div>
+    </ModalBase>
   </div>
 </template>

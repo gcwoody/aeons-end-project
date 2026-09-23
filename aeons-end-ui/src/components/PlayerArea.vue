@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellDamagePreviewRange, toRoman } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
@@ -6,6 +6,10 @@ import { cardImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-im
 import type { BreachState, CardChoice } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
+import CardSurface from './CardSurface.vue'
+import ZoneScroller from './ZoneScroller.vue'
+import PileCountBadge from './PileCountBadge.vue'
+import TokenBadge from './TokenBadge.vue'
 import { breachImageUrl, breachRotation } from '../breach-images'
 import MageBoard from './MageBoard.vue'
 
@@ -18,7 +22,7 @@ const {
   isPendingPreppedSpellSelected, togglePendingPreppedSpell,
   getBoardCardSelection, isPendingBoardCardSelected, togglePendingBoardCard,
   playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, requestEndTurn, toMainPhase,
-  selectPlayer, clickDiscardCard, openPile, openPlayerCardsInPlayPile, resolveDecision, toggleHelp,
+  selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, resolveDecision, toggleHelp,
 } = useGame()
 
 const players = computed(() => state.game?.players ?? [])
@@ -360,14 +364,6 @@ function handleHandWheel(event: WheelEvent) {
   const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
   handScrollTarget = Math.min(Math.max(0, handScrollTarget + event.deltaY * 1.1), maxScroll)
   if (handScrollFrame === null) handScrollFrame = requestAnimationFrame(animateHandScroll)
-}
-
-function handleZoneWheel(event: WheelEvent) {
-  const zone = event.currentTarget
-  if (!(zone instanceof HTMLElement) || zone.scrollWidth <= zone.clientWidth || event.deltaY === 0) return
-  event.preventDefault()
-  event.stopPropagation()
-  zone.scrollLeft = Math.min(Math.max(0, zone.scrollLeft + event.deltaY * 1.1), zone.scrollWidth - zone.clientWidth)
 }
 
 let handAlignmentFrame: number | null = null
@@ -800,43 +796,46 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
     <div class="played-zones" :class="{ 'has-swap-zone': hasSwapZone, 'has-develop-zone': hasDevelopZone }">
       <section v-if="hasSwapZone" class="played-zone played-zone-swap">
         <span class="label">Swap Zone</span>
-        <div class="zone-card-scroll" @wheel="handleZoneWheel">
+        <ZoneScroller class="zone-card-scroll">
           <div class="zone-card-track">
             <CardHoverPreview
               v-for="(cid, i) in swapZoneCards" :key="`swap-${cid}-${i}`"
               :card-id="cid"
             >
-              <div
-                class="card small"
+              <CardSurface
+                :card-id="cid"
+                size="mini"
                 :class="[typeClass(cid), {
-                  'card-image': cardImageUrl(cid),
                   'pending-board-card': !!boardCardChoice('swap_zone', i, cid),
                   'pending-board-card-selected': !!boardCardChoice('swap_zone', i, cid) && isPendingBoardCardSelected(boardCardChoice('swap_zone', i, cid)!),
                 }]"
                 @click="clickSwapZoneCard(i)"
-              >
-                <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-                <div v-else class="cname">{{ getCard(cid).name }}</div>
-              </div>
+              />
             </CardHoverPreview>
             <span v-if="swapZoneCards.length === 0" class="empty">— empty —</span>
           </div>
-        </div>
+        </ZoneScroller>
       </section>
 
       <section class="played-zone played-zone-center">
         <span class="label">Played</span>
-        <div class="played-card-scroll" @wheel="handleZoneWheel">
+        <ZoneScroller
+          class="played-card-scroll"
+          :overflow-anchor="hasDevelopZone && !hasSwapZone ? 'end' : 'start'"
+        >
           <div class="zone-card-track">
             <template v-if="isDiscard">
               <CardHoverPreview
                 v-for="(cid, i) in state.discardRemaining" :key="`discard-slot-${i}`"
                 :card-id="cid"
               >
-                <div class="card small clickable" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]" @click="clickDiscardCard(i)">
-                  <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-                  <div v-else class="cname">{{ getCard(cid).name }}</div>
-                </div>
+                <CardSurface
+                  :card-id="cid"
+                  size="mini"
+                  class="clickable"
+                  :class="typeClass(cid)"
+                  @click="clickDiscardCard(i)"
+                />
               </CardHoverPreview>
               <span v-if="state.discardRemaining.length === 0" class="empty">— done —</span>
             </template>
@@ -845,42 +844,36 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                 v-for="(cid, i) in player.playedThisTurn" :key="cid + i"
                 :card-id="cid"
               >
-                <div
-                  class="card small"
+                <CardSurface
+                  :card-id="cid"
+                  size="mini"
                   :class="[typeClass(cid), {
-                    'card-image': cardImageUrl(cid),
                     'prepped-action': isPreppedActionCard(i, cid),
                     'pending-board-card': !!boardCardChoice('played_this_turn', i, cid),
                     'pending-board-card-selected': !!boardCardChoice('played_this_turn', i, cid) && isPendingBoardCardSelected(boardCardChoice('played_this_turn', i, cid)!),
                   }]"
                   @click="clickPlayedCard(i)"
-                >
-                  <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-                  <div v-else class="cname">{{ getCard(cid).name }}</div>
-                </div>
+                />
               </CardHoverPreview>
               <span v-if="player.playedThisTurn.length === 0" class="empty">— none —</span>
             </template>
           </div>
-        </div>
+        </ZoneScroller>
       </section>
 
       <section v-if="hasDevelopZone" class="played-zone played-zone-develop">
         <span class="label">Develop Zone</span>
-        <div class="zone-card-scroll" @wheel="handleZoneWheel">
+        <ZoneScroller class="zone-card-scroll">
           <div class="zone-card-track">
             <CardHoverPreview
               v-for="(cid, i) in developZoneCards" :key="`develop-${cid}-${i}`"
               :card-id="cid"
             >
-              <div class="card small" :class="[typeClass(cid), { 'card-image': cardImageUrl(cid) }]">
-                <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" />
-                <div v-else class="cname">{{ getCard(cid).name }}</div>
-              </div>
+              <CardSurface :card-id="cid" size="mini" :class="typeClass(cid)" />
             </CardHoverPreview>
             <span v-if="developZoneCards.length === 0" class="empty">— empty —</span>
           </div>
-        </div>
+        </ZoneScroller>
       </section>
     </div>
 
@@ -894,18 +887,20 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       <MageBoard :mage-type="player.mageType" />
       <div
         v-if="hasSpecificDeck"
-        class="deck-pile player-specific-deck-pile"
+        class="deck-pile clickable player-specific-deck-pile"
         :class="{ 'has-cards': specificDeckCards.length > 0 }"
         :aria-label="`Open ${specificDeckName}`"
+        @click="openSpecificDeckPile"
       >
-        <img
+        <CardSurface
           v-if="specificDeckCards.length > 0 && specificDeckBackImage"
+          base-class="player-pile-card"
+          size="pile"
           class="specific-deck-back"
-          :src="specificDeckBackImage"
-          :alt="specificDeckName"
-          draggable="false"
+          :image-url="specificDeckBackImage"
+          :image-alt="specificDeckName"
         />
-        <span class="player-pile-count">{{ specificDeckCards.length }}</span>
+        <PileCountBadge :count="specificDeckCards.length" label="Specific" />
       </div>
       <div
         v-if="hasPlayerCardsInPlay"
@@ -918,19 +913,26 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
             :key="`player-in-play-${placement.cardId}-${placement.cardIndex}`"
             :card-id="placement.cardId"
           >
-            <div
-              class="card small player-in-play-card"
+            <CardSurface
+              :card-id="placement.cardId"
+              size="mini"
+              class="player-in-play-card"
               :class="[typeClass(placement.cardId), {
-                'card-image': cardImageUrl(placement.cardId),
                 'in-play-action': playerCardsInPlay.length === 1 && isPlayerCardInPlayAction(i, placement.cardId),
               }]"
               :style="{ '--stack-index': i }"
-                @click="clickPlayerCardInPlay(i)"
-              >
-                <img v-if="cardImageUrl(placement.cardId)" :src="cardImageUrl(placement.cardId)" :alt="getCard(placement.cardId).name" draggable="false" />
-                <div v-else class="cname">{{ getCard(placement.cardId).name }}</div>
-                <span v-if="playerCardPowerTokens(i) > 0" class="player-card-power-token">Power {{ playerCardPowerTokens(i) }}</span>
-              </div>
+              @click="clickPlayerCardInPlay(i)"
+            >
+              <template #overlay>
+                <TokenBadge
+                  v-if="playerCardPowerTokens(i) > 0"
+                  label="Power"
+                  :count="playerCardPowerTokens(i)"
+                  tone="power"
+                  placement="card"
+                />
+              </template>
+            </CardSurface>
           </CardHoverPreview>
         </div>
       </div>
@@ -939,36 +941,33 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         :class="{ 'has-cards': player.deck.length > 0 }"
         @click="openPile('deck')"
       >
-        <img
+        <CardSurface
           v-if="player.deck.length > 0"
-          class="player-pile-card"
-          :src="playerCardBackUrl()"
-          alt="Player deck"
-          draggable="false"
+          base-class="player-pile-card"
+          size="pile"
+          :image-url="playerCardBackUrl()"
+          image-alt="Player deck"
         />
-        <span v-if="player.deck.length > 0" class="player-pile-count">{{ player.deck.length }}</span>
-        <span v-else class="player-empty-pile-label">Deck 0</span>
+        <PileCountBadge :count="player.deck.length" label="Deck" />
       </div>
       <div ref="handElement" class="hand" :style="{ '--hand-offset': `${handOffset}px` }" @wheel="handleHandWheel">
         <CardHoverPreview
           v-for="(cid, i) in player.hand" :key="cid + i"
           :card-id="cid"
         >
-          <div class="card" :class="[typeClass(cid), {
-            'card-image': cardImageUrl(cid),
-            dragging: draggingSpell && draggedSpellIndex === i,
-            'spell-draggable': canActMain && getCard(cid).type === 'spell',
-            'pending-board-card': !!boardCardChoice('hand', i, cid),
-            'pending-board-card-selected': !!boardCardChoice('hand', i, cid) && isPendingBoardCardSelected(boardCardChoice('hand', i, cid)!),
-          }]"
-          @click="clickHand(i)"
-          draggable="false"
-          @pointerdown="startSpellPointerDrag(i, $event)">
-          <img v-if="cardImageUrl(cid)" :src="cardImageUrl(cid)" :alt="getCard(cid).name" draggable="false" />
-          <template v-else>
-            <div class="cname">{{ getCard(cid).name }}</div>
-          </template>
-          </div>
+          <CardSurface
+            :card-id="cid"
+            size="hand"
+            :class="[typeClass(cid), {
+              dragging: draggingSpell && draggedSpellIndex === i,
+              'spell-draggable': canActMain && getCard(cid).type === 'spell',
+              'pending-board-card': !!boardCardChoice('hand', i, cid),
+              'pending-board-card-selected': !!boardCardChoice('hand', i, cid) && isPendingBoardCardSelected(boardCardChoice('hand', i, cid)!),
+            }]"
+            @click="clickHand(i)"
+            draggable="false"
+            @pointerdown="startSpellPointerDrag(i, $event)"
+          />
         </CardHoverPreview>
       </div>
       <div
@@ -978,18 +977,15 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         @contextmenu.prevent="openPile('discard')"
       >
         <CardHoverPreview v-if="discardTopCard" :card-id="discardTopCard">
-          <div class="player-pile-card player-discard-top-card">
-            <img
-              v-if="cardImageUrl(discardTopCard)"
-              :src="cardImageUrl(discardTopCard)"
-              :alt="getCard(discardTopCard).name"
-              draggable="false"
-            />
-            <span v-else class="cname">{{ getCard(discardTopCard).name }}</span>
-          </div>
+          <CardSurface
+            base-class="player-pile-card"
+            size="pile"
+            class="player-discard-top-card"
+            :card-id="discardTopCard"
+            :image-alt="getCard(discardTopCard).name"
+          />
         </CardHoverPreview>
-        <span v-if="player.discard.length > 0" class="player-pile-count">{{ player.discard.length }}</span>
-        <span v-else class="player-empty-pile-label">Discard 0</span>
+        <PileCountBadge :count="player.discard.length" label="Discard" />
       </div>
     </div>
 
@@ -1018,7 +1014,13 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         <span class="aether">
           Aether {{ aether.regularAvail }}<template v-if="aether.gemAether > 0"> · {{ aether.gemAether }} gem aether</template><template v-if="aether.spellAether > 0"> · {{ aether.spellAether }} spell aether</template>
         </span>
-        <span v-if="aether.aetherTokens > 0" class="aether-token-status">Aether Token {{ aether.aetherTokens }}</span>
+        <TokenBadge
+          v-if="aether.aetherTokens > 0"
+          class="aether-token-status"
+          label="Aether Token"
+          :count="aether.aetherTokens"
+          tone="aether"
+        />
         <template v-if="isCurrentSelected">
           <button v-if="isCasting" class="btn" @click="toMainPhase">Start Main Phase →</button>
           <template v-if="isMain">

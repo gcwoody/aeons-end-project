@@ -9,6 +9,8 @@ import NemesisSpecificPile from './NemesisSpecificPile.vue'
 import { chunkCards } from '../game/pile-layout'
 import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
+import { registerDismissibleOverlay } from '../game/dismissible-overlays'
+import ModalBase from './ModalBase.vue'
 
 const {
   state, nemesisDiscardActions, discardNemesisCard, resolveDecision,
@@ -109,6 +111,19 @@ watch(() => state.dismissibleOverlayVersion, () => {
   closeDiscard()
 })
 
+const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
+  if (discardModalOpen.value) {
+    closeDiscard()
+    return true
+  }
+  if (matModalOpen.value) {
+    closeMat()
+    return true
+  }
+  return false
+})
+onBeforeUnmount(unregisterDismissibleOverlay)
+
 function discardAction(card: NemesisCardInPlay) {
   const action = nemesisDiscardActions.value.find(item => item.instanceId === card.instanceId)
   if (action) discardNemesisCard(action.instanceId)
@@ -203,8 +218,16 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <div v-if="matModalOpen" class="overlay mage-overlay" @click.self="closeMat">
-      <div ref="matModalEl" class="overlay-card mage-modal draggable-modal" :class="{ dragging: matDragging }" :style="matModalStyle" @pointerdown="startMatDrag">
+    <ModalBase
+      v-if="matModalOpen"
+      overlay-class="mage-overlay"
+      :panel-ref="matModalEl"
+      panel-class="mage-modal draggable-modal"
+      :panel-style="matModalStyle"
+      :dragging="matDragging"
+      @overlay-click="closeMat"
+      @panel-pointerdown="startMatDrag"
+    >
         <div class="mage-modal-frame nemesis-mat-modal-frame">
           <img class="mage-modal-image" :src="nemesisMatImageUrl(nemesis.type, matSide)" :alt="`${nemesis.name} mat ${matSide}`" draggable="false" />
         </div>
@@ -212,11 +235,18 @@ onBeforeUnmount(() => {
           <button class="btn" @click="matSide = matSide === 'front' ? 'back' : 'front'">{{ matSide === 'front' ? 'Flip to Back' : 'Show Front' }}</button>
           <button class="btn" @click="closeMat">Close</button>
         </div>
-      </div>
-    </div>
+    </ModalBase>
 
-    <div v-if="discardModalOpen" class="overlay decision-overlay" @click.self="closeDiscard">
-      <div ref="discardModalEl" class="overlay-card pile-modal pile-modal-no-labels draggable-modal" :class="{ dragging: discardDragging }" :style="{ ...discardModalStyle, '--pile-columns': discardColumns }" @pointerdown="startDiscardDrag">
+    <ModalBase
+      v-if="discardModalOpen"
+      overlay-class="decision-overlay"
+      :panel-ref="discardModalEl"
+      panel-class="pile-modal pile-modal-no-labels draggable-modal"
+      :panel-style="{ ...discardModalStyle, '--pile-columns': discardColumns }"
+      :dragging="discardDragging"
+      @overlay-click="closeDiscard"
+      @panel-pointerdown="startDiscardDrag"
+    >
         <h3>Nemesis Discard <span class="muted">(top → bottom)</span></h3>
         <div v-if="discardCards.length === 0" class="empty">— empty —</div>
         <div v-else class="pile-rows" :style="{ '--pile-columns': discardColumns }">
@@ -230,7 +260,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <button class="btn" @click="closeDiscard">Close</button>
-      </div>
-    </div>
+    </ModalBase>
   </div>
 </template>

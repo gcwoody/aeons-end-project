@@ -26,8 +26,8 @@ function testSetupAndConjure(): void {
   const game = freshGame()
   const indira = game.players[0]!
   assertEqual(MAGES.indira?.abilityName, "Pyromancer's Guile", 'Indira is registered')
-  assertEqual(indira.hand.join(','), 'crystal,crystal,crystal,crystal,spark', 'Indira starts with the documented hand')
-  assertEqual(indira.deck.join(','), 'crystal,crystal,crystal,crystal,fused_opal', 'Indira starts with the documented deck')
+  assertEqual(indira.hand.join(','), 'wave9_crystal,wave9_crystal,wave9_crystal,wave9_crystal,wave9_spark', 'Indira starts with the documented hand')
+  assertEqual(indira.deck.join(','), 'wave9_crystal,wave9_crystal,wave9_crystal,wave9_crystal,fused_opal', 'Indira starts with the documented deck')
   assertEqual(indira.breaches[2]!.special, 'transfer', 'Indira uses a Transfer Breach')
   assertEqual(indira.breaches[0]!.present, false, 'Indira has no Breach I')
   assertEqual(indira.breaches[3]!.present, false, 'Indira has no Breach IV')

@@ -48,9 +48,9 @@ function testNookSetup(): void {
   const nook = game.players[0]!
   assertEqual(nook.mageType, 'nook', 'Nook is available in a scenario')
   assertEqual(MAGES.nook?.abilityName, 'Rupture Time', 'Nook ability is registered')
-  assertCards(nook.hand, ['superior_crystal', 'crystal', 'crystal', 'superior_spark', 'spark'],
+  assertCards(nook.hand, ['superior_crystal', 'wave9_crystal', 'wave9_crystal', 'superior_spark', 'wave9_spark'],
     'Nook starts with the documented hand')
-  assertCards(nook.deck, ['crystal', 'crystal', 'crystal', 'spark', 'spark'],
+  assertCards(nook.deck, ['wave9_crystal', 'wave9_crystal', 'wave9_crystal', 'wave9_spark', 'wave9_spark'],
     'Nook starts with the documented deck')
   assertCards(nook.swapZone ?? [], [
     'infused_crystal', 'dim_crystal', 'empty_crystal',

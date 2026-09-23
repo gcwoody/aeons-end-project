@@ -99,41 +99,43 @@ import image95 from "../../image-database/cards/wave1/nemesis/basic nemesis card
 import image96 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Vile Feast.jpg"
 import image97 from "../../image-database/cards/wave9/mages/dezmodia/Vision Shard.jpg"
 import image98 from "../../image-database/cards/wave1/gems/V'riswood Amber.jpg"
-import image99 from "../../image-database/cards/wave1/spells/Wildfire Whip.jpg"
-import image100 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Woven Sky.jpg"
-import image101 from "../../image-database/cards/wave1/mages/Adelheim Front.jpg"
-import image102 from "../../image-database/cards/wave1/mages/Adelheim Back.jpg"
-import image103 from "../../image-database/cards/wave1/mages/Brama Front.jpg"
-import image104 from "../../image-database/cards/wave1/mages/Brama Back.jpg"
-import image105 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Front.jpg"
-import image106 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Back.jpg"
-import image107 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Front.jpg"
-import image108 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Back.jpg"
-import image109 from "../../image-database/cards/wave1/mages/Jian Front.jpg"
-import image110 from "../../image-database/cards/wave1/mages/Jian Back.jpg"
-import image111 from "../../image-database/cards/wave1/mages/Kadir Front.jpg"
-import image112 from "../../image-database/cards/wave1/mages/Kadir Back.jpg"
-import image113 from "../../image-database/cards/wave1/mages/Lash Front.jpg"
-import image114 from "../../image-database/cards/wave1/mages/Lash Back.jpg"
-import image115 from "../../image-database/cards/wave1/mages/Mist Front.jpg"
-import image116 from "../../image-database/cards/wave1/mages/Mist Back.jpg"
-import image117 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Front.jpg"
-import image118 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Back.jpg"
-import image119 from "../../image-database/cards/wave1/mages/Phaedraxa Front.jpg"
-import image120 from "../../image-database/cards/wave1/mages/Phaedraxa Back.jpg"
-import image121 from "../../image-database/cards/wave1/mages/Xaxos Front.jpg"
-import image122 from "../../image-database/cards/wave1/mages/Xaxos Back.jpg"
-import image123 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Front.jpg"
-import image124 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Back.jpg"
-import image125 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Front.jpg"
-import image126 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Back.jpg"
-import image127 from "../../image-database/common breach/Breach_I_Open.jpg"
-import image128 from "../../image-database/common breach/Breach_II_Down.jpg"
-import image129 from "../../image-database/common breach/Breach_II_Open.jpg"
-import image130 from "../../image-database/common breach/Breach_III_Down.jpg"
-import image131 from "../../image-database/common breach/Breach_III_Open.jpg"
-import image132 from "../../image-database/common breach/Breach_IV_Down.jpg"
-import image133 from "../../image-database/common breach/Breach_IV_Open.jpg"
+import image99 from "../../image-database/cards/wave9/gems/Crystal.jpg"
+import image100 from "../../image-database/cards/wave9/spells/Spark.jpg"
+import image101 from "../../image-database/cards/wave1/spells/Wildfire Whip.jpg"
+import image102 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Woven Sky.jpg"
+import image103 from "../../image-database/cards/wave1/mages/Adelheim Front.jpg"
+import image104 from "../../image-database/cards/wave1/mages/Adelheim Back.jpg"
+import image105 from "../../image-database/cards/wave1/mages/Brama Front.jpg"
+import image106 from "../../image-database/cards/wave1/mages/Brama Back.jpg"
+import image107 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Front.jpg"
+import image108 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Back.jpg"
+import image109 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Front.jpg"
+import image110 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Back.jpg"
+import image111 from "../../image-database/cards/wave1/mages/Jian Front.jpg"
+import image112 from "../../image-database/cards/wave1/mages/Jian Back.jpg"
+import image113 from "../../image-database/cards/wave1/mages/Kadir Front.jpg"
+import image114 from "../../image-database/cards/wave1/mages/Kadir Back.jpg"
+import image115 from "../../image-database/cards/wave1/mages/Lash Front.jpg"
+import image116 from "../../image-database/cards/wave1/mages/Lash Back.jpg"
+import image117 from "../../image-database/cards/wave1/mages/Mist Front.jpg"
+import image118 from "../../image-database/cards/wave1/mages/Mist Back.jpg"
+import image119 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Front.jpg"
+import image120 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Back.jpg"
+import image121 from "../../image-database/cards/wave1/mages/Phaedraxa Front.jpg"
+import image122 from "../../image-database/cards/wave1/mages/Phaedraxa Back.jpg"
+import image123 from "../../image-database/cards/wave1/mages/Xaxos Front.jpg"
+import image124 from "../../image-database/cards/wave1/mages/Xaxos Back.jpg"
+import image125 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Front.jpg"
+import image126 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Back.jpg"
+import image127 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Front.jpg"
+import image128 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Back.jpg"
+import image129 from "../../image-database/common breach/Breach_I_Open.jpg"
+import image130 from "../../image-database/common breach/Breach_II_Down.jpg"
+import image131 from "../../image-database/common breach/Breach_II_Open.jpg"
+import image132 from "../../image-database/common breach/Breach_III_Down.jpg"
+import image133 from "../../image-database/common breach/Breach_III_Open.jpg"
+import image134 from "../../image-database/common breach/Breach_IV_Down.jpg"
+import image135 from "../../image-database/common breach/Breach_IV_Open.jpg"
 
 export interface GeneratedImagePair {
   front: string
@@ -240,36 +242,38 @@ export const CARD_IMAGE_IMPORTS: Record<string, string> = {
   vile_feast: image96,
   vision_shard: image97,
   vriswood_amber: image98,
-  wildfire_whip: image99,
-  woven_sky: image100,
+  wave9_crystal: image99,
+  wave9_spark: image100,
+  wildfire_whip: image101,
+  woven_sky: image102,
 }
 
 export const MAGE_IMAGE_IMPORTS: Record<string, GeneratedImagePair> = {
-  adelheim: { front: image101, back: image102 },
-  brama: { front: image103, back: image104 },
-  dezmodia: { front: image105, back: image106 },
-  indira: { front: image107, back: image108 },
-  jian: { front: image109, back: image110 },
-  kadir: { front: image111, back: image112 },
-  lash: { front: image113, back: image114 },
-  mist: { front: image115, back: image116 },
-  nook: { front: image117, back: image118 },
-  phaedraxa: { front: image119, back: image120 },
-  xaxos: { front: image121, back: image122 },
+  adelheim: { front: image103, back: image104 },
+  brama: { front: image105, back: image106 },
+  dezmodia: { front: image107, back: image108 },
+  indira: { front: image109, back: image110 },
+  jian: { front: image111, back: image112 },
+  kadir: { front: image113, back: image114 },
+  lash: { front: image115, back: image116 },
+  mist: { front: image117, back: image118 },
+  nook: { front: image119, back: image120 },
+  phaedraxa: { front: image121, back: image122 },
+  xaxos: { front: image123, back: image124 },
 }
 
 export const NEMESIS_MAT_IMAGE_IMPORTS: Record<string, GeneratedImagePair> = {
-  prince_of_gluttons: { front: image123, back: image124 },
-  rageborne: { front: image125, back: image126 },
+  prince_of_gluttons: { front: image125, back: image126 },
+  rageborne: { front: image127, back: image128 },
 }
 
 export const BREACH_IMAGE_IMPORTS: Record<string, string> = {
-  "1:open": image127,
-  "2:down": image128,
-  "2:open": image129,
-  "3:down": image130,
-  "3:open": image131,
-  "4:down": image132,
-  "4:open": image133,
+  "1:open": image129,
+  "2:down": image130,
+  "2:open": image131,
+  "3:down": image132,
+  "3:open": image133,
+  "4:down": image134,
+  "4:open": image135,
 }
 

@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { mageImageUrls } from '../mage-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import { useGame } from '../game/useGame'
 import { useModalDrag } from '../game/useModalDrag'
+import { registerDismissibleOverlay } from '../game/dismissible-overlays'
+import ModalBase from './ModalBase.vue'
 
 const props = defineProps<{ mageType: string }>()
 
@@ -24,6 +26,13 @@ function closeModal() {
 }
 
 watch(() => state.dismissibleOverlayVersion, closeModal)
+
+const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
+  if (!showModal.value) return false
+  closeModal()
+  return true
+})
+onBeforeUnmount(unregisterDismissibleOverlay)
 </script>
 
 <template>
@@ -42,8 +51,16 @@ watch(() => state.dismissibleOverlayVersion, closeModal)
     </span>
     <div v-else class="mage-unavailable">No mage board</div>
 
-    <div v-if="showModal && images" class="overlay mage-overlay" @click.self="closeModal">
-      <div ref="modalEl" class="overlay-card mage-modal draggable-modal" :class="{ dragging }" :style="modalStyle" @pointerdown="startDrag">
+    <ModalBase
+      v-if="showModal && images"
+      overlay-class="mage-overlay"
+      :panel-ref="modalEl"
+      panel-class="mage-modal draggable-modal"
+      :panel-style="modalStyle"
+      :dragging="dragging"
+      @overlay-click="closeModal"
+      @panel-pointerdown="startDrag"
+    >
         <div class="mage-modal-frame" :class="{ flipped: showBack }">
           <img
             class="mage-modal-image"
@@ -56,7 +73,6 @@ watch(() => state.dismissibleOverlayVersion, closeModal)
           <button class="btn" @click="showBack = !showBack">{{ showBack ? 'Show Front' : 'Flip to Back' }}</button>
           <button class="btn" @click="closeModal">Close</button>
         </div>
-      </div>
-    </div>
+    </ModalBase>
   </div>
 </template>

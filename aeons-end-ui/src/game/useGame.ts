@@ -74,7 +74,7 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
-  viewPile: null as 'deck' | 'discard' | 'nemesis_specific' | 'player_cards_in_play' | null,
+  viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'nemesis_specific' | 'player_cards_in_play' | null,
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
   debugOpen: false,
@@ -201,8 +201,8 @@ function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefine
     return soleCandidateOwner(decision.candidates.map(candidate => candidate.playerId))
   }
 
-  if (decision.kind === 'choose_one' && state.game?.pendingEffect?.awaiting?.kind === 'review_top_cards') {
-    return state.game.pendingEffect.reviewingTopCard?.playerId ?? null
+  if (decision.kind === 'choose_one' && state.game?.pendingEffect?.awaiting?.kind === 'reveal_top_cards') {
+    return state.game.pendingEffect.revealedTopCard?.playerId ?? null
   }
 
   return null
@@ -785,6 +785,12 @@ export function openPile(pile: 'deck' | 'discard') {
   state.viewPile = pile
 }
 
+/** Open the displayed player's face-down Mage-specific deck for inspection. */
+export function openSpecificDeckPile() {
+  closeDismissibleOverlays()
+  state.viewPile = 'specific_deck'
+}
+
 /** Open the displayed player's face-up in-play cards for action selection. */
 export function openPlayerCardsInPlayPile() {
   const cards = displayPlayer.value?.playerCardsInPlay ?? []
@@ -1155,7 +1161,7 @@ export function useGame() {
     activatePlayerCardInPlayAction,
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, requestEndTurn, discardNemesisCard, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, openPile, openPlayerCardsInPlayPile, openNemesisSpecificPile, closePile,
+    selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, openNemesisSpecificPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,
     togglePendingBoardCard, confirmPendingBoardCards, skipPendingBoardCards,

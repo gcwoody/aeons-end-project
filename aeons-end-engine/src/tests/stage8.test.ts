@@ -410,26 +410,26 @@ function testNewCardEffectPrimitives(): void {
   assert(!prismPlayer.playedThisTurn.includes('jade'), 'Unstable Prism destroys the selected gem after replaying it')
   assert(prismPlayer.destroyedCards.includes('jade'), 'Unstable Prism records the replayed gem as destroyed')
 
-  const reviewGame = createGame(scenario)
-  const reviewPlayer = reviewGame.players[0]!
-  const otherReviewPlayer = reviewGame.players[1]!
-  reviewGame.currentTurn = reviewPlayer.id
-  reviewGame.currentPhase = 'main'
-  reviewPlayer.hand = ['sifters_pearl']
-  reviewPlayer.deck = ['jade']
-  otherReviewPlayer.deck = ['clouded_sapphire']
-  playCard(reviewGame, reviewPlayer.id, 'sifters_pearl')
-  const firstReview = reviewGame.pendingDecision
-  assert(firstReview?.kind === 'choose_one' && reviewGame.pendingEffect?.reviewingTopCard?.playerId === reviewPlayer.id, 'Sifter records the first revealed card owner')
-  assertEqual(reviewGame.pendingEffect?.reviewingTopCard?.cardId, 'jade', 'Sifter keeps the revealed card available for the image modal')
-  if (!firstReview || firstReview.kind !== 'choose_one') return
-  resolvePendingDecision(reviewGame, firstReview.id, { kind: 'choose_one', optionId: 'keep' })
-  const secondReview = reviewGame.pendingDecision
-  assert(secondReview?.kind === 'choose_one' && reviewGame.pendingEffect?.reviewingTopCard?.playerId === otherReviewPlayer.id, 'Sifter switches the revealed card owner')
-  if (!secondReview || secondReview.kind !== 'choose_one') return
-  resolvePendingDecision(reviewGame, secondReview.id, { kind: 'choose_one', optionId: 'discard' })
-  assertEqual(reviewPlayer.deck[0], 'jade', 'Keeping a reviewed card returns it to the top of its deck')
-  assertEqual(otherReviewPlayer.discard[0], 'clouded_sapphire', 'Discarding a reviewed card moves it to that player discard')
+  const revealGame = createGame(scenario)
+  const revealPlayer = revealGame.players[0]!
+  const otherRevealPlayer = revealGame.players[1]!
+  revealGame.currentTurn = revealPlayer.id
+  revealGame.currentPhase = 'main'
+  revealPlayer.hand = ['sifters_pearl']
+  revealPlayer.deck = ['jade']
+  otherRevealPlayer.deck = ['clouded_sapphire']
+  playCard(revealGame, revealPlayer.id, 'sifters_pearl')
+  const firstReveal = revealGame.pendingDecision
+  assert(firstReveal?.kind === 'choose_one' && revealGame.pendingEffect?.revealedTopCard?.playerId === revealPlayer.id, 'Sifter records the first revealed card owner')
+  assertEqual(revealGame.pendingEffect?.revealedTopCard?.cardId, 'jade', 'Sifter keeps the revealed card available for the image modal')
+  if (!firstReveal || firstReveal.kind !== 'choose_one') return
+  resolvePendingDecision(revealGame, firstReveal.id, { kind: 'choose_one', optionId: 'keep' })
+  const secondReveal = revealGame.pendingDecision
+  assert(secondReveal?.kind === 'choose_one' && revealGame.pendingEffect?.revealedTopCard?.playerId === otherRevealPlayer.id, 'Sifter switches the revealed card owner')
+  if (!secondReveal || secondReveal.kind !== 'choose_one') return
+  resolvePendingDecision(revealGame, secondReveal.id, { kind: 'choose_one', optionId: 'discard' })
+  assertEqual(revealPlayer.deck[0], 'jade', 'Keeping a revealed card returns it to the top of its deck')
+  assertEqual(otherRevealPlayer.discard[0], 'clouded_sapphire', 'Discarding a revealed card moves it to that player discard')
 
   const optionalGame = createGame(scenario)
   const optionalPlayer = optionalGame.players[0]!

@@ -1,49 +1,49 @@
-# Aeon's End Digital — Project Conventions (Global Config)
+# Aeon's End Digital — Agent Entry Guide
 
-This file is the global config for AI coding agents working in this repository.
-Read it before making changes.
+This file is the short entry point for coding agents. Read the documents below
+before making changes; do not duplicate their detailed rules here.
 
-## Language requirement (IMPORTANT)
-- **All user-facing UI strings must be English** — buttons, labels, log messages,
-  hints, overlays, card text. No Chinese in the UI.
-- Code identifiers are English; **code comments must be English**.
-- Internal markdown docs (this file, design/plan docs) may be Chinese; Chinese is
-  allowed in docs only, never in UI or code.
+## Required reading
 
-## Project structure
-- `aeons-end-engine/` — shared rule engine (pure TypeScript, no Node.js dependencies
-  in `engine.ts`/`data.ts`/`types.ts`). It is consumed directly by the UI.
-- `aeons-end-ui/` — Vue 3 + Vite frontend. Imports the engine source via the
-  `@engine` alias → `../aeons-end-engine/src` (no copy, no duplication).
-  Run: `cd aeons-end-ui && npm run dev` (dev server at http://localhost:5173).
+1. `README.md` — project scope, commands, structure, and user-facing shortcuts.
+2. `dev-guide.md` — engine/UI boundary, file map, typed effects, data workflow,
+   debugging, and test expectations.
+3. `ui/ui-guide.md` — the single UI source of truth for components, states,
+   dimensions, responsive layout, z-index, interactions, Gallery, and visual
+   regression.
+4. `design/wave9-plan.md` — current Wave9 scope and development order.
+5. `documents/wave9/collection-summary.md` and the relevant Wave9 subfolder —
+   collected card, Mage, Nemesis, and errata data before implementing content.
+6. `documents/current-development-handoff.md` — current implementation baseline,
+   recent Played Zone fixes, validation commands, and handoff notes for continuing work.
 
-## Engine rules to respect
-- The engine mutates a single `GameState` object in place. The UI wraps it in Vue
-  `reactive()` so mutations are tracked.
-- The UI consumes the engine directly. Do NOT change engine behavior to fit the UI;
-  fix the UI layer (composables/components) instead.
+For a specific Wave or card, read the matching document under `documents/` and
+the corresponding engine data/test files before editing code.
 
-## UI conventions
-- **Border rendering:** Every visible CSS pixel border, outline, and outline-style
-  box-shadow stroke must be **2px** wide. Do not introduce 1px visual borders;
-  use `--pixel-border-width` in `aeons-end-ui/src/style.css` for normal borders.
-- **Card visuals:** Every card rendered in the game, including cards inside
-  decision/selection modals and face-down cards, must use the shared card
-  border-radius variables/classes. Do not introduce square-corner card visuals.
-- **Ctrl+Z** undoes the last user operation (max 10 steps, keyboard shortcut only, no button).
-- **Ctrl+D** toggles the debug panel (edit HP/charge, add cards, toggle breaches, export/import JSON).
-- The game **auto-saves** to localStorage; the Setup screen offers "Resume Game" when a save exists.
-- A player turn **auto-ends** when the player has no legal actions — checked when the
-  main phase begins and after every action.
-- Aether is displayed as: total earned, available, regular vs conditional breakdown.
-- Prep flow: drag a spell card from hand onto an open/focused breach.
+## Non-negotiable project rules
 
-## Developer map
-- See `dev-guide.md` (file responsibilities, where to change features, debugging guide).
+- All user-facing UI strings are English. Code identifiers and comments are
+  English. Internal Markdown documentation may be Chinese.
+- `aeons-end-engine/` is the shared pure TypeScript rule engine. It mutates one
+  `GameState` in place; the Vue UI observes it through `reactive()`.
+- `aeons-end-ui/` consumes the engine directly through the `@engine` alias.
+  Do not copy rules into Vue components or change engine behavior to compensate
+  for a UI problem.
+- New card and Mage rules must use typed effects, triggers, and decisions.
+  Add a reusable engine/UI primitive when the existing model cannot express a
+  genuinely new mechanic; do not hard-code a single card ID into a generic path.
 
-## Getting started
-- Install: `cd aeons-end-ui && npm install`
-- Dev server: `npm run dev`
-- Build: `npm run build`
-- Browser E2E: `npx playwright install chromium`, then `npm run test:e2e`
-- Type-check via editor; `npm run build` uses Vite (no full type-check).
+## Common commands
+
+```powershell
+cd aeons-end-engine
+npm test
+
+cd ..\aeons-end-ui
+npm run dev
+npm run build
+npm run test:e2e
+```
+
+For UI-specific conventions, use `ui/ui-guide.md` rather than adding another
+parallel UI rule document.

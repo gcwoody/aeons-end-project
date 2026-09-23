@@ -92,7 +92,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
     abilityTrigger: { kind: 'main_phase', scope: 'any_player' },
     abilityEffects: [
       { kind: 'gain_charge', amount: 4, target: 'allies_collectively' },
-      { kind: 'review_turn_order_deck' },
+      { kind: 'reveal_turn_order_deck' },
     ],
     hp: 10,
     chargeThreshold: 5,

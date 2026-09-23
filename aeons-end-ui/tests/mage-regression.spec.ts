@@ -132,6 +132,8 @@ test('Mage board modal stays above the hand and below the exit modal', async ({ 
   expect(Number(layerOrder.mageOverlay)).toBeGreaterThan(Number(layerOrder.handRow))
 
   await page.keyboard.press('Escape')
+  await expect(page.locator('.mage-overlay')).toHaveCount(0)
+  await page.keyboard.press('Escape')
   const exitLayer = await page.locator('.exit-overlay').evaluate(element => getComputedStyle(element).zIndex)
   expect(Number(exitLayer)).toBeGreaterThan(Number(layerOrder.mageOverlay))
 })
@@ -157,8 +159,7 @@ test('Kadir can stack two spells on one Breach in the UI', async ({ page }) => {
   }
   for (const playerId of ['wave1_KADIR', 'wave1_BRAMA']) {
     for (const cardId of ['spark', 'flare']) {
-      const cardName = cardId === 'spark' ? 'Spark' : 'Flare'
-      await cardPicker.locator('.debug-card-option').filter({ has: page.locator(`img[alt="${cardName}"]`) }).click()
+      await cardPicker.locator(`.debug-card-option[data-card-id="${cardId}"]`).click()
       await playerSelect.selectOption(playerId)
       await zoneSelect.selectOption('hand')
       await addCardSection.getByRole('button', { name: 'Add Card', exact: true }).click()
@@ -294,7 +295,7 @@ test('discarding a duplicate card preserves the remaining Played order', async (
 
   await page.getByRole('button', { name: 'End Turn', exact: true }).click()
   await expect(page.getByText('Discard Phase · Card Order', { exact: true })).toBeVisible()
-  const playedCards = page.locator('.played-row .card img')
+  const playedCards = page.locator('.played-zones .played-zone-center .card img')
   await expect.poll(() => playedCards.evaluateAll(images => images.map(image => image.alt))).toEqual([
     'Flexing Dagger', 'Crystal', 'Crystal', 'Flexing Dagger',
   ])
@@ -588,8 +589,8 @@ test('Flexing Dagger destroys its played copy instead of an identical card in ha
   await page.getByRole('button', { name: 'Destroy this to deal 1 damage' }).click()
 
   await expect(handDaggers).toHaveCount(1)
-  await expect(page.locator('.played-row img[alt="Flexing Dagger"]')).toHaveCount(0)
-  await expect(page.locator('.played-row .empty')).toHaveText('— none —')
+  await expect(page.locator('.played-zones .played-zone-center img[alt="Flexing Dagger"]')).toHaveCount(0)
+  await expect(page.locator('.played-zones .played-zone-center .empty')).toHaveText('— none —')
 })
 
 test('preparing a spell preserves the remaining hand order', async ({ page }) => {
@@ -685,7 +686,7 @@ test('saved games retain the undo history after resume', async ({ page }) => {
   const handCard = page.locator('.hand .card').first()
   for (let action = 0; action < 12; action++) {
     await handCard.click({ force: true })
-    await expect(page.locator('.played-row img[alt="Crystal"]')).toHaveCount(action + 1)
+    await expect(page.locator('.played-zones .played-zone-center img[alt="Crystal"]')).toHaveCount(action + 1)
   }
   await page.keyboard.press('Escape')
   await page.getByRole('button', { name: 'Save & Exit' }).click()
@@ -828,7 +829,7 @@ test('face-up discard retains its draw forecast and opens with either mouse butt
     }
   })
 
-  await expect(page.locator('.player-discard-face-up img')).toHaveAttribute('alt', 'Spark')
+  await expect(page.locator('.player-discard-top-card img')).toHaveAttribute('alt', 'Spark')
   await page.locator('.discard-pile').click()
   const rows = page.locator('.pile-modal .pile-row')
   await expect(rows).toHaveCount(3)
@@ -842,7 +843,7 @@ test('face-up discard retains its draw forecast and opens with either mouse butt
     .toEqual(['Spark', 'Crystal', 'Spark', 'Crystal', 'Spark', 'Crystal', 'Spark', 'Crystal', 'Spark', 'Crystal', 'Spark'])
   await page.locator('.pile-modal').getByRole('button', { name: 'Close', exact: true }).click()
 
-  await page.locator('.player-discard-face-up').click({ button: 'right' })
+  await page.locator('.player-discard-top-card').click({ button: 'right' })
   await expect(page.locator('.pile-modal')).toBeVisible()
   await expect(page.locator('.pile-modal .pile-card')).toHaveCount(11)
 })
@@ -985,6 +986,8 @@ test('Space advances from Casting to Main and ends the Main Phase', async ({ pag
     player.playedThisTurn = ['crystal', 'spark']
   }, 'main')
 
+  await page.keyboard.press('Space')
+  await expect(page.getByText('Actions remain. End turn anyway?', { exact: true })).toBeVisible()
   await page.keyboard.press('Space')
   await expect(page.getByText('Discard Phase · Card Order', { exact: true })).toBeVisible()
   await expect(page.getByRole('button', { name: 'End Turn', exact: true })).toHaveCount(0)

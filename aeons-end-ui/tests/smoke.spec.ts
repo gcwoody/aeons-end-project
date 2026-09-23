@@ -110,17 +110,34 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
   await section.locator('input[type="number"]').nth(1).fill('4')
   const cardPicker = addCardSection.locator('.debug-card-picker')
   await cardPicker.getByRole('searchbox', { name: 'Search debug cards' }).fill('spark')
-  await cardPicker.locator('.debug-card-option').filter({ has: page.locator('img[alt="Spark"]') }).click()
+  await cardPicker.locator('.debug-card-option[data-card-id="spark"]').click()
   await addCardSection.getByLabel('Debug card player').selectOption('wave1_JIAN')
   await addCardSection.getByLabel('Debug card zone').selectOption('hand')
   await addCardSection.getByRole('button', { name: 'Add Card', exact: true }).click()
+
+  // Keep the drag assertion deterministic: selecting Jian only changes the
+  // displayed player, while the active turn can still belong to Brama after
+  // the shuffled turn-order setup. Force Jian into Main Phase in the same
+  // debug transaction that added the test spell.
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'main'
+  debugState.selectedPlayer = 'wave1_JIAN'
+  debugState.game.currentTurn = 'wave1_JIAN'
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
 
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
   await page.locator('.char-btn').filter({ hasText: 'jian' }).click()
 
   // The current player is the selected player. Put one of the added Sparks on
   // the first open breach, then activate Jian's ability.
-  const sparkInHand = page.locator('.hand .card').filter({ has: page.locator('img[alt="Spark"]') }).last()
+  const sparkInHand = page.locator('.hand .card.spell-draggable').filter({ has: page.locator('img[alt="Spark"]') }).last()
+  await expect(sparkInHand).toBeVisible()
   await sparkInHand.scrollIntoViewIfNeeded()
   const sparkBox = await sparkInHand.boundingBox()
   const breachBox = await page.locator('.breach[data-breach-index="1"]').boundingBox()

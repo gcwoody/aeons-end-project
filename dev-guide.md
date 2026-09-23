@@ -1,8 +1,7 @@
 # 开发者地图（dev-guide）
 
 > 这是给独立开发者和 Codex 使用的主开发指南。项目不再依赖临时 `handoff.md`；新对话先阅读
-> [`README.md`](README.md) 和本指南。需要查看弹窗遮挡、`z-index` 或 stacking context 时，再打开
-> [`design/ui-layering-guide.md`](design/ui-layering-guide.md)。
+> [`README.md`](README.md)、本指南和统一的 [`ui/ui-guide.md`](ui/ui-guide.md)。
 
 更新时间：2026-09-19
 
@@ -41,7 +40,7 @@ JSON 存档、Resume 和 Ctrl+Z 恢复。
 效果暂停状态中的 `PendingEffectResolution.sourcePlayerId` 只表示效果来源的 Mage，
 Nemesis 作为来源时可以为空；`effectPlayerId` 表示当前效果上下文需要的 Mage。真正的
 受影响玩家、卡牌所属者、裂隙或支付者必须继续使用候选项、目标字段、
-`reviewingTopCard.playerId`、`PendingSpellCast.playerId` 或
+`revealedTopCard.playerId`、`PendingSpellCast.playerId` 或
 `PendingNemesisDiscard.playerId` 等业务字段，不能借用一个隐藏的决策权限字段。
 UI 只有在候选项明确指向唯一角色时才自动切换显示角色；没有唯一目标时保留当前角色。
 
@@ -87,7 +86,7 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 | 牌区 | `draw_cards`、`discard_cards`、`destroy_cards`、`return_cards_to_hand`、`gain_card` |
 | 选择 | `choose_one`、`choose_optional`、`select_*` Pending Decision |
 | 施法 | `cast_prepped_spell`、`return_card_to_hand` |
-| 回合顺序 | `reveal_turn_order_card`、`review_turn_order_deck`、`shuffle_turn_order_card` |
+| 回合顺序 | `reveal_turn_order_card`、`reveal_turn_order_deck`、`shuffle_turn_order_card` |
 | 预备法术 | `while_prepped`、`set_prep_limit`、`prevent_damage_this_turn` |
 | Nemesis 基础动作 | 通用 `unleash` 关键词、Nemesis counter、`resolve_strike`、`devour_market_cards`、`set_source_minion_life` |
 

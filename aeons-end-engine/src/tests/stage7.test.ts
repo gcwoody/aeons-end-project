@@ -823,11 +823,11 @@ function testMageAbilities(): void {
   assert(activateAbility(xaxosGame, xaxos.id)?.includes('Metaphysical Link activated'), 'Xaxos activates during an ally main phase')
   assertEqual(xaxos.charge, 0, 'Xaxos charge is consumed')
   assertEqual(xaxosAlly.charge, 4, 'Xaxos allies collectively gain four charges')
-  assertEqual(xaxosGame.pendingDecision?.kind, 'reorder_turn_order', 'Xaxos can review the remaining turn-order deck')
+  assertEqual(xaxosGame.pendingDecision?.kind, 'reorder_turn_order', 'Xaxos can reveal the remaining turn-order deck')
   resolvePendingDecision(xaxosGame, xaxosGame.pendingDecision!.id, {
     kind: 'reorder_turn_order', order: [2, 0, 1],
   })
-  assertEqual(xaxosGame.turnOrderDeck.join(','), `${xaxosAlly.id},${xaxos.id},nemesis`, 'Xaxos returns reviewed cards in the chosen order')
+  assertEqual(xaxosGame.turnOrderDeck.join(','), `${xaxosAlly.id},${xaxos.id},nemesis`, 'Xaxos returns revealed cards in the chosen order')
 
   const flareGame = createGame('xaxos', 'brama')
   const flareMage = flareGame.players[0]!

@@ -36,7 +36,7 @@ test('Debug card picker searches by image and supports the slash shortcut', asyn
 
   await search.fill('')
   await picker.getByRole('button', { name: 'Spell', exact: true }).click()
-  await expect(picker.locator('.debug-card-option')).toHaveCount(17)
+  await expect(picker.locator('.debug-card-option')).toHaveCount(22)
 })
 
 test('Debug Tools exposes every added Wave 1 market card and renders it', async ({ page }) => {
@@ -131,11 +131,14 @@ test("Sifter's Pearl shows the revealed card in the decision modal", async ({ pa
 
   await page.locator('.hand .card').filter({ has: page.locator("img[alt=\"Sifter's Pearl\"]") }).click()
   await expect(page.locator('.decision-modal')).toBeVisible()
-  await expect(page.locator('.review-top-card img[alt="Jade"]')).toBeVisible()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.decision-modal')).toBeVisible()
+  await expect(page.locator('.exit-overlay')).toHaveCount(0)
+  await expect(page.locator('.reveal-top-card img[alt="Jade"]')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Discard the revealed card' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Return it to the top of the deck' })).toBeVisible()
 
   await page.getByRole('button', { name: 'Discard the revealed card' }).click()
-  await expect(page.locator('.review-top-card')).toHaveCount(0)
+  await expect(page.locator('.reveal-top-card')).toHaveCount(0)
   await expect(page.locator('.decision-modal')).toHaveCount(0)
 })

@@ -120,7 +120,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="debug-card-picker">
+  <div class="debug-card-picker" data-ui-component="Card.DebugPicker">
     <div class="debug-card-picker-head">
       <span class="debug-label">{{ title }}</span>
       <span class="debug-card-count">{{ filteredCards.length }} shown / {{ cards.length }} total</span>
@@ -169,6 +169,7 @@ onBeforeUnmount(() => {
             <button
               class="debug-card-option"
               :class="{ selected: modelValue === card.id }"
+              :data-card-id="card.id"
               type="button"
               :title="`${card.name} · ${cardMeta(card)}`"
               :aria-label="`${card.name} (${cardMeta(card)})`"

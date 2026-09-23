@@ -9,7 +9,10 @@ import LogPanel from './components/LogPanel.vue'
 import PileModal from './components/PileModal.vue'
 import CardDecisionModal from './components/CardDecisionModal.vue'
 import DebugPanel from './components/DebugPanel.vue'
+import UiGallery from './components/UiGallery.vue'
+import ModalBase from './components/ModalBase.vue'
 import { useModalDrag } from './game/useModalDrag'
+import { dismissTopmostOverlay } from './game/dismissible-overlays'
 
 const {
   state, undo, toggleDebug, selectPlayer, openPile, closePile,
@@ -20,6 +23,7 @@ const {
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
 const { modalEl: exitModalEl, modalStyle: exitModalStyle, dragging: exitDragging, startDrag: startExitDrag } = useModalDrag()
 const { modalEl: gameoverModalEl, modalStyle: gameoverModalStyle, dragging: gameoverDragging, startDrag: startGameoverDrag } = useModalDrag()
+const isUiGallery = new URLSearchParams(window.location.search).get('ui-gallery') === '1'
 
 function onKeydown(e: KeyboardEvent) {
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
@@ -66,6 +70,12 @@ function onKeydown(e: KeyboardEvent) {
     resolveDecision({ kind: 'confirm_nemesis_draw', accepted: true })
     return
   }
+  if (e.code === 'Space' && !e.shiftKey && canConfirmNemesisEffectWithSpace()) {
+    e.preventDefault()
+    if (e.repeat) return
+    resolveDecision({ kind: 'confirm_nemesis_effect', accepted: true })
+    return
+  }
   if (e.code === 'Space' && !e.shiftKey && canAdvancePhaseWithSpace()) {
     e.preventDefault()
     if (e.repeat) return
@@ -79,8 +89,26 @@ function onKeydown(e: KeyboardEvent) {
       closeHelp()
       return
     }
-    if (state.exitPrompt) cancelExit()
-    else requestExit()
+    if (state.viewPile) {
+      closePile()
+      return
+    }
+    if (state.exitPrompt) {
+      cancelExit()
+      return
+    }
+    if (state.debugOpen) {
+      toggleDebug()
+      return
+    }
+    // Decision modals represent an in-progress game effect and cannot be dismissed.
+    if (state.game.pendingDecision || state.game.pendingEffect) {
+      return
+    }
+    if (dismissTopmostOverlay()) {
+      return
+    }
+    requestExit()
   }
 }
 
@@ -89,6 +117,19 @@ function canConfirmNemesisDrawWithSpace(): boolean {
   const game = state.game
   return !!game
     && game.pendingDecision?.kind === 'confirm_nemesis_draw'
+    && !state.viewPile
+    && !state.helpOpen
+    && !state.exitPrompt
+    && !state.debugOpen
+}
+
+/** Match the red-highlighted Nemesis card awaiting Main Phase confirmation. */
+function canConfirmNemesisEffectWithSpace(): boolean {
+  const game = state.game
+  return !!game
+    && state.phase === 'nemesis_main'
+    && game.currentTurn === 'nemesis'
+    && game.pendingDecision?.kind === 'confirm_nemesis_effect'
     && !state.viewPile
     && !state.helpOpen
     && !state.exitPrompt
@@ -132,7 +173,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <SetupScreen v-if="!state.game" />
+  <UiGallery v-if="isUiGallery" />
+  <SetupScreen v-else-if="!state.game" />
   <div v-else class="app">
     <div class="main-col">
       <div class="top-section">
@@ -147,8 +189,17 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     <CardDecisionModal />
     <DebugPanel />
 
-    <div v-if="state.helpOpen" class="overlay help-overlay" role="dialog" aria-modal="true" aria-labelledby="help-title" @click.self="closeHelp">
-      <div ref="helpModalEl" class="overlay-card help-modal draggable-modal" :class="{ dragging: helpDragging }" :style="helpModalStyle" @pointerdown="startHelpDrag">
+    <ModalBase
+      v-if="state.helpOpen"
+      overlay-class="help-overlay"
+      :panel-ref="helpModalEl"
+      panel-class="help-modal draggable-modal"
+      :panel-style="helpModalStyle"
+      :dragging="helpDragging"
+      panel-aria-labelledby="help-title"
+      @overlay-click="closeHelp"
+      @panel-pointerdown="startHelpDrag"
+    >
         <div class="help-head">
           <h2 id="help-title">Game Help</h2>
           <button class="btn small" aria-label="Close game help" @click="closeHelp">Close</button>
@@ -164,15 +215,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
-            <div class="help-row"><kbd>Space</kbd><span>Confirm a revealed Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Confirm a revealed Nemesis card, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 
-      </div>
-    </div>
+    </ModalBase>
 
-    <div v-if="state.exitPrompt" class="overlay exit-overlay">
-      <div ref="exitModalEl" class="overlay-card draggable-modal" :class="{ dragging: exitDragging }" :style="exitModalStyle" @pointerdown="startExitDrag">
+    <ModalBase
+      v-if="state.exitPrompt"
+      overlay-class="exit-overlay"
+      :panel-ref="exitModalEl"
+      panel-class="draggable-modal"
+      :panel-style="exitModalStyle"
+      :dragging="exitDragging"
+      @panel-pointerdown="startExitDrag"
+    >
         <h2>Exit Game?</h2>
         <p class="exit-copy">Are you sure you want to exit this game?</p>
         <div class="overlay-actions">
@@ -180,14 +237,19 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <button class="btn primary" @click="saveAndExit">Save &amp; Exit</button>
           <button class="btn" @click="cancelExit">Cancel</button>
         </div>
-      </div>
-    </div>
+    </ModalBase>
 
-    <div v-if="state.phase === 'gameover'" class="overlay">
-      <div ref="gameoverModalEl" class="overlay-card draggable-modal" :class="{ dragging: gameoverDragging }" :style="gameoverModalStyle" @pointerdown="startGameoverDrag">
+    <ModalBase
+      v-if="state.phase === 'gameover'"
+      overlay-class="overlay"
+      :panel-ref="gameoverModalEl"
+      panel-class="draggable-modal"
+      :panel-style="gameoverModalStyle"
+      :dragging="gameoverDragging"
+      @panel-pointerdown="startGameoverDrag"
+    >
         <h2 class="gameover-title">{{ state.game.winner === 'players' ? 'Victory!' : 'Defeat…' }}</h2>
         <button class="btn primary" @click="returnToMainMenu">Back to Main Menu</button>
-      </div>
-    </div>
+    </ModalBase>
   </div>
 </template>

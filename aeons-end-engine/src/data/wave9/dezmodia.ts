@@ -104,7 +104,7 @@ export const DEZMODIA_CARDS: Record<string, CardDef> = {
         {
           id: 'stash',
           label: 'Reveal the top two cards of Dezmodia\'s Stash and return each to the top or bottom',
-          effects: [{ kind: 'review_specific_deck', mode: 'return_each' }],
+          effects: [{ kind: 'reveal_specific_deck', mode: 'return_each' }],
         },
       ],
     }] }],
@@ -227,7 +227,7 @@ export function createDezmodia(makeBreach: BreachFactory): MageDef {
         {
           id: 'stash',
           label: 'Reveal two cards from Dezmodia\'s Stash and put one into play',
-          effects: [{ kind: 'review_specific_deck', mode: 'put_one_into_play' }],
+          effects: [{ kind: 'reveal_specific_deck', mode: 'put_one_into_play' }],
         },
         {
           id: 'life',

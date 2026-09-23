@@ -55,7 +55,10 @@ function startPreview(event: MouseEvent) {
   updatePosition(event.clientX, event.clientY)
   showTimer = setTimeout(() => {
     visible.value = true
-    window.addEventListener('wheel', resizePreview, { passive: false })
+    // Capture the wheel before board/hand scroll handlers. Once a preview is
+    // visible, the pointer is over the card preview interaction, so wheel
+    // input must resize it instead of scrolling the source hand horizontally.
+    window.addEventListener('wheel', resizePreview, { capture: true, passive: false })
   }, props.previewDelay ?? 500)
 }
 
@@ -90,6 +93,7 @@ function handleMouseOver(event: MouseEvent) {
 
 function resizePreview(event: WheelEvent) {
   event.preventDefault()
+  event.stopPropagation()
   const scale = event.deltaY < 0 ? 1.1 : 0.9
   const width = previewSize.value.width * scale
   const ratio = (props.previewHeight ?? 315) / (props.previewWidth ?? 210)
@@ -102,7 +106,7 @@ function stopPreview() {
   clearTimeout(showTimer)
   showTimer = undefined
   visible.value = false
-  window.removeEventListener('wheel', resizePreview)
+  window.removeEventListener('wheel', resizePreview, true)
 }
 
 function dismissFromSpellDrag() {

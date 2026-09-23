@@ -11,6 +11,7 @@ import {
 } from './types'
 import {
   getCard, MAGES, rageborne, resolveMarketCardIds, createTwoPlayerScenario, getNemesisDefinition,
+  resolveMageStartingCardId,
 } from './data'
 import type { MageDef } from './data'
 import { getNemesisRules } from './nemesis/registry'
@@ -112,8 +113,8 @@ export function createGame(
     return {
       id, mageType: def.type,
       hp: def.hp, maxHp: def.hp,
-      deck: [...def.startDeck],
-      hand: [...def.startHand],
+      deck: def.startDeck.map(cardId => resolveMageStartingCardId(def.wave, cardId)),
+      hand: def.startHand.map(cardId => resolveMageStartingCardId(def.wave, cardId)),
       discard: [],
       playedThisTurn: [],
       swapZone: [...(def.swapZone ?? [])],
@@ -121,6 +122,7 @@ export function createGame(
       specificDeck: def.specificDeckShuffled
         ? shuffle(def.specificDeck ?? [])
         : [...(def.specificDeck ?? [])],
+      knownSpecificDeckCards: [],
       playerCardsInPlay: [],
       playerCardSupplyTargets: [],
       playerCardPowerTokens: [],
@@ -873,6 +875,7 @@ function ensurePlayerCollections(p: PlayerState): void {
   if (!p.swapZone) p.swapZone = []
   if (!p.developZone) p.developZone = []
   if (!p.specificDeck) p.specificDeck = []
+  if (!p.knownSpecificDeckCards) p.knownSpecificDeckCards = []
   if (!p.playerCardsInPlay) p.playerCardsInPlay = []
   if (!p.playerCardSupplyTargets) p.playerCardSupplyTargets = []
   if (!p.playerCardPowerTokens) p.playerCardPowerTokens = []
@@ -2151,27 +2154,27 @@ function runEffectResolution(
       continue
     }
 
-    if (effect.kind === 'review_top_cards') {
-      resolution.reviewTopPlayerIds ??= g.players.map(player => player.id)
-      const playerId = resolution.reviewTopPlayerIds.shift()
+    if (effect.kind === 'reveal_top_cards') {
+      resolution.revealTopPlayerIds ??= g.players.map(player => player.id)
+      const playerId = resolution.revealTopPlayerIds.shift()
       if (!playerId) {
-        resolution.reviewTopPlayerIds = undefined
-        resolution.reviewingTopCard = undefined
+        resolution.revealTopPlayerIds = undefined
+        resolution.revealedTopCard = undefined
         continue
       }
-      const reviewedPlayer = getPlayer(g, playerId)
-      if (reviewedPlayer.deck.length === 0 && reviewedPlayer.discard.length > 0) {
-        reviewedPlayer.deck = [...reviewedPlayer.discard].reverse()
-        reviewedPlayer.discard = []
+      const revealedPlayer = getPlayer(g, playerId)
+      if (revealedPlayer.deck.length === 0 && revealedPlayer.discard.length > 0) {
+        revealedPlayer.deck = [...revealedPlayer.discard].reverse()
+        revealedPlayer.discard = []
       }
-      const cardId = reviewedPlayer.deck[0]
+      const cardId = revealedPlayer.deck[0]
       if (!cardId) {
         addRemainingEffects(resolution, [effect])
         continue
       }
-      resolution.reviewingTopCard = { playerId, cardId }
+      resolution.revealedTopCard = { playerId, cardId }
       const decision = createDecision(g,
-        `${reviewedPlayer.mageType} reveals ${getCard(cardId).name}: discard it or return it to the top?`,
+        `${revealedPlayer.mageType} reveals ${getCard(cardId).name}: discard it or return it to the top?`,
         'choose_one',
         { options: [
           { id: 'discard', label: 'Discard the revealed card' },
@@ -2506,14 +2509,14 @@ function runEffectResolution(
       continue
     }
 
-    if (effect.kind === 'review_turn_order_deck') {
+    if (effect.kind === 'reveal_turn_order_deck') {
       if (g.turnOrderDeck.length === 0) {
         messages.push('Turn order deck is empty')
         continue
       }
       const cards = g.turnOrderDeck.map((cardId, index) => ({ index, cardId }))
       const decision = createDecision(g,
-        'Review the turn order deck and choose its order',
+        'Reveal the turn order deck and choose its order',
         'reorder_turn_order',
         { cards },
         resolution.sourceCardId,
@@ -2883,7 +2886,7 @@ function runEffectResolution(
       return messages
     }
 
-    if (effect.kind === 'review_specific_deck') {
+    if (effect.kind === 'reveal_specific_deck') {
       const owner = getPlayer(g, currentPlayerId)
       ensurePlayerCollections(owner)
       const revealed = owner.specificDeck!.slice(0, 2)
@@ -2891,8 +2894,15 @@ function runEffectResolution(
         messages.push('No cards are available in the Mage-specific deck')
         continue
       }
+      // Online play keeps information that the player has already seen. The
+      // cards remain face-down in the physical deck, but their faces may be
+      // shown when the player inspects the deck later.
+      owner.knownSpecificDeckCards ??= []
+      for (const cardId of revealed) {
+        if (!owner.knownSpecificDeckCards.includes(cardId)) owner.knownSpecificDeckCards.push(cardId)
+      }
       if (effect.mode === 'put_one_into_play') {
-        resolution.specificDeckReview = {
+        resolution.specificDeckReveal = {
           playerId: owner.id,
           cards: revealed,
           mode: effect.mode,
@@ -2913,22 +2923,16 @@ function runEffectResolution(
       }
 
       owner.specificDeck!.splice(0, revealed.length)
-      resolution.specificDeckReview = {
+      resolution.specificDeckReveal = {
         playerId: owner.id,
         cards: revealed,
         mode: effect.mode,
-        nextIndex: 0,
-        topCards: [],
-        bottomCards: [],
+        cardSlots: revealed.map((_, index) => index),
       }
-      const cardId = revealed[0]!
       const decision = createDecision(g,
-        `Return ${getCard(cardId).name} to the top or bottom of the Mage-specific deck`,
-        'choose_one',
-        { options: [
-          { id: 'top', label: 'Return to Top' },
-          { id: 'bottom', label: 'Return to Bottom' },
-        ] },
+        'Choose a revealed card to return to the top or bottom of the Mage-specific deck',
+        'place_specific_deck_card',
+        { cards: revealed.map((cardId, index) => ({ cardId, cardName: getCard(cardId).name, slot: index })) },
         resolution.sourceCardId,
       )
       messages.push(...pauseEffect(g, resolution, effect, decision))
@@ -3004,6 +3008,7 @@ function runEffectResolution(
 
     if (effect.kind === 'set_next_to_supply_pile') {
       const candidates = marketPileChoices(g, effect.cardType)
+        .filter(candidate => candidate.remaining > 0)
         .filter(candidate => !effect.cardTypes || effect.cardTypes.includes(getCard(candidate.cardId).type as 'gem' | 'relic' | 'spell'))
         .filter(candidate => effect.minCost === undefined || getCard(candidate.cardId).cost >= effect.minCost)
       if (candidates.length === 0) {
@@ -4038,57 +4043,24 @@ export function resolvePendingDecision(
       restore()
       return ['This choice is not available']
     }
-    if (effect.kind === 'review_top_cards') {
+    if (effect.kind === 'reveal_top_cards') {
       if (answer.optionId !== 'discard' && answer.optionId !== 'keep') {
         restore()
-        return ['Invalid review choice']
+        return ['Invalid reveal choice']
       }
-      const reviewed = resolution.reviewingTopCard
-      const player = reviewed ? getPlayer(g, reviewed.playerId) : null
-      if (!reviewed || !player || player.deck[0] !== reviewed.cardId) {
+      const revealed = resolution.revealedTopCard
+      const player = revealed ? getPlayer(g, revealed.playerId) : null
+      if (!revealed || !player || player.deck[0] !== revealed.cardId) {
         restore()
-        return ['The reviewed card is no longer on top of the deck']
+        return ['The revealed card is no longer on top of the deck']
       }
       if (answer.optionId === 'discard') {
         player.deck.shift()
-        player.discard.unshift(reviewed.cardId)
+        player.discard.unshift(revealed.cardId)
       }
-      resolution.reviewingTopCard = undefined
+      resolution.revealedTopCard = undefined
       addRemainingEffects(resolution, [effect])
-      return [`${player.mageType} ${answer.optionId === 'discard' ? 'discards' : 'keeps'} ${getCard(reviewed.cardId).name}`, ...runEffectResolution(g, resolution)]
-    }
-    if (effect.kind === 'review_specific_deck' && effect.mode === 'return_each') {
-      const review = resolution.specificDeckReview
-      const owner = review ? getPlayer(g, review.playerId) : null
-      const nextIndex = review?.nextIndex ?? 0
-      const cardId = review?.cards[nextIndex]
-      if (!review || !owner || !cardId || !['top', 'bottom'].includes(answer.optionId)) {
-        restore()
-        return ['Invalid Mage-specific deck placement choice']
-      }
-      if (answer.optionId === 'top') review.topCards?.push(cardId)
-      else review.bottomCards?.push(cardId)
-      review.nextIndex = nextIndex + 1
-      const nextCardId = review.cards[review.nextIndex]
-      if (nextCardId) {
-        const nextDecision = createDecision(g,
-          `Return ${getCard(nextCardId).name} to the top or bottom of the Mage-specific deck`,
-          'choose_one',
-          { options: [
-            { id: 'top', label: 'Return to Top' },
-            { id: 'bottom', label: 'Return to Bottom' },
-          ] },
-          resolution.sourceCardId,
-        )
-        return pauseEffect(g, resolution, effect, nextDecision)
-      }
-      owner.specificDeck!.unshift(...(review.topCards ?? []).reverse())
-      owner.specificDeck!.push(...(review.bottomCards ?? []))
-      resolution.specificDeckReview = undefined
-      return [
-        `Returned ${review.cards.map(id => getCard(id).name).join(', ')} to the Mage-specific deck`,
-        ...runEffectResolution(g, resolution),
-      ]
+      return [`${player.mageType} ${answer.optionId === 'discard' ? 'discards' : 'keeps'} ${getCard(revealed.cardId).name}`, ...runEffectResolution(g, resolution)]
     }
     const source = effect.kind === 'choose_one' ? effect.options.find(option => option.id === answer.optionId) : undefined
     if (!source) {
@@ -4097,6 +4069,48 @@ export function resolvePendingDecision(
       return ['Invalid choice']
     }
     addRemainingEffects(resolution, source.effects)
+  } else if (answer.kind === 'place_specific_deck_card') {
+    if (decision.kind !== 'place_specific_deck_card' ||
+      effect.kind !== 'reveal_specific_deck' || effect.mode !== 'return_each') {
+      restore()
+      return ['Decision answer has the wrong type']
+    }
+    const reveal = resolution.specificDeckReveal
+    const owner = reveal ? getPlayer(g, reveal.playerId) : null
+    const selectedIndex = reveal?.cards.indexOf(answer.cardId) ?? -1
+    if (!reveal || !owner || reveal.mode !== 'return_each' ||
+      selectedIndex < 0 || !['top', 'bottom'].includes(answer.placement) ||
+      decision.cards.length !== reveal.cards.length ||
+      decision.cards.some((card, index) => card.cardId !== reveal.cards[index])) {
+      restore()
+      return ['Invalid Mage-specific deck placement choice']
+    }
+    const [returned] = reveal.cards.splice(selectedIndex, 1)
+    reveal.cardSlots?.splice(selectedIndex, 1)
+    if (!returned) {
+      restore()
+      return ['The selected Mage-specific card is no longer available']
+    }
+    if (answer.placement === 'top') owner.specificDeck!.unshift(returned)
+    else owner.specificDeck!.push(returned)
+    if (reveal.cards.length > 0) {
+      const nextDecision = createDecision(g,
+        'Choose a revealed card to return to the top or bottom of the Mage-specific deck',
+        'place_specific_deck_card',
+        { cards: reveal.cards.map((cardId, index) => ({
+          cardId,
+          cardName: getCard(cardId).name,
+          slot: reveal.cardSlots?.[index] ?? index,
+        })) },
+        resolution.sourceCardId,
+      )
+      return pauseEffect(g, resolution, effect, nextDecision)
+    }
+    resolution.specificDeckReveal = undefined
+    return [
+      `Returned ${returned ? getCard(returned).name : 'the revealed card'} to the ${answer.placement === 'top' ? 'top' : 'bottom'} of the Mage-specific deck`,
+      ...runEffectResolution(g, resolution),
+    ]
   } else if (answer.kind === 'choose_optional') {
     if (decision.kind !== 'choose_optional') return ['Decision answer has the wrong type']
     if (effect.kind === 'choose_optional') {
@@ -4330,22 +4344,22 @@ export function resolvePendingDecision(
       }
       return [`Gained ${getCard(cardId).name} from the Swap zone`, ...runEffectResolution(g, resolution)]
     }
-    if (effect.kind === 'review_specific_deck' && effect.mode === 'put_one_into_play') {
-      const review = resolution.specificDeckReview
+    if (effect.kind === 'reveal_specific_deck' && effect.mode === 'put_one_into_play') {
+      const reveal = resolution.specificDeckReveal
       const selectedChoice = selected[0]
-      const owner = review ? getPlayer(g, review.playerId) : null
-      if (!review || !owner || !selectedChoice || selectedChoice.zone !== 'specific_deck' ||
-        !review.cards.includes(selectedChoice.cardId)) {
+      const owner = reveal ? getPlayer(g, reveal.playerId) : null
+      if (!reveal || !owner || !selectedChoice || selectedChoice.zone !== 'specific_deck' ||
+        !reveal.cards.includes(selectedChoice.cardId)) {
         restore()
         return ['Choose one revealed Mage-specific card to put into play']
       }
-      const revealed = owner.specificDeck!.splice(0, review.cards.length)
-      if (revealed.length !== review.cards.length || revealed.some((cardId, index) => cardId !== review.cards[index])) {
+      const revealed = owner.specificDeck!.splice(0, reveal.cards.length)
+      if (revealed.length !== reveal.cards.length || revealed.some((cardId, index) => cardId !== reveal.cards[index])) {
         owner.specificDeck!.unshift(...revealed)
         restore()
         return ['The revealed Mage-specific cards are no longer available']
       }
-      const selectedIndex = review.cards.indexOf(selectedChoice.cardId)
+      const selectedIndex = reveal.cards.indexOf(selectedChoice.cardId)
       const putIntoPlay = revealed[selectedIndex]
       const returned = revealed.filter((_, index) => index !== selectedIndex)
       if (!putIntoPlay) {
@@ -4353,7 +4367,7 @@ export function resolvePendingDecision(
         return ['The selected Mage-specific card is no longer available']
       }
       owner.specificDeck!.push(...returned)
-      resolution.specificDeckReview = undefined
+      resolution.specificDeckReveal = undefined
       addRemainingEffects(resolution, putPlayerCardIntoPlay(g, owner.id, putIntoPlay))
       return [`Put ${getCard(putIntoPlay).name} into play`, ...runEffectResolution(g, resolution)]
     }
@@ -4514,13 +4528,8 @@ export function resolvePendingDecision(
     )
     const pile = choice ? g.market.piles[choice.pileIndex] : null
     if (!choice || !pile || pile.cardId !== choice.cardId || pile.remaining <= 0) {
-      if (effect.kind === 'set_next_to_supply_pile' && choice && pile && pile.cardId === choice.cardId) {
-        // Empty supply piles are valid placement targets; the UI will keep the
-        // Treasure in its normal in-play position until cards return.
-      } else {
-        restore()
-        return ['The selected supply pile is no longer available']
-      }
+      restore()
+      return ['The selected supply pile is no longer available']
     }
     if (effect.kind === 'set_next_to_supply_pile') {
       const ownerId = resolution.sourcePlayerId ?? effectPlayerId(g, resolution)
@@ -4619,7 +4628,7 @@ export function resolvePendingDecision(
     const message = gainLife(g, target, effect.amount)
     return [ ...(message ? [message] : []), ...runEffectResolution(g, resolution) ]
   } else if (answer.kind === 'reorder_turn_order') {
-    if (decision.kind !== 'reorder_turn_order' || effect.kind !== 'review_turn_order_deck') {
+    if (decision.kind !== 'reorder_turn_order' || effect.kind !== 'reveal_turn_order_deck') {
       restore()
       return ['Decision answer has the wrong type']
     }
@@ -4631,7 +4640,7 @@ export function resolvePendingDecision(
       selectedIndexes.some(index => !validIndexes.includes(index))
     ) {
       restore()
-      return ['Turn order must include every reviewed card exactly once']
+      return ['Turn order must include every revealed card exactly once']
     }
     g.turnOrderDeck = selectedIndexes.map(index => decision.cards.find(card => card.index === index)!.cardId)
     return ['Turn order deck reordered', ...runEffectResolution(g, resolution)]

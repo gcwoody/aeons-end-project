@@ -17,6 +17,8 @@ const props = defineProps<{
   min: number
   max: number
   selectedKeys: string[]
+  /** Render a small, fixed set of revealed cards at readable card size. */
+  largeCards?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -51,13 +53,19 @@ function toggle(key: string): void {
     emit('update:selectedKeys', props.selectedKeys.filter(selected => selected !== key))
     return
   }
+  // A one-card decision behaves like a radio group: choosing another card
+  // replaces the previous choice instead of requiring an extra deselect click.
+  if (props.max === 1) {
+    emit('update:selectedKeys', [key])
+    return
+  }
   if (props.selectedKeys.length >= props.max) return
   emit('update:selectedKeys', [...props.selectedKeys, key])
 }
 </script>
 
 <template>
-  <div class="card-selection-panel">
+  <div class="card-selection-panel" :class="{ 'large-cards': props.largeCards }">
     <div v-for="group in groups" :key="group.key" class="decision-card-zone">
       <span class="decision-card-zone-label">{{ group.label }}</span>
       <div class="decision-card-rows">
@@ -71,6 +79,7 @@ function toggle(key: string): void {
             v-for="choice in row"
             :key="choice.key"
             :card-id="choice.cardId"
+            :disabled="props.largeCards"
           >
             <button
               class="decision-card-choice"

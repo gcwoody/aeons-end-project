@@ -101,7 +101,7 @@ function indexBySlug(files, keyForFile) {
 }
 
 function getCardImageIndex(files) {
-  return indexBySlug(files.filter((file) => {
+  const eligibleFiles = files.filter((file) => {
     const relativePath = relative(cardsRoot, file).replaceAll('\\', '/')
     const baseName = basename(file)
     const isMagePortrait = relativePath.includes('/mages/') && /\s+(front|back)\.[^.]+$/i.test(baseName)
@@ -110,7 +110,21 @@ function getCardImageIndex(files) {
       && slug(baseName).replace(/_beyond_the_breach$/, '') === slug(relativePath.split('/').at(-2) ?? '')
     const isCardBack = /\s+back\.[^.]+$/i.test(baseName)
     return !isMagePortrait && !isNemesisMat && !isCardBack
-  }), (file) => slug(basename(file)))
+  })
+  const index = indexBySlug(eligibleFiles, (file) => slug(basename(file)))
+
+  // Basic cards keep the same printed name across waves but can have
+  // wave-specific artwork. Expose a stable `waveN_<card>` alias for data
+  // definitions that intentionally use that wave's alternate card art while
+  // preserving the original canonical ID for older Mages and saves.
+  for (const file of eligibleFiles) {
+    const relativePath = relative(cardsRoot, file).replaceAll('\\', '/')
+    const wave = relativePath.match(/^wave(\d+)\//i)?.[1]
+    if (!wave) continue
+    const variantKey = `wave${wave}_${slug(basename(file))}`
+    if (!index.has(variantKey)) index.set(variantKey, file)
+  }
+  return index
 }
 
 function getMageImageIndex(files) {

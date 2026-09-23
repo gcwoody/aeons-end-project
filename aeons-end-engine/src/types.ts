@@ -232,9 +232,9 @@ export interface PendingEffectResolution {
   lastSelectedCardCost?: number
   /** Result of the most recent optional choice in this effect frame. */
   lastOptionalAccepted?: boolean
-  /** Players still waiting to reveal a top deck card for a review effect. */
-  reviewTopPlayerIds?: PlayerId[]
-  reviewingTopCard?: { playerId: PlayerId; cardId: string }
+  /** Players still waiting to reveal a top deck card for a reveal effect. */
+  revealTopPlayerIds?: PlayerId[]
+  revealedTopCard?: { playerId: PlayerId; cardId: string }
   /** Hand card selected for a play-card-from-hand effect. */
   selectedCardId?: string
   /** Card revealed by Conjure while waiting for a Breach choice. */
@@ -244,10 +244,12 @@ export interface PendingEffectResolution {
   /** Remaining players for a Time Cortex all-player Breach focus. */
   focusAllPlayerIds?: PlayerId[]
   /** Cards temporarily revealed from a Mage-specific deck while placement choices resolve. */
-  specificDeckReview?: {
+  specificDeckReveal?: {
     playerId: PlayerId
     cards: string[]
     mode: 'put_one_into_play' | 'return_each'
+    /** Original reveal slot for each remaining revealed card, preserving UI positions. */
+    cardSlots?: number[]
     nextIndex?: number
     topCards?: string[]
     bottomCards?: string[]
@@ -286,6 +288,8 @@ export interface DecisionOption {
   disabled?: boolean
 }
 
+export type SpecificDeckPlacement = 'top' | 'bottom'
+
 export type PendingDecision = PendingDecisionBase & (
   | {
       kind: 'choose_one'
@@ -303,6 +307,11 @@ export type PendingDecision = PendingDecisionBase & (
       min: number
       max: number
       layout?: CardSelectionLayout
+    }
+  | {
+      /** Revealed Mage-specific cards awaiting an individual top/bottom placement. */
+      kind: 'place_specific_deck_card'
+      cards: Array<{ cardId: string; cardName: string; slot: number }>
     }
   | {
       kind: 'select_prepped_spell'
@@ -388,6 +397,7 @@ export type PendingDecisionAnswer =
   | { kind: 'choose_one'; optionId: string }
   | { kind: 'choose_optional'; accepted: boolean }
   | { kind: 'select_cards'; choices: CardChoice[] }
+  | { kind: 'place_specific_deck_card'; cardId: string; placement: SpecificDeckPlacement }
   | { kind: 'select_prepped_spell'; choice: PreppedSpellChoice | null }
   | { kind: 'select_breach'; choice: BreachChoice }
   | { kind: 'select_conjure_breach'; choice: BreachChoice | null }
@@ -435,7 +445,7 @@ export type CardEffect =
   | { kind: 'conjure' }
   | { kind: 'spend_aether'; amount: number }
   | { kind: 'gain_charge'; amount: number; target: 'self' | 'allies_collectively' }
-  | { kind: 'review_turn_order_deck' }
+  | { kind: 'reveal_turn_order_deck' }
   | {
       kind: 'reveal_turn_order_card'
       playerEffects: CardEffect[]
@@ -483,7 +493,7 @@ export type CardEffect =
   /** Gain a matching card from the active Mage's Swap zone onto their discard pile. */
   | { kind: 'gain_card_from_swap_zone'; nameIncludes: string[] }
   /** Reveal and resolve the top cards of the active Mage's specific deck. */
-  | { kind: 'review_specific_deck'; mode: 'put_one_into_play' | 'return_each' }
+  | { kind: 'reveal_specific_deck'; mode: 'put_one_into_play' | 'return_each' }
   /** Move cards from one supply pile to the active Nemesis' specific pile. */
   | {
       kind: 'devour_market_cards'
@@ -555,7 +565,7 @@ export type CardEffect =
       selection?: 'choose' | 'lowest_focus_cost'
     }
   | { kind: 'focus_breach_all_players' }
-  | { kind: 'review_top_cards' }
+  | { kind: 'reveal_top_cards' }
   | {
       kind: 'deal_damage_from_last_selection'
       target: DamageTargetScope
@@ -837,6 +847,8 @@ export interface PlayerState {
   developZone?: string[]
   /** Face-down Mage-specific deck, such as Dezmodia's Stash. */
   specificDeck?: string[]
+  /** Mage-specific cards whose faces have been revealed to the player. */
+  knownSpecificDeckCards?: string[]
   /** Face-up Mage cards placed into play; later cards are placed on top. */
   playerCardsInPlay?: string[]
   /** Supply pile index for each corresponding card in playerCardsInPlay. */

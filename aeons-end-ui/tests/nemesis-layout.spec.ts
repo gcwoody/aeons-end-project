@@ -43,6 +43,7 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
       const area = document.querySelector('.nemesis-area')!
       const areaBox = box('.nemesis-area')
       const padding = getComputedStyle(area)
+      const matWrap = getComputedStyle(document.querySelector('.nemesis-mat-wrap')!)
       const mat = box('.nemesis-mat-image')
       const img = document.querySelector<HTMLImageElement>('.nemesis-mat-image')!
       const assets = [...document.querySelectorAll('.nemesis-assets-row > *')].map(el => el.getBoundingClientRect())
@@ -52,7 +53,7 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
       const round = box('.turn-round')
       return {
         loaded: img.naturalWidth > 0,
-        fullHeight: Math.abs(mat.height - (areaBox.height - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom))) < 3,
+        fullHeight: Math.abs(mat.height - (areaBox.height - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom) - parseFloat(matWrap.borderTopWidth) - parseFloat(matWrap.borderBottomWidth))) < 3,
         correctRatio: Math.abs(mat.width / mat.height - img.naturalWidth / img.naturalHeight) < .01,
         fiveTiles: assets.length === 5 && assets.every(b => Math.abs(b.width - assets[0].width) < 1 && b.y === assets[0].y),
         noOverflow: assets[4].right <= areaBox.right && box('.nemesis-play').right <= areaBox.right,
@@ -72,11 +73,13 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   await expect(page.locator('.nemesis-mat-modal-frame img')).toBeVisible()
   await page.getByRole('button', { name: 'Flip to Back' }).click()
   await expect(page.locator('.nemesis-mat-modal-frame img')).toHaveAttribute('alt', 'Rageborne mat back')
-  await page.locator('.mage-overlay').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.mage-overlay')).toHaveCount(0)
   await page.getByRole('button', { name: 'Open Nemesis Discard' }).click()
   await expect(page.locator('.pile-modal .pile-card')).toHaveCount(1)
   await expect.poll(async () => (await page.locator('.pile-modal').boundingBox())?.width ?? 999).toBeLessThan(260)
-  await page.locator('.pile-modal').getByRole('button', { name: 'Close', exact: true }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.locator('.pile-modal')).toHaveCount(0)
   await page.locator('.nemesis-card-scroll').hover({ position: { x: 5, y: 5 } })
   await page.mouse.wheel(0, 700)
   await expect.poll(() => page.locator('.nemesis-card-scroll').evaluate(el => el.scrollLeft)).toBeGreaterThan(50)
@@ -142,6 +145,47 @@ test('opening the Nemesis mat transfers focus before Mage shortcuts switch the b
   await page.keyboard.press('Digit2')
   await expect(page.locator('.mage-image')).toHaveAttribute('alt', 'brama mage board')
   await expect.poll(() => page.evaluate(() => document.activeElement?.classList.contains('draggable-modal'))).toBe(true)
+})
+
+test('Space confirms the red-highlighted Nemesis Main Phase card in order', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  debugState.phase = 'nemesis_main'
+  debugState.selectedPlayer = player.id
+  debugState.game.currentTurn = 'nemesis'
+  debugState.game.currentPhase = 'nemesis_main'
+  debugState.game.pendingEffect = null
+  debugState.game.nemesis.nemesisTurnNumber = 1
+  debugState.game.nemesis.playArea = [
+    { instanceId: 'needle:1', cardId: 'needlemaw', cardType: 'minion', placedAt: 1, lifeTokens: 11 },
+    { instanceId: 'needle:2', cardId: 'needlemaw', cardType: 'minion', placedAt: 2, lifeTokens: 11 },
+  ]
+  debugState.game.nemesisResolution = {
+    step: 'main', mainQueue: ['needle:1', 'needle:2'], mainIndex: 0,
+    activeCardInstanceId: 'needle:1', activeCardId: 'needlemaw', activeTrigger: 'persistent',
+    mainEffectConfirmed: false,
+  }
+  debugState.game.pendingDecision = {
+    id: 'needle-effect-1', prompt: 'Resolve Persistent: Needlemaw', kind: 'confirm_nemesis_effect',
+    cardId: 'needlemaw', instanceId: 'needle:1', trigger: 'persistent',
+  }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await expect(page.locator('.nemesis-play-card.effect-target')).toHaveCount(1)
+  await page.keyboard.press('Space')
+  await expect(page.locator('.nemesis-play-card.effect-target')).toHaveCount(1)
+  await page.keyboard.press('Space')
+  await expect(page.getByText('Nemesis Draw Phase', { exact: true })).toBeVisible()
 })
 
 test('To Discard does not show or retain the Power card preview', async ({ page }) => {
