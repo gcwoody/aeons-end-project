@@ -45,8 +45,8 @@ Desktop.ini
 *.jpg
 
 # Production image assets required by the Vite build.
-# Keep the local image-database default ignored, but publish the assets that
-# generate-image-imports.mjs imports into the friend preview bundle.
+# Keep the local image-database default ignored, but track assets referenced by
+# generated-image-imports.ts and the shared backs imported by card-images.ts.
 !image-database/cards/
 !image-database/cards/wave1/
 !image-database/cards/wave1/**/*.png
@@ -57,6 +57,8 @@ Desktop.ini
 !image-database/common breach/
 !image-database/common breach/**/*.png
 !image-database/common breach/**/*.jpg
+!image-database/common images/player-card back.jpg
+!image-database/common images/treasure 12back.jpg
 
 # Resumable Wiki responses are generated locally by the collection scripts.
 /image-database/.cache/
