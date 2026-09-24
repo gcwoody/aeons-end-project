@@ -32,6 +32,7 @@ export const INDIRA_UNIQUE_CARDS = Object.keys(INDIRA_CARDS)
 const abilityEffects: CardEffect[] = [{
   kind: 'choose_one',
   prompt: "Choose Pyromancer's Guile effect",
+  layout: 'mage-ability',
   options: [
     {
       id: 'cast_twice',

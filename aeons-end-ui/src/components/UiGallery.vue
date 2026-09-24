@@ -1,12 +1,14 @@
 ﻿<script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
 import { cardImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import ZoneScroller from './ZoneScroller.vue'
 import ModalBase from './ModalBase.vue'
+import MageAbilityChoice from './MageAbilityChoice.vue'
 import TokenBadge from './TokenBadge.vue'
+import { mageImageUrls } from '../mage-images'
 
 type GalleryModal = 'pile' | 'decision' | null
 
@@ -30,6 +32,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGalleryKeydown
 const handCards = ['vision_shard', 'crystal', 'spark']
 const miniCards = ['crystal', 'spark', 'corrupted_coil', 'runic_flute', 'fungal_network']
 const pileCards = ['calcified_electinium', 'corrupted_coil', 'fungal_network', 'runic_flute', 'time_cortex']
+const mageAbilityMatUrl = mageImageUrls('indira')?.front
+const mageAbilityOptions = [
+  {
+    id: 'cast_twice',
+    label: "Cast a spell from an ally's hand twice without discarding it",
+  },
+  {
+    id: 'spell_aether',
+    label: 'Gain 5 Aether that may only be spent on Spells',
+  },
+]
+const selectedMageAbilityChoice = ref('')
+const selectedMageAbilityChoiceLabel = computed(() =>
+  mageAbilityOptions.find(option => option.id === selectedMageAbilityChoice.value)?.label ?? '',
+)
 
 function cardName(cardId: string): string {
   return getCard(cardId).name
@@ -217,6 +234,22 @@ function cardName(cardId: string): string {
         <button class="btn primary" data-gallery-open="pile" @click="modal = 'pile'">Open PileViewer</button>
         <button class="btn" data-gallery-open="decision" @click="modal = 'decision'">Open CardSelectionModal</button>
       </div>
+      <article class="ui-gallery-item" data-component="Decision.MageAbilityChoice">
+        <h3>Decision.MageAbilityChoice</h3>
+        <p class="ui-gallery-caption">Two ability effects, presented as choices beneath the Mage mat</p>
+        <div class="ui-gallery-ability-choice-surface">
+          <MageAbilityChoice
+            class="gallery-mage-ability-choice"
+            :mage-mat-url="mageAbilityMatUrl"
+            mage-name="Indira"
+            :options="mageAbilityOptions"
+            @select="selectedMageAbilityChoice = $event"
+          />
+        </div>
+        <p class="ui-gallery-ability-choice-selection" aria-live="polite">
+          {{ selectedMageAbilityChoiceLabel ? `Selected: ${selectedMageAbilityChoiceLabel}` : 'Select a choice to preview its interaction.' }}
+        </p>
+      </article>
     </section>
 
     <section class="ui-gallery-section" data-gallery-section="naming">
@@ -324,6 +357,20 @@ function cardName(cardId: string): string {
 .ui-gallery-grid { display: grid; gap: 14px; }
 .ui-gallery-grid-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .ui-gallery-grid-zones { grid-template-columns: minmax(0, 2fr) repeat(3, minmax(150px, 1fr)); }
+.ui-gallery-ability-choice-surface {
+  display: flex;
+  justify-content: center;
+  padding: 12px;
+  border: var(--pixel-border-width) dashed var(--border);
+  border-radius: 8px;
+  background: #151a29;
+}
+.gallery-mage-ability-choice {
+  --mage-ability-mat-width: 320px;
+  --mage-ability-choice-font-size: 13px;
+  --mage-ability-choice-button-min-height: 58px;
+}
+.ui-gallery-ability-choice-selection { min-height: 18px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .ui-gallery-item {
   min-width: 0;
   padding: 14px;

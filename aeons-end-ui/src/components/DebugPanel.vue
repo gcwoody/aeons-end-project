@@ -2,16 +2,17 @@
 import { computed, ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { getPlayer, toRoman } from '@engine/engine'
 import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
-import type { CardDef, GameState } from '@engine/types'
+import type { CardDef, GameState, PlayerState } from '@engine/types'
 import { useGame } from '../game/useGame'
 import { cardImageUrl } from '../card-images'
 import DebugCardPicker from './DebugCardPicker.vue'
+import DebugNumberInput from './DebugNumberInput.vue'
 import CardHoverPreview from './CardHoverPreview.vue'
 
 const { state, toggleDebug, clearSaves } = useGame()
 
 const panelEl = ref<HTMLElement | null>(null)
-const panelPosition = reactive({ x: 24, y: 24, width: 680, height: 760 })
+const panelPosition = reactive({ x: 24, y: 16, width: 680, height: 760 })
 const interaction = ref<{
   type: 'drag' | 'resize'
   pointerX: number
@@ -36,7 +37,7 @@ function clamp(value: number, min: number, max: number) {
 function clampPanelPosition() {
   if (typeof window === 'undefined') return
   panelPosition.x = clamp(panelPosition.x, 8, window.innerWidth - panelPosition.width - 8)
-  panelPosition.y = clamp(panelPosition.y, 8, window.innerHeight - panelPosition.height - 8)
+  panelPosition.y = clamp(panelPosition.y, 16, window.innerHeight - panelPosition.height - 16)
 }
 
 function isInteractiveTarget(target: EventTarget | null) {
@@ -92,7 +93,7 @@ function updateInteraction(event: PointerEvent) {
     panelPosition.y = clamp(active.y + deltaY, 8, window.innerHeight - active.height - 8)
   } else {
     panelPosition.width = clamp(active.width + deltaX, 300, window.innerWidth - panelPosition.x - 8)
-    panelPosition.height = clamp(active.height + deltaY, 260, window.innerHeight - panelPosition.y - 8)
+    panelPosition.height = clamp(active.height + deltaY, 260, window.innerHeight - panelPosition.y - 16)
   }
   event.preventDefault()
 }
@@ -107,21 +108,27 @@ function stopInteraction() {
 function handleViewportResize() {
   if (typeof window === 'undefined') return
   panelPosition.width = clamp(panelPosition.width, 300, window.innerWidth - 16)
-  panelPosition.height = clamp(panelPosition.height, 260, window.innerHeight - 16)
+  panelPosition.height = clamp(panelPosition.height, 260, window.innerHeight - 32)
   clampPanelPosition()
 }
 
 const players = computed(() => state.game?.players ?? [])
 const nemesis = computed(() => state.game!.nemesis)
 const gravehold = computed(() => state.game!.gravehold)
+const currentTurnPlayerId = computed(() => {
+  const activePlayer = players.value.find(player => player.id === state.game?.currentTurn)
+  if (activePlayer) return activePlayer.id
+  return players.value.find(player => player.id === state.selectedPlayer)?.id
+    ?? players.value[0]?.id
+    ?? ''
+})
 
 const allCards = computed<CardDef[]>(() => {
   const ids = [...Object.keys(INITIAL_CARDS), ...Object.keys(ALL_MARKET_CARDS)]
-  // Treasure cards live only in Mage-specific decks / Player cards in play;
-  // they are not legal cards for the normal hand/deck/discard debug tool.
+  // Keep this explicit whitelist closed so future card types never appear here.
   return [...new Set(ids)]
     .map(cardId => getCard(cardId))
-    .filter(card => card.type !== 'treasure')
+    .filter(isDebugAddableCard)
 })
 const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId => {
   const card = getCard(cardId)
@@ -129,16 +136,32 @@ const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId 
 }))
 const allNemesisCardDefs = computed<CardDef[]>(() => allNemesisCards.value.map(cardId => getCard(cardId)))
 const addPlayer = ref('')
+const selectedAddPlayer = computed({
+  get: () => players.value.some(player => player.id === addPlayer.value)
+    ? addPlayer.value
+    : currentTurnPlayerId.value,
+  set: (playerId: string) => { addPlayer.value = playerId },
+})
+watch(
+  () => [state.game, currentTurnPlayerId.value] as const,
+  ([, playerId]) => { addPlayer.value = playerId },
+  { immediate: true },
+)
 const addZone = ref<'hand' | 'deck' | 'discard'>('hand')
 const addCard = ref('crystal')
 const addNemesisCard = ref(allNemesisCards.value[0] ?? '')
 
 function addCardToPlayer() {
-  if (!addPlayer.value) return
+  const playerId = selectedAddPlayer.value
+  if (!playerId) return
   const card = getCard(addCard.value)
-  if (card.type === 'treasure') return
-  const p = getPlayer(state.game!, addPlayer.value)
+  if (!isDebugAddableCard(card)) return
+  const p = getPlayer(state.game!, playerId)
   p[addZone.value].push(addCard.value)
+}
+
+function isDebugAddableCard(card: CardDef): boolean {
+  return card.type === 'gem' || card.type === 'relic' || card.type === 'spell'
 }
 
 function addCardToNemesis() {
@@ -164,8 +187,31 @@ function addCardToNemesis() {
   })
 }
 
-function giveAether(playerId: string) {
-  getPlayer(state.game!, playerId).bonusAether += 3
+function availableRegularAether(player: PlayerState): number {
+  return Math.max(0, (player.bonusAether ?? 0) - (player.regularAetherSpent ?? 0))
+}
+
+function updateAether(playerId: string, event: Event) {
+  const input = event.target as HTMLInputElement
+  const player = getPlayer(state.game!, playerId)
+  const amount = input.valueAsNumber
+  if (!Number.isFinite(amount)) {
+    input.value = String(availableRegularAether(player))
+    return
+  }
+  const targetAmount = Math.max(0, Math.floor(amount))
+  player.bonusAether = targetAmount + (player.regularAetherSpent ?? 0)
+  input.value = String(targetAmount)
+}
+
+function updateKnowledge(playerId: string, event: Event) {
+  const input = event.target as HTMLInputElement
+  const player = getPlayer(state.game!, playerId)
+  const amount = input.valueAsNumber
+  player.knowledge = Number.isFinite(amount)
+    ? Math.max(0, Math.floor(amount))
+    : player.knowledge ?? 0
+  input.value = String(player.knowledge)
 }
 
 const jsonText = ref('')
@@ -196,7 +242,8 @@ function copyJson() {
 
 onMounted(() => {
   panelPosition.x = Math.max(16, window.innerWidth - panelPosition.width - 24)
-  panelPosition.y = 24
+  panelPosition.y = 16
+  panelPosition.height = Math.max(260, window.innerHeight - 32)
   handleViewportResize()
   window.addEventListener('resize', handleViewportResize)
 })
@@ -228,17 +275,47 @@ onBeforeUnmount(() => {
 
     <div class="debug-content">
       <div class="debug-section">
-        <span class="debug-label">Nemesis HP</span>
-        <input type="number" v-model.number="nemesis.hp" min="0" :max="nemesis.maxHp" />
-        <span class="debug-label">Gravehold HP</span>
-        <input type="number" v-model.number="gravehold.hp" min="0" :max="gravehold.maxHp" />
+        <div class="debug-row debug-vitals-row">
+          <div class="debug-vital-field">
+            <span>Nemesis HP</span>
+            <DebugNumberInput v-model="nemesis.hp" label="Nemesis HP" :min="0" :max="nemesis.maxHp" />
+          </div>
+          <div class="debug-vital-field">
+            <span>Gravehold HP</span>
+            <DebugNumberInput v-model="gravehold.hp" label="Gravehold HP" :min="0" :max="gravehold.maxHp" />
+          </div>
+        </div>
       </div>
 
       <div v-for="p in players" :key="p.id" class="debug-section">
         <span class="debug-player">{{ p.mageType }} ({{ p.id }})</span>
         <div class="debug-row">
-          <label>HP <input type="number" v-model.number="p.hp" min="0" /></label>
-          <label>Charge <input type="number" v-model.number="p.charge" min="0" /></label>
+          <div class="debug-stat-field">
+            <span>HP</span>
+            <DebugNumberInput v-model="p.hp" :label="`HP for ${p.mageType}`" :min="0" />
+          </div>
+          <div class="debug-stat-field">
+            <span>Aether</span>
+            <DebugNumberInput
+              :model-value="availableRegularAether(p)"
+              :label="`Aether for ${p.mageType}`"
+              :min="0"
+              @change="updateAether(p.id, $event)"
+            />
+          </div>
+          <div class="debug-stat-field">
+            <span>Charge</span>
+            <DebugNumberInput v-model="p.charge" :label="`Charge for ${p.mageType}`" :min="0" />
+          </div>
+          <div class="debug-stat-field">
+            <span>Knowledge</span>
+            <DebugNumberInput
+              :model-value="p.knowledge ?? 0"
+              :label="`Knowledge for ${p.mageType}`"
+              :min="0"
+              @change="updateKnowledge(p.id, $event)"
+            />
+          </div>
         </div>
         <div class="debug-breaches">
           <button
@@ -247,7 +324,6 @@ onBeforeUnmount(() => {
             @click="b.opened = !b.opened; b.prepSpells = []"
           >{{ toRoman(b.index) }}</button>
         </div>
-        <button class="btn small" @click="giveAether(p.id)">+3 bonus aether</button>
       </div>
 
       <div class="debug-section">
@@ -265,8 +341,7 @@ onBeforeUnmount(() => {
         <div class="debug-row debug-add-controls">
           <label>
             Player
-            <select v-model="addPlayer" aria-label="Debug card player">
-              <option value="" disabled>Select player</option>
+            <select v-model="selectedAddPlayer" aria-label="Debug card player">
               <option v-for="p in players" :key="p.id" :value="p.id">{{ p.mageType }} ({{ p.id }})</option>
             </select>
           </label>
@@ -278,7 +353,7 @@ onBeforeUnmount(() => {
               <option value="discard">Discard</option>
             </select>
           </label>
-          <button class="btn small" :disabled="!addPlayer" @click="addCardToPlayer()">Add Card</button>
+          <button class="btn small" :disabled="!selectedAddPlayer" @click="addCardToPlayer()">Add Card</button>
         </div>
       </div>
 

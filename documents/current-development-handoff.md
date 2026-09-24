@@ -1,10 +1,10 @@
 # Aeon's End Digital 当前开发交接文档
 
-更新时间：2026-09-23
+更新时间：2026-09-24
 
-这份文档用于把当前项目状态交给下一位开发模型。它记录的是当前代码基线、最近完成的
-Played Zone 修复、验证方式和后续开发时不能忽略的约束。它不是规则设计文档；规则和 UI
-规范仍以项目中的正式文档为准。
+这份文档用于把当前项目状态交给下一位开发模型。它记录当前代码基线、近期的重要实现、
+验证方式和后续开发时不能忽略的约束。它不是规则设计文档；规则和 UI 规范仍以项目中的
+正式文档为准。
 
 ## 1. 项目位置与阅读顺序
 
@@ -36,7 +36,10 @@ http://127.0.0.1:5173/?ui-gallery=1
 - UI 通过 `@engine` alias 直接消费引擎源码，不复制规则到 Vue 组件。
 - 当前产品范围是两名 Mage 对抗一名 Nemesis 的本地单机 Demo。
 - Wave 1 的基础内容已经接入。
-- Wave 9 已接入 Nook、Indira、Dezmodia，以及 Swap、Conjure、specific deck、Treasure 等机制。
+- Wave 9 已接入 Nook、Indira、Dezmodia、Remnant、Stake、Wolf，以及 Swap、Conjure、specific deck、Treasure、Rift/Prototype Breach、Breach-only Aether、Knowledge、Breach Upgrade 和 Doom 等机制。
+- Remnant 的 Violet Shard 通过独立的 `breach` 条件 Aether 实现，只能用于 focus/open；III、IV Rift Breach 使用各自的闭合/开启图片，开启后施法让盟友抽一张牌且不增加伤害；Rebuild Matter 只提高 III、IV breach 的本回合预备上限。
+- Stake 仅保留 IV 号 Prototype Breach，前三个槽位不显示但保留布局空间；Knowledge 是可持久保存的玩家资源。Stake 的正面 Breach Upgrade 专属牌堆可点击查看，安装牌会移入 Prototype Breach 并提供容量、伤害或施法触发效果；Prototype 施法给 Stake Knowledge，且不能被摧毁。
+- Wolf 的 I 号 Breach 隐藏，Aegis of Hope 消耗 6 charge；Doom 以玩家状态保存并在控制栏显示 5 枚 token。达到 5 Doom 时对所有敌方单位造成 10 点伤害，再由 Wolf 承受 10 点伤害并失去所有 Doom。Aegis of Hope 先令一名盟友抽 1 张牌，再按失去的 Doom 数重复抽牌。
 - 存档保存在浏览器 `localStorage`，支持 Resume 和最多 10 步 Ctrl+Z。
 - `Ctrl+D` 打开 Debug Tools，`Space` 可推进 Nemesis 主阶段的红框结算。
 - 当前工作树包含大量此前阶段的未提交修改。不要使用 `git reset --hard`、`git checkout --` 或大范围清理，除非用户明确要求。
@@ -144,3 +147,35 @@ npm run build
 4. 为新状态或新机制增加最小可复用组件/效果，并补充对应 Playwright 或引擎测试。
 5. 运行针对性测试，再运行 `npm run build`；较大的 UI 变化应更新 Gallery 或 `ui/screenshots/`。
 6. 最终交付时明确列出修改文件、测试命令和任何未解决的已知问题。
+
+## 7. Mage Ability 决策 UI 与 Debug Tools 最新进度
+
+### Mage Ability 的二选一决策
+
+- `aeons-end-ui/src/components/MageAbilityChoice.vue` 是可复用的 Mage Ability 决策组件，已在 `CardDecisionModal.vue` 和 UI Gallery 中使用。
+- 组件展示 Mage mat 和纵向排列的选项按钮；两个选项按钮使用相同宽度。按钮是交互控件，不要把对应 CSS 变量命名为 textbox/text field。
+- 目前相关 CSS 变量为 `--mage-ability-mat-width`、`--mage-ability-choice-font-size`、`--mage-ability-choice-button-min-height`。
+- Stake 的 Ability 选项应按规则只允许在 Stake 自己的 Main Phase 激活。若继续扩展 Wave 9 Mage Ability，检查能力的激活时机是否限制在“your main phase”，避免误放宽成任意玩家的 Main Phase。
+- Stake Upgrade 选择界面应以大尺寸卡牌展示；费用不足的卡牌禁用并灰显。已经放置在 Breach 上的 Upgrade 卡不应有悬停上浮效果。
+- 曾修复过施法后 Destroy 决策误把来源 Relic 销毁的问题：Destroy 必须应用于玩家选择的那张 Spell。改动引擎决策或来源卡追踪时，确认目标卡和触发效果来源不会混淆。
+- 隐藏或被摧毁的 Breach 槽位应保留原来的槽位位置，不要让其他 Breach 重新排列。
+
+### Debug Tools
+
+- Debug 面板支持直接设定 Nemesis HP、Gravehold HP、玩家 HP、Aether、Charge 和 Knowledge。
+- 玩家 Aether 输入表示普通、尚未花费的 Aether；条件 Aether 和 Aether tokens 单独处理，不要改成单纯把所有 Aether 数值相加。
+- Add Card 只允许 Gem、Relic、Spell。未来增加其他卡牌类型时，不应自动放入该选择器。
+- 玩家选择默认跟随当前回合角色；Add Card 按钮与选择框保持同高。
+- 面板高度留出上下边距，Nemesis HP 和 Gravehold HP 同排显示；文本输入框和下拉框不显示浏览器白色焦点环。
+- 数字输入框宽度为 74px；`DebugNumberInput.vue` 提供统一的步进箭头，颜色取自 UI 主题，鼠标悬停或键盘聚焦时显示，在触屏设备保持可见。原生 Chromium 箭头已隐藏；点击箭头仍通过输入框事件更新现有数值逻辑。
+- `aeons-end-ui/src/components/DebugPanel.vue` 包含 Knowledge 的直接编辑入口。维护它时保留现有 Aether/Knowledge 更新逻辑和 Add Card 的类型白名单。
+
+本次数字输入框优化以 `tests/debug-number-input.spec.ts` 验证悬停、聚焦和步进更新。
+
+## 8. 当前分支与工作树交接
+
+- 当前分支是 `main`。
+- 当前工作树有大量未提交修改，来自多个已进行的 Wave 9 Mage、引擎、UI、Debug Tools 和文档任务；没有已暂存的修改。
+- 还有未跟踪的 Remnant、Stake、Wolf 引擎数据模块、Mage Ability 决策组件和 Wolf Doom token 图片；Remnant 目录下的 `Megaflux Slice.jpg` 当前显示为删除。
+- 不要把整个工作树直接提交或清理。继续工作前先对照 `git status --short` 和 `git diff` 确认目标范围；用户没有要求提交本次修改。
+- 最新工作树快照中 `git diff --stat` 显示 24 个已跟踪文件有差异，另有未跟踪文件；这是多个阶段累积的总差异，不等同于最近 Debug Panel 这项改动的范围。

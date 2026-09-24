@@ -726,7 +726,7 @@ Doom Howl
 - Name: Aegis of Hope
 - Effect: Lose all of your doom.
 Any ally draws a card. Repeat this for each doom lost this way.
-- Charge Spaces: 4
+- Charge Spaces: 6
 - Rules: During setup, set aside the 5 doom tokens.
 
 When you have 5 or more doom, each minion and the nemesis each suffer 10 damage. Then, you suffer 10 damage and lose all of your doom.

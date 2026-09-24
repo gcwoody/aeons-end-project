@@ -1,14 +1,15 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellDamagePreviewRange, toRoman } from '@engine/engine'
+import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getPrepSpellLimit, getSpellDamagePreviewRange, toRoman } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-images'
+import { cardImageUrl, mageTokenImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-images'
 import type { BreachState, CardChoice } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import ZoneScroller from './ZoneScroller.vue'
 import PileCountBadge from './PileCountBadge.vue'
+import FaceUpPileCard from './FaceUpPileCard.vue'
 import TokenBadge from './TokenBadge.vue'
 import { breachImageUrl, breachRotation } from '../breach-images'
 import MageBoard from './MageBoard.vue'
@@ -27,6 +28,45 @@ const {
 
 const players = computed(() => state.game?.players ?? [])
 const player = computed(() => displayPlayer.value!)
+const handIncrease = ref<Record<string, number>>({})
+const handIncreaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
+
+function clearHandIncrease(playerId: string) {
+  const timer = handIncreaseTimers.get(playerId)
+  if (timer) clearTimeout(timer)
+  handIncreaseTimers.delete(playerId)
+  delete handIncrease.value[playerId]
+}
+
+function clearAllHandIncreases() {
+  for (const playerId of handIncreaseTimers.keys()) clearHandIncrease(playerId)
+  handIncrease.value = {}
+}
+
+watch(
+  () => ({
+    game: state.game,
+    selectedPlayer: state.selectedPlayer,
+    hands: state.game?.players.map(candidate => ({ id: candidate.id, count: candidate.hand.length })) ?? [],
+  }),
+  (current, previous) => {
+    if (current.game !== previous.game) {
+      clearAllHandIncreases()
+      return
+    }
+    if (current.selectedPlayer !== previous.selectedPlayer) clearHandIncrease(current.selectedPlayer)
+    const previousCounts = new Map(previous.hands.map(({ id, count }) => [id, count]))
+    for (const { id, count } of current.hands) {
+      const delta = count - (previousCounts.get(id) ?? count)
+      if (delta < 0) clearHandIncrease(id)
+      if (delta <= 0 || id === current.selectedPlayer) continue
+      handIncrease.value[id] = (handIncrease.value[id] ?? 0) + delta
+      const timer = handIncreaseTimers.get(id)
+      if (timer) clearTimeout(timer)
+      handIncreaseTimers.set(id, setTimeout(() => clearHandIncrease(id), 3000))
+    }
+  },
+)
 const aether = computed(() => aetherInfo(player.value))
 const ready = computed(() => player.value.charge >= player.value.chargeThreshold)
 const hasPreppedSpell = computed(() => !!state.game && getPreppedSpellChoices(state.game).length > 0)
@@ -44,7 +84,10 @@ const hasSwapZone = computed(() => mageDefinition.value?.hasSwapZone === true ||
 const hasDevelopZone = computed(() => mageDefinition.value?.hasDevelopZone === true || developZoneCards.value.length > 0)
 const hasSpecificDeck = computed(() => mageDefinition.value?.hasSpecificDeck === true)
 const specificDeckName = computed(() => mageDefinition.value?.specificDeckName ?? 'Specific Deck')
+const specificDeckFaceUp = computed(() => mageDefinition.value?.specificDeckDisplay === 'face_up')
 const specificDeckCards = computed(() => player.value.specificDeck ?? [])
+const doomTokenImage = computed(() => mageTokenImageUrl('doom_token_transparent'))
+const doomTokenLabel = computed(() => `Doom tokens: ${Math.min(player.value.doomTokens ?? 0, 5)} of 5`)
 const playerCardPlacementsInPlay = computed(() =>
   (player.value.playerCardsInPlay ?? [])
     .map((cardId, cardIndex) => ({ cardId, cardIndex }))
@@ -92,7 +135,7 @@ const DIR: Record<string, string> = { east: '→', south: '↓', west: '←', no
 
 const canPrep = (b: BreachState, cardId = draggedSpellId.value ?? '') =>
   b.present !== false && canActMain.value
-    && b.prepSpells.length < player.value.turnEffects.prepSpellLimit
+    && b.prepSpells.length < getPrepSpellLimit(player.value, b.index)
     && (b.opened || b.focusedThisTurn || !!cardId && getCard(cardId).prepToClosedBreach)
 
 const canMovePreppedSpellTo = (
@@ -611,6 +654,7 @@ watch(
   () => { state.endTurnWarningVisible = false },
 )
 onBeforeUnmount(() => {
+  clearAllHandIncreases()
   window.removeEventListener('click', blockSpellDragClick, true)
   if (typeof document !== 'undefined') document.body.classList.remove('spell-dragging')
   window.removeEventListener('pointerdown', dismissEndTurnWarning)
@@ -709,6 +753,7 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           'move-drag-target': draggingSpell && !!draggedPreppedSpell && canMovePreppedTo(b),
           'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
         }"
+        :aria-hidden="b.present === false ? 'true' : undefined"
         @click="clickBreach(b)"
         :data-breach-index="b.index"
       >
@@ -733,6 +778,24 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           >
             <span class="breach-hover-target" aria-hidden="true"></span>
           </CardHoverPreview>
+          <div
+            v-if="b.installedUpgrades?.length"
+            class="breach-upgrade-strip"
+            :aria-label="`Upgrades on Breach ${toRoman(b.index)}`"
+          >
+            <CardHoverPreview
+              v-for="(upgradeId, upgradeIndex) in b.installedUpgrades"
+              :key="`${upgradeId}:${upgradeIndex}`"
+              :card-id="upgradeId"
+            >
+              <CardSurface
+                :card-id="upgradeId"
+                size="hand"
+                class="breach-upgrade-card"
+                :image-alt="getCard(upgradeId).name"
+              />
+            </CardHoverPreview>
+          </div>
           <div
             v-for="(spellId, spellIndex) in b.prepSpells"
             :key="`${spellId}:${spellIndex}`"
@@ -893,8 +956,16 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
         :aria-label="`Open ${specificDeckName}`"
         @click="openSpecificDeckPile"
       >
+        <FaceUpPileCard
+          v-if="specificDeckFaceUp && specificDeckCards.length > 0"
+          :card-id="specificDeckCards[0]!"
+          :ariaLabel="`Open ${specificDeckName}`"
+          :primaryEnabled="true"
+          display-class="player-specific-deck-face-up"
+          @inspect="openSpecificDeckPile"
+        />
         <CardSurface
-          v-if="specificDeckCards.length > 0 && specificDeckBackImage"
+          v-else-if="!specificDeckFaceUp && specificDeckCards.length > 0 && specificDeckBackImage"
           base-class="player-pile-card"
           size="pile"
           class="specific-deck-back"
@@ -997,23 +1068,24 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
             v-for="candidate in players"
             :key="candidate.id"
             class="char-btn"
-            :class="{ sel: state.selectedPlayer === candidate.id, cur: state.game!.currentTurn === candidate.id }"
+            :class="{ sel: state.selectedPlayer === candidate.id, cur: state.game!.currentTurn === candidate.id, 'has-hand-gain': !!handIncrease[candidate.id] }"
             @click="selectPlayer(candidate.id)"
           >
             <span class="cn">{{ candidate.mageType }}</span>
             <span class="chp">HP {{ candidate.hp }}</span>
             <span class="cch">Charge {{ candidate.charge }}/{{ candidate.chargeThreshold }}</span>
+            <span class="chand">Hand <strong>{{ candidate.hand.length }}</strong></span>
+            <span v-if="handIncrease[candidate.id]" class="chand-gain" role="status" :aria-label="`${candidate.mageType} hand gained ${handIncrease[candidate.id]} cards`">+{{ handIncrease[candidate.id] }}</span>
             <span v-if="candidate.exhausted" class="cex">EXHAUSTED</span>
           </button>
         </div>
         <div class="controls-status">
-          <span class="turn">{{ player.mageType }}</span>
           <span class="phase">{{ phaseLabel }}</span>
         </div>
       </div>
       <div class="controls-main">
         <span class="aether">
-          Aether {{ aether.regularAvail }}<template v-if="aether.gemAether > 0"> · {{ aether.gemAether }} gem aether</template><template v-if="aether.spellAether > 0"> · {{ aether.spellAether }} spell aether</template>
+          Aether {{ aether.regularAvail }}<template v-if="aether.gemAether > 0"> · {{ aether.gemAether }} gem aether</template><template v-if="aether.spellAether > 0"> · {{ aether.spellAether }} spell aether</template><template v-if="aether.breachAether > 0"> · {{ aether.breachAether }} breach aether</template>
         </span>
         <TokenBadge
           v-if="aether.aetherTokens > 0"
@@ -1041,6 +1113,24 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           :disabled="!ready || (abilityNeedsPreppedSpell && !hasPreppedSpell)"
           @click="activateAbility()"
         >Activate Ability</button>
+        <div
+          v-if="mageDefinition?.tracksDoom && doomTokenImage"
+          class="doom-token-track"
+          role="img"
+          :aria-label="doomTokenLabel"
+          :title="doomTokenLabel"
+        >
+          <img
+            v-for="tokenIndex in 5"
+            :key="tokenIndex"
+            :src="doomTokenImage"
+            alt=""
+            :class="{ 'is-active': (player.doomTokens ?? 0) >= tokenIndex }"
+          >
+        </div>
+        <span v-if="mageDefinition?.tracksKnowledge" class="knowledge-status">
+          Knowledge {{ player.knowledge ?? 0 }}
+        </span>
       </div>
       <button class="btn help-button" aria-label="Open game help" title="Game Help" @click="toggleHelp">?</button>
     </div>

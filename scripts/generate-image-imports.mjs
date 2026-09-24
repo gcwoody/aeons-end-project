@@ -62,7 +62,7 @@ async function walkSourceFiles(directory) {
 
 function extractRegisteredCardIds(source) {
   const ids = new Set()
-  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|attack|minion|power|strike)['"]/g
+  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|breach_upgrade|attack|minion|power|strike)['"]/g
   const factoryCardPattern = /\bmake(?:Nemesis|Strike)Card\(\s*['"]([a-z0-9_]+)['"]/g
   for (const pattern of [directCardPattern, factoryCardPattern]) {
     for (const match of source.matchAll(pattern)) ids.add(match[1])
@@ -147,6 +147,15 @@ function getMageImageIndex(files) {
   return index
 }
 
+function getMageTokenImageIndex(files) {
+  const eligibleFiles = files.filter((file) => {
+    const relativePath = relative(cardsRoot, file).replaceAll('\\', '/')
+    const supportsTransparency = ['.png', '.webp', '.avif'].includes(extname(file).toLowerCase())
+    return relativePath.includes('/mages/') && /\btoken\b/i.test(basename(file)) && supportsTransparency
+  })
+  return indexBySlug(eligibleFiles, (file) => slug(basename(file)))
+}
+
 function getNemesisMatImageIndex(files) {
   const index = new Map()
   for (const file of files) {
@@ -198,7 +207,7 @@ function quote(value) {
   return JSON.stringify(value)
 }
 
-function createGeneratedSource({ cardIds, cardImages, mageTypes, mageImages, nemesisTypes, nemesisImages, breachImages }) {
+function createGeneratedSource({ cardIds, cardImages, mageTypes, mageImages, mageTokenImages, nemesisTypes, nemesisImages, breachImages }) {
   const imports = []
   const importNames = new Map()
   const addImport = (file) => {
@@ -213,6 +222,7 @@ function createGeneratedSource({ cardIds, cardImages, mageTypes, mageImages, nem
 
   const cardEntries = cardIds.map((id) => [id, addImport(cardImages.get(id))])
   const mageEntries = mageTypes.map((type) => [type, mageImages.get(type)])
+  const mageTokenEntries = [...mageTokenImages.entries()].sort(([left], [right]) => left.localeCompare(right))
   const nemesisEntries = nemesisTypes.map((type) => [type, nemesisImages.get(type)])
   const breachEntries = [...breachImages.entries()].sort(([left], [right]) => left.localeCompare(right))
 
@@ -220,6 +230,7 @@ function createGeneratedSource({ cardIds, cardImages, mageTypes, mageImages, nem
     addImport(pair.front)
     addImport(pair.back)
   }
+  for (const [, file] of mageTokenEntries) addImport(file)
   for (const [, pair] of nemesisEntries) {
     addImport(pair.front)
     addImport(pair.back)
@@ -242,6 +253,10 @@ function createGeneratedSource({ cardIds, cardImages, mageTypes, mageImages, nem
     '',
     'export const MAGE_IMAGE_IMPORTS: Record<string, GeneratedImagePair> = {',
     ...mageEntries.map(([type, pair]) => `  ${type}: { front: ${importNames.get(pair.front)}, back: ${importNames.get(pair.back)} },`),
+    '}',
+    '',
+    'export const MAGE_TOKEN_IMAGE_IMPORTS: Record<string, string> = {',
+    ...mageTokenEntries.map(([id, file]) => `  ${id}: ${importNames.get(file)},`),
     '}',
     '',
     'export const NEMESIS_MAT_IMAGE_IMPORTS: Record<string, GeneratedImagePair> = {',
@@ -269,6 +284,7 @@ const mageTypes = extractMageTypes(engineSource)
 const nemesisTypes = extractNemesisTypes(nemesisSource)
 const cardImages = getCardImageIndex(cardFiles)
 const mageImages = getMageImageIndex(cardFiles)
+const mageTokenImages = getMageTokenImageIndex(cardFiles)
 const nemesisImages = getNemesisMatImageIndex(cardFiles)
 const breachImages = getBreachImageIndex(breachFiles)
 
@@ -282,8 +298,8 @@ for (const index of [2, 3, 4]) {
 }
 
 await writeFile(generatedFile, createGeneratedSource({
-  cardIds, cardImages, mageTypes, mageImages, nemesisTypes, nemesisImages, breachImages,
+  cardIds, cardImages, mageTypes, mageImages, mageTokenImages, nemesisTypes, nemesisImages, breachImages,
 }), 'utf8')
 
 console.log(`Generated ${generatedFile}`)
-console.log(`Mapped ${cardIds.length} cards, ${mageTypes.length} Mages, ${nemesisTypes.length} Nemesis mat(s), and ${breachImages.size} breaches.`)
+console.log(`Mapped ${cardIds.length} cards, ${mageTypes.length} Mages, ${mageTokenImages.size} Mage token(s), ${nemesisTypes.length} Nemesis mat(s), and ${breachImages.size} breaches.`)

@@ -27,6 +27,12 @@ export interface MageDef {
   specificDeckShuffled?: boolean
   /** Optional card-back family used by the Mage-specific deck UI. */
   specificDeckBack?: 'treasure_1' | 'treasure_2' | 'treasure_3' | 'player'
+  /** Display the top card of the Mage-specific deck face up. */
+  specificDeckDisplay?: 'face_down' | 'face_up'
+  /** Display a Knowledge counter in the player control bar. */
+  tracksKnowledge?: boolean
+  /** Display Doom tokens in the player control bar. */
+  tracksDoom?: boolean
 }
 
 type BreachFactory = (

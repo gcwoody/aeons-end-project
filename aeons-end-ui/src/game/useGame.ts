@@ -74,7 +74,7 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
-  viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'nemesis_specific' | 'player_cards_in_play' | null,
+  viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'nemesis_specific' | 'nemesis_specific_discard' | 'player_cards_in_play' | null,
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
   debugOpen: false,
@@ -425,6 +425,7 @@ function aetherInfo(p: PlayerState) {
     regularAvail,
     gemAether: conds['gem'] ?? 0,
     spellAether: conds['spell'] ?? 0,
+    breachAether: conds['breach'] ?? 0,
     conds,
   }
 }
@@ -491,7 +492,7 @@ export function undo() {
 
 function maybeAutoEnd() {
   if (state.phase !== 'main' || !state.game) return
-  if (state.game.pendingDecision) return
+  if (state.game.pendingDecision || state.game.pendingEffect) return
   if (!playerCanAct.value) {
     pushLog('No actions available — turn ends automatically', 'info')
     doEndTurn()
@@ -614,6 +615,7 @@ export function resumeGame(saveId?: string): boolean {
     for (const savedSnapshot of save.undoStack) undoStack.push(cloneSnapshot(savedSnapshot))
     if (undoStack.length > MAX_UNDO) undoStack.splice(0, undoStack.length - MAX_UNDO)
     pushLog('Game resumed', 'ok')
+    maybeAutoEnd()
     return true
   } catch {
     return false
@@ -804,6 +806,11 @@ export function openPlayerCardsInPlayPile() {
 export function openNemesisSpecificPile() {
   closeDismissibleOverlays()
   state.viewPile = 'nemesis_specific'
+}
+
+export function openNemesisSpecificDiscardPile() {
+  closeDismissibleOverlays()
+  state.viewPile = 'nemesis_specific_discard'
 }
 
 export function closePile() {
@@ -1161,7 +1168,7 @@ export function useGame() {
     activatePlayerCardInPlayAction,
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, requestEndTurn, discardNemesisCard, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, openNemesisSpecificPile, closePile,
+    selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, openNemesisSpecificPile, openNemesisSpecificDiscardPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,
     togglePendingBoardCard, confirmPendingBoardCards, skipPendingBoardCards,

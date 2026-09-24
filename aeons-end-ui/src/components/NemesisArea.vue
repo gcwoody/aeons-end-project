@@ -14,7 +14,7 @@ import ModalBase from './ModalBase.vue'
 
 const {
   state, nemesisDiscardActions, discardNemesisCard, resolveDecision,
-  buyNemesisSpecificTopCard, openNemesisSpecificPile, canActMain,
+  buyNemesisSpecificTopCard, openNemesisSpecificPile, openNemesisSpecificDiscardPile, canActMain,
 } = useGame()
 const nemesis = computed(() => state.game!.nemesis)
 const presentation = computed(() => getNemesisPresentation(nemesis.value.type))
@@ -195,10 +195,18 @@ onBeforeUnmount(() => {
           @activate="activateSpecificTopCard"
           @inspect="openNemesisSpecificPile"
         />
-        <div class="nemesis-asset" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled }" aria-label="Nemesis Specific Discard">
+        <button
+          v-if="presentation.specificDiscard.enabled"
+          class="nemesis-asset nemesis-discard-button"
+          :aria-label="`Open ${presentation.specificDiscard.label}`"
+          @click="openNemesisSpecificDiscardPile"
+        >
           <span class="nemesis-section-title">{{ presentation.specificDiscard.label }}</span>
-          <strong v-if="presentation.specificDiscard.enabled">{{ nemesis.strikeDiscard.length }}</strong>
-          <span v-else class="asset-subtext">Not used</span>
+          <strong>{{ nemesis.strikeDiscard.length }}</strong>
+        </button>
+        <div v-else class="nemesis-asset is-unavailable" aria-label="Nemesis Specific Discard">
+          <span class="nemesis-section-title">{{ presentation.specificDiscard.label }}</span>
+          <span class="asset-subtext">Not used</span>
         </div>
       </div>
 

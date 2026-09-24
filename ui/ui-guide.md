@@ -39,7 +39,7 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 | --- | --- | --- |
 | `Pile.Deck` | 玩家 Deck | 非空时显示牌背和数量；为空时显示名称与 0 |
 | `Pile.Discard` | 玩家 Discard | 非空时显示顶牌正面和数量；为空时显示名称与 0 |
-| `Pile.SpecificDeck` | Mage-specific deck | 牌背、已知正面信息、数量和 PileViewer |
+| `Pile.SpecificDeck` | Mage-specific deck | 可配置正面/牌背展示、数量和 PileViewer；正面牌堆在查看窗口中展示全部牌 |
 | `Pile.PlayerCardsInPlay` | Put into play 的玩家卡牌 | 无牌时隐藏；单牌可直接触发，多牌打开选择弹窗 |
 | `Pile.NemesisSpecific` | Nemesis 专属牌堆或弃牌堆 | 根据 Nemesis 配置显示数量或顶牌 |
 | `PileViewer` | 查看牌堆内容 | 顶牌在左侧，每行最多 5 张 |
@@ -51,14 +51,25 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 | --- | --- |
 | `ModalBase` | 所有标准弹窗的遮罩、焦点、拖动和 dialog 外壳 |
 | `Modal.Decision` | 引擎产生的阻塞式决策 |
+| `Decision.MageAbilityChoice` | Mage mat 下方竖向排列的 Ability 二选一按钮 |
 | `Modal.CardSelection` | 从手牌、弃牌堆或候选卡牌中选择 |
 | `Modal.PileViewer` | 查看牌堆，不做决策 |
 | `Modal.SupplyPrompt` | 选择 Supply pile 的提示 |
 | `Badge.PileCount` | Deck、Discard、Specific Deck 的数量和空牌堆文字 |
 | `Badge.Token` | Power、Aether token 等状态标记 |
-| `Controls.TurnBar` | 当前 Mage、阶段、资源和回合按钮 |
+| `Controls.TurnBar` | Mage 切换按钮、阶段、资源和回合按钮 |
 
-主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`CardSelectionPanel.vue`、
+Stake 的 Knowledge 计数显示在控制栏的 Activate Ability 按钮旁，使用亮紫色；Breach Upgrade 卡牌以手牌尺寸悬停显示，并横向放在 Prototype Breach 左侧。前三个 Breach 隐藏外观但保留位置，为升级卡留出空间。
+
+Mage ability 的 OR 决策使用可复用的 `Decision.MageAbilityChoice`：弹窗上方展示能力来源 Mage 的正面 mat 并裁切为统一圆角；下方显示与 mat 同宽、上下排列的两个可点击按钮。按钮使用蓝底深色文字，悬停时平滑变暗。所有 `choose_one` Ability 决策都应声明 `layout: 'mage-ability'`；非 Ability 的卡牌选择沿用普通决策 UI。Mage mat 宽度、选项文字大小和按钮最小高度集中在 `.decision-modal.mage-ability-modal` 的 CSS 自定义属性中，方便统一微调。Specific Deck 中需要直接辨认的升级卡选择使用 large 卡牌尺寸。
+
+Wolf 的 5 枚 Doom token 显示在控制栏 Activate Ability 按钮右侧；未获得的 token 使用灰度与低透明度，已获得的 token 保留原图颜色。尺寸、间距与相对位置集中在 `.doom-token-track` 的四个 CSS 自定义属性中，方便微调。
+
+Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显示玩家和当前回合玩家仍由按钮边界状态区分，控制栏不重复显示 Mage 名称。未显示玩家的手牌数增加时，该按钮的 Hand 数字变绿，并在其右下方向右伸出约 3 秒的 `+N` 标记，标记底边不超过按钮底边；点击按钮查看该玩家时清除标记，不自动切换玩家。撤销、载入存档或替换游戏状态时不重播旧标记。桌面控制栏的 Aether 和操作按钮相对于控制栏水平居中；紧凑宽度下按钮、阶段和操作区保持互不重叠。
+
+控制栏内部下侧留白由 `.controls` 的 `--control-bar-bottom-padding` 调整，控制栏外侧到玩家区域底部的留白由 `.player-area` 的 `--player-area-bottom-padding` 调整；当前均为 6px。抽牌气泡在按钮右侧伸出，并由两个 Mage 按钮之间及 Mage 按钮与阶段文字之间的 24px 间距预留位置。
+
+主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`MageAbilityChoice.vue`、`CardSelectionPanel.vue`、
 `PileModal.vue`、`PileCountBadge.vue`、`TokenBadge.vue`。
 
 ## 3. 状态组合规则
@@ -92,6 +103,8 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 ### 卡牌、边界线和圆角
 
 - 所有可见 `border`、`outline` 和 outline 风格的阴影都使用 2px。
+- 原生下拉框不显示浏览器默认白色焦点框，其余外观保持原样。
+- Debug Tools 的数字输入框使用统一的主题色步进箭头：鼠标悬停或键盘聚焦时显示；无悬停能力的设备保持可见。
 - 正常卡牌、背面卡牌和弹窗内卡牌都必须有统一圆角。
 - 图片填满卡牌时使用继承圆角，不能让图片盖住边界线。
 - `Card.AttachedQuarter` 使用自己的圆角，不能依赖下方 Supply pile 的圆角。
@@ -114,6 +127,8 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 - 标题过长时换行，不能通过无限拉宽弹窗解决。
 - 选择按钮在选中前后保持稳定位置。
 - 牌堆查看弹窗说明明确的顺序：顶牌在左、底牌在右，每行最多 5 张。
+- 牌堆查看弹窗设定视口内的最小宽度：带行标签的 Deck/Discard 至少 280px，其他牌堆至少 440px，避免空牌堆或单张牌时长标题被挤成多行；窄窗口以视口宽度为上限。
+- Nemesis Specific Discard 仅在对应 Nemesis 启用该区域时提供查看弹窗，使用同一套牌堆宽度和顺序规则。
 - 只有不需要决策的查看类弹窗允许 ESC 关闭；决策弹窗不能被 ESC 取消。
 
 ## 5. 尺寸和响应式规则

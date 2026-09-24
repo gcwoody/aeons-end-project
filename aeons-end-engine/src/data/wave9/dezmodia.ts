@@ -223,6 +223,7 @@ export function createDezmodia(makeBreach: BreachFactory): MageDef {
     abilityEffects: [{
       kind: 'choose_one',
       prompt: 'Choose Pilfer the Past effect',
+      layout: 'mage-ability',
       options: [
         {
           id: 'stash',

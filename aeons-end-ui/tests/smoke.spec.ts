@@ -107,7 +107,7 @@ test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => 
 
   const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
   const section = page.locator('.debug-section').filter({ hasText: 'jian (wave1_JIAN)' })
-  await section.locator('input[type="number"]').nth(1).fill('4')
+  await section.getByRole('spinbutton', { name: 'Charge for jian' }).fill('4')
   const cardPicker = addCardSection.locator('.debug-card-picker')
   await cardPicker.getByRole('searchbox', { name: 'Search debug cards' }).fill('spark')
   await cardPicker.locator('.debug-card-option[data-card-id="spark"]').click()

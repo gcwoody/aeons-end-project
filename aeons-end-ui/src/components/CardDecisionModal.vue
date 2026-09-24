@@ -3,12 +3,14 @@ import { computed, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
 import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
 import { cardImageUrl } from '../card-images'
+import { mageImageUrls } from '../mage-images'
 import { useGame } from '../game/useGame'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
 import { useModalDrag } from '../game/useModalDrag'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 import ModalBase from './ModalBase.vue'
+import MageAbilityChoice from './MageAbilityChoice.vue'
 
 const {
   state, resolveDecision, confirmPendingPreppedSpells,
@@ -36,7 +38,19 @@ const isDirectMarketDecision = computed(() =>
   decision.value?.kind === 'select_market_pile' || decision.value?.kind === 'select_setup_devour_pile',
 )
 const isLargeSpecificDeckSelection = computed(() =>
-  decision.value?.kind === 'select_cards' && decision.value.source === 'specific_deck',
+  decision.value?.kind === 'select_cards'
+    && decision.value.source === 'specific_deck'
+    && (state.game?.pendingEffect?.specificDeckReveal?.mode === 'put_one_into_play'
+      || state.game?.pendingEffect?.awaiting?.kind === 'select_breach_upgrade_card'),
+)
+const isMageAbilityChoice = computed(() =>
+  decision.value?.kind === 'choose_one' && decision.value.layout === 'mage-ability',
+)
+const abilitySourceMage = computed(() =>
+  state.game?.players.find(player => player.id === state.game?.pendingEffect?.sourcePlayerId) ?? null,
+)
+const abilitySourceMageMat = computed(() =>
+  abilitySourceMage.value ? mageImageUrls(abilitySourceMage.value.mageType)?.front : undefined,
 )
 const showsPlayerLife = computed(() => {
   const current = decision.value
@@ -56,7 +70,10 @@ watch(() => decision.value?.id, () => {
 const turnOrderLabels = computed(() => createTurnOrderLabels(state.game?.players ?? []))
 
 const specificDeckName = computed(() => {
-  const ownerId = state.game?.pendingEffect?.specificDeckReveal?.playerId
+  const current = decision.value
+  const ownerId = current?.kind === 'select_cards' && current.source === 'specific_deck'
+    ? current.ownerId ?? state.game?.pendingEffect?.specificDeckReveal?.playerId
+    : state.game?.pendingEffect?.specificDeckReveal?.playerId
   const mageType = state.game?.players.find(player => player.id === ownerId)?.mageType
   return MAGES[mageType ?? '']?.specificDeckName ?? 'Specific Deck'
 })
@@ -121,6 +138,8 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
         : choice.zone === 'discard' ? 'DISCARD PILE'
           : choice.zone === 'swap_zone' ? 'SWAP ZONE'
             : choice.zone === 'specific_deck' ? specificDeckName.value : 'PLAYED THIS TURN',
+      disabled: choice.disabled,
+      disabledReason: choice.disabled ? 'Not enough Knowledge to install this upgrade.' : undefined,
     }))
   }
   if (decision.value?.kind === 'select_collective_cards') {
@@ -310,7 +329,7 @@ function confirmNemesisDraw() {
     v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'"
     overlay-class="decision-overlay"
     v-model:panel-ref="modalEl"
-    panel-class="decision-modal draggable-modal"
+    :panel-class="isMageAbilityChoice ? 'decision-modal mage-ability-modal draggable-modal' : 'decision-modal draggable-modal'"
     :panel-style="{ ...modalStyle, '--decision-columns': decisionColumns }"
     :dragging="dragging"
     @panel-pointerdown="startDrag"
@@ -380,7 +399,19 @@ function confirmNemesisDraw() {
         </div>
       </template>
 
-      <div v-else-if="decision.kind === 'choose_one'" class="decision-options">
+      <MageAbilityChoice
+        v-else-if="decision.kind === 'choose_one' && decision.layout === 'mage-ability'"
+        :mage-mat-url="abilitySourceMageMat"
+        :mage-name="playerName(abilitySourceMage?.id ?? '')"
+        :options="decision.options"
+        @select="answer({ kind: 'choose_one', optionId: $event })"
+      />
+
+      <div
+        v-else-if="decision.kind === 'choose_one'"
+        class="decision-options"
+        :class="{ 'stacked-panels': decision.layout === 'stacked-panels' }"
+      >
         <button
           v-for="option in decision.options"
           :key="option.id"

@@ -1,9 +1,13 @@
-import { CARD_IMAGE_IMPORTS, NEMESIS_MAT_IMAGE_IMPORTS } from './generated-image-imports'
+import { CARD_IMAGE_IMPORTS, MAGE_TOKEN_IMAGE_IMPORTS, NEMESIS_MAT_IMAGE_IMPORTS } from './generated-image-imports'
 import playerCardBack from '../../image-database/common images/player-card back.jpg'
 import treasureTwoBack from '../../image-database/common images/treasure 12back.jpg'
 
 export function cardImageUrl(cardId: string): string | undefined {
   return CARD_IMAGE_IMPORTS[cardId]
+}
+
+export function mageTokenImageUrl(tokenId: string): string | undefined {
+  return MAGE_TOKEN_IMAGE_IMPORTS[tokenId]
 }
 
 export function playerCardBackUrl(): string {

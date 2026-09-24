@@ -10,6 +10,8 @@ export interface CardSelectionItem {
   cardName: string
   groupKey: string
   groupLabel: string
+  disabled?: boolean
+  disabledReason?: string
 }
 
 const props = defineProps<{
@@ -79,12 +81,14 @@ function toggle(key: string): void {
             v-for="choice in row"
             :key="choice.key"
             :card-id="choice.cardId"
-            :disabled="props.largeCards"
+            :disabled="props.largeCards || choice.disabled"
           >
             <button
               class="decision-card-choice"
-              :class="{ selected: isSelected(choice.key) }"
+              :class="{ selected: isSelected(choice.key), unavailable: choice.disabled }"
               type="button"
+              :disabled="choice.disabled"
+              :title="choice.disabled ? choice.disabledReason : undefined"
               @click="toggle(choice.key)"
             >
               <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />

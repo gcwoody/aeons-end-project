@@ -102,11 +102,11 @@
   --z-decision: 120;
   --z-pile-viewer: 130;
   --z-save-confirm: 140;
-  --z-card-preview: 600;
+  --z-card-preview: 610;
   --z-supply-decision: 620;
   /* Debug tools must sit above board cards and controls so every control is
      reachable, while remaining below supply decisions and exit confirmation. */
-  --z-debug: 610;
+  --z-debug: 600;
   --z-mage-modal: 300;
   --z-exit: 1000;
 }
@@ -116,6 +116,12 @@
 }
 
 * { box-sizing: border-box; }
+
+/* Avoid the browser's white focus ring on native dropdowns. */
+select:focus {
+  outline: none;
+  box-shadow: none;
+}
 
 /* The game uses pointer interactions instead of native text/image dragging. */
 html, body, #app { user-select: none; }
@@ -653,33 +659,57 @@ body {
 
 /* ===== Player area ===== */
 .player-area {
+  --player-area-bottom-padding: 6px;
   flex: 0 0 auto;
   display: grid;
   grid-template-rows: auto auto auto var(--hand-row-height) auto;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 12px 14px var(--player-area-bottom-padding);
   min-height: 0;
   background: var(--panel);
 }
 .char-row { display: flex; align-items: center; gap: 14px; justify-content: center; min-height: 34px; }
-.char-select { display: flex; gap: 8px; }
+.char-select { display: flex; gap: 24px; }
 .char-btn {
-  display: flex;
-  gap: 8px;
+  position: relative;
+  display: grid;
+  grid-template-columns: max-content max-content;
+  column-gap: 8px;
+  row-gap: 2px;
   align-items: center;
   background: var(--panel-2);
   border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
-  padding: 6px 12px;
+  padding: 4px 8px;
   cursor: pointer;
   color: var(--text);
+  white-space: nowrap;
 }
 .char-btn.sel { border: 2px solid var(--accent); }
 .char-btn.cur { outline: 2px solid var(--ok); outline-offset: 1px; }
-.char-btn .cn { font-weight: 700; text-transform: capitalize; }
-.char-btn .chp { color: var(--danger); font-size: 12px; }
-.char-btn .cch { color: var(--accent); font-size: 12px; }
-.char-btn .cex { color: var(--danger); font-size: 11px; font-weight: 700; }
+.char-btn .cn { grid-area: 1 / 1; font-weight: 700; text-transform: capitalize; }
+.char-btn .chp { grid-area: 1 / 2; color: var(--danger); font-size: 12px; font-weight: 700; }
+.char-btn .cch { grid-area: 2 / 1; color: var(--accent); font-size: 12px; }
+.char-btn .chand { grid-area: 2 / 2; color: var(--muted); font-size: 12px; }
+.char-btn .chand strong { color: var(--text); }
+.char-btn.has-hand-gain .chand, .char-btn.has-hand-gain .chand strong { color: var(--ok); }
+.char-btn .chand-gain {
+  position: absolute;
+  bottom: 0;
+  right: -20px;
+  min-width: 25px;
+  padding: 1px 4px;
+  border: var(--pixel-border-width) solid var(--ok);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--ok);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.char-btn .cex { grid-column: 1 / -1; color: var(--danger); font-size: 11px; font-weight: 700; }
 .phase-line { display: flex; gap: 10px; align-items: center; }
 .phase-line .turn { font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
 .phase-line .phase { color: var(--warn); }
@@ -704,7 +734,7 @@ body {
   align-items: center;
   gap: 6px;
 }
-.breach.absent { display: none; pointer-events: none; }
+.breach.absent { visibility: hidden; pointer-events: none; }
 .breach-token-wrap {
   width: 100%;
   height: var(--breach-size);
@@ -728,6 +758,32 @@ body {
   border-radius: var(--breach-radius);
   pointer-events: none;
 }
+.breach-upgrade-strip {
+  position: absolute;
+  right: calc(100% + var(--space-2));
+  top: calc(50% + var(--breach-spell-offset-y));
+  z-index: var(--z-board-spell);
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: var(--space-2);
+  width: max-content;
+  height: var(--hand-card-height);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.breach-upgrade-strip .card-hover-wrap { display: contents; }
+.breach-upgrade-card.card.card-image {
+  flex: 0 0 var(--hand-card-width);
+  width: var(--hand-card-width);
+  min-width: var(--hand-card-width);
+  height: var(--hand-card-height);
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+  pointer-events: auto;
+}
+.breach-upgrade-strip .breach-upgrade-card:hover { transform: none; }
 .breach.open .breach-token-wrap { border-color: var(--gem); }
 .breach.castable { cursor: pointer; }
 .breach.castable:hover { background: transparent; }
@@ -1106,6 +1162,13 @@ body {
   padding: 0;
   overflow: hidden;
 }
+.player-specific-deck-face-up {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--card-radius);
+}
+.player-specific-deck-face-up.is-primary-action { cursor: pointer; }
 .player-pile-count {
   position: absolute;
   top: 4px;
@@ -1484,33 +1547,68 @@ body.spell-dragging .card-hover-preview {
 }
 
 .controls {
+  --control-bar-bottom-padding: 6px;
   position: sticky;
   bottom: 0;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: var(--control-gap);
   align-items: center;
-  justify-content: center;
   border-top: var(--pixel-border-width) solid var(--border);
   background: var(--panel);
   padding-top: var(--space-4);
-  padding-bottom: var(--space-4);
+  padding-bottom: var(--control-bar-bottom-padding);
   /* Stay above ordinary board content while hand hover cards remain above it;
      modal dialogs and the full-size card preview still sit higher. */
   z-index: var(--z-controls);
 }
 .controls-left {
-  position: absolute;
-  left: 0;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 24px;
+  grid-column: 1;
 }
 .controls-main {
   display: flex;
   align-items: center;
   gap: 10px;
   justify-content: center;
+  grid-column: 2;
   min-height: 32px;
+}
+.knowledge-status {
+  color: #d78cff;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: 0 0 8px rgba(215, 140, 255, .3);
+}
+.doom-token-track {
+  /* Wolf token tuning: size, spacing, and visual offset from the centered slot. */
+  --doom-token-size: 34px;
+  --doom-token-gap: 4px;
+  --doom-token-offset-x: 0px;
+  --doom-token-offset-y: 0px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--doom-token-gap);
+  height: var(--doom-token-size);
+  padding: 0;
+  white-space: nowrap;
+  transform: translate(var(--doom-token-offset-x), var(--doom-token-offset-y));
+}
+.doom-token-track img {
+  display: block;
+  flex: 0 0 var(--doom-token-size);
+  width: var(--doom-token-size);
+  height: var(--doom-token-size);
+  object-fit: contain;
+  filter: grayscale(1);
+  opacity: .38;
+}
+.doom-token-track img.is-active {
+  filter: none;
+  opacity: 1;
 }
 .end-turn-action {
   position: relative;
@@ -1551,20 +1649,26 @@ body.spell-dragging .card-hover-preview {
   align-items: center;
   gap: 10px;
 }
-.controls-status .turn { font-weight: 700; color: var(--accent); text-transform: capitalize; }
 .controls-status .phase { color: var(--warn); }
 .controls > .btn,
 .controls .btn { height: var(--control-height); }
-.controls .aether { color: var(--gem); font-size: 13px; }
+.controls .aether { color: var(--gem); font-size: 13px; white-space: nowrap; }
 .controls .aether-token-status { font-size: 13px; }
 .help-button {
-  position: absolute;
-  right: 0;
+  grid-column: 3;
+  justify-self: end;
   min-width: 32px;
   padding-left: 8px;
   padding-right: 8px;
   color: var(--accent);
   font-weight: 700;
+}
+@media (max-width: 1100px) {
+  .controls { display: flex; flex-wrap: wrap; padding-right: 42px; }
+  .controls-left, .controls-main, .help-button { grid-column: auto; }
+  .controls-main { gap: 6px; }
+  .controls-main { margin-inline: auto; }
+  .help-button { position: absolute; top: var(--space-4); right: 0; }
 }
 
 /* ===== Log ===== */
@@ -1673,6 +1777,13 @@ body.spell-dragging .card-hover-preview {
   box-sizing: border-box;
   overflow: auto;
 }
+.decision-modal.mage-ability-modal {
+  /* Tune these three values to adjust the ability choice dialog. */
+  --mage-ability-mat-width: 880px;
+  --mage-ability-choice-font-size: 14px;
+  --mage-ability-choice-button-min-height: 66px;
+  width: min(700px, calc(100vw - 32px));
+}
 .decision-modal h2 {
   max-width: min(640px, calc(100vw - 72px));
   margin-inline: auto;
@@ -1688,6 +1799,76 @@ body.spell-dragging .card-hover-preview {
   margin-top: 18px;
 }
 .decision-option { min-width: 150px; }
+.decision-options.stacked-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  width: min(520px, calc(100vw - 64px));
+  margin-inline: auto;
+}
+.decision-options.stacked-panels .decision-option {
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
+  text-align: left;
+  line-height: 1.4;
+  background: var(--panel-2);
+  color: var(--text);
+  border-color: var(--border);
+  font-weight: 500;
+}
+.decision-options.stacked-panels .decision-option:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.mage-ability-choice-layout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  width: min(var(--mage-ability-mat-width, 440px), 100%);
+  margin: 10px auto 0;
+}
+.mage-ability-choice-mat-frame {
+  width: 100%;
+  aspect-ratio: var(--mage-mat-ratio);
+  border-radius: var(--mage-radius);
+  overflow: hidden;
+  background: var(--panel);
+}
+.mage-ability-choice-mat {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.decision-options.stacked-panels.mage-ability-choice-options {
+  width: 100%;
+  margin: 0;
+  gap: 10px;
+}
+.decision-options.stacked-panels.mage-ability-choice-options .mage-ability-choice-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--mage-ability-choice-button-min-height, 76px);
+  padding: 12px 18px;
+  font-size: var(--mage-ability-choice-font-size, 14px);
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  border-radius: var(--radius-control);
+  background: var(--accent);
+  color: #10131a;
+  border-color: var(--accent);
+  transition: filter 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+.decision-options.stacked-panels.mage-ability-choice-options .mage-ability-choice-button:hover:not(:disabled) {
+  filter: brightness(.84);
+}
+.decision-options.stacked-panels.mage-ability-choice-options .mage-ability-choice-button:active:not(:disabled) {
+  filter: brightness(.72);
+}
 .decision-option.unavailable,
 .decision-option.unavailable:disabled {
   opacity: .42;
@@ -1830,6 +2011,11 @@ body.spell-dragging .card-hover-preview {
   box-shadow: 0 0 0 2px var(--ok) inset;
   transform: translateY(-3px);
 }
+.decision-card-choice:disabled {
+  opacity: .42;
+  filter: grayscale(.85);
+  cursor: not-allowed;
+}
 .decision-card-choice:hover { z-index: var(--z-card-hover); }
 .decision-card-zone-label {
   align-self: center;
@@ -1863,6 +2049,19 @@ body.spell-dragging .card-hover-preview {
   width: 252px;
   height: 378px;
   border-radius: 8px;
+}
+
+@media (max-width: 840px) {
+  .decision-modal.mage-ability-modal {
+    width: calc(100vw - 16px);
+  }
+  .mage-ability-choice-layout {
+    width: min(var(--mage-ability-mat-width, 440px), 100%);
+    gap: 10px;
+  }
+  .mage-ability-choice-mat {
+    object-fit: contain;
+  }
 }
 
 @media (max-width: 520px) {
@@ -2317,11 +2516,13 @@ body.spell-dragging .card-hover-preview {
 .pile-modal .empty { color: var(--muted); font-style: italic; padding: 10px 0; }
 .pile-modal {
   width: min(calc(var(--pile-columns, 5) * 92px + 188px), calc(100vw - 32px));
+  min-width: min(280px, calc(100vw - 32px));
   max-height: min(88vh, 720px);
   overflow-y: auto;
 }
 .pile-modal:not(.pile-modal-with-labels) {
   width: min(calc(var(--pile-columns, 5) * 92px + 64px), calc(100vw - 32px));
+  min-width: min(440px, calc(100vw - 32px));
 }
 .pile-viewer-overlay { z-index: var(--z-pile-viewer); }
 .pile-rows {
@@ -2473,7 +2674,7 @@ body.spell-dragging .card-hover-preview {
   width: 680px;
   height: 760px;
   max-width: calc(100vw - 16px);
-  max-height: calc(100vh - 16px);
+  max-height: calc(100vh - 32px);
   overflow: hidden;
   background: var(--panel);
   border: var(--pixel-border-width) solid var(--accent);
@@ -2506,16 +2707,78 @@ body.spell-dragging .card-hover-preview {
 .debug-hint { color: var(--muted); font-size: 11px; line-height: 1.35; }
 .debug-player { font-weight: 700; color: var(--accent); }
 .debug-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.debug-vitals-row { flex-wrap: nowrap; }
+.debug-vital-field {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 8px;
+  min-width: 0;
+  color: var(--muted);
+  white-space: nowrap;
+}
 .debug-breaches { display: flex; gap: 6px; }
 .debug-breaches .btn.on { border-color: var(--ok); color: var(--ok); }
-.debug-section input[type="number"] { width: 70px; }
-.debug-section select, .debug-section textarea {
+.debug-panel :is(input, select, textarea) {
   background: var(--panel-2);
   color: var(--text);
   border: var(--pixel-border-width) solid var(--border);
   border-radius: 6px;
   font-size: 12px;
   font-family: inherit;
+}
+.debug-panel :is(input, select, textarea):focus {
+  outline: none;
+  box-shadow: none;
+  border-color: var(--border);
+}
+.debug-stat-field { display: inline-flex; align-items: center; gap: 4px; }
+.debug-number-field { position: relative; display: inline-flex; flex: 0 0 74px; width: 74px; height: 30px; }
+.debug-number-field input {
+  width: 74px;
+  height: 30px;
+  padding: 3px 20px 3px 6px;
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+.debug-number-field input::-webkit-inner-spin-button,
+.debug-number-field input::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.debug-panel .debug-number-field:focus-within input { border-color: var(--accent); }
+.debug-number-steps {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  bottom: 3px;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+.debug-number-field:hover .debug-number-steps,
+.debug-number-field:focus-within .debug-number-steps { opacity: 1; pointer-events: auto; }
+.debug-number-step {
+  display: grid;
+  place-items: center;
+  width: 17px;
+  height: 11px;
+  padding: 0;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+.debug-number-step:hover, .debug-number-step:focus-visible { background: var(--border); color: var(--accent); outline: none; }
+.debug-number-step::before { content: ''; width: 5px; height: 5px; border: solid currentColor; border-width: 2px 0 0 2px; }
+.debug-number-step.up::before { transform: translateY(1px) rotate(45deg); }
+.debug-number-step.down::before { transform: translateY(-1px) rotate(225deg); }
+@media (hover: none) {
+  .debug-number-steps { opacity: 1; pointer-events: auto; }
 }
 .debug-card-picker { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .debug-card-picker-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
@@ -2571,6 +2834,7 @@ body.spell-dragging .card-hover-preview {
 .debug-add-controls { align-items: flex-end; }
 .debug-add-controls label { display: flex; flex-direction: column; gap: 3px; color: var(--muted); font-size: 10px; text-transform: uppercase; }
 .debug-add-controls select { height: 30px; padding: 3px 6px; }
+.debug-add-controls .btn { display: inline-flex; align-items: center; height: 30px; box-sizing: border-box; }
 .debug-resize-handle {
   position: absolute;
   right: 3px;

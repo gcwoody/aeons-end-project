@@ -77,7 +77,7 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   await expect(page.locator('.mage-overlay')).toHaveCount(0)
   await page.getByRole('button', { name: 'Open Nemesis Discard' }).click()
   await expect(page.locator('.pile-modal .pile-card')).toHaveCount(1)
-  await expect.poll(async () => (await page.locator('.pile-modal').boundingBox())?.width ?? 999).toBeLessThan(260)
+  await expect.poll(async () => (await page.locator('.pile-modal').boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(440)
   await page.keyboard.press('Escape')
   await expect(page.locator('.pile-modal')).toHaveCount(0)
   await page.locator('.nemesis-card-scroll').hover({ position: { x: 5, y: 5 } })
@@ -312,6 +312,7 @@ test('Prince of Gluttons displays and sells the top Devoured card directly', asy
 
   await page.locator('.nemesis-specific-pile').click({ button: 'right' })
   await expect(page.locator('.pile-modal')).toBeVisible()
+  await expect.poll(async () => (await page.locator('.pile-modal').boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(440)
   await expect(page.locator('.pile-modal h3')).toContainText('Devoured Pile')
   await expect(page.locator('.pile-modal .pile-row')).toHaveCount(1)
   expect(await page.locator('.pile-modal .pile-card img').evaluateAll(images => images.map(image => image.alt)))

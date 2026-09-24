@@ -149,7 +149,7 @@ test('Kadir can stack two spells on one Breach in the UI', async ({ page }) => {
   await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
 
   const kadirSection = page.locator('.debug-section').filter({ hasText: 'kadir (wave1_KADIR)' })
-  await kadirSection.locator('input[type="number"]').nth(1).fill('5')
+  await kadirSection.getByRole('spinbutton', { name: 'Charge for kadir' }).fill('5')
   const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
   const cardPicker = addCardSection.locator('.debug-card-picker')
   const playerSelect = addCardSection.getByLabel('Debug card player')
@@ -865,11 +865,11 @@ test('number, Q, and W shortcuts switch the shown mage and open player piles abo
   await page.getByLabel('Open game help').click()
   await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeVisible()
   await page.keyboard.press('2')
-  await expect(page.locator('.controls-status .turn')).toHaveText('brama')
+  await expect(page.locator('.char-btn.sel .cn')).toHaveText('brama')
   await page.keyboard.press('Tab')
-  await expect(page.locator('.controls-status .turn')).toHaveText('jian')
+  await expect(page.locator('.char-btn.sel .cn')).toHaveText('jian')
   await page.keyboard.press('Tab')
-  await expect(page.locator('.controls-status .turn')).toHaveText('brama')
+  await expect(page.locator('.char-btn.sel .cn')).toHaveText('brama')
   await page.keyboard.press('q')
   await expect(page.getByRole('dialog', { name: 'Game Help' })).toBeHidden()
   await expect(page.locator('.pile-modal h3')).toContainText('Deck')
@@ -1053,6 +1053,6 @@ test('a unique ally card decision automatically displays that ally', async ({ pa
     }
   }, 'main')
 
-  await expect(page.locator('.controls-status .turn')).toHaveText('brama')
+  await expect(page.locator('.char-btn.sel .cn')).toHaveText('brama')
   await expect(page.getByRole('heading', { name: 'Discard a card.' })).toBeVisible()
 })

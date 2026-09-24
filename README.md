@@ -13,8 +13,8 @@
 - Setup 支持 Mage/Nemesis 图片选择、随机选择、Nemesis 难度，以及 Template 1 市场九宫格和逐槽位替换。
 - 支持卡牌效果、目标决策、Breach、Nemesis 的 Attack/Power/Minion、Unleash 和当前已接入的 Nemesis 专属规则。
 - 支持 Save & Exit、Resume、浏览器刷新恢复，以及最多 10 步的 Ctrl+Z 撤销；撤销历史会随存档保留。
-- 支持 Ctrl+D 调试面板，用于测试生命、充能、卡牌、Breach 和 JSON 存档。
-- Wave 9 已接入 Nook、Indira、Dezmodia 及其对应的 Swap、Conjure、Specific Deck、Treasure 等机制。
+- 支持 Ctrl+D 调试面板，用于调整生命、Aether、充能、Knowledge、卡牌、Breach 和 JSON 存档。
+- Wave 9 已接入 Nook、Indira、Dezmodia、Remnant、Stake、Wolf 及其对应的 Swap、Conjure、Specific Deck、Treasure、Rift/Prototype Breach、Breach-only Aether、Knowledge、Breach Upgrade 和 Doom 等机制。
 
 当前不是联机游戏：没有账号、服务器、数据库或多人同步。存档只保存在当前浏览器的 `localStorage` 中，清除网站数据会删除存档。
 

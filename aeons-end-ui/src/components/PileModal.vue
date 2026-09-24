@@ -28,11 +28,17 @@ const title = computed(() => {
   if (state.viewPile === 'nemesis_specific') {
     return getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.label
   }
+  if (state.viewPile === 'nemesis_specific_discard') {
+    return getNemesisPresentation(state.game?.nemesis.type ?? '').specificDiscard.label
+  }
   if (state.viewPile === 'player_cards_in_play') return 'Player Cards in Play'
   return state.viewPile === 'deck' ? 'Deck' : 'Discard'
 })
 const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
 const isSpecificDeck = computed(() => state.viewPile === 'specific_deck')
+const specificDeckFaceUp = computed(() =>
+  MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckDisplay === 'face_up',
+)
 const specificDeckBackImage = computed(() =>
   specificDeckBackUrl(MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckBack ?? 'player'),
 )
@@ -45,6 +51,7 @@ const playerCardEntries = computed(() =>
 const cards = computed(() => {
   if (state.viewPile === 'specific_deck') return displayPlayer.value?.specificDeck ?? []
   if (state.viewPile === 'nemesis_specific') return state.game?.nemesis.strikeDeck ?? []
+  if (state.viewPile === 'nemesis_specific_discard') return state.game?.nemesis.strikeDiscard ?? []
   if (state.viewPile === 'player_cards_in_play') return playerCardEntries.value.map(entry => entry.cardId)
   return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
 })
@@ -123,7 +130,7 @@ function isKnownSpecificDeckCard(cardId: string): boolean {
         >
           <span v-if="usesRowLabels" class="pile-row-label">{{ rowLabel(gi) }}</span>
           <template v-for="(cid, i) in group" :key="cid + i">
-          <CardHoverPreview v-if="!isSpecificDeck || isKnownSpecificDeckCard(cid)" :card-id="cid">
+          <CardHoverPreview v-if="!isSpecificDeck || specificDeckFaceUp || isKnownSpecificDeckCard(cid)" :card-id="cid">
             <CardSurface
               base-class="pile-card"
               size="pile"

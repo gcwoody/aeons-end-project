@@ -1,5 +1,5 @@
 // ===== Card Types =====
-export type CardType = 'gem' | 'relic' | 'spell' | 'treasure' | 'attack' | 'minion' | 'power' | 'strike'
+export type CardType = 'gem' | 'relic' | 'spell' | 'treasure' | 'breach_upgrade' | 'attack' | 'minion' | 'power' | 'strike'
 
 export type TreasureLevel = 1 | 2 | 3
 
@@ -74,7 +74,12 @@ export type CardEffectCondition =
     }
   | { kind: 'all_breaches_opened' }
   | { kind: 'has_charge'; amount: number }
+  | { kind: 'has_knowledge'; amount: number; player?: 'source' | 'active' }
+  | { kind: 'has_doom'; amount: number }
   | { kind: 'has_aether'; amount: number }
+  | { kind: 'has_card_in_zone'; zone: CardZone; cardType?: CardType }
+  | { kind: 'has_affordable_card_in_specific_deck'; cardType: CardType; payment: 'knowledge'; player?: 'source' | 'active' }
+  | { kind: 'has_installed_breach_upgrade'; breachIndex: number }
   | { kind: 'has_card_in_hand'; cardType: 'gem' | 'relic' | 'spell' }
   | {
       kind: 'hand_card_count'
@@ -102,6 +107,7 @@ export type CardEffectTrigger =
   | { kind: 'on_cast' }
   | { kind: 'on_put_into_play' }
   | { kind: 'on_breach_open' }
+  | { kind: 'on_breach_upgrade_installed' }
   | { kind: 'on_ability_resolved' }
   | { kind: 'while_set_next_to_supply' }
   | {
@@ -122,6 +128,7 @@ export type AbilityTrigger =
   | { kind: 'turn_order_card_drawn' }
 
 export type PlayerTargetScope = 'self' | 'ally' | 'any_player'
+export type DamagePlayerTargetScope = PlayerTargetScope | 'doom_owner'
 export type PlayerSelectionRule =
   | 'most_prepped_spells'
   | 'lowest_hp'
@@ -140,6 +147,8 @@ export interface CardChoice {
   index: number
   cardId: string
   cardName: string
+  /** The card remains visible in a selection panel but cannot currently be chosen. */
+  disabled?: boolean
 }
 
 export interface CollectiveCardChoice {
@@ -230,6 +239,8 @@ export interface PendingEffectResolution {
   /** Number/cost of cards selected by the previous optional card effect. */
   lastSelectedCardCount?: number
   lastSelectedCardCost?: number
+  /** Number of Doom lost by the most recent lose_doom effect. */
+  lastDoomLost?: number
   /** Result of the most recent optional choice in this effect frame. */
   lastOptionalAccepted?: boolean
   /** Players still waiting to reveal a top deck card for a reveal effect. */
@@ -258,6 +269,8 @@ export interface PendingEffectResolution {
 
 export interface PendingSpellCast {
   playerId: PlayerId
+  /** Mage whose action initiated the cast when different from the spell owner. */
+  casterPlayerId?: PlayerId
   breachIndex: number
   spellIndex: number
   cardId: string
@@ -294,6 +307,8 @@ export type PendingDecision = PendingDecisionBase & (
   | {
       kind: 'choose_one'
       options: DecisionOption[]
+      /** Optional presentation hint for choices with long text. */
+      layout?: 'stacked-panels' | 'mage-ability'
     }
   | {
       kind: 'choose_optional'
@@ -307,6 +322,8 @@ export type PendingDecision = PendingDecisionBase & (
       min: number
       max: number
       layout?: CardSelectionLayout
+      /** Owner of a source-specific deck when it differs from the active effect player. */
+      ownerId?: PlayerId
     }
   | {
       /** Revealed Mage-specific cards awaiting an individual top/bottom placement. */
@@ -427,7 +444,11 @@ export interface PlayerTurnEffects {
   usedPreppedEffects: string[]
   /** Main-phase action markers for Mage-specific cards already in play. */
   usedPlayerCardEffects?: string[]
-  prepSpellLimit: number
+  prepSpellLimit: number | 'unlimited'
+  /** Per-Breach overrides for effects that change spell capacity selectively. */
+  prepSpellLimitByBreach?: Record<number, number | 'unlimited'>
+  /** Breach upgrade triggers already used during this active player's turn. */
+  usedBreachUpgradeEffects?: string[]
 }
 
 export interface CardEffectOption {
@@ -440,11 +461,23 @@ export interface CardEffectOption {
 
 /** A small, serializable vocabulary for reusable card rules. */
 export type CardEffect =
+  | { kind: 'gain_knowledge'; amount: number; target?: 'self' | 'breach_owner' }
+  | { kind: 'lose_knowledge'; amount: number }
+  | { kind: 'gain_doom'; amount: number }
+  | { kind: 'lose_doom'; amount: number | 'all' }
+  | { kind: 'repeat_effect'; count: 'last_doom_lost'; effects: CardEffect[] }
+  | { kind: 'deal_damage_to_each_enemy'; amount: number }
+  | { kind: 'install_breach_upgrade'; breachIndex: number; cardType: 'breach_upgrade'; player?: 'source' | 'active' }
+  | { kind: 'select_breach_upgrade_card'; breachIndex: number; ownerId: PlayerId }
+  /** Internal continuation after the player selects a Breach Upgrade card. */
+  | { kind: 'install_breach_upgrade_card'; cardId: string; breachIndex: number; ownerId: PlayerId }
+  | { kind: 'increase_breach_prep_limit'; amount: number; breachIndex: number }
+  | { kind: 'increase_breach_damage_bonus'; amount: number; breachIndex: number }
   | { kind: 'gain_aether'; amount: number }
   | { kind: 'gain_aether_token'; amount?: number; target?: PlayerTargetScope }
   | { kind: 'conjure' }
   | { kind: 'spend_aether'; amount: number }
-  | { kind: 'gain_charge'; amount: number; target: 'self' | 'allies_collectively' }
+  | { kind: 'gain_charge'; amount: number; target: 'self' | 'allies_collectively' | 'breach_owner' }
   | { kind: 'reveal_turn_order_deck' }
   | {
       kind: 'reveal_turn_order_card'
@@ -452,7 +485,7 @@ export type CardEffect =
       nemesisEffects: CardEffect[]
       returnChoice?: boolean
     }
-  | { kind: 'gain_conditional_aether'; amount: number; condition: string }
+  | { kind: 'gain_conditional_aether'; amount: number; condition: string; target?: 'source' }
   | {
       kind: 'deal_damage'
       amount: EffectAmount
@@ -463,7 +496,7 @@ export type CardEffect =
   | {
       kind: 'deal_player_damage'
       amount: EffectAmount
-      target: PlayerTargetScope
+      target: DamagePlayerTargetScope
       selection?: PlayerSelectionRule
     }
   | {
@@ -471,6 +504,8 @@ export type CardEffect =
       amount: number
       target?: PlayerTargetScope
       selection?: PlayerSelectionRule
+      /** Resolve self/ally relative to the Mage who initiated the current spell cast. */
+      relativeToSpellCaster?: boolean
     }
   /** The engine must clamp the resulting life to the target object's maxHp. */
   | { kind: 'gain_life'; amount: number; target: LifeTargetScope }
@@ -585,6 +620,8 @@ export type CardEffect =
       kind: 'choose_one'
       prompt: string
       options: CardEffectOption[]
+      /** Optional presentation hint for choices with long text. */
+      layout?: 'stacked-panels' | 'mage-ability'
     }
   | {
       kind: 'choose_optional'
@@ -604,8 +641,8 @@ export type CardEffect =
       kind: 'return_card_to_hand'
       source: 'played_gem_this_turn'
     }
-  | { kind: 'return_cards_to_hand'; source: 'discard'; amount: number }
-  | { kind: 'set_prep_limit'; amount: number }
+  | { kind: 'return_cards_to_hand'; source: 'discard'; amount: number; minAmount?: number }
+  | { kind: 'set_prep_limit'; amount: number | 'unlimited'; breachIndices?: number[] }
   | { kind: 'place_revealed_turn_order_card' }
   | {
       kind: 'cast_prepped_spell'
@@ -811,8 +848,14 @@ export interface BreachState {
   openCost: Record<Direction, number>
   focusedThisTurn: boolean
   damageBonus: number
-  /** Special Breach rules, e.g. Indira's Transfer Breach. */
-  special?: 'transfer'
+  /** Breach upgrades attached to this Breach, in installation order. */
+  installedUpgrades?: string[]
+  /** Permanent extra spell capacity from installed upgrades. */
+  prepSpellLimitBonus?: number
+  /** Breaches such as Stake's Prototype cannot be destroyed. */
+  indestructible?: boolean
+  /** Special Breach rules, e.g. Indira's Transfer, Remnant's Rift, and Stake's Prototype. */
+  special?: 'transfer' | 'rift' | 'prototype'
 }
 
 // ===== Nemesis Cards In Play =====
@@ -857,6 +900,10 @@ export interface PlayerState {
   playerCardPowerTokens?: number[]
   /** Aether tokens are spent as one Aether each and expire during draw. */
   aetherTokens?: number
+  /** Persistent Knowledge resource, tracked independently of turn-scoped Aether. */
+  knowledge?: number
+  /** Persistent Doom tokens tracked for Mages that use the Doom mechanic. */
+  doomTokens?: number
   /** Number of times each card has been played this turn, including cards returned to hand. */
   cardPlayCountsThisTurn: Record<string, number>
   /** Conditional Aether earned this turn, keyed by its spending condition. */

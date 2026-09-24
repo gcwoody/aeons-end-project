@@ -61,7 +61,7 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 | 全局布局、悬停、层级、滚动条 | `aeons-end-ui/src/style.css` |
 | 玩家区域、裂隙、手牌、施法拖拽 | `aeons-end-ui/src/components/PlayerArea.vue` |
 | Nemesis 区域和专属牌堆显示 | `aeons-end-ui/src/components/NemesisArea.vue` + `NemesisSpecificPile.vue` + `game/nemesis-presentation.ts` |
-| 卡图、Mage 图、Breach 图路径 | `scripts/generate-image-imports.mjs` → `aeons-end-ui/src/generated-image-imports.ts`；三个图片模块只提供查询 API |
+| 卡图、Mage 图、Mage token 图、Breach 图路径 | `scripts/generate-image-imports.mjs` → `aeons-end-ui/src/generated-image-imports.ts`；图片模块只提供查询 API |
 | 浏览器流程测试 | `aeons-end-ui/tests/` |
 
 ## 当前哪些是真正可复用的
@@ -81,13 +81,13 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 
 | 规则类别 | 代表效果 |
 | --- | --- |
-| 资源 | `gain_aether`、`gain_conditional_aether`、`gain_charge`、`modify_next_breach_cost` |
-| 生命与伤害 | `deal_damage`、`deal_player_damage`、`gain_life` |
+| 资源 | `gain_aether`、`gain_conditional_aether`、`gain_knowledge` / `lose_knowledge`、`gain_doom` / `lose_doom`、`gain_charge`、`modify_next_breach_cost` |
+| 生命与伤害 | `deal_damage`、`deal_damage_to_each_enemy`、`deal_player_damage`、`gain_life` |
 | 牌区 | `draw_cards`、`discard_cards`、`destroy_cards`、`return_cards_to_hand`、`gain_card` |
-| 选择 | `choose_one`、`choose_optional`、`select_*` Pending Decision |
+| 选择 | `choose_one`、`choose_optional`、`repeat_effect`、`select_*` Pending Decision |
 | 施法 | `cast_prepped_spell`、`return_card_to_hand` |
 | 回合顺序 | `reveal_turn_order_card`、`reveal_turn_order_deck`、`shuffle_turn_order_card` |
-| 预备法术 | `while_prepped`、`set_prep_limit`、`prevent_damage_this_turn` |
+| 预备法术与 Breach | `while_prepped`、`set_prep_limit`、`install_breach_upgrade`、`prevent_damage_this_turn` |
 | Nemesis 基础动作 | 通用 `unleash` 关键词、Nemesis counter、`resolve_strike`、`devour_market_cards`、`set_source_minion_life` |
 
 `CardDecisionModal.vue` 按决策类型渲染，`CardSelectionPanel.vue` 负责通用卡牌选择；
@@ -106,7 +106,8 @@ Wave 1 的 27 张可选商店卡都在 `ALL_MARKET_CARDS`（并由 `MARKET_CARDS
 `DEFAULT_MARKET_SLOTS` 保留原先九张默认预设以兼容旧测试和存档。`resolveMarketCardIds()` 负责把引擎层的手动九槽位或
 Template 1（Gem ≤3/4/≥5、Relic ≤3/≥4、Spell 3/4/5/≥6）解析成实际商店；Setup 目前只暴露 Template 1，九宫格槽位可逐张替换。新增卡牌时
 同时更新 `documents/wave1-supply-catalog.json`、`documents/wave1-supply-wiki-rules.md`，并运行
-`cd aeons-end-ui; npm run generate:images`。
+`cd aeons-end-ui; npm run generate:images`。Mage token 透明素材放在对应 `mages/<mage>/` 文件夹，
+文件名包含 `token`，并使用 PNG、WebP 或 AVIF 格式；生成映射由 `mageTokenImageUrl()` 查询。
 
 ## 新增内容的实际流程
 
@@ -160,6 +161,10 @@ Nemesis 专属牌堆的 UI 由 `NemesisSpecificPile.vue` 统一渲染：在
 `.nemesis-specific-pile-asset`：`--nemesis-specific-pile-size`、
 `--nemesis-specific-pile-radius`、`--nemesis-specific-pile-gap` 和
 `--nemesis-specific-pile-asset-padding`。
+
+Mage 专属牌堆使用 `MageDef.specificDeckDisplay` 描述正面或牌背显示。Stake 的
+`breach_upgrade` 卡牌类型只在其 set-aside Breach Upgrade Deck 和 Prototype Breach
+上使用，不加入 Supply/市场或普通 Treasure 流程；安装、Knowledge 支付及升级效果由引擎解释。
 
 Nemesis 抽到的 Attack 在确认后会临时加入 `nemesis.playArea`，因此可以和 Minion/Power
 一样由 `NemesisArea.vue` 展示并悬停预览。它的效果帧完全结束后才移入 Nemesis discard；

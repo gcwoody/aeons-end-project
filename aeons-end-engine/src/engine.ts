@@ -1,6 +1,6 @@
 import {
   GameState, PlayerState, Phase, Direction,
-  CardChoice, CollectiveCardChoice, CardGainDestination, CardSelectionSource, CardZone,
+  BreachState, CardChoice, CollectiveCardChoice, CardGainDestination, CardSelectionSource, CardZone,
   DamageTargetRef, DamageTargetScope, LifeTargetRef, LifeTargetScope,
   PendingDecision, PendingDecisionAnswer, PendingEffectResolution, PendingSpellCast,
   CardEffect, CardEffectBlock, CardEffectCondition, CardEffectOption,
@@ -127,6 +127,8 @@ export function createGame(
       playerCardSupplyTargets: [],
       playerCardPowerTokens: [],
       aetherTokens: 0,
+      knowledge: 0,
+      doomTokens: def.tracksDoom ? 0 : undefined,
       cardPlayCountsThisTurn: {},
       conditionalAetherEarned: {},
       regularAetherSpent: 0,
@@ -141,7 +143,9 @@ export function createGame(
         nextBreachCostReductions: [],
         usedPreppedEffects: [],
         usedPlayerCardEffects: [],
+        usedBreachUpgradeEffects: [],
         prepSpellLimit: 1,
+        prepSpellLimitByBreach: {},
       },
     }
   }
@@ -880,6 +884,8 @@ function ensurePlayerCollections(p: PlayerState): void {
   if (!p.playerCardSupplyTargets) p.playerCardSupplyTargets = []
   if (!p.playerCardPowerTokens) p.playerCardPowerTokens = []
   p.aetherTokens ??= 0
+  p.knowledge ??= 0
+  if (MAGES[p.mageType]?.tracksDoom) p.doomTokens ??= 0
   while (p.playerCardSupplyTargets.length < p.playerCardsInPlay.length) p.playerCardSupplyTargets.push(null)
   while (p.playerCardPowerTokens.length < p.playerCardsInPlay.length) p.playerCardPowerTokens.push(0)
   if (!p.cardPlayCountsThisTurn) {
@@ -894,10 +900,14 @@ function ensurePlayerCollections(p: PlayerState): void {
       nextBreachCostReductions: [],
       usedPreppedEffects: [],
       usedPlayerCardEffects: [],
+      usedBreachUpgradeEffects: [],
       prepSpellLimit: 1,
+      prepSpellLimitByBreach: {},
     }
   }
   p.turnEffects.usedPlayerCardEffects ??= []
+  p.turnEffects.usedBreachUpgradeEffects ??= []
+  p.turnEffects.prepSpellLimitByBreach ??= {}
   for (const breach of p.breaches) {
     if (!breach.preppedThisTurn || breach.preppedThisTurn.length !== breach.prepSpells.length) {
       breach.preppedThisTurn = breach.prepSpells.map(() => false)
@@ -912,6 +922,14 @@ function ensurePlayerCollections(p: PlayerState): void {
 export function getPlayerTurnEffects(p: PlayerState): PlayerTurnEffects {
   ensurePlayerCollections(p)
   return p.turnEffects
+}
+
+export function getPrepSpellLimit(p: PlayerState, breachIndex: number): number {
+  const turnEffects = getPlayerTurnEffects(p)
+  const breach = p.breaches.find(item => item.index === breachIndex)
+  const permanentLimit = 1 + Math.max(0, breach?.prepSpellLimitBonus ?? 0)
+  const turnLimit = turnEffects.prepSpellLimitByBreach?.[breachIndex] ?? turnEffects.prepSpellLimit
+  return turnLimit === 'unlimited' ? Number.POSITIVE_INFINITY : Math.max(permanentLimit, turnLimit)
 }
 
 export function getCardChoices(
@@ -1037,7 +1055,7 @@ function getBreachChoices(g: GameState, target: 'self' | 'any_player', playerId:
 function getExhaustBreachChoices(g: GameState, playerId: string): BreachChoice[] {
   const player = getPlayer(g, playerId)
   return player.breaches
-    .filter(isPresentBreach)
+    .filter(breach => isPresentBreach(breach) && !breach.indestructible)
     .map(breach => ({
       playerId: player.id,
       breachIndex: breach.index,
@@ -1068,7 +1086,7 @@ function applyFreeBreachFocus(g: GameState, choice: BreachChoice): string {
 function destroyExhaustedBreach(g: GameState, choice: BreachChoice): string {
   const player = getPlayer(g, choice.playerId)
   const breach = player.breaches.find(item => item.index === choice.breachIndex)
-  if (!breach || !isPresentBreach(breach)) return 'The selected breach is no longer available'
+  if (!breach || !isPresentBreach(breach) || breach.indestructible) return 'The selected breach is no longer available'
 
   const prepared = [...breach.prepSpells]
   // Keep all moved cards available in the discard pile. Their exact order is
@@ -1388,6 +1406,23 @@ function getSelectedPlayerTargets(
   return targets.filter((_, index) => values[index] === best)
 }
 
+function getDoomOwner(g: GameState): PlayerState | undefined {
+  return g.players.find(player => MAGES[player.mageType]?.tracksDoom)
+}
+
+function getSelectedDamagePlayerTargets(
+  g: GameState,
+  sourcePlayerId: string,
+  scope: PlayerTargetScope | 'doom_owner',
+  selection?: PlayerSelectionRule,
+): PlayerTargetRef[] {
+  if (scope === 'doom_owner') {
+    const player = getDoomOwner(g)
+    return player ? [{ kind: 'player', playerId: player.id }] : []
+  }
+  return getSelectedPlayerTargets(g, sourcePlayerId, scope, selection)
+}
+
 export function gainLife(g: GameState, target: LifeTargetRef, amount: number): string | null {
   const value = Math.max(0, amount)
   if (target.kind === 'player') {
@@ -1505,7 +1540,7 @@ function hasDeferredAdditionalDamage(
 }
 
 function spellBreachDamageBonus(breach: PlayerState['breaches'][number]): number {
-  return isPresentBreach(breach) && breach.opened && breach.index >= 3 ? 1 : 0
+  return isPresentBreach(breach) && breach.opened ? Math.max(0, breach.damageBonus) : 0
 }
 
 function applySpellDamageBonus(resolution: PendingEffectResolution, amount: number): number {
@@ -1789,6 +1824,9 @@ function conditionMatches(
   if (condition.kind === 'has_player_turn_order_card') {
     return Boolean(playerId && g.turnOrderDiscard.some(cardId => cardId === playerId))
   }
+  if (condition.kind === 'has_doom') {
+    return (getDoomOwner(g)?.doomTokens ?? 0) >= Math.max(0, condition.amount)
+  }
   if (!playerId) return false
   const p = getPlayer(g, playerId)
   if (condition.kind === 'has_unopened_breach') {
@@ -1799,7 +1837,36 @@ function conditionMatches(
     return present.length > 0 && present.every(breach => breach.opened)
   }
   if (condition.kind === 'has_charge') return p.charge >= Math.max(0, condition.amount)
+  if (condition.kind === 'has_knowledge') {
+    const targetId = condition.player === 'source'
+      ? resolution?.sourcePlayerId ?? sourcePlayerId ?? playerId
+      : playerId
+    return (getPlayer(g, targetId).knowledge ?? 0) >= Math.max(0, condition.amount)
+  }
   if (condition.kind === 'has_aether') return getSpendableAether(p, 'general') >= Math.max(0, condition.amount)
+  if (condition.kind === 'has_card_in_zone') {
+    return getZoneCards(p, condition.zone).some(cardId =>
+      !condition.cardType || getCard(cardId).type === condition.cardType,
+    )
+  }
+  if (condition.kind === 'has_affordable_card_in_specific_deck') {
+    const targetId = condition.player === 'source'
+      ? resolution?.sourcePlayerId ?? sourcePlayerId ?? playerId
+      : playerId
+    const target = getPlayer(g, targetId)
+    const resource = condition.payment === 'knowledge' ? target.knowledge ?? 0 : 0
+    return (target.specificDeck ?? []).some(cardId => {
+      const card = getCard(cardId)
+      return card.type === condition.cardType && card.cost <= resource
+    })
+  }
+  if (condition.kind === 'has_installed_breach_upgrade') {
+    const owner = resolution?.pendingSpellCast
+      ? getPlayer(g, resolution.pendingSpellCast.playerId)
+      : p
+    const breach = owner.breaches.find(item => item.index === condition.breachIndex)
+    return (breach?.installedUpgrades?.length ?? 0) > 0
+  }
   if (condition.kind === 'has_card_in_hand') {
     return p.hand.some(cardId => getCard(cardId).type === condition.cardType)
   }
@@ -1894,6 +1961,41 @@ function discardPendingSpellCast(g: GameState, resolution: PendingEffectResoluti
   breach.preppedThisTurn?.splice(pending.spellIndex, 1)
   breach.preppedSpellFaceDown?.splice(pending.spellIndex, 1)
   owner.discard.unshift(pending.cardId)
+}
+
+function breachOnCastEffects(
+  g: GameState,
+  breachOwner: PlayerState,
+  breach: BreachState,
+  casterPlayerId: string,
+): CardEffect[] {
+  if (!breach.opened) return []
+
+  const effects: CardEffect[] = []
+  if (breach.special === 'rift') {
+    effects.push({ kind: 'draw_cards', amount: 1, target: 'ally', relativeToSpellCaster: true })
+  }
+  if (breach.special === 'prototype') {
+    effects.push({ kind: 'gain_knowledge', amount: 1, target: 'breach_owner' })
+  }
+
+  const activeTurnId = g.currentTurn !== 'nemesis' ? g.currentTurn : casterPlayerId
+  const activeTurnPlayer = g.players.find(player => player.id === activeTurnId) ?? breachOwner
+  const turnEffects = getPlayerTurnEffects(activeTurnPlayer)
+  const upgradeEffects: CardEffect[] = []
+  for (const cardId of breach.installedUpgrades ?? []) {
+    for (const [blockIndex, block] of (getCard(cardId).effects ?? []).entries()) {
+      if (block.trigger.kind !== 'on_cast' ||
+        !conditionMatches(g, breachOwner.id, block.condition, undefined, cardId, undefined, casterPlayerId)) continue
+      if (block.oncePerTurn) {
+        const marker = `${breach.index}:${cardId}:${blockIndex}`
+        if (turnEffects.usedBreachUpgradeEffects!.includes(marker)) continue
+        turnEffects.usedBreachUpgradeEffects!.push(marker)
+      }
+      upgradeEffects.push(...block.effects)
+    }
+  }
+  return [...effects, ...upgradeEffects]
 }
 
 function cardChoiceMatches(choice: CardChoice, expectedSource: CardSelectionSource): boolean {
@@ -2197,7 +2299,7 @@ function runEffectResolution(
         continue
       }
       const candidates: BreachChoice[] = owner.breaches
-        .filter(breach => isPresentBreach(breach) && breach.prepSpells.length < getPlayerTurnEffects(owner).prepSpellLimit &&
+        .filter(breach => isPresentBreach(breach) && breach.prepSpells.length < getPrepSpellLimit(owner, breach.index) &&
           (breach.opened || breach.focusedThisTurn))
         .map(breach => ({
           playerId: owner.id,
@@ -2417,6 +2519,161 @@ function runEffectResolution(
       continue
     }
 
+    if (effect.kind === 'gain_knowledge') {
+      const recipient = effect.target === 'breach_owner' && resolution.pendingSpellCast
+        ? getPlayer(g, resolution.pendingSpellCast.playerId)
+        : p
+      ensurePlayerCollections(recipient)
+      const amount = Math.max(0, effect.amount)
+      recipient.knowledge = (recipient.knowledge ?? 0) + amount
+      messages.push(`${recipient.mageType} gains ${amount} Knowledge (${recipient.knowledge})`)
+      continue
+    }
+
+    if (effect.kind === 'lose_knowledge') {
+      ensurePlayerCollections(p)
+      const amount = Math.min(Math.max(0, effect.amount), p.knowledge ?? 0)
+      p.knowledge = (p.knowledge ?? 0) - amount
+      messages.push(`${p.mageType} loses ${amount} Knowledge (${p.knowledge})`)
+      continue
+    }
+
+    if (effect.kind === 'gain_doom') {
+      const doomOwner = getDoomOwner(g)
+      if (!doomOwner) {
+        messages.push('No Mage tracks Doom')
+        continue
+      }
+      ensurePlayerCollections(doomOwner)
+      const amount = Math.max(0, Math.floor(effect.amount))
+      const before = doomOwner.doomTokens ?? 0
+      doomOwner.doomTokens = Math.min(5, before + amount)
+      const gained = doomOwner.doomTokens - before
+      messages.push(`${doomOwner.mageType} gains ${gained} Doom (${doomOwner.doomTokens})`)
+      if (gained > 0 && doomOwner.doomTokens >= 5) {
+        addRemainingEffects(resolution, [
+          { kind: 'deal_damage_to_each_enemy', amount: 10 },
+          { kind: 'deal_player_damage', amount: 10, target: 'doom_owner' },
+          { kind: 'lose_doom', amount: 'all' },
+        ])
+      }
+      continue
+    }
+
+    if (effect.kind === 'lose_doom') {
+      const doomOwner = getDoomOwner(g)
+      if (!doomOwner) {
+        resolution.lastDoomLost = 0
+        messages.push('No Mage tracks Doom')
+        continue
+      }
+      ensurePlayerCollections(doomOwner)
+      const current = doomOwner.doomTokens ?? 0
+      const amount = effect.amount === 'all'
+        ? current
+        : Math.min(current, Math.max(0, Math.floor(effect.amount)))
+      doomOwner.doomTokens = current - amount
+      resolution.lastDoomLost = amount
+      messages.push(`${doomOwner.mageType} loses ${amount} Doom (${doomOwner.doomTokens})`)
+      continue
+    }
+
+    if (effect.kind === 'repeat_effect') {
+      const count = Math.max(0, Math.floor(resolution.lastDoomLost ?? 0))
+      const repeated = Array.from({ length: count }, () => effect.effects).flat()
+      addRemainingEffects(resolution, repeated)
+      continue
+    }
+
+    if (effect.kind === 'deal_damage_to_each_enemy') {
+      const amount = Math.max(0, effect.amount)
+      const minions = getDamageTargets(g, 'minion')
+      for (const minion of minions) messages.push(dealDamage(g, minion, amount))
+      const before = g.nemesis.hp
+      damageNemesis(g, amount)
+      messages.push(`Nemesis takes ${before - g.nemesis.hp} damage (${g.nemesis.hp}/${g.nemesis.maxHp})`)
+      continue
+    }
+
+    if (effect.kind === 'install_breach_upgrade') {
+      const owner = effect.player === 'source' && resolution.sourcePlayerId
+        ? getPlayer(g, resolution.sourcePlayerId)
+        : p
+      ensurePlayerCollections(owner)
+      const breach = owner.breaches.find(item => item.index === effect.breachIndex)
+      const candidates = (owner.specificDeck ?? []).flatMap((cardId, index) => {
+        const card = getCard(cardId)
+        if (card.type !== effect.cardType) return []
+        return [{
+          zone: 'specific_deck' as const,
+          index,
+          cardId,
+          cardName: card.name,
+          disabled: card.cost > (owner.knowledge ?? 0),
+        }]
+      })
+      if (!breach || !isPresentBreach(breach) || candidates.length === 0 || candidates.every(choice => choice.disabled)) {
+        messages.push('No affordable Breach Upgrade is available to install')
+        continue
+      }
+      const decision = createDecision(g,
+        'Choose a Breach Upgrade to install',
+        'select_cards',
+        { source: 'specific_deck', candidates, min: 1, max: 1, ownerId: owner.id },
+        resolution.sourceCardId,
+      )
+      messages.push(...pauseEffect(g, resolution,
+        { kind: 'select_breach_upgrade_card', breachIndex: effect.breachIndex, ownerId: owner.id },
+        decision,
+      ))
+      return messages
+    }
+
+    if (effect.kind === 'install_breach_upgrade_card') {
+      const owner = getPlayer(g, effect.ownerId)
+      ensurePlayerCollections(owner)
+      const cardIndex = (owner.specificDeck ?? []).indexOf(effect.cardId)
+      const card = getCard(effect.cardId)
+      const breach = owner.breaches.find(item => item.index === effect.breachIndex)
+      if (cardIndex < 0 || card.type !== 'breach_upgrade' || !breach || !isPresentBreach(breach) ||
+        (owner.knowledge ?? 0) < card.cost) {
+        messages.push('The selected Breach Upgrade is no longer available or affordable')
+        continue
+      }
+      owner.knowledge = (owner.knowledge ?? 0) - card.cost
+      owner.specificDeck!.splice(cardIndex, 1)
+      breach.installedUpgrades ??= []
+      breach.installedUpgrades.push(card.id)
+      resolution.effectPlayerId = owner.id
+      const installationEffects = matchingBlocks(card.id, owner.id, g,
+        { kind: 'on_breach_upgrade_installed' }).flatMap(block => block.effects)
+      if (installationEffects.length > 0) addRemainingEffects(resolution, installationEffects)
+      messages.push(`${owner.mageType} installs ${card.name} on Breach ${toRoman(breach.index)} for ${card.cost} Knowledge`)
+      continue
+    }
+
+    if (effect.kind === 'increase_breach_prep_limit') {
+      const breach = p.breaches.find(item => item.index === effect.breachIndex)
+      if (!breach || !isPresentBreach(breach)) {
+        messages.push(`Breach ${toRoman(effect.breachIndex)} is unavailable for an upgrade`)
+        continue
+      }
+      breach.prepSpellLimitBonus = (breach.prepSpellLimitBonus ?? 0) + Math.max(0, effect.amount)
+      messages.push(`Breach ${toRoman(breach.index)} can hold ${1 + breach.prepSpellLimitBonus} spell(s)`)
+      continue
+    }
+
+    if (effect.kind === 'increase_breach_damage_bonus') {
+      const breach = p.breaches.find(item => item.index === effect.breachIndex)
+      if (!breach || !isPresentBreach(breach)) {
+        messages.push(`Breach ${toRoman(effect.breachIndex)} is unavailable for an upgrade`)
+        continue
+      }
+      breach.damageBonus += Math.max(0, effect.amount)
+      messages.push(`Breach ${toRoman(breach.index)} gains +${Math.max(0, effect.amount)} spell damage`)
+      continue
+    }
+
     if (effect.kind === 'gain_aether_token') {
       const targets = getSelectedPlayerTargets(g, currentPlayerId, effect.target ?? 'self')
       if (targets.length === 0) {
@@ -2439,9 +2696,11 @@ function runEffectResolution(
 
     if (effect.kind === 'gain_charge') {
       const amount = Math.max(0, effect.amount)
-      const targets = effect.target === 'self'
-        ? [p]
-        : g.players.filter(player => player.id !== resolution.sourcePlayerId)
+      const targets = effect.target === 'breach_owner' && resolution.pendingSpellCast
+        ? [getPlayer(g, resolution.pendingSpellCast.playerId)]
+        : effect.target === 'self'
+          ? [p]
+          : g.players.filter(player => player.id !== resolution.sourcePlayerId)
       let remaining = amount
       for (const target of targets) {
         const gained = Math.min(remaining, Math.max(0, target.chargeThreshold - target.charge))
@@ -2577,10 +2836,13 @@ function runEffectResolution(
 
     if (effect.kind === 'gain_conditional_aether') {
       const amount = Math.max(0, effect.amount)
-      ensurePlayerCollections(p)
-      p.conditionalAetherEarned[effect.condition] =
-        (p.conditionalAetherEarned[effect.condition] ?? 0) + amount
-      messages.push(`${p.mageType} gains ${amount} conditional Aether for ${effect.condition}`)
+      const recipient = effect.target === 'source' && resolution.sourcePlayerId
+        ? getPlayer(g, resolution.sourcePlayerId)
+        : p
+      ensurePlayerCollections(recipient)
+      recipient.conditionalAetherEarned[effect.condition] =
+        (recipient.conditionalAetherEarned[effect.condition] ?? 0) + amount
+      messages.push(`${recipient.mageType} gains ${amount} conditional Aether for ${effect.condition}`)
       continue
     }
 
@@ -2639,7 +2901,7 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'deal_player_damage') {
-      const targets = getSelectedPlayerTargets(g, currentPlayerId, effect.target, effect.selection)
+      const targets = getSelectedDamagePlayerTargets(g, currentPlayerId, effect.target, effect.selection)
       if (targets.length === 0) {
         messages.push('No valid player damage target')
         continue
@@ -2674,7 +2936,10 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'draw_cards') {
-      const targets = getSelectedPlayerTargets(g, currentPlayerId, effect.target ?? 'self', effect.selection)
+      const targetContextPlayerId = effect.relativeToSpellCaster
+        ? resolution.pendingSpellCast?.casterPlayerId ?? resolution.sourcePlayerId ?? currentPlayerId
+        : currentPlayerId
+      const targets = getSelectedPlayerTargets(g, targetContextPlayerId, effect.target ?? 'self', effect.selection)
       if (targets.length === 0) {
         messages.push('No valid player target')
         continue
@@ -3173,8 +3438,12 @@ function runEffectResolution(
         messages.push('No spells are available in the discard pile')
         continue
       }
-      const decision = createDecision(g, `Choose up to ${max} spell(s) to return to your hand`, 'select_cards',
-        { source: effect.source, candidates, min: 0, max, layout: 'simple' }, resolution.sourceCardId,
+      const min = Math.min(Math.max(0, effect.minAmount ?? 0), max)
+      const prompt = min === max
+        ? `Choose ${min} spell(s) to return to your hand`
+        : `Choose up to ${max} spell(s) to return to your hand`
+      const decision = createDecision(g, prompt, 'select_cards',
+        { source: effect.source, candidates, min, max, layout: 'simple' }, resolution.sourceCardId,
       )
       messages.push(...pauseEffect(g, resolution, effect, decision))
       return messages
@@ -3278,17 +3547,33 @@ function runEffectResolution(
 
     if (effect.kind === 'destroy_cards') {
       if (effect.source === 'self') {
-        // On-play effects must destroy the card that was just played, even if
-        // an identical card remains in the player's hand or discard pile.
-        const selfChoice = getZoneCards(getPlayer(g, currentPlayerId), 'played_this_turn')
+        // During an on-cast effect, "self" means the spell being cast. The
+        // sourceCardId can still belong to the relic or Mage ability that
+        // initiated the cast, so the pending spell context must take priority.
+        const pendingCast = resolution.pendingSpellCast
+        const castOwner = pendingCast?.discard
+          ? getPlayer(g, pendingCast.playerId)
+          : undefined
+        const castDiscardIndex = castOwner?.discard.findIndex(cardId => cardId === pendingCast?.cardId) ?? -1
+        const castChoice = castOwner && pendingCast && castDiscardIndex >= 0
+          ? {
+              zone: 'discard' as CardZone,
+              index: castDiscardIndex,
+              cardId: castOwner.discard[castDiscardIndex]!,
+              cardName: getCard(castOwner.discard[castDiscardIndex]!).name,
+            }
+          : undefined
+        const sourcePlayerId = castOwner?.id ?? currentPlayerId
+        const selfChoice = castChoice
+          ?? getZoneCards(getPlayer(g, sourcePlayerId), 'played_this_turn')
           .map((cardId, index) => ({ zone: 'played_this_turn' as CardZone, index, cardId, cardName: getCard(cardId).name }))
           .find(choice => choice.cardId === resolution.sourceCardId)
-          ?? getCardChoices(g, currentPlayerId, 'hand_or_discard')
+          ?? getCardChoices(g, sourcePlayerId, 'hand_or_discard')
             .find(choice => choice.cardId === resolution.sourceCardId)
         if (!selfChoice) {
           messages.push('Source card is no longer available to destroy')
         } else {
-          const message = destroyCard(g, currentPlayerId, selfChoice)
+          const message = destroyCard(g, sourcePlayerId, selfChoice)
           if (message) messages.push(message)
           resolution.lastSelectedCardCount = message ? 1 : 0
           resolution.lastSelectedCardCost = message ? getCard(selfChoice.cardId).cost : 0
@@ -3329,8 +3614,9 @@ function runEffectResolution(
           options: options.map(option => ({
             id: option.id,
             label: option.label,
-            disabled: option.condition ? !conditionMatches(g, currentPlayerId, option.condition) : false,
+            disabled: option.condition ? !conditionMatches(g, currentPlayerId, option.condition, resolution) : false,
           })),
+          layout: effect.layout,
         }, resolution.sourceCardId,
       )
       messages.push(...pauseEffect(g, resolution, effect, decision))
@@ -3363,8 +3649,24 @@ function runEffectResolution(
     }
 
     if (effect.kind === 'set_prep_limit') {
-      getPlayerTurnEffects(p).prepSpellLimit = Math.max(1, effect.amount)
-      messages.push(`Up to ${getPlayerTurnEffects(p).prepSpellLimit} spells may be prepped on each breach this turn`)
+      const turnEffects = getPlayerTurnEffects(p)
+      const limit = effect.amount === 'unlimited' ? 'unlimited' : Math.max(1, effect.amount)
+      if (effect.breachIndices?.length) {
+        turnEffects.prepSpellLimitByBreach ??= {}
+        for (const breachIndex of effect.breachIndices) {
+          turnEffects.prepSpellLimitByBreach[breachIndex] = limit
+        }
+        const breachLabels = effect.breachIndices.map(index => `Breach ${toRoman(index)}`).join(' and ')
+        messages.push(limit === 'unlimited'
+          ? `Any number of spells may be prepped on ${breachLabels} this turn`
+          : `Up to ${limit} spells may be prepped on ${breachLabels} this turn`)
+      } else {
+        turnEffects.prepSpellLimit = limit
+        turnEffects.prepSpellLimitByBreach = {}
+        messages.push(limit === 'unlimited'
+          ? 'Any number of spells may be prepped on each breach this turn'
+          : `Up to ${limit} spells may be prepped on each breach this turn`)
+      }
       continue
     }
 
@@ -3522,13 +3824,15 @@ function runEffectResolution(
       }
       discardPendingSpellCast(g, resolution)
       const casterPlayerId = effectPlayerId(g, resolution)
+      resolution.pendingSpellCast.casterPlayerId = casterPlayerId
       resolution.effectPlayerId = casterPlayerId
       resolution.spellDamageBonus = spellBreachDamageBonus(breach)
       resolution.spellAdditionalDamageBonus = Math.max(0, effect.bonusDamage ?? 0)
       resolution.spellDamageEffectSeen = false
-      const castEffects = faceDown
+      const castEffects: CardEffect[] = faceDown
         ? [{ kind: 'deal_damage', amount: 2, target: 'nemesis_or_minion' } satisfies CardEffect]
         : matchingBlocks(choice.cardId, casterPlayerId, g, { kind: 'on_cast' }).flatMap(block => block.effects)
+      castEffects.push(...breachOnCastEffects(g, spellOwner, breach, casterPlayerId))
       addRemainingEffects(resolution, [
         ...castEffects,
         ...(resolution.pendingSpellCast.transferToAlly ? [{ kind: 'place_cast_spell_in_ally_hand' } satisfies CardEffect] : []),
@@ -4158,7 +4462,7 @@ export function resolvePendingDecision(
     const choice = decision.candidates.find(candidate =>
       candidate.playerId === answer.choice?.playerId && candidate.breachIndex === answer.choice?.breachIndex)
     const breach = choice && owner.breaches.find(item => item.index === choice.breachIndex)
-    if (!choice || !breach || !isPresentBreach(breach) || breach.prepSpells.length >= getPlayerTurnEffects(owner).prepSpellLimit ||
+    if (!choice || !breach || !isPresentBreach(breach) || breach.prepSpells.length >= getPrepSpellLimit(owner, breach.index) ||
       (!breach.opened && !breach.focusedThisTurn)) {
       restore()
       return ['The selected Breach is no longer available for Conjure']
@@ -4268,9 +4572,35 @@ export function resolvePendingDecision(
       return [`Choose between ${decision.min} and ${decision.max} card(s)`]
     }
     const currentPlayerId = effectPlayerId(g, resolution)
-    if (!selectedChoicesAreCurrent(g, currentPlayerId, decision.candidates, selected)) {
+    const selectionOwnerId = effect.kind === 'select_breach_upgrade_card'
+      ? effect.ownerId
+      : currentPlayerId
+    if (!selectedChoicesAreCurrent(g, selectionOwnerId, decision.candidates, selected)) {
       restore()
       return ['Card selection is no longer valid']
+    }
+    if (effect.kind === 'select_breach_upgrade_card') {
+      const choice = selected[0]
+      const candidate = choice && decision.candidates.find(item =>
+        item.zone === choice.zone && item.index === choice.index && item.cardId === choice.cardId,
+      )
+      const owner = getPlayer(g, effect.ownerId)
+      const card = choice ? getCard(choice.cardId) : null
+      const breach = owner.breaches.find(item => item.index === effect.breachIndex)
+      if (decision.source !== 'specific_deck' || decision.ownerId !== owner.id || selected.length !== 1 ||
+        !choice || choice.zone !== 'specific_deck' || !candidate || candidate.disabled ||
+        !card || card.type !== 'breach_upgrade' || (owner.knowledge ?? 0) < card.cost ||
+        !breach || !isPresentBreach(breach)) {
+        restore()
+        return ['The selected Breach Upgrade is no longer available or affordable']
+      }
+      addRemainingEffects(resolution, [{
+        kind: 'install_breach_upgrade_card',
+        cardId: card.id,
+        breachIndex: effect.breachIndex,
+        ownerId: owner.id,
+      }])
+      return [`Selected ${card.name}`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'discard_cards') {
       if (!selected.every(choice => cardChoiceMatches(choice, effect.source))) {
@@ -4727,7 +5057,7 @@ export function pendingDecision(g: GameState): PendingDecision | null {
 
 // ===== Aether System =====
 
-export type SpendType = 'gem' | 'spell' | 'relic' | 'general'
+export type SpendType = 'gem' | 'spell' | 'relic' | 'breach' | 'general'
 
 export function getTotalAether(p: PlayerState): number {
   const conditionalEarned = Object.values(p.conditionalAetherEarned ?? {})
@@ -4834,7 +5164,7 @@ export function castSpell(g: GameState, playerId: string, breachIndex: number, s
 
   const messages = [`Cast ${name}`]
   const pending: PendingSpellCast = {
-    playerId, breachIndex, spellIndex, cardId,
+    playerId, casterPlayerId: playerId, breachIndex, spellIndex, cardId,
     discard: !(b.special === 'transfer' && b.opened),
     transferToAlly: b.special === 'transfer' && b.opened,
     faceDown,
@@ -4842,6 +5172,7 @@ export function castSpell(g: GameState, playerId: string, breachIndex: number, s
   const directEffects: CardEffect[] = faceDown
     ? [{ kind: 'deal_damage', amount: 2, target: 'nemesis_or_minion' }]
     : matchingBlocks(cardDef.id, playerId, g, { kind: 'on_cast' }).flatMap(block => block.effects)
+  directEffects.push(...breachOnCastEffects(g, p, b, playerId))
   if (pending.transferToAlly) directEffects.push({ kind: 'place_cast_spell_in_ally_hand' })
   if (pending.transferToAlly) directEffects.push({ kind: 'finalize_spell_cast' })
   messages.push(...resolveEffects(g, playerId, directEffects, cardDef.id, spellDamageBonus, undefined, false, pending))
@@ -4859,6 +5190,9 @@ export function playCard(g: GameState, playerId: string, cardId: string): string
 
   const card = getCard(cardId)
   if (card.type === 'spell') return 'Spells must be prepped, use "r" command'
+  if (card.type !== 'gem' && card.type !== 'relic' && card.type !== 'treasure') {
+    return `${card.name} cannot be played from hand`
+  }
 
   p.hand.splice(idx, 1)
   p.playedThisTurn.push(cardId)
@@ -4884,7 +5218,7 @@ export function prepSpell(
 
   const b = p.breaches.find(br => br.index === breachIndex)
   if (!b || !isPresentBreach(b)) return 'Invalid breach'
-  const prepLimit = getPlayerTurnEffects(p).prepSpellLimit
+  const prepLimit = getPrepSpellLimit(p, breachIndex)
   if (b.prepSpells.length >= prepLimit) return `Breach already has ${prepLimit} spell(s)`
   if (!b.opened && !b.focusedThisTurn && !card.prepToClosedBreach) return 'Cannot prep on this breach'
 
@@ -5066,10 +5400,10 @@ export function focusBreach(g: GameState, playerId: string, breachIndex: number)
   if (b.focusCount >= b.focusToOpen) return 'Already focused'
 
   const effectiveCost = Math.max(0, b.focusCost - breachCostReduction(p, 'focus'))
-  const available = getSpendableAether(p, 'general')
+  const available = getSpendableAether(p, 'breach')
   if (available < effectiveCost) return `Need ${effectiveCost} Aether, have ${available}`
 
-  spendAether(p, effectiveCost, 'general')
+  spendAether(p, effectiveCost, 'breach')
   consumeBreachCostReductions(p, 'focus')
   b.focusCount++
   b.focusedThisTurn = true
@@ -5121,10 +5455,10 @@ export function openBreachDirect(g: GameState, playerId: string, breachIndex: nu
   if (b.opened) return 'Already open'
 
   const cost = Math.max(0, b.openCost[b.focusDirection] - breachCostReduction(p, 'open'))
-  const available = getSpendableAether(p, 'general')
+  const available = getSpendableAether(p, 'breach')
   if (available < cost) return `Need ${cost} Aether (direct open), have ${available}`
 
-  spendAether(p, cost, 'general')
+  spendAether(p, cost, 'breach')
   consumeBreachCostReductions(p, 'open')
   b.opened = true
   b.focusedThisTurn = true
@@ -5209,7 +5543,9 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
   turnEffects.nextBreachCostReductions = []
   turnEffects.usedPreppedEffects = []
   turnEffects.usedPlayerCardEffects = []
+  turnEffects.usedBreachUpgradeEffects = []
   turnEffects.prepSpellLimit = 1
+  turnEffects.prepSpellLimitByBreach = {}
   for (const b of p.breaches) {
     b.focusedThisTurn = false
     b.preppedThisTurn = b.prepSpells.map(() => false)
@@ -5316,7 +5652,9 @@ export function checkPlayerDeath(g: GameState, playerId: string, deferConsequenc
     // player input and resume safely.
     if (!deferConsequences) {
       g.gravehold.hp = Math.max(0, g.gravehold.hp - excess * 2)
-      const openBreach = p.breaches.find(breach => isPresentBreach(breach) && breach.opened)
+      const openBreach = p.breaches.find(breach =>
+        isPresentBreach(breach) && breach.opened && !breach.indestructible,
+      )
       if (openBreach) {
         openBreach.opened = false
         openBreach.prepSpells = []
@@ -5326,9 +5664,10 @@ export function checkPlayerDeath(g: GameState, playerId: string, deferConsequenc
       }
       p.charge = 0
       const gameOver = checkGameOver(g)
+      const breachOutcome = openBreach ? 'Breach lost' : 'no Breach destroyed'
       return gameOver
-        ? `${p.mageType} EXHAUSTED! Breach lost, Gravehold -${excess * 2}; ${gameOver}`
-        : `${p.mageType} EXHAUSTED! Breach lost, Gravehold -${excess * 2}`
+        ? `${p.mageType} EXHAUSTED! ${breachOutcome}, Gravehold -${excess * 2}; ${gameOver}`
+        : `${p.mageType} EXHAUSTED! ${breachOutcome}, Gravehold -${excess * 2}`
     }
     return `${p.mageType} EXHAUSTED! Nemesis unleashes twice; choose a Breach to destroy`
   }
@@ -5357,7 +5696,7 @@ export function canPlayerAct(g: GameState, playerId: string): boolean {
   // Has non-spell cards in hand
   if (p.hand.some(cid => getCard(cid).type !== 'spell')) return true
   // Has open or focused breach to prep a spell
-  if (p.breaches.some(b => isPresentBreach(b) && b.prepSpells.length < getPlayerTurnEffects(p).prepSpellLimit &&
+  if (p.breaches.some(b => isPresentBreach(b) && b.prepSpells.length < getPrepSpellLimit(p, b.index) &&
     p.hand.some(cid => {
       const card = getCard(cid)
       return card.type === 'spell' && (b.opened || b.focusedThisTurn || card.prepToClosedBreach)
@@ -5378,6 +5717,7 @@ export function canPlayerAct(g: GameState, playerId: string): boolean {
   if (g.players.some(player => getPlayerCardInPlayActions(g, player.id).length > 0)) return true
 
   const aether = getSpendableAether(p, 'general')
+  const breachAether = getSpendableAether(p, 'breach')
 
   // Can buy something from market. Conditional Aether is type-restricted
   // (for example Indira's Spell-only Aether), so check the same spend type
@@ -5396,8 +5736,8 @@ export function canPlayerAct(g: GameState, playerId: string): boolean {
     if (!isPresentBreach(b)) continue
     const focusCost = Math.max(0, b.focusCost - breachCostReduction(p, 'focus'))
     const openCost = Math.max(0, b.openCost[b.focusDirection] - breachCostReduction(p, 'open'))
-    if (!b.opened && b.focusCount < b.focusToOpen && focusCost <= aether) return true
-    if (!b.opened && openCost <= aether) return true
+    if (!b.opened && b.focusCount < b.focusToOpen && focusCost <= breachAether) return true
+    if (!b.opened && openCost <= breachAether) return true
   }
 
   // Can gain charge
