@@ -1,5 +1,5 @@
 import { BREACH_IMAGE_IMPORTS } from './generated-image-imports'
-import type { BreachState } from '@engine/types'
+import type { BreachState, Direction } from '@engine/types'
 import transferClosed from '../../image-database/cards/wave9/mages/indira/Transfer Breach.jpg'
 import transferOpen from '../../image-database/cards/wave9/mages/indira/Opened Transfer Breach.jpg'
 import riftBreachIIIClosed from '../../image-database/cards/wave9/mages/remnant/Rift Breach III.jpg'
@@ -9,28 +9,55 @@ import riftBreachIVOpen from '../../image-database/cards/wave9/mages/remnant/Ope
 import prototypeBreachClosed from '../../image-database/cards/wave9/mages/stake/Prototype Breach.jpg'
 import prototypeBreachOpen from '../../image-database/cards/wave9/mages/stake/Opened Prototype Breach.jpg'
 
-export function breachImageUrl(breach: BreachState): string {
-  if (breach.special === 'transfer') return breach.opened ? transferOpen : transferClosed
-  if (breach.special === 'prototype') return breach.opened ? prototypeBreachOpen : prototypeBreachClosed
-  if (breach.special === 'rift') {
-    const images = breach.index === 3
-      ? { closed: riftBreachIIIClosed, open: riftBreachIIIOpen }
-      : breach.index === 4
-        ? { closed: riftBreachIVClosed, open: riftBreachIVOpen }
-        : null
-    if (images) return breach.opened ? images.open : images.closed
-  }
-  const imageKey = `${breach.index}:${breach.opened ? 'open' : 'down'}`
-  return BREACH_IMAGE_IMPORTS[imageKey] ?? BREACH_IMAGE_IMPORTS[`${breach.index}:open`]!
+export interface BreachPresentation {
+  imageUrl: string
+  rotation: number
 }
 
-export function breachRotation(breach: BreachState): number {
-  if (breach.opened) return 0
-  if (breach.special === 'rift' || breach.special === 'prototype') return 0
+interface BreachArtwork {
+  closed: string
+  open: string
+  /** Direction shown by this closed artwork when it has no CSS rotation. */
+  baseDirection: Direction
+}
+
+const riftArtwork: Record<number, BreachArtwork> = {
+  3: { closed: riftBreachIIIClosed, open: riftBreachIIIOpen, baseDirection: 'south' },
+  4: { closed: riftBreachIVClosed, open: riftBreachIVOpen, baseDirection: 'north' },
+}
+
+const directionDegrees: Record<Direction, number> = {
+  north: 0,
+  east: 90,
+  south: 180,
+  west: 270,
+}
+
+function breachArtwork(breach: BreachState): BreachArtwork {
   if (breach.special === 'transfer') {
-    const rotations: Record<string, number> = { east: 0, south: 90, west: 180, north: 270 }
-    return rotations[breach.focusDirection] ?? 0
+    return { closed: transferClosed, open: transferOpen, baseDirection: 'east' }
   }
-  const rotations: Record<string, number> = { north: 0, east: 90, south: 180, west: 270 }
-  return rotations[breach.focusDirection] ?? 0
+  if (breach.special === 'prototype') {
+    return { closed: prototypeBreachClosed, open: prototypeBreachOpen, baseDirection: 'north' }
+  }
+  if (breach.special === 'rift' && riftArtwork[breach.index]) return riftArtwork[breach.index]!
+
+  const open = BREACH_IMAGE_IMPORTS[`${breach.index}:open`]!
+  return {
+    closed: BREACH_IMAGE_IMPORTS[`${breach.index}:down`] ?? open,
+    open,
+    baseDirection: 'north',
+  }
+}
+
+/** Keep image selection and orientation together; engine direction is authoritative. */
+export function breachPresentation(breach: BreachState): BreachPresentation {
+  const artwork = breachArtwork(breach)
+  const rotation = breach.opened
+    ? 0
+    : (directionDegrees[breach.focusDirection] - directionDegrees[artwork.baseDirection] + 360) % 360
+  return {
+    imageUrl: breach.opened ? artwork.open : artwork.closed,
+    rotation,
+  }
 }

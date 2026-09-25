@@ -2,17 +2,19 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getPrepSpellLimit, getSpellDamagePreviewRange, toRoman } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, mageTokenImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-images'
+import { aetherTokenImageUrl, cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerTurnOrderTokenUrl, specificDeckBackUrl } from '../card-images'
 import type { BreachState, CardChoice } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
+import BreachArtwork from './BreachArtwork.vue'
 import CardSurface from './CardSurface.vue'
 import ZoneScroller from './ZoneScroller.vue'
 import PileCountBadge from './PileCountBadge.vue'
 import FaceUpPileCard from './FaceUpPileCard.vue'
 import TokenBadge from './TokenBadge.vue'
-import { breachImageUrl, breachRotation } from '../breach-images'
 import MageBoard from './MageBoard.vue'
+import aetherIconUrl from '../../../image-database/common images/Aether.png'
+import knowledgeIconUrl from '../../../image-database/common images/Knowledge.png'
 
 const {
   state, displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast,
@@ -759,25 +761,11 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       >
         <template v-if="b.present !== false">
         <div class="breach-token-wrap" :class="{ 'decision-breach-target': isDecisionBreachTarget(b) }">
-          <img
-            class="breach-token"
-            :src="breachImageUrl(b)"
+          <BreachArtwork
+            :breach="b"
             :alt="`Breach ${toRoman(b.index)} ${b.opened ? 'open' : 'closed'}`"
-            :style="{ transform: `rotate(${breachRotation(b)}deg)` }"
-            draggable="false"
-          />
-          <CardHoverPreview
-            :image-url="breachImageUrl(b)"
-            :image-alt="`Breach ${toRoman(b.index)} ${b.opened ? 'open' : 'closed'}`"
-            :image-rotation="breachRotation(b)"
-            :preview-width="315"
-            :preview-height="315"
             :disabled="draggedSpellId !== null"
-            image-object-fit="fill"
-            preview-class="breach-preview"
-          >
-            <span class="breach-hover-target" aria-hidden="true"></span>
-          </CardHoverPreview>
+          />
           <div
             v-if="b.installedUpgrades?.length"
             class="breach-upgrade-strip"
@@ -875,7 +863,6 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                 @click="clickSwapZoneCard(i)"
               />
             </CardHoverPreview>
-            <span v-if="swapZoneCards.length === 0" class="empty">— empty —</span>
           </div>
         </ZoneScroller>
       </section>
@@ -919,7 +906,6 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
                   @click="clickPlayedCard(i)"
                 />
               </CardHoverPreview>
-              <span v-if="player.playedThisTurn.length === 0" class="empty">— none —</span>
             </template>
           </div>
         </ZoneScroller>
@@ -935,7 +921,6 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
             >
               <CardSurface :card-id="cid" size="mini" :class="typeClass(cid)" />
             </CardHoverPreview>
-            <span v-if="developZoneCards.length === 0" class="empty">— empty —</span>
           </div>
         </ZoneScroller>
       </section>
@@ -1065,16 +1050,17 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       <div class="controls-left">
         <div class="char-select">
           <button
-            v-for="candidate in players"
+            v-for="(candidate, playerIndex) in players"
             :key="candidate.id"
             class="char-btn"
             :class="{ sel: state.selectedPlayer === candidate.id, cur: state.game!.currentTurn === candidate.id, 'has-hand-gain': !!handIncrease[candidate.id] }"
             @click="selectPlayer(candidate.id)"
           >
+            <img class="char-turn-token" :src="playerTurnOrderTokenUrl(playerIndex + 1) ?? ''" alt="" aria-hidden="true" draggable="false" />
             <span class="cn">{{ candidate.mageType }}</span>
-            <span class="chp">HP {{ candidate.hp }}</span>
-            <span class="cch">Charge {{ candidate.charge }}/{{ candidate.chargeThreshold }}</span>
-            <span class="chand">Hand <strong>{{ candidate.hand.length }}</strong></span>
+            <span class="chp">HP <strong class="controls-number">{{ candidate.hp }}</strong></span>
+            <span class="cch">Charge <strong class="controls-number">{{ candidate.charge }}</strong>/<strong class="controls-number">{{ candidate.chargeThreshold }}</strong></span>
+            <span class="chand">Hand <strong class="controls-number">{{ candidate.hand.length }}</strong></span>
             <span v-if="handIncrease[candidate.id]" class="chand-gain" role="status" :aria-label="`${candidate.mageType} hand gained ${handIncrease[candidate.id]} cards`">+{{ handIncrease[candidate.id] }}</span>
             <span v-if="candidate.exhausted" class="cex">EXHAUSTED</span>
           </button>
@@ -1085,15 +1071,18 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
       </div>
       <div class="controls-main">
         <span class="aether">
-          Aether {{ aether.regularAvail }}<template v-if="aether.gemAether > 0"> · {{ aether.gemAether }} gem aether</template><template v-if="aether.spellAether > 0"> · {{ aether.spellAether }} spell aether</template><template v-if="aether.breachAether > 0"> · {{ aether.breachAether }} breach aether</template>
+          <img class="resource-icon" :src="aetherIconUrl" alt="Aether" />
+          <span><strong class="controls-number">{{ aether.regularAvail }}</strong><template v-if="aether.gemAether > 0"> · <strong class="controls-number">{{ aether.gemAether }}</strong> gem aether</template><template v-if="aether.spellAether > 0"> · <strong class="controls-number">{{ aether.spellAether }}</strong> spell aether</template><template v-if="aether.breachAether > 0"> · <strong class="controls-number">{{ aether.breachAether }}</strong> breach aether</template></span>
         </span>
-        <TokenBadge
+        <span
           v-if="aether.aetherTokens > 0"
           class="aether-token-status"
-          label="Aether Token"
-          :count="aether.aetherTokens"
-          tone="aether"
-        />
+          :aria-label="`${aether.aetherTokens} Aether Tokens`"
+          :title="`${aether.aetherTokens} Aether Tokens`"
+        >
+          <img :src="aetherTokenImageUrl()" alt="Aether Token" draggable="false" />
+          <strong class="controls-number">{{ aether.aetherTokens }}</strong>
+        </span>
         <template v-if="isCurrentSelected">
           <button v-if="isCasting" class="btn" @click="toMainPhase">Start Main Phase →</button>
           <template v-if="isMain">
@@ -1129,7 +1118,8 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
           >
         </div>
         <span v-if="mageDefinition?.tracksKnowledge" class="knowledge-status">
-          Knowledge {{ player.knowledge ?? 0 }}
+          <img class="resource-icon" :src="knowledgeIconUrl" alt="Knowledge" />
+          <strong class="controls-number">{{ player.knowledge ?? 0 }}</strong>
         </span>
       </div>
       <button class="btn help-button" aria-label="Open game help" title="Game Help" @click="toggleHelp">?</button>

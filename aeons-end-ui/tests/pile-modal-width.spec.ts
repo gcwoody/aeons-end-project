@@ -6,6 +6,7 @@ test('empty specific deck and other pile viewers retain readable widths', async 
   await page.evaluate(() => localStorage.clear())
   await page.reload()
   await page.getByRole('tab', { name: 'Wave 9', exact: true }).first().click()
+  await page.getByRole('tab', { name: 'Wave 1', exact: true }).last().click()
   await page.getByLabel('Player 1 Mage').selectOption('stake')
   await page.getByLabel('Player 2 Mage').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()
@@ -57,6 +58,7 @@ test('empty specific deck and other pile viewers retain readable widths', async 
 })
 
 test('enabled Nemesis specific discard uses the same pile viewer width', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -75,6 +77,7 @@ test('enabled Nemesis specific discard uses the same pile viewer width', async (
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
+  await expect(page.getByRole('button', { name: 'Open Nemesis Specific Discard' }).locator('.nemesis-pile-card img')).toHaveAttribute('alt', 'Slaughter')
   await page.getByRole('button', { name: 'Open Nemesis Specific Discard' }).click()
   const modal = page.locator('.pile-modal')
   await expect(modal.locator('h3')).toContainText('Nemesis Specific Discard')

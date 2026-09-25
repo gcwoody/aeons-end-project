@@ -12,7 +12,7 @@ test('loads setup and starts a game', async ({ page }) => {
   await expect(page.getByText(/Round \d+/)).toBeVisible()
   await expect(page.getByRole('region', { name: 'Nemesis Mainboard' })).toBeVisible()
   await expect(page.getByRole('img', { name: 'Rageborne mat' })).toBeVisible()
-  await expect(page.getByText('Strike Deck', { exact: true })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Strike Deck' })).toBeVisible()
   await expect(page.locator('.nemesis-play')).toBeVisible()
 
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -49,7 +49,12 @@ test('loads setup and starts a game', async ({ page }) => {
 
 test('rejects selecting the same Mage twice', async ({ page }) => {
   await page.goto('/')
-  await page.getByLabel('Player 1').selectOption('brama')
+  const selectedMage = await page.getByLabel('Player 2 Mage').inputValue()
+  const selectedWave = await page.getByRole('tablist', { name: 'Mage Wave Tabs — Second Player' })
+    .getByRole('tab', { selected: true }).textContent()
+  await page.getByRole('tablist', { name: 'Mage Wave Tabs — First Player' })
+    .getByRole('tab', { name: selectedWave?.trim() }).click()
+  await page.getByLabel('Player 1 Mage').selectOption(selectedMage)
   await expect(page.getByText('This Mage has already been selected by another player.')).toBeVisible()
   await page.getByRole('button', { name: 'Start Game' }).click()
   await expect(page.getByText('Market', { exact: true })).toHaveCount(0)
@@ -57,6 +62,8 @@ test('rejects selecting the same Mage twice', async ({ page }) => {
 
 test('Jian ability enters the no-popup prepped-spell flow', async ({ page }) => {
   await page.goto('/')
+  await page.getByRole('tab', { name: 'Wave 1' }).first().click()
+  await page.getByRole('tab', { name: 'Wave 1' }).last().click()
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()

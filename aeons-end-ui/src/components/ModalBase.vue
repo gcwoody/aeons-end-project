@@ -11,6 +11,8 @@ const props = defineProps<{
   panelAriaLabelledby?: string
   dragging?: boolean
   unstyled?: boolean
+  /** Gameplay decisions must remain open until the engine receives an answer. */
+  blocking?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -31,6 +33,11 @@ watch(panelEl, (element) => {
 onBeforeUnmount(() => {
   if (props.panelRef === panelEl.value) emit('update:panelRef', null)
 })
+
+function onBackdropClick(event: MouseEvent) {
+  if (props.blocking) return
+  emit('overlayClick', event)
+}
 </script>
 
 <template>
@@ -39,7 +46,7 @@ onBeforeUnmount(() => {
     class="modal-base"
     :class="[{ overlay: !props.unstyled }, overlayClass]"
     data-ui-component="Modal.Base"
-    @click.self="emit('overlayClick', $event)"
+    @click.self="onBackdropClick"
   >
     <div
       ref="panelEl"

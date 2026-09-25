@@ -11,6 +11,7 @@ test.describe('Stage 5 visual acceptance', () => {
     await page.goto('/?ui-gallery=1')
     await expect(page.locator('[data-ui-gallery]')).toBeVisible()
     await waitForImages(page)
+    await expect(page.locator('[data-component="Card.FaceDown"] img[alt="Treasure deck card back"]')).toHaveCount(1)
 
     const violations = await page.locator('[data-ui-gallery] .card, [data-ui-gallery] .gallery-pile-card').evaluateAll(elements => elements
       .filter(element => {
@@ -92,6 +93,7 @@ test.describe('Stage 5 visual acceptance', () => {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await page.getByRole('tab', { name: 'Wave 9', exact: true }).first().click()
+    await page.getByRole('tab', { name: 'Wave 1', exact: true }).last().click()
     await page.getByLabel('Player 1 Mage').selectOption('nook')
     await page.getByLabel('Player 2 Mage').selectOption('brama')
     await page.getByRole('button', { name: 'Start Game' }).click()
@@ -187,6 +189,8 @@ test.describe('Stage 5 visual acceptance', () => {
     await page.goto('/')
     await page.evaluate(() => localStorage.clear())
     await page.reload()
+    await page.getByRole('tab', { name: 'Wave 1', exact: true }).first().click()
+    await page.getByRole('tab', { name: 'Wave 1', exact: true }).last().click()
     await page.getByLabel('Player 1 Mage').selectOption('brama')
     await page.getByLabel('Player 2 Mage').selectOption('jian')
     await page.getByRole('button', { name: 'Start Game' }).click()
@@ -295,6 +299,7 @@ test.describe('Stage 5 visual acceptance', () => {
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await page.getByRole('tab', { name: 'Wave 9', exact: true }).first().click()
+    await page.getByRole('tab', { name: 'Wave 1', exact: true }).last().click()
     await page.getByLabel('Player 1 Mage').selectOption('nook')
     await page.getByLabel('Player 2 Mage').selectOption('brama')
     await page.getByRole('button', { name: 'Start Game' }).click()

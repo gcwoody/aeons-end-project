@@ -3,6 +3,7 @@ import {
   castSpell,
   activateAbility,
   createGame,
+  focusBreach,
   getBreachActionCosts,
   getPreppedCardActions,
   activatePreppedCardAction,
@@ -146,6 +147,47 @@ function testWave1MageStaticData(): void {
   }
 }
 
+function testUniqueBreachDirectionsAndFocus(): void {
+  const remnantGame = createGame('remnant', 'jian')
+  const remnant = remnantGame.players[0]!
+  const riftIII = remnant.breaches.find(breach => breach.index === 3)!
+  assertEqual(riftIII.focusDirection, 'south', 'Remnant Rift III starts facing south')
+  assertEqual(riftIII.focusCost, 3, 'Remnant Rift III focus cost')
+  remnant.conditionalAetherEarned.breach = 3
+  const focusMessage = focusBreach(remnantGame, remnant.id, 3)
+  assert(focusMessage?.includes('facing ←'), 'Remnant Rift III focus points west after one focus')
+  assertEqual(riftIII.focusDirection, 'west', 'Remnant Rift III turns clockwise from south to west')
+  assertEqual(riftIII.focusCount, 1, 'Remnant Rift III records one focus')
+
+  const riftIV = remnant.breaches.find(breach => breach.index === 4)!
+  assertEqual(riftIV.focusDirection, 'west', 'Remnant Rift IV starts facing west')
+  assertEqual(riftIV.focusToOpen, 2, 'Remnant Rift IV opens after two focuses')
+  assertEqual(getBreachActionCosts(remnantGame, remnant.id, 4)?.open, 10,
+    'Remnant Rift IV uses its west-facing printed open cost')
+  remnant.conditionalAetherEarned.breach = 8
+  remnant.condAetherSpent = {}
+  const firstFocusMessage = focusBreach(remnantGame, remnant.id, 4)
+  assert(firstFocusMessage?.includes('facing ↑'), 'Remnant Rift IV faces north after its first focus')
+  assertEqual(riftIV.focusDirection, 'north', 'Remnant Rift IV turns from west to north after one focus')
+  assertEqual(riftIV.opened, false, 'Remnant Rift IV remains closed after one focus')
+  const openMessage = focusBreach(remnantGame, remnant.id, 4)
+  assert(openMessage?.includes('Breach IV OPENED!'), 'Remnant Rift IV opens on its second focus')
+  assertEqual(riftIV.opened, true, 'Remnant Rift IV is open after two focuses')
+  assertEqual(riftIV.focusCount, 2, 'Remnant Rift IV records two focuses when it opens')
+
+  const indira = createGame('indira', 'jian').players[0]!
+  assertEqual(indira.breaches.find(breach => breach.index === 3)?.focusDirection, 'east',
+    'Indira Transfer Breach starts facing east')
+  assertEqual(indira.breaches.find(breach => breach.index === 3)?.special, 'transfer',
+    'Indira uses the Transfer Breach image')
+
+  const stake = createGame('stake', 'jian').players[0]!
+  assertEqual(stake.breaches.find(breach => breach.index === 4)?.focusDirection, 'north',
+    'Stake Prototype Breach starts facing north')
+  assertEqual(stake.breaches.find(breach => breach.index === 4)?.special, 'prototype',
+    'Stake uses the Prototype Breach image')
+}
+
 function testCommonBreachCosts(): void {
   const expected: Record<number, { focus: number; open: Record<string, number> }> = {
     2: { focus: 2, open: { east: 5, south: 4, west: 3, north: 2 } },
@@ -159,6 +201,7 @@ function testCommonBreachCosts(): void {
     const player = game.players[0]!
     for (const breach of player.breaches) {
       if (breach.present === false || breach.opened) continue
+      if (breach.special === 'rift') continue
       const costs = expected[breach.index]
       assert(costs, `${mageType} has a supported common breach index`)
       assertEqual(breach.focusCost, costs.focus, `${mageType} Breach ${breach.index} focus cost`)
@@ -1006,6 +1049,7 @@ function run(): void {
   testSupplyData()
   testAllCurrentPlayerCardsUseTypedEffects()
   testWave1MageStaticData()
+  testUniqueBreachDirectionsAndFocus()
   testCommonBreachCosts()
   testStage3AbilityTriggers()
   testGainAndSaveShape()

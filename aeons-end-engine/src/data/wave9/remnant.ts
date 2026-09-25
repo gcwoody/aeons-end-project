@@ -75,8 +75,8 @@ export function createRemnant(makeBreach: BreachFactory): MageDef {
     breaches: [
       makeBreach(1, true, null),
       makeBreach(2, false, 'east'),
-      makeBreach(3, false, 'east', true, 'rift'),
-      makeBreach(4, false, 'east', true, 'rift'),
+      makeBreach(3, false, 'south', true, 'rift'),
+      makeBreach(4, false, 'west', true, 'rift'),
     ],
   }
 }

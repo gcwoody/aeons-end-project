@@ -5,6 +5,8 @@ test('ally draw updates the Mage button without changing the displayed Mage', as
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  await page.getByRole('tab', { name: 'Wave 1', exact: true }).first().click()
+  await page.getByRole('tab', { name: 'Wave 1', exact: true }).last().click()
   await page.getByLabel('Player 1 Mage').selectOption('mist')
   await page.getByLabel('Player 2 Mage').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()
@@ -36,7 +38,7 @@ test('ally draw updates the Mage button without changing the displayed Mage', as
   await expect(mistButton.locator('.chp')).toHaveText('HP 10')
   await expect(mistButton.locator('.chp')).toHaveCSS('color', 'rgb(247, 118, 142)')
   const controls = await page.evaluate(() => ({
-    controlsCenter: document.querySelector('.controls')!.getBoundingClientRect().left + document.querySelector('.controls')!.getBoundingClientRect().width / 2,
+    screenCenter: window.innerWidth / 2,
     controlsRight: document.querySelector('.controls')!.getBoundingClientRect().right,
     leftRight: document.querySelector('.controls-left')!.getBoundingClientRect().right,
     leftBottom: document.querySelector('.controls-left')!.getBoundingClientRect().bottom,
@@ -49,7 +51,7 @@ test('ally draw updates the Mage button without changing the displayed Mage', as
     helpRight: document.querySelector('.help-button')!.getBoundingClientRect().right,
   }))
   expect(controls.leftRight <= controls.mainLeft || controls.leftBottom <= controls.mainTop).toBe(true)
-  expect(Math.abs(controls.mainCenter - controls.controlsCenter)).toBeLessThanOrEqual(1)
+  expect(Math.abs(controls.mainCenter - controls.screenCenter)).toBeLessThanOrEqual(1)
   expect(controls.mainRight <= controls.helpLeft || controls.helpBottom <= controls.mainTop).toBe(true)
   expect(controls.helpRight).toBeLessThanOrEqual(controls.controlsRight)
 
@@ -96,6 +98,7 @@ test('Mage buttons and ability resources do not overlap at desktop width', async
     await page.evaluate(() => localStorage.clear())
     await page.reload()
     await page.getByRole('tab', { name: 'Wave 9', exact: true }).first().click()
+    await page.getByRole('tab', { name: 'Wave 1', exact: true }).last().click()
     await page.getByLabel('Player 1 Mage').selectOption(mage)
     await page.getByLabel('Player 2 Mage').selectOption('brama')
     await page.getByRole('button', { name: 'Start Game' }).click()
@@ -112,8 +115,23 @@ test('Mage buttons and ability resources do not overlap at desktop width', async
     await stateField.fill(JSON.stringify(saved))
     await page.getByRole('button', { name: 'Apply', exact: true }).click()
     await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+    const aetherIcon = page.locator('.controls .aether img[alt="Aether"]')
+    await expect(aetherIcon).toBeVisible()
+    expect(await aetherIcon.evaluate(image => (image as HTMLImageElement).naturalWidth)).toBeGreaterThan(0)
+    await expect(page.locator('.controls .aether > span')).toHaveCSS('color', 'rgb(255, 255, 255)')
+    const aetherNumber = page.locator('.controls .aether .controls-number').first()
+    await expect(aetherNumber).toHaveCSS('font-size', '12px')
+    await expect(aetherNumber).toHaveCSS('font-weight', '700')
+    const knowledgeStatus = page.locator('.controls .knowledge-status')
+    if (mage === 'stake') {
+      await expect(knowledgeStatus.locator('img[alt="Knowledge"]')).toBeVisible()
+      await expect(knowledgeStatus.locator('.controls-number')).toHaveText(/^\d+$/)
+      await expect(knowledgeStatus).toHaveCSS('color', 'rgb(228, 219, 188)')
+    } else {
+      await expect(knowledgeStatus).toHaveCount(0)
+    }
     const controls = await page.evaluate(() => ({
-      controlsCenter: document.querySelector('.controls')!.getBoundingClientRect().left + document.querySelector('.controls')!.getBoundingClientRect().width / 2,
+      screenCenter: window.innerWidth / 2,
       controlsRight: document.querySelector('.controls')!.getBoundingClientRect().right,
       leftRight: document.querySelector('.controls-left')!.getBoundingClientRect().right,
       leftBottom: document.querySelector('.controls-left')!.getBoundingClientRect().bottom,
@@ -127,7 +145,7 @@ test('Mage buttons and ability resources do not overlap at desktop width', async
     }))
     expect(controls.leftRight <= controls.mainLeft || controls.leftBottom <= controls.mainTop,
       `${mage} controls overlap`).toBe(true)
-    expect(Math.abs(controls.mainCenter - controls.controlsCenter), `${mage} actions are not centered`).toBeLessThanOrEqual(1)
+    expect(Math.abs(controls.mainCenter - controls.screenCenter), `${mage} actions are not centered`).toBeLessThanOrEqual(1)
     expect(controls.mainRight <= controls.helpLeft || controls.helpBottom <= controls.mainTop,
       `${mage} help overlaps`).toBe(true)
     expect(controls.helpRight, `${mage} help is clipped`).toBeLessThanOrEqual(controls.controlsRight)

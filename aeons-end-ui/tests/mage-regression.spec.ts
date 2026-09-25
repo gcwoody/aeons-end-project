@@ -6,6 +6,8 @@ async function resetSetup(page: Page) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  await page.getByRole('tab', { name: 'Wave 1' }).first().click()
+  await page.getByRole('tab', { name: 'Wave 1' }).last().click()
 }
 
 async function resolveAttackIfNeeded(page: Page) {
@@ -457,7 +459,8 @@ test('Oblivion Swell highlights and grants Aether when its prepped spell is clic
   await expect(spell).toHaveClass(/manual-prepped-action/)
   await spell.click()
   await expect(spell).not.toHaveClass(/manual-prepped-action/)
-  await expect(page.locator('.aether')).toContainText('Aether 1')
+  await expect(page.locator('.aether img[alt="Aether"]')).toBeVisible()
+  await expect(page.locator('.aether > span')).toHaveText('1')
 })
 
 test('Focusing Orb selects a Breach directly from highlighted board targets', async ({ page }) => {
@@ -590,7 +593,7 @@ test('Flexing Dagger destroys its played copy instead of an identical card in ha
 
   await expect(handDaggers).toHaveCount(1)
   await expect(page.locator('.played-zones .played-zone-center img[alt="Flexing Dagger"]')).toHaveCount(0)
-  await expect(page.locator('.played-zones .played-zone-center .empty')).toHaveText('— none —')
+  await expect(page.locator('.played-zones .played-zone-center .empty')).toHaveCount(0)
 })
 
 test('preparing a spell preserves the remaining hand order', async ({ page }) => {

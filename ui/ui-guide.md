@@ -29,9 +29,12 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 | `CardHoverPreview` | 鼠标悬停大图预览 | `delayed`、`visible`、`zoomed`、`disabled` |
 | `DragCardPreview` | 手牌或 Breach 卡牌拖拽预览 | `face-up`、`face-down`、`drop-valid`、`drop-invalid` |
 | `Card.DebugPicker` | Debug Tools 中搜索和选择卡牌 | `grouped`、`filtered`、`selected`、`preview` |
+| `Breach.Artwork` | Breach token 与悬停预览 | 图片和预览共用同一 artwork/rotation；闭合方向以引擎 `focusDirection` 为准，旋转基于素材登记的初始方向；`opened` 时显示开启图且不旋转 |
 
-主要实现位置：`CardSurface.vue`、`CardHoverPreview.vue`、
+主要实现位置：`CardSurface.vue`、`CardHoverPreview.vue`、`BreachArtwork.vue`、
 `PlayerArea.vue`、`DebugCardPicker.vue`。
+
+所有 Breach 图片都必须通过 `aeons-end-ui/src/components/BreachArtwork.vue` 显示，使板面 token 和悬停预览共享同一张图及旋转角度。角度由当前 `focusDirection` 和 `aeons-end-ui/src/breach-images.ts` 登记的素材基准方向计算；`focusCount` 只表示规则进度，不可单独用来推算图片朝向。新增特殊 Breach 美术时，必须同时登记闭合/开启素材和闭合素材的基准方向，并覆盖初始朝向、一次 Focus 后方向变化、自动开启这三种状态的引擎与 UI 回归。
 
 ### 牌堆和滚动区域
 
@@ -44,6 +47,8 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 | `Pile.NemesisSpecific` | Nemesis 专属牌堆或弃牌堆 | 根据 Nemesis 配置显示数量或顶牌 |
 | `PileViewer` | 查看牌堆内容 | 顶牌在左侧，每行最多 5 张 |
 | `ZoneScroller` | Played、Swap、Develop 和 Gallery 的横向溢出 | 内容短时居中，溢出时滚轮横向滚动 |
+
+Nemesis mat 右侧的 Info Bar 横跨剩余区域；左侧从 Fury token 开始，随后是 Nemesis 血条，中间为六个 Turn Order token 与垂直居中的轮数，右侧为 Gravehold 血条。三个布局区域之间不显示分隔线，血条标签不重复写 `HP`。未揭示的 Turn Order 槽位显示问号，不暴露抽牌顺序，当前回合 token 不加边框。下方依次是两列 `Card.Pile` 和场上卡牌区：第一列上方为 Specific Discard、下方为 Nemesis Discard；第二列上方为 Specific Deck、下方为 Nemesis Deck。牌堆按剩余高度保持卡牌比例缩放，未使用的专属槽位固定显示 `Not used`，四个槽位均可点击查看。有牌图片在悬停时不改变边框颜色；Rageborne 的 Strike Deck 用带白边的专属牌背，牌堆和弹窗保持一致。Nemesis Play 区域与左侧牌堆一样分为两行高度，顶部留空、卡牌从下排左侧起横向排列并在需要时滚动；卡牌悬停时不移动，区域用深蓝色底区分且不绘制边框。Nemesis Play、Played、Develop 和 Swap 区域为空时不显示占位文案。`.nemesis-area` 的 `--info-*-share` 和 `--info-*-hp-width` 调整三块区域份额和血条宽度；`--info-turn-token-size`、`--info-turn-token-gap`、`--info-turn-round-gap`、`--info-turn-round-font-size` 调整 Turn Order token 和轮数；`--info-nemesis-token-size` 调整 Fury 尺寸；`--info-hp-label-font-size` 与 `--info-hp-value-font-size` 调整血条文字。`.controls` 的 `--control-player-token-size`、`--control-aether-token-size` 和 `--control-main-offset-x` 分别调整玩家按钮 token、Aether Token 大小与中间操作区的屏幕居中偏移。
 
 ### 弹窗、标记和控制
 
@@ -59,7 +64,9 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 | `Badge.Token` | Power、Aether token 等状态标记 |
 | `Controls.TurnBar` | Mage 切换按钮、阶段、资源和回合按钮 |
 
-Stake 的 Knowledge 计数显示在控制栏的 Activate Ability 按钮旁，使用亮紫色；Breach Upgrade 卡牌以手牌尺寸悬停显示，并横向放在 Prototype Breach 左侧。前三个 Breach 隐藏外观但保留位置，为升级卡留出空间。
+每次进入 Setup 时，两位玩家从全部已实现 Mage 中随机获得不同角色，并同步选中各自的 Wave 标签。点击某位玩家的 Wave 标签会立即从该 Wave 随机选择 Mage；重复点击当前 Wave 也会重新抽取，并避开该玩家当前角色和另一玩家的角色。Mage 的 Reroll 按钮继续从全部 Wave 抽取。
+
+控制栏的常规 Aether 使用 `image-database/common images/Aether.png` 图标加白色数字；图标带白色圆边，所有计数数字使用与 Mage 按钮一致的 12px 粗体。Gem、Spell、Breach 条件 Aether 继续写明类型，文字同为白色。Stake 的 Knowledge 计数使用 `image-database/common images/Knowledge.png` 图标加 `#E4DBBC` 数字，仍仅对追踪 Knowledge 的 Mage 显示。Breach Upgrade 卡牌以手牌尺寸悬停显示，并横向放在 Prototype Breach 左侧。前三个 Breach 隐藏外观但保留位置，为升级卡留出空间。
 
 Mage ability 的 OR 决策使用可复用的 `Decision.MageAbilityChoice`：弹窗上方展示能力来源 Mage 的正面 mat 并裁切为统一圆角；下方显示与 mat 同宽、上下排列的两个可点击按钮。按钮使用蓝底深色文字，悬停时平滑变暗。所有 `choose_one` Ability 决策都应声明 `layout: 'mage-ability'`；非 Ability 的卡牌选择沿用普通决策 UI。Mage mat 宽度、选项文字大小和按钮最小高度集中在 `.decision-modal.mage-ability-modal` 的 CSS 自定义属性中，方便统一微调。Specific Deck 中需要直接辨认的升级卡选择使用 large 卡牌尺寸。
 
@@ -128,7 +135,8 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - 选择按钮在选中前后保持稳定位置。
 - 牌堆查看弹窗说明明确的顺序：顶牌在左、底牌在右，每行最多 5 张。
 - 牌堆查看弹窗设定视口内的最小宽度：带行标签的 Deck/Discard 至少 280px，其他牌堆至少 440px，避免空牌堆或单张牌时长标题被挤成多行；窄窗口以视口宽度为上限。
-- Nemesis Specific Discard 仅在对应 Nemesis 启用该区域时提供查看弹窗，使用同一套牌堆宽度和顺序规则。
+- Nemesis 四个牌堆均可打开查看弹窗；未启用的专属区域显示空内容。Nemesis Deck 始终只显示牌背，Specific Deck 按 Nemesis 配置显示牌背或正面。
+- `ModalBase` 的遮罩点击默认关闭对应弹窗；只有仍需引擎决策的弹窗显式设置 `blocking`，由游戏操作继续流程。
 - 只有不需要决策的查看类弹窗允许 ESC 关闭；决策弹窗不能被 ESC 取消。
 
 ## 5. 尺寸和响应式规则

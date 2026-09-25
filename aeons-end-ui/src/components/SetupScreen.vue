@@ -18,8 +18,8 @@ const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 const selectionError = ref('')
 const mageOptions = computed(() => Object.values(MAGES))
 const mageWaves = computed(() => [...new Set(mageOptions.value.map(mage => mage.wave))].sort((a, b) => a - b))
-const mage1Wave = ref(mageOptions.value.find(mage => mage.type === state.mage1)?.wave ?? mageWaves.value[0] ?? 1)
-const mage2Wave = ref(mageOptions.value.find(mage => mage.type === state.mage2)?.wave ?? mageWaves.value[0] ?? 1)
+const mage1Wave = ref(MAGES[state.mage1]?.wave ?? mageWaves.value[0] ?? 1)
+const mage2Wave = ref(MAGES[state.mage2]?.wave ?? mageWaves.value[0] ?? 1)
 const magePickerWave = ref(mage1Wave.value)
 const mage1Options = computed(() => mageOptions.value.filter(mage => mage.wave === mage1Wave.value))
 const player2MageOptions = computed(() => mageOptions.value.filter(mage => mage.wave === mage2Wave.value && mage.type !== state.mage1))
@@ -63,19 +63,38 @@ function randomChoice<T>(items: T[]): T | undefined {
   return items[Math.floor(Math.random() * items.length)]
 }
 
-function randomizeMage(player: 1 | 2) {
+function randomizeMage(player: 1 | 2, wave?: number) {
   const currentOtherMage = player === 1 ? state.mage2 : state.mage1
   const currentMage = player === 1 ? state.mage1 : state.mage2
-  const alternatives = mageOptions.value.filter(mage =>
-    mage.type !== currentOtherMage && mage.type !== currentMage)
+  const waveCandidates = mageOptions.value.filter(mage =>
+    (wave === undefined || mage.wave === wave) && mage.type !== currentOtherMage)
+  const alternatives = waveCandidates.filter(mage => mage.type !== currentMage)
   const candidates = alternatives.length > 0
     ? alternatives
-    : mageOptions.value.filter(mage => mage.type !== currentOtherMage)
+    : waveCandidates
   const selected = randomChoice(candidates)
   if (!selected) return
-  if (player === 1) state.mage1 = selected.type
-  else state.mage2 = selected.type
+  if (player === 1) {
+    state.mage1 = selected.type
+    mage1Wave.value = selected.wave
+  } else {
+    state.mage2 = selected.type
+    mage2Wave.value = selected.wave
+  }
 }
+
+function randomizeSetupMages() {
+  const first = randomChoice(mageOptions.value)
+  if (!first) return
+  const second = randomChoice(mageOptions.value.filter(mage => mage.type !== first.type))
+  if (!second) return
+  state.mage1 = first.type
+  state.mage2 = second.type
+  mage1Wave.value = first.wave
+  mage2Wave.value = second.wave
+}
+
+randomizeSetupMages()
 
 function randomizeNemesis() {
   const candidates = nemesisOptions.value.filter(nemesis => nemesis.type !== state.nemesisType)
@@ -201,7 +220,7 @@ function turnLabel(turn: string): string {
         <div class="setup-mage-field">
           <label for="player1-mage-select">Player 1 Mage</label>
           <span class="wave-tabs" role="tablist" aria-label="Mage Wave Tabs — First Player">
-            <button v-for="wave in mageWaves" :key="`p1-wave-${wave}`" type="button" role="tab" :aria-selected="mage1Wave === wave" :class="{ active: mage1Wave === wave }" @click="mage1Wave = wave">Wave {{ wave }}</button>
+            <button v-for="wave in mageWaves" :key="`p1-wave-${wave}`" type="button" role="tab" :aria-selected="mage1Wave === wave" :class="{ active: mage1Wave === wave }" @click="randomizeMage(1, wave)">Wave {{ wave }}</button>
           </span>
           <span class="setup-select-row">
           <select id="player1-mage-select" v-model="state.mage1" aria-label="Player 1 Mage">
@@ -223,7 +242,7 @@ function turnLabel(turn: string): string {
         <div class="setup-mage-field">
           <label for="player2-mage-select">Player 2 Mage</label>
           <span class="wave-tabs" role="tablist" aria-label="Mage Wave Tabs — Second Player">
-            <button v-for="wave in mageWaves" :key="`p2-wave-${wave}`" type="button" role="tab" :aria-selected="mage2Wave === wave" :class="{ active: mage2Wave === wave }" @click="mage2Wave = wave">Wave {{ wave }}</button>
+            <button v-for="wave in mageWaves" :key="`p2-wave-${wave}`" type="button" role="tab" :aria-selected="mage2Wave === wave" :class="{ active: mage2Wave === wave }" @click="randomizeMage(2, wave)">Wave {{ wave }}</button>
           </span>
           <span class="setup-select-row">
           <select id="player2-mage-select" v-model="state.mage2" aria-label="Player 2 Mage">
@@ -347,6 +366,7 @@ function turnLabel(turn: string): string {
       panel-class="draggable-modal"
       :panel-style="modalStyle"
       :dragging="dragging"
+      @overlay-click="cancelDeleteSave"
       @panel-pointerdown="startDrag"
     >
         <h2>Delete Saved Game?</h2>

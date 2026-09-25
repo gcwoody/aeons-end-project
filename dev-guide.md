@@ -157,10 +157,11 @@ Nemesis 通过 `NEMESES` 注册表提供给 Setup 的选择器，定义可以提
 Nemesis 专属牌堆的 UI 由 `NemesisSpecificPile.vue` 统一渲染：在
 `game/nemesis-presentation.ts` 为 `specificDeck` 设置 `display: 'count'` 或
 `display: 'face_up'`。后者展示顶牌正面；是否可点击、点击后做什么由 `NemesisArea.vue`
-传入，不要把具体 Nemesis 行为写进该通用组件。尺寸参数集中在 `style.css` 的
-`.nemesis-specific-pile-asset`：`--nemesis-specific-pile-size`、
-`--nemesis-specific-pile-radius`、`--nemesis-specific-pile-gap` 和
-`--nemesis-specific-pile-asset-padding`。
+传入，不要把具体 Nemesis 行为写进该通用组件。Nemesis mat 右侧的 Info Bar
+覆盖牌堆与场上卡牌区，上方三段分别显示 Nemesis 信息、Turn Order 卡和 Gravehold HP。
+下方两列 `Card.Pile` 从左到右为 Specific Discard / Discard 和 Specific Deck / Deck；
+四个槽位共用 `PileModal`，正面或牌背由展示配置决定。尺寸与间距集中在
+`style.css` 的 `.nemesis-area` 自定义属性和 `.nemesis-pile-column`。
 
 Mage 专属牌堆使用 `MageDef.specificDeckDisplay` 描述正面或牌背显示。Stake 的
 `breach_upgrade` 卡牌类型只在其 set-aside Breach Upgrade Deck 和 Prototype Breach
@@ -174,9 +175,10 @@ Nemesis 抽到的 Attack 在确认后会临时加入 `nemesis.playArea`，因此
 `CardSelectionPanel.vue` 会按手牌、弃牌等来源分组。一个来源的标签只显示一次，
 并在该来源所有牌行的左侧垂直居中；不要在每个五张牌的行中重复加入标签。
 
-`PileModal.vue` 统一查看玩家牌堆和正面朝上的 Nemesis specific 牌堆。玩家弃牌与
-Nemesis specific 都按数组的顶牌到最底牌、从左到右每 5 张显示；正面朝上的 specific
-牌堆右键打开该弹窗。玩家弃牌区展示顶牌正面，左键和右键都打开弹窗。
+`PileModal.vue` 统一查看玩家和 Nemesis 牌堆。玩家弃牌与 Nemesis 牌堆都按数组的
+顶牌到最底牌、从左到右每 5 张显示。Nemesis Deck 始终只显示牌背；Specific Deck
+依据展示配置显示正面或牌背。Prince 的正面 Devoured Pile 点击查看，购买由独立按钮触发。
+标准弹窗复用 `ModalBase` 的遮罩点击关闭能力；引擎决策弹窗显式设置 `blocking`。
 
 ## 当前场景边界
 

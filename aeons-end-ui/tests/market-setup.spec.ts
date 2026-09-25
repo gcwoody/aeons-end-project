@@ -71,7 +71,10 @@ test('Setup previews follow Mage and Nemesis selections', async ({ page }) => {
   await expect(previews).toHaveCount(3)
   const initialMage = await previews.nth(0).getAttribute('src')
   const initialNemesis = await previews.nth(2).getAttribute('src')
-  await page.getByLabel('Player 1').selectOption('adelheim')
+  const mageSelect = page.getByLabel('Player 1 Mage', { exact: true })
+  const initialMageType = await mageSelect.inputValue()
+  await page.getByRole('tablist', { name: 'Mage Wave Tabs — First Player' }).getByRole('tab', { name: 'Wave 1' }).click()
+  await mageSelect.selectOption(initialMageType === 'adelheim' ? 'jian' : 'adelheim')
   await page.getByLabel('Nemesis', { exact: true }).selectOption('prince_of_gluttons')
   await expect(previews.nth(0)).not.toHaveAttribute('src', initialMage ?? '')
   await expect(previews.nth(2)).not.toHaveAttribute('src', initialNemesis ?? '')
@@ -83,15 +86,18 @@ test('Mage mat images open a picker and sync the Mage dropdown', async ({ page }
   await page.reload()
 
   const mageSelect = page.getByLabel('Player 1 Mage', { exact: true })
-  await expect(mageSelect).toHaveValue('jian')
+  await page.getByRole('tablist', { name: 'Mage Wave Tabs — First Player' }).getByRole('tab', { name: 'Wave 1' }).click()
+  await expect(mageSelect.locator('option')).toHaveCount(8)
   await page.getByRole('button', { name: 'Choose First Mage' }).click()
   await expect(page.getByRole('dialog', { name: 'Choose Player 1 Mage' })).toBeVisible()
   await expect(page.locator('.mage-picker-card')).toHaveCount(8)
 
-  await page.getByRole('button', { name: 'Choose Adelheim Mage' }).click()
-  await expect(mageSelect).toHaveValue('adelheim')
+  const secondMage = await page.getByLabel('Player 2 Mage', { exact: true }).inputValue()
+  const chosenMage = secondMage === 'adelheim' ? 'kadir' : 'adelheim'
+  await page.getByRole('button', { name: `Choose ${chosenMage} Mage` }).click()
+  await expect(mageSelect).toHaveValue(chosenMage)
   await expect(page.getByRole('dialog', { name: 'Choose Player 1 Mage' })).toHaveCount(0)
-  await expect(page.getByRole('img', { name: 'adelheim mage mat' })).toBeVisible()
+  await expect(page.getByRole('img', { name: `${chosenMage} mage mat` })).toBeVisible()
 })
 
 test('Nemesis mat image opens a picker and syncs the Nemesis dropdown', async ({ page }) => {
@@ -136,6 +142,42 @@ test('Setup randomizes Mages and Nemesis without changing difficulty', async ({ 
   await expect(nemesis).not.toHaveValue(initialNemesis)
   expect(await player1Mage.inputValue()).not.toBe(await player2Mage.inputValue())
   await expect(page.getByLabel('Nemesis Difficulty')).toHaveValue('increased')
+})
+
+test('Setup randomizes both Mages on entry and Wave tabs select from their Wave', async ({ page }) => {
+  await page.addInitScript(() => { Math.random = () => 0 })
+  await page.goto('/')
+  const firstTabs = page.getByRole('tablist', { name: 'Mage Wave Tabs — First Player' })
+  const secondTabs = page.getByRole('tablist', { name: 'Mage Wave Tabs — Second Player' })
+  const firstMage = page.getByLabel('Player 1 Mage', { exact: true })
+  const secondMage = page.getByLabel('Player 2 Mage', { exact: true })
+
+  await expect(firstTabs.getByRole('tab', { name: 'Wave 1' })).toHaveAttribute('aria-selected', 'true')
+  await expect(secondTabs.getByRole('tab', { name: 'Wave 1' })).toHaveAttribute('aria-selected', 'true')
+  expect(await firstMage.inputValue()).not.toBe(await secondMage.inputValue())
+
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('heading', { name: 'Exit Game?' })).toBeVisible()
+  await page.evaluate(() => { Math.random = () => 0.999999 })
+  await page.getByRole('button', { name: 'Exit Without Saving' }).click()
+  await expect(firstTabs.getByRole('tab', { name: 'Wave 9' })).toHaveAttribute('aria-selected', 'true')
+  await expect(secondTabs.getByRole('tab', { name: 'Wave 9' })).toHaveAttribute('aria-selected', 'true')
+  await expect(firstMage.locator('option')).toHaveCount(6)
+  await expect(secondMage.locator('option')).toHaveCount(5)
+  expect(await firstMage.inputValue()).not.toBe(await secondMage.inputValue())
+
+  await firstTabs.getByRole('tab', { name: 'Wave 1' }).click()
+  await expect(firstTabs.getByRole('tab', { name: 'Wave 1' })).toHaveAttribute('aria-selected', 'true')
+  await expect(firstMage.locator('option')).toHaveCount(8)
+  const wave1Mage = await firstMage.inputValue()
+  await firstTabs.getByRole('tab', { name: 'Wave 1' }).click()
+  await expect(firstMage).not.toHaveValue(wave1Mage)
+
+  await secondTabs.getByRole('tab', { name: 'Wave 1' }).click()
+  await expect(secondTabs.getByRole('tab', { name: 'Wave 1' })).toHaveAttribute('aria-selected', 'true')
+  await expect(secondMage.locator('option')).toHaveCount(7)
+  expect(await firstMage.inputValue()).not.toBe(await secondMage.inputValue())
 })
 
 test('Setup uses three columns, a visual market grid, and vertical scrolling', async ({ page }) => {

@@ -1,6 +1,13 @@
 import { CARD_IMAGE_IMPORTS, MAGE_TOKEN_IMAGE_IMPORTS, NEMESIS_MAT_IMAGE_IMPORTS } from './generated-image-imports'
 import playerCardBack from '../../image-database/common images/player-card back.jpg'
-import treasureTwoBack from '../../image-database/common images/treasure 12back.jpg'
+import treasureTwoBack from '../../image-database/common images/treasure 2 back.jpg'
+import nemesisCardBack from '../../image-database/common images/nemesis card back.jpg'
+import rageborneStrikeDeckBack from '../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Strike Deck Back.png'
+import rageborneFuryToken from '../../image-database/cards/wave1/nemesis/Rageborne/Fury Token UI.png'
+import aetherToken from '../../image-database/common images/Aether Token.png'
+import playerOneTurnToken from '../../image-database/common images/turn order images/token/105px-Player_1.png'
+import playerTwoTurnToken from '../../image-database/common images/turn order images/token/105px-Player_2.png'
+import nemesisTurnToken from '../../image-database/common images/turn order images/token/Nemesis Turn Order Token 128.png'
 
 export function cardImageUrl(cardId: string): string | undefined {
   return CARD_IMAGE_IMPORTS[cardId]
@@ -12,6 +19,33 @@ export function mageTokenImageUrl(tokenId: string): string | undefined {
 
 export function playerCardBackUrl(): string {
   return playerCardBack
+}
+
+export function nemesisCardBackUrl(): string {
+  return nemesisCardBack
+}
+
+export function nemesisSpecificDeckBackUrl(nemesisType: string): string {
+  return nemesisType === 'rageborne' ? rageborneStrikeDeckBack : nemesisCardBack
+}
+
+export function nemesisTokenImageUrl(nemesisType: string, tokenName: string): string | undefined {
+  if (nemesisType === 'rageborne' && tokenName === 'fury') return rageborneFuryToken
+  return undefined
+}
+
+export function aetherTokenImageUrl(): string {
+  return aetherToken
+}
+
+export function playerTurnOrderTokenUrl(playerNumber: number): string | undefined {
+  if (playerNumber === 1) return playerOneTurnToken
+  if (playerNumber === 2) return playerTwoTurnToken
+  return undefined
+}
+
+export function nemesisTurnOrderTokenUrl(): string {
+  return nemesisTurnToken
 }
 
 export type SpecificDeckBack = 'treasure_1' | 'treasure_2' | 'treasure_3' | 'player'

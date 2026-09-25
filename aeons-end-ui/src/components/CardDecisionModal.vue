@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
 import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
 import { cardImageUrl } from '../card-images'
@@ -218,12 +218,32 @@ function confirmNemesisDraw() {
   if (!decision.value || decision.value.kind !== 'confirm_nemesis_draw') return
   answer({ kind: 'confirm_nemesis_draw', accepted: true })
 }
+
+function onDecisionKeydown(event: KeyboardEvent) {
+  if (event.code !== 'Space' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return
+  const currentDecision = decision.value
+  if (!currentDecision || currentDecision.kind === 'confirm_nemesis_draw' || currentDecision.kind === 'confirm_nemesis_effect') return
+  if (state.helpOpen || state.viewPile || state.exitPrompt || state.debugOpen) return
+  if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]')) return
+
+  const confirmButton = Array.from(modalEl.value?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+    .find(button => button.textContent?.replace(/\s+/g, ' ').trim() === 'Confirm')
+  if (!confirmButton) return
+
+  event.preventDefault()
+  if (event.repeat || confirmButton.disabled) return
+  confirmButton.click()
+}
+
+onMounted(() => document.addEventListener('keydown', onDecisionKeydown, true))
+onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown, true))
 </script>
 
 <template>
   <ModalBase
     v-if="decision?.kind === 'confirm_nemesis_draw'"
     overlay-class="decision-overlay nemesis-reveal-overlay"
+    :blocking="true"
     v-model:panel-ref="modalEl"
     panel-class="nemesis-reveal-modal draggable-modal"
     :panel-style="modalStyle"
@@ -250,6 +270,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="isDirectMarketDecision"
     overlay-class="decision-overlay non-blocking-decision-overlay non-blocking-market-selection-overlay"
+    :blocking="true"
     v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-selection-modal draggable-modal"
     :panel-style="modalStyle"
@@ -263,6 +284,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spells'"
     overlay-class="decision-overlay non-blocking-decision-overlay"
+    :blocking="true"
     v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-prepped-modal draggable-modal"
     :panel-style="modalStyle"
@@ -286,6 +308,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spell' && decision.allowSkip"
     overlay-class="decision-overlay non-blocking-decision-overlay"
+    :blocking="true"
     v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-prepped-modal draggable-modal"
     :panel-style="modalStyle"
@@ -302,6 +325,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="boardCardDecision"
     overlay-class="decision-overlay non-blocking-decision-overlay"
+    :blocking="true"
     v-model:panel-ref="modalEl"
     panel-class="decision-modal non-blocking-selection-modal draggable-modal"
     :panel-style="modalStyle"
@@ -328,6 +352,7 @@ function confirmNemesisDraw() {
   <ModalBase
     v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'"
     overlay-class="decision-overlay"
+    :blocking="true"
     v-model:panel-ref="modalEl"
     :panel-class="isMageAbilityChoice ? 'decision-modal mage-ability-modal draggable-modal' : 'decision-modal draggable-modal'"
     :panel-style="{ ...modalStyle, '--decision-columns': decisionColumns }"

@@ -21,6 +21,18 @@ import { leastExpensiveMarketPiles, marketPileChoices } from './nemesis/market'
 
 const DIR_ARROW: Record<string, string> = { east: '→', south: '↓', west: '←', north: '↑' }
 
+/** Apply one focus consistently for paid and effect-granted Breach focuses. */
+function advanceBreachFocus(breach: BreachState): boolean {
+  breach.focusCount++
+  breach.focusedThisTurn = true
+  if (breach.focusCount < breach.focusToOpen) {
+    breach.focusDirection = rotateDirection(breach.focusDirection)
+    return false
+  }
+  breach.opened = true
+  return true
+}
+
 export function clone<T>(obj: T): T {
   return JSON.parse(JSON.stringify(obj))
 }
@@ -1072,13 +1084,10 @@ function applyFreeBreachFocus(g: GameState, choice: BreachChoice): string {
   if (!breach || !isPresentBreach(breach) || breach.opened || breach.focusCount >= breach.focusToOpen) {
     return 'The selected breach is no longer available'
   }
-  breach.focusCount++
-  breach.focusedThisTurn = true
-  if (breach.focusCount < breach.focusToOpen) {
-    breach.focusDirection = rotateDirection(breach.focusDirection)
+  const opened = advanceBreachFocus(breach)
+  if (!opened) {
     return `Focused ${player.mageType}'s Breach ${toRoman(breach.index)} (${breach.focusCount}/${breach.focusToOpen})`
   }
-  breach.opened = true
   return `${player.mageType}'s Breach ${toRoman(breach.index)} OPENED!`
 }
 
@@ -5405,15 +5414,11 @@ export function focusBreach(g: GameState, playerId: string, breachIndex: number)
 
   spendAether(p, effectiveCost, 'breach')
   consumeBreachCostReductions(p, 'focus')
-  b.focusCount++
-  b.focusedThisTurn = true
-  if (b.focusCount < b.focusToOpen) {
-    b.focusDirection = rotateDirection(b.focusDirection)
+  const opened = advanceBreachFocus(b)
+  if (!opened) {
     const arrow = DIR_ARROW[b.focusDirection]
     return `Focused: facing ${arrow} (${b.focusCount}/${b.focusToOpen})`
   }
-  // Focus complete: auto-open
-  b.opened = true
   const messages = [`Breach ${toRoman(breachIndex)} OPENED!`]
   messages.push(...resolveBreachOpenedEffects(g, playerId))
   return messages.join('; ')

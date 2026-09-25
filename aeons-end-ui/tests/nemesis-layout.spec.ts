@@ -10,7 +10,7 @@ function useDefaultMarket(game: any) {
   game.market.piles = defaultMarketPiles.map(([cardId, remaining]) => ({ cardId, remaining }))
 }
 
-test('Nemesis board proportions, five asset regions, HP space and pile interactions', async ({ page }) => {
+test('Info Bar spans the board above the reordered Nemesis piles and cards in play', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -27,6 +27,8 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   debugState.selectedPlayer = debugState.game.players[0].id
   debugState.game.currentTurn = debugState.game.players[0].id
   debugState.game.currentPhase = 'main'
+  debugState.game.turnOrderDiscard = [debugState.game.players[0].id, debugState.game.players[1].id, 'nemesis']
+  debugState.game.players[0].aetherTokens = 3
   debugState.game.nemesis.discard = ['slaughter']
   debugState.game.nemesis.playArea = Array.from({ length: 12 }, (_, i) => ({
     instanceId: `layout-${i}`, cardId: 'haze_spewer', cardType: 'minion', placedAt: i, lifeTokens: 5,
@@ -35,7 +37,7 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
-  for (const viewport of [{ width: 1280, height: 800 }, { width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 2560, height: 1440 }]) {
+  for (const viewport of [{ width: 1440, height: 900 }, { width: 1920, height: 1080 }, { width: 2560, height: 1440 }]) {
     await page.setViewportSize(viewport)
     await expect(page.locator('.nemesis-mat-image')).toBeVisible()
     await expect.poll(() => page.evaluate(() => {
@@ -46,29 +48,72 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
       const matWrap = getComputedStyle(document.querySelector('.nemesis-mat-wrap')!)
       const mat = box('.nemesis-mat-image')
       const img = document.querySelector<HTMLImageElement>('.nemesis-mat-image')!
-      const assets = [...document.querySelectorAll('.nemesis-assets-row > *')].map(el => el.getBoundingClientRect())
+      const pileColumns = [...document.querySelectorAll('.nemesis-pile-column')]
+      const [discardColumn, deckColumn] = pileColumns
+      const [specificDiscard, discard] = [...discardColumn!.children].map(el => el.getBoundingClientRect())
+      const [specificDeck, deck] = [...deckColumn!.children].map(el => el.getBoundingClientRect())
+      const matColumn = box('.nemesis-mat-column')
+      const cardFillsSlot = (slot: Element) => {
+        const outer = slot.getBoundingClientRect()
+        const card = slot.querySelector('.nemesis-pile-card')!.getBoundingClientRect()
+        return Math.abs(outer.width - card.width) < 1 && Math.abs(outer.height - card.height) < 1
+      }
+      const info = box('.nemesis-info-bar')
+      const lower = box('.nemesis-board-lower')
+      const turnRegion = box('.nemesis-info-turn-order')
       const slots = box('.slots')
-      const left = box('.turn-side-left')
-      const right = box('.turn-side-right')
       const round = box('.turn-round')
+      const turnImages = [...document.querySelectorAll<HTMLImageElement>('.turn-order-token')]
+      const playerImages = [...document.querySelectorAll<HTMLImageElement>('.char-turn-token')]
+      const tokenGap = round.left - slots.right
       return {
         loaded: img.naturalWidth > 0,
         fullHeight: Math.abs(mat.height - (areaBox.height - parseFloat(padding.paddingTop) - parseFloat(padding.paddingBottom) - parseFloat(matWrap.borderTopWidth) - parseFloat(matWrap.borderBottomWidth))) < 3,
         correctRatio: Math.abs(mat.width / mat.height - img.naturalWidth / img.naturalHeight) < .01,
-        fiveTiles: assets.length === 5 && assets.every(b => Math.abs(b.width - assets[0].width) < 1 && b.y === assets[0].y),
-        noOverflow: assets[4].right <= areaBox.right && box('.nemesis-play').right <= areaBox.right,
-        globalCenter: Math.abs(slots.x + slots.width / 2 - window.innerWidth / 2) < 2,
-        hpGap: slots.left - left.right >= 23 && right.left - slots.right >= 23,
-        fillsLeft: Math.abs(left.left - (box('.turn-order-bar').left + 14)) < 2,
-        fillsRight: Math.abs(round.left - right.right - 16) < 2,
-        flexibleBars: box('.turn-side-left .hpbar').width > 100 && box('.turn-side-right .hpbar').width > 20,
+        fourPileSlots: pileColumns.length === 2 && discardColumn!.children.length === 2 && deckColumn!.children.length === 2,
+        infoSpansLowerArea: Math.abs(info.top - matColumn.top) < 1 && Math.abs(info.left - matColumn.right - 14) < 1
+          && Math.abs(info.right - box('.nemesis-play').right) < 1,
+        pileEdgesAligned: Math.abs(specificDiscard!.top - lower.top) < 1 && Math.abs(specificDeck!.top - lower.top) < 1
+          && Math.abs(discard!.bottom - matColumn.bottom) < 1 && Math.abs(deck!.bottom - matColumn.bottom) < 1,
+        noColumnBorders: pileColumns.every(column => getComputedStyle(column).borderTopWidth === '0px'),
+        imagesFillPileSlots: cardFillsSlot(discardColumn!.children[1]!) && cardFillsSlot(deckColumn!.children[0]!) && cardFillsSlot(deckColumn!.children[1]!),
+        cardsKeepRatio: Math.abs(deck!.width / deck!.height - 680 / 994) < .02,
+        backLoaded: [...document.querySelectorAll<HTMLImageElement>('.nemesis-pile-column img')].every(image => image.naturalWidth > 0),
+        infoAndPlay: Math.abs(box('.nemesis-play').bottom - matColumn.bottom) < 1
+          && box('.nemesis-play').height > info.height,
+        hpInInfo: document.querySelectorAll('.nemesis-info-bar .hpbar').length === 2,
+        sixTurnCards: document.querySelectorAll('.nemesis-info-turn-order .slot').length === 6 && document.querySelectorAll('.turn-order-bar').length === 0,
+        noOverflow: specificDeck!.right < box('.nemesis-play').left && box('.nemesis-play').right <= areaBox.right,
+        roundVerticallyCentered: Math.abs(round.y + round.height / 2 - slots.y - slots.height / 2) < 2,
+        roundVisible: round.left >= slots.right && round.right <= turnRegion.right,
+        noInfoDividers: [...document.querySelectorAll('.nemesis-info-region')].every(region => getComputedStyle(region).borderLeftWidth === '0px'),
+        shortHpLabels: [...document.querySelectorAll('.nemesis-info-region .hp-name')].map(label => label.textContent).join(',') === 'Nemesis,Gravehold',
+        tokenBesideHp: box('.nemesis-info-counters').right < box('.nemesis-info-nemesis .hp-block').left,
+        furyTokenLoaded: document.querySelector<HTMLImageElement>('.nemesis-info-token img')?.naturalWidth === 105,
+        furyTokenRounded: getComputedStyle(document.querySelector('.nemesis-info-token img')!).borderTopLeftRadius === '8px',
+        turnTokensLoaded: turnImages.length === 3 && turnImages.every(image => image.naturalWidth > 0),
+        playerTokensLoaded: playerImages.length === 2 && playerImages.every(image => image.naturalWidth > 0),
+        aetherTokenLoaded: document.querySelector<HTMLImageElement>('.aether-token-status img')?.naturalWidth === 164,
+        roundCloseAndReadable: tokenGap >= 0 && tokenGap <= 8 && getComputedStyle(document.querySelector('.turn-round')!).fontSize === '13px',
+        playerButtonsKeepControlsCentered: Math.abs(box('.controls-main').left + box('.controls-main').width / 2 - window.innerWidth / 2) < 2,
       }
-    })).toEqual({ loaded: true, fullHeight: true, correctRatio: true, fiveTiles: true, noOverflow: true, globalCenter: true, hpGap: true, fillsLeft: true, fillsRight: true, flexibleBars: true })
+    })).toEqual({ loaded: true, fullHeight: true, correctRatio: true, fourPileSlots: true, infoSpansLowerArea: true, pileEdgesAligned: true, noColumnBorders: true, imagesFillPileSlots: true, cardsKeepRatio: true, backLoaded: true, infoAndPlay: true, hpInInfo: true, sixTurnCards: true, noOverflow: true, roundVerticallyCentered: true, roundVisible: true, noInfoDividers: true, shortHpLabels: true, tokenBesideHp: true, furyTokenLoaded: true, furyTokenRounded: true, turnTokensLoaded: true, playerTokensLoaded: true, aetherTokenLoaded: true, roundCloseAndReadable: true, playerButtonsKeepControlsCentered: true })
     await page.screenshot({ path: `test-results/nemesis-layout-${viewport.width}.png` })
   }
 
   await expect(page.getByRole('region', { name: 'Nemesis Sub Board' })).toHaveCount(0)
-  await expect(page.getByLabel('Nemesis Specific Discard', { exact: true })).toContainText('Not used')
+  await expect(page.getByRole('button', { name: 'Open Nemesis Specific Discard' })).toContainText('Not used')
+  const strikeBack = page.locator('.nemesis-specific-pile-asset img')
+  const nemesisBack = page.getByRole('button', { name: 'Open Nemesis Deck' }).locator('img')
+  await expect(strikeBack).toHaveJSProperty('naturalWidth', 680)
+  expect(await strikeBack.getAttribute('src')).not.toBe(await nemesisBack.getAttribute('src'))
+  for (const pile of ['Open Nemesis Discard', 'Open Strike Deck', 'Open Nemesis Deck']) {
+    const button = page.getByRole('button', { name: pile })
+    const card = button.locator('.nemesis-pile-card')
+    const borderBefore = await card.evaluate(element => getComputedStyle(element).borderTopColor)
+    await button.hover()
+    expect(await card.evaluate(element => getComputedStyle(element).borderTopColor)).toBe(borderBefore)
+  }
   await page.getByRole('button', { name: 'Open Rageborne mat' }).click()
   await expect(page.locator('.nemesis-mat-modal-frame img')).toBeVisible()
   await page.getByRole('button', { name: 'Flip to Back' }).click()
@@ -78,7 +123,23 @@ test('Nemesis board proportions, five asset regions, HP space and pile interacti
   await page.getByRole('button', { name: 'Open Nemesis Discard' }).click()
   await expect(page.locator('.pile-modal .pile-card')).toHaveCount(1)
   await expect.poll(async () => (await page.locator('.pile-modal').boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(440)
-  await page.keyboard.press('Escape')
+  await page.locator('.pile-viewer-overlay').click({ position: { x: 5, y: 5 } })
+  await expect(page.locator('.pile-modal')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Open Nemesis Deck' }).click()
+  await expect(page.locator('.pile-modal .pile-card img')).toHaveCount(debugState.game.nemesis.deck.length)
+  await expect(page.locator('.pile-modal .pile-card img').first()).toHaveAttribute('alt', 'Nemesis Deck card back')
+  await page.locator('.pile-viewer-overlay').click({ position: { x: 5, y: 5 } })
+
+  await page.getByRole('button', { name: 'Open Strike Deck' }).click()
+  await expect(page.locator('.pile-modal .pile-card img')).toHaveCount(debugState.game.nemesis.strikeDeck.length)
+  await expect(page.locator('.pile-modal .pile-card img').first()).toHaveAttribute('alt', 'Strike Deck card back')
+  expect(await page.locator('.pile-modal .pile-card img').first().getAttribute('src')).toBe(await strikeBack.getAttribute('src'))
+  await page.locator('.pile-viewer-overlay').click({ position: { x: 5, y: 5 } })
+
+  await page.getByRole('button', { name: 'Open Nemesis Specific Discard' }).click()
+  await expect(page.locator('.pile-modal .empty')).toBeVisible()
+  await page.locator('.pile-viewer-overlay').click({ position: { x: 5, y: 5 } })
   await expect(page.locator('.pile-modal')).toHaveCount(0)
   await page.locator('.nemesis-card-scroll').hover({ position: { x: 5, y: 5 } })
   await page.mouse.wheel(0, 700)
@@ -118,6 +179,10 @@ test('Nemesis mat modal receives focus and remains draggable', async ({ page }) 
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  await page.getByRole('tab', { name: 'Wave 1' }).first().click()
+  await page.getByRole('tab', { name: 'Wave 1' }).last().click()
+  await page.getByLabel('Player 1 Mage').selectOption('jian')
+  await page.getByLabel('Player 2 Mage').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()
 
   // Remove startup interrupts so the focus behavior is isolated from turn resolution.
@@ -236,6 +301,57 @@ test('To Discard does not show or retain the Power card preview', async ({ page 
   await expect(page.locator('.card-hover-preview')).toHaveCount(0)
 })
 
+test('Space confirms Woven Sky To Discard after selecting three hand cards', async ({ page }) => {
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  debugState.phase = 'main'
+  debugState.selectedPlayer = player.id
+  debugState.game.currentTurn = player.id
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  debugState.game.pendingNemesisDiscard = null
+  player.hand = ['crystal', 'crystal', 'crystal', 'spark', 'spark']
+  debugState.game.nemesis.playArea = [{
+    instanceId: 'woven-sky:space-confirm-test', cardId: 'woven_sky', cardType: 'power', placedAt: 1, powerTokens: 2,
+  }]
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.nemesis-play-card').getByRole('button', { name: 'To Discard' }).click()
+  await expect(page.getByText('Choose 3 card(s) to discard the Power', { exact: true })).toBeVisible()
+  await expect(page.locator('.pending-board-card')).toHaveCount(5)
+  for (let index = 0; index < 2; index++) {
+    await page.locator('.pending-board-card').nth(index).click()
+  }
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeDisabled()
+  await page.keyboard.press('Space')
+  await expect(page.getByText('Choose 3 card(s) to discard the Power', { exact: true })).toBeVisible()
+
+  await page.locator('.pending-board-card').nth(2).click()
+  await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeEnabled()
+  await page.keyboard.press('Space')
+
+  await expect(page.locator('.decision-overlay')).toHaveCount(0)
+  await expect(page.locator('.nemesis-play-card')).toHaveCount(0)
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const resolvedState = JSON.parse(await stateField.inputValue())
+  expect(resolvedState.game.players[0].hand).toHaveLength(2)
+  expect(resolvedState.game.nemesis.discard[0]).toBe('woven_sky')
+  expect(resolvedState.game.pendingNemesisDiscard).toBeNull()
+})
+
 test('an Attack stays in the Nemesis Area while its effect decision is pending', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -310,7 +426,7 @@ test('Prince of Gluttons displays and sells the top Devoured card directly', asy
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
-  await page.locator('.nemesis-specific-pile').click({ button: 'right' })
+  await page.locator('.nemesis-specific-pile').click()
   await expect(page.locator('.pile-modal')).toBeVisible()
   await expect.poll(async () => (await page.locator('.pile-modal').boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(440)
   await expect(page.locator('.pile-modal h3')).toContainText('Devoured Pile')
@@ -495,6 +611,10 @@ test('most-expensive prepped spell decisions wait for confirmation', async ({ pa
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
+  await page.getByRole('tab', { name: 'Wave 1' }).first().click()
+  await page.getByRole('tab', { name: 'Wave 1' }).last().click()
+  await page.getByLabel('Player 1 Mage').selectOption('jian')
+  await page.getByLabel('Player 2 Mage').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()
 
   await page.keyboard.press('Control+d')

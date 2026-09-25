@@ -98,6 +98,7 @@ test('Searing Ruby shows spell-only Aether in the player control bar', async ({ 
 
   await page.locator('.hand .card').filter({ has: page.locator('img[alt="Searing Ruby"]') }).click()
   await expect(page.locator('.aether')).toContainText('1 spell aether')
+  await expect(page.locator('.aether > span')).toHaveCSS('color', 'rgb(255, 255, 255)')
 })
 
 test("Sifter's Pearl shows the revealed card in the decision modal", async ({ page }) => {

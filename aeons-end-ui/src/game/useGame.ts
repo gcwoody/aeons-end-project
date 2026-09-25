@@ -74,7 +74,7 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
-  viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'nemesis_specific' | 'nemesis_specific_discard' | 'player_cards_in_play' | null,
+  viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'nemesis_deck' | 'nemesis_discard' | 'nemesis_specific' | 'nemesis_specific_discard' | 'player_cards_in_play' | null,
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
   debugOpen: false,
@@ -452,6 +452,41 @@ function cloneSnapshot(source: Snapshot): Snapshot {
   }
 }
 
+/** Normalize legacy Remnant Rift setup and focus progress in saves/undo snapshots. */
+function normalizeRemnantRiftBreaches(game: GameState) {
+  const rules = [
+    {
+      index: 3,
+      focusToOpen: 3,
+      directions: ['south', 'west', 'north'] as const,
+      openDirection: 'north' as const,
+    },
+    {
+      index: 4,
+      focusToOpen: 2,
+      directions: ['west', 'north'] as const,
+      openDirection: 'north' as const,
+    },
+  ]
+  for (const player of game.players) {
+    if (player.mageType !== 'remnant') continue
+    for (const rule of rules) {
+      const breach = player.breaches.find(candidate => candidate.index === rule.index && candidate.special === 'rift')
+      if (!breach || breach.present === false) continue
+
+      const focusCount = Math.max(0, Math.floor(breach.focusCount ?? (breach.opened ? rule.focusToOpen : 0)))
+      breach.focusToOpen = rule.focusToOpen
+      breach.focusCount = Math.min(focusCount, rule.focusToOpen)
+      breach.opened = breach.focusCount >= rule.focusToOpen
+      if (breach.opened) {
+        breach.focusDirection = rule.openDirection
+      } else {
+        breach.focusDirection = rule.directions[breach.focusCount] ?? rule.directions[0]
+      }
+    }
+  }
+}
+
 function beforeAction(): Snapshot | null {
   if (!state.game) return null
   const previous = snapshot()
@@ -475,6 +510,7 @@ function finishAction(previous: Snapshot | null) {
 export function undo() {
   const s = undoStack.pop()
   if (!s || !state.game) { pushLog('Nothing to undo', 'warn'); return }
+  normalizeRemnantRiftBreaches(s.game)
   state.game = reactive(s.game) as GameState
   state.phase = s.phase
   state.pendingPreppedSpells = []
@@ -596,7 +632,9 @@ export function resumeGame(saveId?: string): boolean {
     ?? storedSaves[0]
   if (!save) return false
   try {
-    state.game = reactive(JSON.parse(JSON.stringify(save.game)) as GameState) as GameState
+    const resumedGame = JSON.parse(JSON.stringify(save.game)) as GameState
+    normalizeRemnantRiftBreaches(resumedGame)
+    state.game = reactive(resumedGame) as GameState
     state.activeSaveId = save.id
     autoSaveEnabled = true
     state.phase = save.phase
@@ -612,7 +650,11 @@ export function resumeGame(saveId?: string): boolean {
     state.endTurnWarningVisible = false
     state.log = []
     undoStack.length = 0
-    for (const savedSnapshot of save.undoStack) undoStack.push(cloneSnapshot(savedSnapshot))
+    for (const savedSnapshot of save.undoStack) {
+      const snapshot = cloneSnapshot(savedSnapshot)
+      normalizeRemnantRiftBreaches(snapshot.game)
+      undoStack.push(snapshot)
+    }
     if (undoStack.length > MAX_UNDO) undoStack.splice(0, undoStack.length - MAX_UNDO)
     pushLog('Game resumed', 'ok')
     maybeAutoEnd()
@@ -802,7 +844,17 @@ export function openPlayerCardsInPlayPile() {
   state.viewPile = 'player_cards_in_play'
 }
 
-/** Open the currently configured face-up Nemesis specific pile for inspection. */
+export function openNemesisDeckPile() {
+  closeDismissibleOverlays()
+  state.viewPile = 'nemesis_deck'
+}
+
+export function openNemesisDiscardPile() {
+  closeDismissibleOverlays()
+  state.viewPile = 'nemesis_discard'
+}
+
+/** Open the currently configured Nemesis specific pile for inspection. */
 export function openNemesisSpecificPile() {
   closeDismissibleOverlays()
   state.viewPile = 'nemesis_specific'
@@ -1168,7 +1220,7 @@ export function useGame() {
     activatePlayerCardInPlayAction,
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, requestEndTurn, discardNemesisCard, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, openNemesisSpecificPile, openNemesisSpecificDiscardPile, closePile,
+    selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, openNemesisDeckPile, openNemesisDiscardPile, openNemesisSpecificPile, openNemesisSpecificDiscardPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,
     togglePendingBoardCard, confirmPendingBoardCards, skipPendingBoardCards,

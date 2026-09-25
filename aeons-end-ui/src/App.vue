@@ -26,6 +26,7 @@ const { modalEl: gameoverModalEl, modalStyle: gameoverModalStyle, dragging: game
 const isUiGallery = new URLSearchParams(window.location.search).get('ui-gallery') === '1'
 
 function onKeydown(e: KeyboardEvent) {
+  if (e.defaultPrevented) return
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault()
     undo()
@@ -215,7 +216,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
-            <div class="help-row"><kbd>Space</kbd><span>Confirm a revealed Nemesis card, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Confirm a decision when its Confirm button is available, confirm a revealed Nemesis card, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 
@@ -228,6 +229,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       panel-class="draggable-modal"
       :panel-style="exitModalStyle"
       :dragging="exitDragging"
+      @overlay-click="cancelExit"
       @panel-pointerdown="startExitDrag"
     >
         <h2>Exit Game?</h2>
@@ -246,6 +248,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       panel-class="draggable-modal"
       :panel-style="gameoverModalStyle"
       :dragging="gameoverDragging"
+      @overlay-click="returnToMainMenu"
       @panel-pointerdown="startGameoverDrag"
     >
         <h2 class="gameover-title">{{ state.game.winner === 'players' ? 'Victory!' : 'Defeat…' }}</h2>

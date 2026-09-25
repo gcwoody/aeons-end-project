@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, specificDeckBackUrl } from '../card-images'
+import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, specificDeckBackUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
@@ -31,17 +31,27 @@ const title = computed(() => {
   if (state.viewPile === 'nemesis_specific_discard') {
     return getNemesisPresentation(state.game?.nemesis.type ?? '').specificDiscard.label
   }
+  if (state.viewPile === 'nemesis_deck') return 'Nemesis Deck'
+  if (state.viewPile === 'nemesis_discard') return 'Nemesis Discard'
   if (state.viewPile === 'player_cards_in_play') return 'Player Cards in Play'
   return state.viewPile === 'deck' ? 'Deck' : 'Discard'
 })
 const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
 const isSpecificDeck = computed(() => state.viewPile === 'specific_deck')
+const isNemesisFaceDown = computed(() => state.viewPile === 'nemesis_deck'
+  || (state.viewPile === 'nemesis_specific'
+    && getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.display !== 'face_up'))
 const specificDeckFaceUp = computed(() =>
   MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckDisplay === 'face_up',
 )
 const specificDeckBackImage = computed(() =>
   specificDeckBackUrl(MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckBack ?? 'player'),
 )
+const faceDownBackImage = computed(() => {
+  if (state.viewPile === 'nemesis_deck') return nemesisCardBackUrl()
+  if (state.viewPile === 'nemesis_specific') return nemesisSpecificDeckBackUrl(state.game?.nemesis.type ?? '')
+  return specificDeckBackImage.value
+})
 const knownSpecificDeckCards = computed(() => new Set(displayPlayer.value?.knownSpecificDeckCards ?? []))
 const playerCardEntries = computed(() =>
   (displayPlayer.value?.playerCardsInPlay ?? [])
@@ -52,6 +62,8 @@ const cards = computed(() => {
   if (state.viewPile === 'specific_deck') return displayPlayer.value?.specificDeck ?? []
   if (state.viewPile === 'nemesis_specific') return state.game?.nemesis.strikeDeck ?? []
   if (state.viewPile === 'nemesis_specific_discard') return state.game?.nemesis.strikeDiscard ?? []
+  if (state.viewPile === 'nemesis_deck') return state.game?.nemesis.deck ?? []
+  if (state.viewPile === 'nemesis_discard') return state.game?.nemesis.discard ?? []
   if (state.viewPile === 'player_cards_in_play') return playerCardEntries.value.map(entry => entry.cardId)
   return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
 })
@@ -103,6 +115,10 @@ function selectPileCard(groupIndex: number, cardIndex: number) {
 function isKnownSpecificDeckCard(cardId: string): boolean {
   return knownSpecificDeckCards.value.has(cardId)
 }
+
+function isFaceVisible(cardId: string): boolean {
+  return !isNemesisFaceDown.value && (!isSpecificDeck.value || specificDeckFaceUp.value || isKnownSpecificDeckCard(cardId))
+}
 </script>
 
 <template>
@@ -130,7 +146,7 @@ function isKnownSpecificDeckCard(cardId: string): boolean {
         >
           <span v-if="usesRowLabels" class="pile-row-label">{{ rowLabel(gi) }}</span>
           <template v-for="(cid, i) in group" :key="cid + i">
-          <CardHoverPreview v-if="!isSpecificDeck || specificDeckFaceUp || isKnownSpecificDeckCard(cid)" :card-id="cid">
+          <CardHoverPreview v-if="isFaceVisible(cid)" :card-id="cid">
             <CardSurface
               base-class="pile-card"
               size="pile"
@@ -147,17 +163,17 @@ function isKnownSpecificDeckCard(cardId: string): boolean {
           </CardHoverPreview>
           <CardHoverPreview
             v-else
-            :image-url="specificDeckBackImage"
+            :image-url="faceDownBackImage"
             :image-alt="`${title} card back`"
           >
             <CardSurface
               base-class="pile-card"
               size="pile"
               class="pile-card-image specific-deck-unknown-card"
-              :image-url="specificDeckBackImage"
+              :image-url="faceDownBackImage"
               :image-alt="`${title} card back`"
             >
-              <span v-if="!specificDeckBackImage">Unknown card</span>
+              <span v-if="!faceDownBackImage">Unknown card</span>
             </CardSurface>
           </CardHoverPreview>
           </template>
