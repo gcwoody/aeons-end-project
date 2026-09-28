@@ -4,7 +4,7 @@ import {
   DamageTargetRef, DamageTargetScope, LifeTargetRef, LifeTargetScope,
   PendingDecision, PendingDecisionAnswer, PendingEffectResolution, PendingSpellCast,
   CardEffect, CardEffectBlock, CardEffectCondition, CardEffectOption,
-  CardEffectTrigger, PlayerTargetRef, PlayerTargetScope, PlayerSelectionRule, PlayerTurnEffects,
+  CardEffectTrigger, CardMechanic, PlayerTargetRef, PlayerTargetScope, PlayerSelectionRule, PlayerTurnEffects,
   PreppedSpellChoice, BreachChoice, TurnOrderCardChoice, MarketPileChoice, NemesisDifficulty, ScenarioConfig, PlayerId,
   NemesisCardDef, NemesisCardInPlay, NemesisDiscardCost, NemesisEffectTrigger,
   NemesisResolutionState, PendingNemesisDiscard,
@@ -16,10 +16,12 @@ import {
 import type { MageDef } from './data'
 import { getNemesisRules } from './nemesis/registry'
 import { leastExpensiveMarketPiles, marketPileChoices } from './nemesis/market'
+import { buildTrinketDeck } from './data/wave9/trinkets'
 
 // ===== Utilities =====
 
 const DIR_ARROW: Record<string, string> = { east: '→', south: '↓', west: '←', north: '↑' }
+export const MAX_PULSE_TOKENS = 5
 
 /** Apply one focus consistently for paid and effect-granted Breach focuses. */
 function advanceBreachFocus(breach: BreachState): boolean {
@@ -130,7 +132,6 @@ export function createGame(
       discard: [],
       playedThisTurn: [],
       swapZone: [...(def.swapZone ?? [])],
-      developZone: [],
       specificDeck: def.specificDeckShuffled
         ? shuffle(def.specificDeck ?? [])
         : [...(def.specificDeck ?? [])],
@@ -143,6 +144,7 @@ export function createGame(
       playerCardSupplyTargets: [],
       playerCardPowerTokens: [],
       aetherTokens: 0,
+      pulseTokens: 0,
       knowledge: 0,
       doomTokens: def.tracksDoom ? 0 : undefined,
       cardPlayCountsThisTurn: {},
@@ -159,6 +161,7 @@ export function createGame(
         nextBreachCostReductions: [],
         usedPreppedEffects: [],
         usedPlayerCardEffects: [],
+        usedRecallEffects: {},
         usedBreachUpgradeEffects: [],
         prepSpellLimit: 1,
         prepSpellLimitByBreach: {},
@@ -174,9 +177,16 @@ export function createGame(
     const remaining = card.type === 'gem' ? 7 : 5
     return { cardId, remaining }
   })
+  const supplyMechanics = [...new Set(marketPiles.flatMap(pile => {
+    const card = getCard(pile.cardId)
+    return [...(card.mechanics ?? []), ...(card.developCost === undefined ? [] : ['develop' as const])]
+  }))]
+  const hasSwapZone = [mage1Def, mage2Def].some(def => def.hasSwapZone === true || (def.swapZone?.length ?? 0) > 0)
+  const hasDevelopZone = supplyMechanics.includes('develop') || [mage1Def, mage2Def].some(def => def.hasDevelopZone === true)
 
   const nemesisDeck = nemesisDef.deckBuilder?.() ?? []
   const strikeDeck = nemesisDef.specificDeckBuilder?.() ?? []
+  const trinketDeck = buildTrinketDeck()
   const turnOrder = buildScenarioTurnOrder(scenario, [player1.id, player2.id])
 
   const game: GameState = {
@@ -197,6 +207,12 @@ export function createGame(
     },
     gravehold: { hp: 30, maxHp: 30 },
     market: { piles: marketPiles },
+    developZone: [],
+    trinketDeck,
+    trinketDeckRevealed: trinketDeck.map(() => false),
+    hasSwapZone,
+    hasDevelopZone,
+    supplyMechanics,
     turnOrderDeck: turnOrder, turnOrderDiscard: [],
     currentTurn: '', currentPhase: 'casting' as Phase,
     round: 1, gameOver: false, winner: null, timestamp: 0,
@@ -868,6 +884,75 @@ export function getPlayer(g: GameState, id: string): PlayerState {
   return g.players.find(p => p.id === id)!
 }
 
+/** Return the mechanics printed on supply piles chosen during game setup. */
+export function getSupplyMechanics(g: GameState): CardMechanic[] {
+  return [...new Set(g.supplyMechanics ?? g.market.piles.flatMap(pile =>
+    [...(getCard(pile.cardId).mechanics ?? []), ...(getCard(pile.cardId).developCost === undefined ? [] : ['develop' as const])],
+  ))]
+}
+
+/** Read setup-time Swap and Develop zone visibility, with defaults for older saves. */
+export function getGameZoneVisibility(g: GameState): { swap: boolean; develop: boolean } {
+  const swap = g.hasSwapZone ?? g.players.some(player => {
+    const definition = MAGES[player.mageType]
+    return definition?.hasSwapZone === true || (definition?.swapZone?.length ?? 0) > 0 || (player.swapZone?.length ?? 0) > 0
+  })
+  const develop = g.hasDevelopZone ?? (
+    getSupplyMechanics(g).includes('develop') || g.players.some(player =>
+      MAGES[player.mageType]?.hasDevelopZone === true || (player.developZone?.length ?? 0) > 0,
+    ) || (g.developZone?.length ?? 0) > 0
+  )
+  return { swap, develop }
+}
+
+/** Return the public Develop cards, including data from a legacy save if present. */
+export function getDevelopZoneCards(g: GameState): string[] {
+  return g.developZone ?? g.players.flatMap(player => player.developZone ?? [])
+}
+
+function ensureTrinketDeckState(g: GameState): { cards: string[]; revealed: boolean[] } {
+  g.trinketDeck ??= buildTrinketDeck()
+  const priorRevealState = g.trinketDeckRevealed ?? []
+  if (priorRevealState.length !== g.trinketDeck.length) {
+    g.trinketDeckRevealed = g.trinketDeck.map((_, index) => priorRevealState[index] === true)
+  }
+  return { cards: g.trinketDeck, revealed: g.trinketDeckRevealed! }
+}
+
+/** Return the shared Trinket deck in top-to-bottom order, migrating older saves if needed. */
+export function getTrinketDeckCards(g: GameState): string[] {
+  return ensureTrinketDeckState(g).cards
+}
+
+/** Whether one physical Trinket copy has previously been revealed. */
+export function isTrinketDeckCardRevealed(g: GameState, index: number): boolean {
+  return ensureTrinketDeckState(g).revealed[index] === true
+}
+
+function ensureSharedDevelopZone(g: GameState): string[] {
+  if (!g.developZone) g.developZone = g.players.flatMap(player => player.developZone ?? [])
+  for (const player of g.players) delete player.developZone
+  g.hasSwapZone ??= getGameZoneVisibility(g).swap
+  g.hasDevelopZone ??= getGameZoneVisibility(g).develop
+  return g.developZone
+}
+
+function gainPulseTokens(player: PlayerState, requestedAmount: number): number {
+  ensurePlayerCollections(player)
+  const amount = Math.max(0, Math.floor(requestedAmount))
+  const gained = Math.min(amount, MAX_PULSE_TOKENS - player.pulseTokens!)
+  player.pulseTokens! += gained
+  return gained
+}
+
+function losePulseTokens(player: PlayerState, requestedAmount: number): number {
+  ensurePlayerCollections(player)
+  const amount = Math.max(0, Math.floor(requestedAmount))
+  if (player.pulseTokens! < amount) return 0
+  player.pulseTokens! -= amount
+  return amount
+}
+
 /** Queue the optional abilities that trigger immediately after a turn-order draw. */
 function queueTurnOrderCardDrawnAbilities(g: GameState): void {
   const candidate = g.players.find(player => {
@@ -911,13 +996,13 @@ function getZoneCards(p: PlayerState, zone: CardZone): string[] {
 function ensurePlayerCollections(p: PlayerState): void {
   if (!p.destroyedCards) p.destroyedCards = []
   if (!p.swapZone) p.swapZone = []
-  if (!p.developZone) p.developZone = []
   if (!p.specificDeck) p.specificDeck = []
   if (!p.knownSpecificDeckCards) p.knownSpecificDeckCards = []
   if (!p.playerCardsInPlay) p.playerCardsInPlay = []
   if (!p.playerCardSupplyTargets) p.playerCardSupplyTargets = []
   if (!p.playerCardPowerTokens) p.playerCardPowerTokens = []
   p.aetherTokens ??= 0
+  p.pulseTokens = Math.min(MAX_PULSE_TOKENS, Math.max(0, p.pulseTokens ?? 0))
   p.knowledge ??= 0
   if (MAGES[p.mageType]?.tracksDoom) p.doomTokens ??= 0
   while (p.playerCardSupplyTargets.length < p.playerCardsInPlay.length) p.playerCardSupplyTargets.push(null)
@@ -934,12 +1019,14 @@ function ensurePlayerCollections(p: PlayerState): void {
       nextBreachCostReductions: [],
       usedPreppedEffects: [],
       usedPlayerCardEffects: [],
+      usedRecallEffects: {},
       usedBreachUpgradeEffects: [],
       prepSpellLimit: 1,
       prepSpellLimitByBreach: {},
     }
   }
   p.turnEffects.usedPlayerCardEffects ??= []
+  p.turnEffects.usedRecallEffects ??= {}
   p.turnEffects.usedBreachUpgradeEffects ??= []
   p.turnEffects.prepSpellLimitByBreach ??= {}
   for (const breach of p.breaches) {
@@ -1429,8 +1516,7 @@ export function gainCard(
     if (pile.remaining <= 0) return 'Pile empty'
     pile.remaining--
     if (usesDevouredPile(g) && g.market.piles.every(candidate => candidate.remaining <= 0)) {
-      g.gameOver = true
-      g.winner = 'nemesis'
+      finishGame(g, 'nemesis')
     }
   }
   if (specificPile) {
@@ -1468,9 +1554,13 @@ export function gainFirethornTopCard(g: GameState, playerId: string): string | n
   if (player.mageType !== 'inco') return 'Only Inco can gain a Firethorn from this deck'
   const cardId = player.specificDeck?.[0]
   if (!cardId) return 'The Firethorn deck is empty'
-  const available = getSpendableAether(player, 'general')
+  const card = getCard(cardId)
+  const spendType: SpendType = card.type === 'gem' || card.type === 'spell' || card.type === 'relic'
+    ? card.type
+    : 'gain'
+  const available = getSpendableAether(player, spendType)
   if (available < 5) return `Need 5 Aether, have ${available}`
-  spendAether(player, 5, 'general')
+  spendAether(player, 5, spendType)
   player.specificDeck!.shift()
   forgetSpecificDeckCard(player, cardId)
   player.discard.unshift(cardId)
@@ -1966,6 +2056,14 @@ function conditionMatches(
       g, playerId, item, resolution, sourceCardId, sourceCardIndex, sourcePlayerId,
     ))
   }
+  if (condition.kind === 'develop_zone_card_count') {
+    const cardId = condition.cardId === 'source'
+      ? sourceCardId ?? resolution?.sourceCardId
+      : condition.cardId
+    if (!cardId) return false
+    const count = getDevelopZoneCards(g).filter(candidate => candidate === cardId).length
+    return condition.comparison === 'equals' ? count === condition.count : count >= condition.count
+  }
   if (condition.kind === 'last_selection_nonempty') return (resolution?.lastSelectedCardCount ?? 0) > 0
   if (condition.kind === 'last_optional_accepted') return resolution?.lastOptionalAccepted === true
   if (condition.kind === 'nemesis_turn_order_discard_count') {
@@ -1994,6 +2092,11 @@ function conditionMatches(
   }
   if (condition.kind === 'has_ally_prepped_spell') {
     return getPreppedSpellChoices(g).some(choice => choice.playerId !== (resolution?.sourcePlayerId ?? playerId))
+  }
+  if (condition.kind === 'has_prepped_spell') {
+    return getPreppedSpellChoices(g).some(choice =>
+      condition.ownerScope !== 'ally' || choice.playerId !== playerId,
+    )
   }
   if (condition.kind === 'spells_cast_this_turn') {
     const value = p.spellsCastThisTurn ?? 0
@@ -2038,6 +2141,12 @@ function conditionMatches(
       ? resolution?.sourcePlayerId ?? sourcePlayerId ?? playerId
       : playerId
     return (getPlayer(g, targetId).knowledge ?? 0) >= Math.max(0, condition.amount)
+  }
+  if (condition.kind === 'has_pulse_tokens') {
+    const targetId = condition.player === 'source'
+      ? resolution?.sourcePlayerId ?? sourcePlayerId ?? playerId
+      : playerId
+    return (getPlayer(g, targetId).pulseTokens ?? 0) >= Math.max(0, condition.amount)
   }
   if (condition.kind === 'has_aether') return getSpendableAether(p, 'general') >= Math.max(0, condition.amount)
   if (condition.kind === 'has_card_in_zone') {
@@ -2259,7 +2368,8 @@ function optionalCardSelectionAvailable(g: GameState, playerId: string, effects:
   if (!discard) return true
   const targets = getSelectedPlayerTargets(g, playerId, discard.target ?? 'self', discard.selection)
   return targets.some(target => getCardChoices(g, target.playerId, discard.source)
-    .some(choice => !discard.cardType || getCard(choice.cardId).type === discard.cardType))
+    .some(choice => (!discard.cardType || getCard(choice.cardId).type === discard.cardType) &&
+      (!discard.cardIds || discard.cardIds.includes(choice.cardId))))
 }
 
 function selectedChoicesAreCurrent(
@@ -2529,6 +2639,83 @@ function runEffectResolution(
       return messages
     }
 
+    if (effect.kind === 'gain_trinkets') {
+      const targets = getSelectedPlayerTargets(g, currentPlayerId, effect.target ?? 'self')
+      if (targets.length === 0) {
+        messages.push('No eligible player can gain Trinkets')
+        continue
+      }
+      if (targets.length > 1) {
+        const decision = createDecision(g, 'Choose a player to gain Trinkets',
+          'select_player_target', { targets }, resolution.sourceCardId)
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      const recipient = getPlayer(g, targets[0]!.playerId)
+      resolution.effectPlayerId = recipient.id
+      const { cards, revealed } = ensureTrinketDeckState(g)
+      const amount = Math.max(0, Math.floor(effect.amount))
+      const gainedCards: string[] = []
+      for (let index = 0; index < amount; index++) {
+        const cardId = cards.shift()
+        if (!cardId) break
+        revealed.shift()
+        if (effect.destination === 'deck_top') recipient.deck.unshift(cardId)
+        else recipient.discard.unshift(cardId)
+        gainedCards.push(cardId)
+      }
+      const destination = effect.destination === 'deck_top' ? 'deck' : 'discard pile'
+      if (gainedCards.length > 0) {
+        messages.push(`${recipient.mageType} gains ${gainedCards.length} of ${amount} Trinket${amount === 1 ? '' : 's'} to their ${destination}`)
+      }
+      if (gainedCards.length < amount) messages.push('The Trinket deck is empty')
+      if (effect.putOneInHand && gainedCards.length > 0) {
+        const source: 'discard' | 'deck' = effect.destination === 'deck_top' ? 'deck' : 'discard'
+        const choices = [...new Set(gainedCards)]
+        if (choices.length === 1) {
+          const cardsInDestination = source === 'deck' ? recipient.deck : recipient.discard
+          const index = cardsInDestination.indexOf(choices[0]!)
+          if (index >= 0) recipient.hand.push(cardsInDestination.splice(index, 1)[0]!)
+        } else {
+          const chooseTrinket: CardEffect = {
+            kind: 'choose_one',
+            prompt: 'Choose a gained Trinket to put into your hand',
+            options: choices.map(cardId => ({
+              id: cardId,
+              label: `Put ${getCard(cardId).name} into your hand`,
+              cardId,
+              effects: [{ kind: 'move_gained_trinket_to_hand', cardId, source }],
+            })),
+            layout: 'large-card-choice',
+          }
+          const decision = createDecision(g, chooseTrinket.prompt, 'choose_one', {
+            options: chooseTrinket.options.map(option => ({
+              id: option.id,
+              label: option.label,
+              cardId: option.cardId,
+            })),
+            layout: chooseTrinket.layout,
+          }, resolution.sourceCardId)
+          messages.push(...pauseEffect(g, resolution, chooseTrinket, decision))
+          return messages
+        }
+      }
+      continue
+    }
+
+    if (effect.kind === 'move_gained_trinket_to_hand') {
+      const owner = getPlayer(g, currentPlayerId)
+      const source = effect.source === 'deck' ? owner.deck : owner.discard
+      const index = source.indexOf(effect.cardId)
+      if (index < 0) {
+        messages.push('The selected Trinket is no longer in its destination pile')
+        continue
+      }
+      owner.hand.push(source.splice(index, 1)[0]!)
+      messages.push(`${getCard(effect.cardId).name} is put into ${owner.mageType}'s hand`)
+      continue
+    }
+
     if (effect.kind === 'gain_specific_deck_top') {
       const targets = getSelectedPlayerTargets(g, currentPlayerId, effect.target ?? 'self')
       if (targets.length === 0) {
@@ -2565,12 +2752,16 @@ function runEffectResolution(
         messages.push('The Firethorn deck is empty')
         continue
       }
-      const available = getSpendableAether(p, 'general')
+      const card = getCard(cardId)
+      const spendType: SpendType = card.type === 'gem' || card.type === 'spell' || card.type === 'relic'
+        ? card.type
+        : 'gain'
+      const available = getSpendableAether(p, spendType)
       if (available < 5) {
         messages.push(`Need 5 Aether, have ${available}`)
         continue
       }
-      spendAether(p, 5, 'general')
+      spendAether(p, 5, spendType)
       p.specificDeck!.shift()
       forgetSpecificDeckCard(p, cardId)
       p.discard.unshift(cardId)
@@ -2765,7 +2956,7 @@ function runEffectResolution(
       }
       const candidates: BreachChoice[] = owner.breaches
         .filter(breach => isPresentBreach(breach) && breach.prepSpells.length < getPrepSpellLimit(owner, breach.index) &&
-          (breach.opened || breach.focusedThisTurn))
+          (effect.breachEligibility === 'any_present' || breach.opened || breach.focusedThisTurn))
         .map(breach => ({
           playerId: owner.id,
           breachIndex: breach.index,
@@ -3151,6 +3342,55 @@ function runEffectResolution(
       const amount = Math.max(1, effect.amount ?? 1)
       target.aetherTokens = (target.aetherTokens ?? 0) + amount
       messages.push(`${target.mageType} gains ${amount} Aether token${amount === 1 ? '' : 's'}`)
+      continue
+    }
+
+    if (effect.kind === 'return_trinket_to_deck') {
+      const owner = getPlayer(g, resolution.sourcePlayerId ?? currentPlayerId)
+      const cardId = resolution.sourceCardId
+      const playedIndex = cardId ? owner.playedThisTurn.lastIndexOf(cardId) : -1
+      if (!cardId || playedIndex < 0 || !getCard(cardId).mechanics?.includes('trinket')) {
+        messages.push('The played Trinket is no longer available to return')
+        continue
+      }
+      owner.playedThisTurn.splice(playedIndex, 1)
+      const { cards, revealed } = ensureTrinketDeckState(g)
+      cards.push(cardId)
+      revealed.push(true)
+      messages.push(`Returned ${getCard(cardId).name} to the bottom of the Trinket deck`)
+      continue
+    }
+
+    if (effect.kind === 'gain_pulse_token' || effect.kind === 'lose_pulse_token') {
+      const targets = getSelectedPlayerTargets(g, currentPlayerId, effect.target ?? 'self')
+      const action = effect.kind === 'gain_pulse_token' ? 'gain' : 'lose'
+      if (targets.length === 0) {
+        messages.push(`No eligible player can ${action} Pulse tokens`)
+        continue
+      }
+      if (targets.length > 1) {
+        const decision = createDecision(g,
+          `Choose a player to ${action} Pulse tokens`,
+          'select_player_target', { targets }, resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      const target = getPlayer(g, targets[0]!.playerId)
+      const amount = effect.kind === 'gain_pulse_token'
+        ? Math.max(0, Math.floor(effect.amount ?? 1))
+        : Math.max(0, Math.floor(effect.amount))
+      if (effect.kind === 'gain_pulse_token') {
+        const gained = gainPulseTokens(target, amount)
+        messages.push(gained > 0
+          ? `${target.mageType} gains ${gained} Pulse token${gained === 1 ? '' : 's'} (${target.pulseTokens}/${MAX_PULSE_TOKENS})`
+          : `${target.mageType} cannot gain more Pulse tokens (${MAX_PULSE_TOKENS}/${MAX_PULSE_TOKENS})`)
+      } else {
+        const lost = losePulseTokens(target, amount)
+        messages.push(lost > 0
+          ? `${target.mageType} loses ${lost} Pulse token${lost === 1 ? '' : 's'} (${target.pulseTokens}/${MAX_PULSE_TOKENS})`
+          : `${target.mageType} does not have enough Pulse tokens`)
+      }
       continue
     }
 
@@ -3857,7 +4097,8 @@ function runEffectResolution(
       const discardPlayerId = targets[0]?.playerId ?? currentPlayerId
       resolution.effectPlayerId = discardPlayerId
       const candidates = getCardChoices(g, discardPlayerId, effect.source)
-        .filter(choice => !effect.cardType || getCard(choice.cardId).type === effect.cardType)
+        .filter(choice => (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
+          (!effect.cardIds || effect.cardIds.includes(choice.cardId)))
       const fixedAmount = effect.minAmount === undefined && effect.maxAmount === undefined
       const min = Math.min(Math.max(0, effect.minAmount ?? effect.amount), candidates.length)
       const max = Math.min(Math.max(min, effect.maxAmount ?? effect.amount), candidates.length)
@@ -4121,6 +4362,7 @@ function runEffectResolution(
           options: options.map(option => ({
             id: option.id,
             label: option.label,
+            cardId: option.cardId,
             disabled: option.condition ? !conditionMatches(g, currentPlayerId, option.condition, resolution) : false,
           })),
           layout: effect.layout,
@@ -4292,7 +4534,7 @@ function runEffectResolution(
             continue
           }
           const decision = createDecision(g, 'Choose a prepped spell to cast', 'select_prepped_spell',
-            { candidates }, resolution.sourceCardId,
+            { candidates, allowSkip: effect.allowSkip === true }, resolution.sourceCardId,
           )
           messages.push(...pauseEffect(g, resolution, effect, decision))
           return messages
@@ -4445,6 +4687,71 @@ export function resolveCardEffects(
     lastGainedCardId,
     spellDamageBonus,
     pendingSpellCast,
+  })
+}
+
+export interface RecallCardAction {
+  discardIndex: number
+  cardId: string
+}
+
+function recallBlockMarker(cardId: string, blockIndex: number): string {
+  return `${cardId}:${blockIndex}`
+}
+
+/** Return Recall cards that the active player may activate from their discard. */
+export function getRecallActions(g: GameState, playerId: string): RecallCardAction[] {
+  if (g.gameOver || g.currentPhase !== 'main' || g.currentTurn !== playerId ||
+    g.pendingDecision || g.pendingEffect) return []
+  const player = g.players.find(candidate => candidate.id === playerId)
+  if (!player) return []
+  ensurePlayerCollections(player)
+  const used = player.turnEffects.usedRecallEffects!
+  const actions: RecallCardAction[] = []
+
+  for (const [discardIndex, cardId] of player.discard.entries()) {
+    const copyOrdinal = player.discard.slice(0, discardIndex).filter(id => id === cardId).length
+    const blocks = matchingBlocks(cardId, playerId, g, { kind: 'recall' })
+    const available = blocks.some((block, blockIndex) =>
+      block.effects.length > 0 && copyOrdinal >= (used[recallBlockMarker(cardId, blockIndex)] ?? 0),
+    )
+    if (available) actions.push({ discardIndex, cardId })
+  }
+  return actions
+}
+
+/** Resolve the clicked Recall card and spend that copy's once-per-turn use. */
+export function activateRecall(g: GameState, playerId: string, discardIndex: number): string[] {
+  if (g.pendingDecision || g.pendingEffect) return ['Resolve the pending card decision first']
+  if (g.gameOver || g.currentPhase !== 'main' || g.currentTurn !== playerId) {
+    return ['Recall can only be activated from the active player\'s Discard during their Main Phase']
+  }
+  if (!getRecallActions(g, playerId).some(action => action.discardIndex === discardIndex)) {
+    return ['That card has no available Recall effect']
+  }
+
+  const player = getPlayer(g, playerId)
+  const cardId = player.discard[discardIndex]
+  if (!cardId) return ['That Recall card is no longer in the Discard']
+  const copyOrdinal = player.discard.slice(0, discardIndex).filter(id => id === cardId).length
+  const used = player.turnEffects.usedRecallEffects!
+  const blocks = matchingBlocks(cardId, playerId, g, { kind: 'recall' })
+  const availableBlocks = blocks.filter((block, blockIndex) =>
+    block.effects.length > 0 && copyOrdinal >= (used[recallBlockMarker(cardId, blockIndex)] ?? 0),
+  )
+  if (availableBlocks.length === 0) return ['That Recall effect was already used this turn']
+
+  for (const block of availableBlocks) {
+    const blockIndex = blocks.indexOf(block)
+    const marker = recallBlockMarker(cardId, blockIndex)
+    used[marker] = (used[marker] ?? 0) + 1
+  }
+  return runEffectResolution(g, {
+    sourcePlayerId: playerId,
+    effectPlayerId: playerId,
+    sourceCardId: cardId,
+    remainingEffects: availableBlocks.flatMap(block => block.effects),
+    spellDamageBonus: 0,
   })
 }
 
@@ -5028,7 +5335,7 @@ export function resolvePendingDecision(
       candidate.playerId === answer.choice?.playerId && candidate.breachIndex === answer.choice?.breachIndex)
     const breach = choice && owner.breaches.find(item => item.index === choice.breachIndex)
     if (!choice || !breach || !isPresentBreach(breach) || breach.prepSpells.length >= getPrepSpellLimit(owner, breach.index) ||
-      (!breach.opened && !breach.focusedThisTurn)) {
+      (effect.breachEligibility !== 'any_present' && !breach.opened && !breach.focusedThisTurn)) {
       restore()
       return ['The selected Breach is no longer available for Conjure']
     }
@@ -5045,7 +5352,8 @@ export function resolvePendingDecision(
       return ['Decision answer has the wrong type']
     }
     if (!answer.choice) {
-      if (!decision.allowSkip || effect.kind !== 'cast_any_number_prepped_spells') {
+      if (!decision.allowSkip || (effect.kind !== 'cast_any_number_prepped_spells' &&
+        !(effect.kind === 'cast_prepped_spell' && effect.allowSkip))) {
         restore()
         return ['Skipping this prepped spell choice is not allowed']
       }
@@ -5230,6 +5538,10 @@ export function resolvePendingDecision(
       if (effect.cardType && !selected.every(choice => getCard(choice.cardId).type === effect.cardType)) {
         restore()
         return ['Invalid card type']
+      }
+      if (effect.cardIds && !selected.every(choice => effect.cardIds!.includes(choice.cardId))) {
+        restore()
+        return ['Choose only the specified card']
       }
       const removed = discardSelectedCards(g, currentPlayerId, selected)
       resolution.lastSelectedCardCount = removed.length
@@ -5544,7 +5856,8 @@ export function resolvePendingDecision(
       (effect.kind !== 'draw_cards' && effect.kind !== 'deal_player_damage' &&
         effect.kind !== 'discard_cards' && effect.kind !== 'shuffle_discard_into_deck' &&
         effect.kind !== 'destroy_top_cards' && effect.kind !== 'place_cast_spell_in_ally_hand' &&
-        effect.kind !== 'gain_aether_token' && effect.kind !== 'gain_charge' &&
+        effect.kind !== 'gain_aether_token' && effect.kind !== 'gain_trinkets' && effect.kind !== 'gain_pulse_token' &&
+        effect.kind !== 'lose_pulse_token' && effect.kind !== 'gain_charge' &&
         effect.kind !== 'gain_specific_deck_top' && effect.kind !== 'destroy_cards' &&
         effect.kind !== 'reveal_firethorns' && effect.kind !== 'resolve_mage_form_supply_gain')) {
       restore()
@@ -5592,6 +5905,24 @@ export function resolvePendingDecision(
       player.aetherTokens = (player.aetherTokens ?? 0) + amount
       resolution.effectPlayerId = target.playerId
       return [`${player.mageType} gains ${amount} Aether token${amount === 1 ? '' : 's'}`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'gain_pulse_token') {
+      const amount = Math.max(0, Math.floor(effect.amount ?? 1))
+      const gained = gainPulseTokens(player, amount)
+      const message = gained > 0
+        ? `${player.mageType} gains ${gained} Pulse token${gained === 1 ? '' : 's'} (${player.pulseTokens}/${MAX_PULSE_TOKENS})`
+        : `${player.mageType} cannot gain more Pulse tokens (${MAX_PULSE_TOKENS}/${MAX_PULSE_TOKENS})`
+      resolution.effectPlayerId = target.playerId
+      return [message, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'lose_pulse_token') {
+      const amount = Math.max(0, Math.floor(effect.amount))
+      const lost = losePulseTokens(player, amount)
+      const message = lost > 0
+        ? `${player.mageType} loses ${lost} Pulse token${lost === 1 ? '' : 's'} (${player.pulseTokens}/${MAX_PULSE_TOKENS})`
+        : `${player.mageType} does not have enough Pulse tokens`
+      resolution.effectPlayerId = target.playerId
+      return [message, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'gain_charge' || effect.kind === 'gain_specific_deck_top') {
       resolution.effectPlayerId = target.playerId
@@ -5744,7 +6075,7 @@ export function pendingDecision(g: GameState): PendingDecision | null {
 
 // ===== Aether System =====
 
-export type SpendType = 'gem' | 'spell' | 'relic' | 'breach' | 'general'
+export type SpendType = 'gem' | 'spell' | 'relic' | 'breach' | 'gain' | 'general'
 
 export function getTotalAether(p: PlayerState): number {
   const conditionalEarned = Object.values(p.conditionalAetherEarned ?? {})
@@ -5785,8 +6116,14 @@ function getSpendableAether(p: PlayerState, type: SpendType): number {
   const regularAvail = Math.max(0, regularTotal - p.regularAetherSpent)
   const tokens = Math.max(0, p.aetherTokens ?? 0)
   if (type === 'general') return regularAvail + tokens
-  const condAvail = getConditionalAetherByType(p, type) - (p.condAetherSpent[type] ?? 0)
-  return regularAvail + Math.max(0, condAvail) + tokens
+  const conditionTypes = type === 'gain'
+    ? ['gem', 'spell', 'relic', 'gain']
+    : type === 'breach'
+      ? ['breach']
+      : [type, 'gain']
+  const condAvail = conditionTypes.reduce((sum, condition) =>
+    sum + Math.max(0, getConditionalAetherByType(p, condition) - (p.condAetherSpent[condition] ?? 0)), 0)
+  return regularAvail + condAvail + tokens
 }
 
 function spendAether(p: PlayerState, amount: number, type: SpendType): void {
@@ -5794,10 +6131,22 @@ function spendAether(p: PlayerState, amount: number, type: SpendType): void {
   p.aetherTokens = Math.max(0, (p.aetherTokens ?? 0) - tokenSpent)
   const remaining = Math.max(0, amount - tokenSpent)
   if (type !== 'general') {
-    const condAvail = getConditionalAetherByType(p, type) - (p.condAetherSpent[type] ?? 0)
-    const fromCond = Math.min(Math.max(0, condAvail), remaining)
-    p.condAetherSpent[type] = (p.condAetherSpent[type] ?? 0) + fromCond
-    p.regularAetherSpent += remaining - fromCond
+    const conditionTypes = type === 'gain'
+      ? ['gem', 'spell', 'relic', 'gain']
+      : type === 'breach'
+        ? ['breach']
+        : [type, 'gain']
+    let amountToSpend = remaining
+    for (const condition of conditionTypes) {
+      const available = Math.max(0,
+        getConditionalAetherByType(p, condition) - (p.condAetherSpent[condition] ?? 0),
+      )
+      const spent = Math.min(available, amountToSpend)
+      p.condAetherSpent[condition] = (p.condAetherSpent[condition] ?? 0) + spent
+      amountToSpend -= spent
+      if (amountToSpend === 0) break
+    }
+    p.regularAetherSpent += amountToSpend
   } else {
     p.regularAetherSpent += remaining
   }
@@ -6000,7 +6349,7 @@ export function movePreppedSpell(
 
 export interface BuyableCard {
   pileIndex: number; cardId: string; cardName: string; cardType: string
-  cost: number; remaining: number
+  cost: number; remaining: number; developCost?: number
 }
 
 /** Cost after typed Treasure modifiers attached to a supply pile. */
@@ -6043,6 +6392,7 @@ export function getBuyableCards(g: GameState): BuyableCard[] {
     return {
       pileIndex: i, cardId: pile.cardId, cardName: card.name,
       cardType: card.type, cost: getMarketCardCost(g, i, playerId), remaining: pile.remaining,
+      developCost: card.developCost,
     }
   })
 }
@@ -6070,6 +6420,103 @@ export function buyCard(g: GameState, playerId: string, pileIndex: number): stri
     ? '; DEFEAT! All supply piles have been Devoured!'
     : ''
   return `Bought ${card.name} (${cost}a) -> ${message}${defeat}`
+}
+
+export interface DevelopAction {
+  source: 'supply' | 'develop_zone'
+  index: number
+  cardId: string
+  cardName: string
+  cost: number
+}
+
+/** Return affordable Develop actions for the active Mage using unrestricted Aether. */
+export function getDevelopActions(g: GameState, playerId: string): DevelopAction[] {
+  if (g.gameOver || g.currentTurn !== playerId || g.currentPhase !== 'main' ||
+    g.pendingDecision || g.pendingEffect) return []
+  const player = g.players.find(candidate => candidate.id === playerId)
+  if (!player) return []
+  ensurePlayerCollections(player)
+  const available = getSpendableAether(player, 'general')
+  const actions: DevelopAction[] = []
+
+  g.market.piles.forEach((pile, index) => {
+    const card = getCard(pile.cardId)
+    if (pile.remaining <= 0 || card.developCost === undefined) return
+    const cost = Math.max(0, Math.floor(card.developCost))
+    if (available >= cost) actions.push({ source: 'supply', index, cardId: card.id, cardName: card.name, cost })
+  })
+
+  ensureSharedDevelopZone(g).forEach((cardId, index) => {
+    const card = getCard(cardId)
+    if (card.developCost === undefined) return
+    const cost = Math.max(0, Math.floor(card.developCost))
+    if (available >= cost) actions.push({ source: 'develop_zone', index, cardId, cardName: card.name, cost })
+  })
+  return actions
+}
+
+function canDevelopNow(g: GameState, playerId: string): string | null {
+  const blocked = pendingActionMessage(g)
+  if (blocked) return blocked
+  if (g.gameOver || g.currentTurn !== playerId || g.currentPhase !== 'main') {
+    return 'Develop is only available to the active player during their Main Phase'
+  }
+  return null
+}
+
+/** Pay a card's Develop cost and move one copy from the supply into the shared Develop zone. */
+export function developCardFromSupply(g: GameState, playerId: string, pileIndex: number): string | null {
+  const blocked = canDevelopNow(g, playerId)
+  if (blocked) return blocked
+  const pile = g.market.piles[pileIndex]
+  if (!pile || pile.remaining <= 0) return 'Pile empty'
+  const card = getCard(pile.cardId)
+  if (card.developCost === undefined) return `${card.name} cannot be Developed`
+  const cost = Math.max(0, Math.floor(card.developCost))
+  const player = getPlayer(g, playerId)
+  const available = getSpendableAether(player, 'general')
+  if (available < cost) return `Need ${cost} Aether to Develop ${card.name}, have ${available}`
+
+  spendAether(player, cost, 'general')
+  pile.remaining--
+  ensureSharedDevelopZone(g).push(card.id)
+  const messages = [`Developed ${card.name} from the supply (${cost}a) -> Develop zone`]
+  if (usesDevouredPile(g) && g.market.piles.every(candidate => candidate.remaining <= 0)) {
+    finishGame(g, 'nemesis')
+    messages.push('DEFEAT! All supply piles have been Devoured!')
+  }
+  messages.push(...resolveCardEffects(g, playerId, card.id, { kind: 'on_develop' }, card.id))
+  return messages.join('; ')
+}
+
+/** Pay a card's Develop cost, gain it from the shared zone, and resolve both gain and Develop effects. */
+export function developCardFromZone(g: GameState, playerId: string, zoneIndex: number): string | null {
+  const blocked = canDevelopNow(g, playerId)
+  if (blocked) return blocked
+  const zone = ensureSharedDevelopZone(g)
+  const cardId = zone[zoneIndex]
+  if (!cardId) return 'Develop zone card is no longer available'
+  const card = getCard(cardId)
+  if (card.developCost === undefined) return `${card.name} cannot be Developed`
+  const cost = Math.max(0, Math.floor(card.developCost))
+  const player = getPlayer(g, playerId)
+  const available = getSpendableAether(player, 'general')
+  if (available < cost) return `Need ${cost} Aether to Develop ${card.name}, have ${available}`
+
+  spendAether(player, cost, 'general')
+  zone.splice(zoneIndex, 1)
+  const gainMessage = gainCard(g, playerId, cardId, 'discard_top', undefined, false)
+  if (!gainMessage) return null
+  const effects = [
+    ...matchingBlocks(cardId, playerId, g, { kind: 'on_gain' }).flatMap(block => block.effects),
+    ...matchingBlocks(cardId, playerId, g, { kind: 'on_develop' }).flatMap(block => block.effects),
+  ]
+  const messages = [`Developed ${card.name} from the Develop zone (${cost}a) -> discard pile`, gainMessage]
+  if (effects.length > 0) {
+    messages.push(...resolveEffects(g, playerId, effects, cardId, 0, playerId, false, undefined, cardId))
+  }
+  return messages.join('; ')
 }
 
 /** Buy the revealed top card of a Nemesis-specific supply pile. */
@@ -6241,6 +6688,7 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
     turnEffects.nextBreachCostReductions = []
     turnEffects.usedPreppedEffects = []
     turnEffects.usedPlayerCardEffects = []
+    turnEffects.usedRecallEffects = {}
     turnEffects.usedBreachUpgradeEffects = []
     turnEffects.prepSpellLimit = 1
     turnEffects.prepSpellLimitByBreach = {}
@@ -6273,8 +6721,7 @@ export function damageNemesis(g: GameState, amount: number): void {
   g.nemesis.hp -= Math.max(0, amount)
   if (g.nemesis.hp <= 0) {
     g.nemesis.hp = 0
-    g.gameOver = true
-    g.winner = 'players'
+    finishGame(g, 'players')
   }
 }
 
@@ -6333,15 +6780,20 @@ export function sufferPlayerDamage(g: GameState, playerId: string, damage: numbe
 // ===== Win/Loss Checks =====
 
 export function checkGameOver(g: GameState): string | null {
-  if (g.nemesis.hp <= 0) { g.gameOver = true; g.winner = 'players'; return 'VICTORY! Nemesis defeated!' }
-  if (g.gravehold.hp <= 0) { g.gameOver = true; g.winner = 'nemesis'; return 'DEFEAT! Gravehold destroyed!' }
-  if (g.players.every(p => p.exhausted)) { g.gameOver = true; g.winner = 'nemesis'; return 'DEFEAT! All mages exhausted!' }
+  if (g.nemesis.hp <= 0) { finishGame(g, 'players'); return 'VICTORY! Nemesis defeated!' }
+  if (g.gravehold.hp <= 0) { finishGame(g, 'nemesis'); return 'DEFEAT! Gravehold destroyed!' }
+  if (g.players.every(p => p.exhausted)) { finishGame(g, 'nemesis'); return 'DEFEAT! All mages exhausted!' }
   if (usesDevouredPile(g) && g.market.piles.every(pile => pile.remaining <= 0)) {
-    g.gameOver = true
-    g.winner = 'nemesis'
+    finishGame(g, 'nemesis')
     return 'DEFEAT! All supply piles have been Devoured!'
   }
   return null
+}
+
+function finishGame(g: GameState, winner: string): void {
+  g.gameOver = true
+  g.winner = winner
+  for (const player of g.players) player.pulseTokens = 0
 }
 
 export function checkPlayerDeath(g: GameState, playerId: string, deferConsequences = false): string | null {
@@ -6419,6 +6871,10 @@ export function canPlayerAct(g: GameState, playerId: string): boolean {
   // Mage-specific cards placed into play may expose an explicit Main Phase
   // action (for example, destroying a Treasure for its benefit).
   if (g.players.some(player => getPlayerCardInPlayActions(g, player.id).length > 0)) return true
+
+  // Developing a card is a Main Phase action that can remain available even
+  // when the player has no cards left in hand.
+  if (getDevelopActions(g, playerId).length > 0) return true
 
   const aether = getSpendableAether(p, 'general')
   const breachAether = getSpendableAether(p, 'breach')

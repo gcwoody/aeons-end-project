@@ -1,5 +1,6 @@
 // ===== Card Types =====
 export type CardType = 'gem' | 'relic' | 'spell' | 'treasure' | 'mage_form' | 'breach_upgrade' | 'attack' | 'minion' | 'power' | 'strike'
+export type CardMechanic = 'pulse_token' | 'recall' | 'develop' | 'trinket'
 
 export type TreasureLevel = 1 | 2 | 3
 
@@ -47,6 +48,15 @@ export type EffectComparison = 'equals' | 'at_least'
 
 export type CardEffectCondition =
   | { kind: 'all_of'; conditions: CardEffectCondition[] }
+  | { kind: 'has_pulse_tokens'; amount: number; player?: 'source' | 'active' }
+  | { kind: 'has_prepped_spell'; ownerScope?: 'any_player' | 'ally' }
+  | {
+      /** Number of matching copies currently in the shared Develop zone. */
+      kind: 'develop_zone_card_count'
+      cardId: string | 'source'
+      comparison: EffectComparison
+      count: number
+    }
   | { kind: 'player_relation_to_source'; relation: 'same' | 'ally' }
   | {
       kind: 'card_play_count_this_turn'
@@ -112,6 +122,8 @@ export type CardEffectTrigger =
   | { kind: 'on_gain_from_supply_pile' }
   | { kind: 'on_play' }
   | { kind: 'on_cast' }
+  | { kind: 'on_develop' }
+  | { kind: 'recall' }
   | { kind: 'on_put_into_play' }
   | { kind: 'on_breach_open' }
   | { kind: 'on_breach_upgrade_installed' }
@@ -313,6 +325,8 @@ export interface PendingNemesisDiscard {
 export interface DecisionOption {
   id: string
   label: string
+  /** Card shown as the visual choice for card-selection style decisions. */
+  cardId?: string
   /** The option is shown for context but cannot be selected in the current state. */
   disabled?: boolean
 }
@@ -324,7 +338,7 @@ export type PendingDecision = PendingDecisionBase & (
       kind: 'choose_one'
       options: DecisionOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'mage-ability'
+      layout?: 'stacked-panels' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
     }
   | {
       kind: 'choose_optional'
@@ -460,6 +474,8 @@ export interface PlayerTurnEffects {
   usedPreppedEffects: string[]
   /** Main-phase action markers for Mage-specific cards already in play. */
   usedPlayerCardEffects?: string[]
+  /** Number of copies of each Recall block already activated this turn. */
+  usedRecallEffects?: Record<string, number>
   prepSpellLimit: number | 'unlimited'
   /** Per-Breach overrides for effects that change spell capacity selectively. */
   prepSpellLimitByBreach?: Record<number, number | 'unlimited'>
@@ -471,12 +487,16 @@ export interface CardEffectOption {
   id: string
   label: string
   effects: CardEffect[]
+  /** Card shown when this option is presented as a visual card choice. */
+  cardId?: string
   /** Optional dynamic rule used to determine whether this choice is available. */
   condition?: CardEffectCondition
 }
 
 /** A small, serializable vocabulary for reusable card rules. */
 export type CardEffect =
+  | { kind: 'gain_pulse_token'; amount?: number; target?: PlayerTargetScope }
+  | { kind: 'lose_pulse_token'; amount: number; target?: PlayerTargetScope }
   | { kind: 'gain_knowledge'; amount: number; target?: 'self' | 'breach_owner' }
   | { kind: 'lose_knowledge'; amount: number }
   | { kind: 'gain_doom'; amount: number }
@@ -491,7 +511,20 @@ export type CardEffect =
   | { kind: 'increase_breach_damage_bonus'; amount: number; breachIndex: number }
   | { kind: 'gain_aether'; amount: number }
   | { kind: 'gain_aether_token'; amount?: number; target?: PlayerTargetScope }
-  | { kind: 'conjure' }
+  | {
+      /** Draw Trinkets from the shared deck into a player's discard or deck. */
+      kind: 'gain_trinkets'
+      amount: number
+      target?: PlayerTargetScope
+      destination?: CardGainDestination
+      /** Put one card from this effect's gains into the recipient's hand. */
+      putOneInHand?: boolean
+    }
+  /** Internal continuation that moves a gained Trinket to hand. */
+  | { kind: 'move_gained_trinket_to_hand'; cardId: string; source: 'discard' | 'deck' }
+  /** Return the currently played Trinket to the shared deck's known bottom. */
+  | { kind: 'return_trinket_to_deck' }
+  | { kind: 'conjure'; breachEligibility?: 'standard' | 'any_present' }
   | { kind: 'spend_aether'; amount: number }
   | {
       kind: 'gain_charge'
@@ -607,6 +640,8 @@ export type CardEffect =
       minAmount?: number
       maxAmount?: number
       cardType?: 'gem' | 'relic' | 'spell'
+      /** Restrict this discard to exact card definitions. */
+      cardIds?: string[]
       target?: PlayerTargetScope
       selection?: PlayerSelectionRule
     }
@@ -671,7 +706,7 @@ export type CardEffect =
       prompt: string
       options: CardEffectOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'mage-ability'
+      layout?: 'stacked-panels' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
     }
   | {
       kind: 'choose_optional'
@@ -702,6 +737,8 @@ export type CardEffect =
       /** Cast spells are discarded by default; set false only for explicit
        * effects such as Jian's Black Mirror first cast. */
       discard?: boolean
+      /** Let a "may cast" effect skip without choosing a spell. */
+      allowSkip?: boolean
       bonusDamage?: number
       ownerScope?: 'any_player' | 'ally'
       returnToCasterHand?: boolean
@@ -767,6 +804,10 @@ export interface CardDef {
   set: string
   /** Printed level for Treasure cards; absent on Supply and Nemesis cards. */
   treasureLevel?: TreasureLevel
+  /** Aether cost to Develop this card from supply or the shared Develop zone. */
+  developCost?: number
+  /** Rules keywords used for setup-time shared UI, such as Pulse token presence. */
+  mechanics?: CardMechanic[]
   effects?: CardEffectBlock[]
   prepToClosedBreach?: boolean
   /** A destroyed card with this flag returns to its owner's Swap zone. */
@@ -949,7 +990,7 @@ export interface PlayerState {
   playedThisTurn: string[]
   /** Mage-specific face-up cards waiting to be swapped into the deck. */
   swapZone?: string[]
-  /** Mage-specific cards in development; no Wave 9 Mage uses this zone yet. */
+  /** @deprecated Legacy per-player Develop contents are migrated to GameState.developZone. */
   developZone?: string[]
   /** Face-down Mage-specific deck, such as Dezmodia's Stash. */
   specificDeck?: string[]
@@ -971,6 +1012,8 @@ export interface PlayerState {
   playerCardPowerTokens?: number[]
   /** Aether tokens are spent as one Aether each and expire during draw. */
   aetherTokens?: number
+  /** Pulse tokens persist across turns and are capped at five. */
+  pulseTokens?: number
   /** Persistent Knowledge resource, tracked independently of turn-scoped Aether. */
   knowledge?: number
   /** Persistent Doom tokens tracked for Mages that use the Doom mechanic. */
@@ -1059,6 +1102,18 @@ export interface GameState {
   nemesis: NemesisState
   gravehold: GraveholdState
   market: MarketState
+  /** Shared public Develop zone; cards here are not part of the supply. */
+  developZone?: string[]
+  /** Shared Wave 9 Trinket deck, top card first. */
+  trinketDeck?: string[]
+  /** Per-copy reveal memory aligned with trinketDeck (top card at index 0). */
+  trinketDeckRevealed?: boolean[]
+  /** Setup-time visibility for Mage Swap zones, shared across Mage views. */
+  hasSwapZone?: boolean
+  /** Setup-time visibility for the shared Develop zone, shared across Mage views. */
+  hasDevelopZone?: boolean
+  /** Mechanics present in the starting market, preserved even when a pile empties. */
+  supplyMechanics?: CardMechanic[]
   turnOrderDeck: string[]
   turnOrderDiscard: string[]
   currentTurn: TurnOrderActorId

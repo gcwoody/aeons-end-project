@@ -29,6 +29,8 @@ import { createQu, QU_CARDS, QU_UNIQUE_CARDS } from './data/wave9/qu'
 import { createTressa, TRESSA_CARDS, TRESSA_UNIQUE_CARDS } from './data/wave9/tressa'
 import { createYanMagda, YAN_MAGDA_CARDS, YAN_MAGDA_UNIQUE_CARDS } from './data/wave9/yanmagda'
 import { wave9Crystal, wave9Spark } from './data/wave9/basic'
+import { WAVE9_GEM_CARDS, chromiaSphere } from './data/wave9/gems'
+import { TRINKET_CARDS } from './data/wave9/trinkets'
 import {
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
@@ -45,6 +47,7 @@ export {
   amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
   phoenixFlame, spectralEcho, wildfireWhip,
   wave9Crystal, wave9Spark,
+  chromiaSphere, WAVE9_GEM_CARDS,
   NOOK_CARDS, NOOK_UNIQUE_CARDS,
   INDIRA_CARDS, INDIRA_UNIQUE_CARDS,
   DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS,
@@ -129,10 +132,12 @@ export const INITIAL_CARDS: Record<string, CardDef> = {
   ...QU_CARDS,
   ...TRESSA_CARDS,
   ...YAN_MAGDA_CARDS,
+  ...TRINKET_CARDS,
 }
 
 export const ALL_MARKET_CARDS: Record<string, CardDef> = {
   ...MARKET_GEM_CARDS,
+  ...WAVE9_GEM_CARDS,
   ...MARKET_RELIC_CARDS,
   ...MARKET_SPELL_CARDS,
 }

@@ -3,10 +3,10 @@ import { computed } from 'vue'
 import { useGame } from '../game/useGame'
 import { cardImageUrl } from '../card-images'
 import { getCard } from '@engine/data'
-import { getPlayerCardInPlayActions } from '@engine/engine'
+import { getDevelopActions, getPlayerCardInPlayActions } from '@engine/engine'
 import CardHoverPreview from './CardHoverPreview.vue'
 
-const { state, buyables, buyCard, resolveDecision, activatePlayerCardInPlayAction } = useGame()
+const { state, buyables, buyCard, developCard, resolveDecision, activatePlayerCardInPlayAction } = useGame()
 
 const canBuy = computed(() => state.game!.currentTurn !== 'nemesis' && state.phase === 'main')
 const marketDecision = computed(() => {
@@ -15,6 +15,7 @@ const marketDecision = computed(() => {
     ? decision
     : null
 })
+const developActions = computed(() => state.game ? getDevelopActions(state.game, state.selectedPlayer) : [])
 
 function marketChoice(pileIndex: number) {
   return marketDecision.value?.candidates.find(choice => choice.pileIndex === pileIndex) ?? null
@@ -33,6 +34,23 @@ function onPileClick(pileIndex: number) {
   const pile = buyables.value.find(candidate => candidate.pileIndex === pileIndex)
   if (!pile || pile.remaining <= 0) return
   buyCard(pileIndex)
+}
+
+function canDevelopSupplyPile(pileIndex: number): boolean {
+  return developActions.value.some(action => action.source === 'supply' && action.index === pileIndex)
+}
+
+function onPileContextMenu(event: MouseEvent, pileIndex: number) {
+  event.preventDefault()
+  if (marketDecision.value || !canBuy.value || !canDevelopSupplyPile(pileIndex)) return
+  developCard('supply', pileIndex)
+}
+
+function developHint(pileIndex: number, developCost?: number): string | undefined {
+  if (developCost === undefined) return undefined
+  return canDevelopSupplyPile(pileIndex)
+    ? `Left-click to buy. Right-click to Develop for ${developCost} Aether.`
+    : `Develop cost: ${developCost} Aether.`
 }
 
 interface SetCardPlacement {
@@ -86,13 +104,22 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             :class="{
               'can-buy': canBuy && !marketDecision,
               'decision-market-choice': !!marketChoice(b.pileIndex),
+              'develop-action-available': canDevelopSupplyPile(b.pileIndex),
             }"
+            :title="developHint(b.pileIndex, b.developCost)"
             :disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy"
             @click="onPileClick(b.pileIndex)"
+            @contextmenu="onPileContextMenu($event, b.pileIndex)"
           >
             <img v-if="cardImageUrl(b.cardId)" :src="cardImageUrl(b.cardId)" :alt="b.cardName" draggable="false" />
             <span v-else class="cname">{{ b.cardName }}</span>
             <span class="remaining">{{ b.remaining }}</span>
+            <span
+              v-if="b.developCost !== undefined"
+              class="develop-cost-badge"
+              :class="{ available: canDevelopSupplyPile(b.pileIndex) }"
+              :aria-label="`Develop cost ${b.developCost} Aether`"
+            >D {{ b.developCost }}</span>
             <CardHoverPreview
               v-for="(setCardId, setIndex) in setCardsForPile(b.pileIndex)"
               :key="`set-${setCardId.ownerId}-${setCardId.cardId}-${setCardId.cardIndex}`"

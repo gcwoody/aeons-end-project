@@ -76,11 +76,33 @@ test.describe('UI Gallery', () => {
 
     await page.getByRole('button', { name: 'Open CardSelectionModal' }).click()
     await expect(page.locator('[data-gallery-modal]')).toBeVisible()
-    await page.keyboard.press('Escape')
-    await expect(page.locator('[data-gallery-modal]')).toBeVisible()
+    const cardChoices = page.locator('[data-gallery-modal] .decision-card-choice')
+    await expect(cardChoices).toHaveCount(2)
+    await expect(cardChoices.first()).toHaveCSS('width', '252px')
     await page.locator('[data-gallery-modal]').screenshot({
       path: resolve(screenshotRoot, 'card-selection-modal-1440x900.png'),
     })
+    await cardChoices.first().click()
+    await cardChoices.nth(1).click()
+    const galleryConfirm = page.locator('[data-gallery-modal]').getByRole('button', { name: 'Confirm', exact: true })
+    await expect(galleryConfirm).toBeEnabled()
+    await galleryConfirm.click()
+    await expect(page.getByRole('status')).toContainText('Confirmed: Clouded Trinket, Golden Trinket')
+    await page.keyboard.press('Escape')
+    await expect(page.locator('[data-gallery-modal]')).toBeVisible()
+    await page.getByRole('button', { name: 'Close gallery modal' }).click()
+
+    await page.getByRole('button', { name: 'Open Instant Card Choice' }).click()
+    await expect(page.locator('[data-gallery-modal]')).toBeVisible()
+    const instantChoices = page.locator('[data-gallery-modal] .large-card-choice')
+    await expect(instantChoices).toHaveCount(2)
+    await expect(instantChoices.first()).toHaveCSS('width', '252px')
+    await page.locator('[data-gallery-modal]').screenshot({
+      path: resolve(screenshotRoot, 'instant-card-choice-modal-1440x900.png'),
+    })
+    await instantChoices.filter({ has: page.locator('img[alt="Golden Trinket"]') }).click()
+    await expect(page.locator('[data-gallery-modal]')).toHaveCount(0)
+    await expect(page.getByText('Instant choice confirmed: Golden Trinket', { exact: true })).toBeVisible()
   })
 
   test('keeps the catalogue usable at a compact viewport', async ({ page }) => {

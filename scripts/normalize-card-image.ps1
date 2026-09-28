@@ -15,6 +15,8 @@ param(
   [int] $TrimTop = 0,
   [int] $TrimRight = 0,
   [int] $TrimBottom = 0,
+  # Apply a small correction to scans whose card edges are visibly rotated.
+  [double] $RotateDegrees = 0,
   [int] $WhiteThreshold = 245,
   [int] $JpegQuality = 95
 )
@@ -47,11 +49,39 @@ if ($outputDirectory -and -not (Test-Path -LiteralPath $outputDirectory)) {
 $resolvedOutput = [System.IO.Path]::GetFullPath($OutputPath)
 
 $source = [System.Drawing.Bitmap]::new($resolvedInput)
+$rotatedSource = $null
+$rotationGraphics = $null
 $canvas = $null
 $graphics = $null
 $encoderParameters = $null
 $encoderParameter = $null
 try {
+  if ([Math]::Abs($RotateDegrees) -gt 0.001) {
+    $rotatedSource = [System.Drawing.Bitmap]::new(
+      $source.Width,
+      $source.Height,
+      [System.Drawing.Imaging.PixelFormat]::Format24bppRgb
+    )
+    $rotationGraphics = [System.Drawing.Graphics]::FromImage($rotatedSource)
+    $rotationGraphics.Clear([System.Drawing.Color]::White)
+    $rotationGraphics.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $rotationGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $rotationGraphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $rotationGraphics.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::HighQuality
+    $rotationGraphics.TranslateTransform($source.Width / 2.0, $source.Height / 2.0)
+    $rotationGraphics.RotateTransform([single] $RotateDegrees)
+    $rotationGraphics.TranslateTransform(-$source.Width / 2.0, -$source.Height / 2.0)
+    $rotationGraphics.DrawImage(
+      $source,
+      [System.Drawing.Rectangle]::new(0, 0, $source.Width, $source.Height)
+    )
+    $rotationGraphics.Dispose()
+    $rotationGraphics = $null
+    $source.Dispose()
+    $source = $rotatedSource
+    $rotatedSource = $null
+  }
+
   $minX = $source.Width
   $minY = $source.Height
   $maxX = -1
@@ -147,14 +177,16 @@ try {
     $canvas.Save($resolvedOutput, $jpegCodec, $encoderParameters)
   }
 
-  Write-Output ("Normalized {0} ({1}x{2}) -> {3} ({4}x{5}); source content bounds: {6},{7} to {8},{9}" -f `
+  Write-Output ("Normalized {0} ({1}x{2}) -> {3} ({4}x{5}); rotation correction: {6} degrees; source content bounds: {7},{8} to {9},{10}" -f `
     $resolvedInput, $source.Width, $source.Height, $resolvedOutput, $Width, $Height,
-    $minX, $minY, $maxX, $maxY)
+    $RotateDegrees, $minX, $minY, $maxX, $maxY)
 }
 finally {
   if ($encoderParameter) { $encoderParameter.Dispose() }
   if ($encoderParameters) { $encoderParameters.Dispose() }
   if ($graphics) { $graphics.Dispose() }
   if ($canvas) { $canvas.Dispose() }
+  if ($rotationGraphics) { $rotationGraphics.Dispose() }
+  if ($rotatedSource) { $rotatedSource.Dispose() }
   if ($source) { $source.Dispose() }
 }

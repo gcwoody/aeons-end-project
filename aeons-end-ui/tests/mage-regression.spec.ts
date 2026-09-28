@@ -1089,3 +1089,16 @@ test('a unique ally card decision automatically displays that ally', async ({ pa
   await expect(page.locator('.char-btn.sel .cn')).toHaveText('brama')
   await expect(page.getByRole('heading', { name: 'Discard a card.' })).toBeVisible()
 })
+
+test('mage view transition fades the player board without fading the control bar', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await page.locator('.char-btn').nth(1).click()
+  await expect(page.locator('.player-area > .breaches')).toHaveCSS('animation-name', 'player-area-turn-arrival')
+  await expect(page.locator('.player-area')).toHaveCSS('animation-name', 'none')
+  await expect(page.locator('.controls')).toHaveCSS('animation-name', 'none')
+})

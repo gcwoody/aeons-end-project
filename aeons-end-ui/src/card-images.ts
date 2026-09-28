@@ -7,6 +7,8 @@ import nemesisCardBack from '../../image-database/common images/nemesis card bac
 import rageborneStrikeDeckBack from '../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Strike Deck Back.png'
 import rageborneFuryToken from '../../image-database/cards/wave1/nemesis/Rageborne/Fury Token UI.png'
 import aetherToken from '../../image-database/common images/Aether Token.png'
+import pulseToken from '../../image-database/common images/Pulse_token.png'
+import trinketDeckBack from '../../image-database/cards/wave9/trinkets/trinket deck back.png'
 import playerOneTurnToken from '../../image-database/common images/turn order images/token/105px-Player_1.png'
 import playerTwoTurnToken from '../../image-database/common images/turn order images/token/105px-Player_2.png'
 import nemesisTurnToken from '../../image-database/common images/turn order images/token/Nemesis Turn Order Token 128.png'
@@ -45,6 +47,14 @@ export function nemesisTokenImageUrl(nemesisType: string, tokenName: string): st
 
 export function aetherTokenImageUrl(): string {
   return aetherToken
+}
+
+export function pulseTokenImageUrl(): string {
+  return pulseToken
+}
+
+export function trinketDeckBackUrl(): string {
+  return trinketDeckBack
 }
 
 export function playerTurnOrderTokenUrl(playerNumber: number): string | undefined {

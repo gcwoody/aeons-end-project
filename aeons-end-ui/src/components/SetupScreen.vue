@@ -31,6 +31,7 @@ const marketCards = computed(() => Object.values(ALL_MARKET_CARDS)
 const marketSlotLabels = ['Gem 1', 'Gem 2', 'Gem 3', 'Relic 1', 'Relic 2', 'Spell 1', 'Spell 2', 'Spell 3', 'Spell 4']
 const marketSlotTypes = MARKET_SLOT_TYPES
 const replacementSlot = ref<number | null>(null)
+const replacementPickerWave = ref(1)
 const replacementPickerEl = ref<HTMLElement | null>(null)
 const magePickerPlayer = ref<1 | 2 | null>(null)
 const magePickerEl = ref<HTMLElement | null>(null)
@@ -39,10 +40,19 @@ const nemesisPickerEl = ref<HTMLElement | null>(null)
 function cardsForSlot(index: number) {
   return marketCards.value.filter(card => card.type === marketSlotTypes[index])
 }
+function marketCardWave(card: { set?: string }): number {
+  const match = card.set?.match(/^wave(\d+)$/i)
+  return match ? Number(match[1]) : 1
+}
+const replacementWaves = computed(() => {
+  const index = replacementSlot.value
+  if (index === null) return []
+  return [...new Set(cardsForSlot(index).map(marketCardWave))].sort((a, b) => a - b)
+})
 const replacementCards = computed(() => {
   const index = replacementSlot.value
   if (index === null) return []
-  return cardsForSlot(index)
+  return cardsForSlot(index).filter(card => marketCardWave(card) === replacementPickerWave.value)
 })
 const replacementSlotLabel = computed(() => replacementSlot.value === null ? '' : marketSlotLabels[replacementSlot.value]!)
 const replacementSlotType = computed(() => replacementSlot.value === null ? '' : marketSlotTypes[replacementSlot.value]!)
@@ -129,6 +139,8 @@ function startSelectedGame() {
 }
 
 function openReplacement(index: number) {
+  const currentCard = ALL_MARKET_CARDS[state.marketSlots[index] ?? '']
+  replacementPickerWave.value = currentCard ? marketCardWave(currentCard) : 1
   replacementSlot.value = index
 }
 
@@ -391,6 +403,17 @@ function turnLabel(turn: string): string {
           <button type="button" class="btn small" aria-label="Close market card picker" @click="closeReplacement">Close</button>
         </div>
         <p class="setup-hint">Choose one {{ replacementSlotType }}. Cards already used in another slot are unavailable.</p>
+        <div class="wave-tabs mage-picker-wave-tabs" role="tablist" aria-label="Market Card Wave">
+          <button
+            v-for="wave in replacementWaves"
+            :key="`market-picker-wave-${wave}`"
+            type="button"
+            role="tab"
+            :aria-selected="replacementPickerWave === wave"
+            :class="{ active: replacementPickerWave === wave }"
+            @click="replacementPickerWave = wave"
+          >Wave {{ wave }}</button>
+        </div>
         <div class="market-picker-grid">
           <CardHoverPreview
             v-for="card in replacementCards"
@@ -399,6 +422,7 @@ function turnLabel(turn: string): string {
             :preview-width="280"
             :preview-height="394"
             :preview-delay="200"
+            preview-class="setup-market-picker-preview"
           >
             <button
               type="button"

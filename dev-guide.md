@@ -88,6 +88,7 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 | 施法 | `cast_prepped_spell`、`return_card_to_hand` |
 | 回合顺序 | `reveal_turn_order_card`、`reveal_turn_order_deck`、`shuffle_turn_order_card` |
 | 预备法术与 Breach | `while_prepped`、`set_prep_limit`、`install_breach_upgrade`、`prevent_damage_this_turn` |
+| Develop | `CardDef.developCost`、`on_develop`；Develop Zone 存在 `GameState` 中并由所有 Mage 共享，支付只使用普通 Aether |
 | Nemesis 基础动作 | 通用 `unleash` 关键词、Nemesis counter、`resolve_strike`、`devour_market_cards`、`set_source_minion_life` |
 
 `CardDecisionModal.vue` 按决策类型渲染，`CardSelectionPanel.vue` 负责通用卡牌选择；

@@ -43,6 +43,7 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 | `Pile.Deck` | 玩家 Deck | 非空时显示牌背和数量；为空时显示名称与 0 |
 | `Pile.Discard` | 玩家 Discard | 非空时显示顶牌正面和数量；为空时显示名称与 0 |
 | `Pile.SpecificDeck` | Mage-specific deck | 可配置正面/牌背展示、数量和 PileViewer；正面牌堆在查看窗口中展示全部牌 |
+| `Pile.TrinketDeck` | 全局 Trinket 牌堆 | 位于 Breach 行最右侧，与已准备法术垂直对齐、与 Market 第三列水平对齐；可点击查看。每张实体牌独立记录是否已揭示，未知牌显示牌背，已知牌显示正面；打开查看窗口不会揭示未知牌 |
 | `Pile.PlayerCardsInPlay` | Put into play 的玩家卡牌 | 无牌时隐藏；单牌可直接触发，多牌打开选择弹窗 |
 | `Pile.NemesisSpecific` | Nemesis 专属牌堆或弃牌堆 | 根据 Nemesis 配置显示数量或顶牌 |
 | `PileViewer` | 查看牌堆内容 | 顶牌在左侧，每行最多 5 张 |
@@ -55,12 +56,12 @@ Nemesis mat 右侧的 Info Bar 横跨剩余区域；左侧从 Fury token 开始�
 | 名称 | 用途 |
 | --- | --- |
 | `ModalBase` | 所有标准弹窗的遮罩、焦点、拖动和 dialog 外壳 |
-| `Modal.Decision` | 引擎产生的阻塞式决策 |
+| `Modal.Decision` | 引擎产生的阻塞式决策；一般 `choose_one` 用按钮，`large-card-selection` 显示可选大图并要求显式 Confirm |
 | `Decision.MageAbilityChoice` | Mage mat 下方竖向排列的 Ability 二选一按钮 |
 | `Modal.CardSelection` | 从手牌、弃牌堆或候选卡牌中选择 |
 | `Modal.PileViewer` | 查看牌堆，不做决策 |
 | `Modal.SupplyPrompt` | 选择 Supply pile 的提示 |
-| `Badge.PileCount` | Deck、Discard、Specific Deck 的数量和空牌堆文字 |
+| `Badge.PileCount` | Deck、Discard、Specific Deck、Trinket Deck 的数量和空牌堆文字 |
 | `Badge.Token` | Power、Aether token 等状态标记 |
 | `Controls.TurnBar` | Mage 切换按钮、阶段、资源和回合按钮 |
 
@@ -69,6 +70,8 @@ Nemesis mat 右侧的 Info Bar 横跨剩余区域；左侧从 Fury token 开始�
 控制栏的常规 Aether 使用 `image-database/common images/Aether.png` 图标加白色数字；图标带白色圆边，所有计数数字使用与 Mage 按钮一致的 12px 粗体。Gem、Spell、Breach 条件 Aether 继续写明类型，文字同为白色。Stake 的 Knowledge 计数使用 `image-database/common images/Knowledge.png` 图标加 `#E4DBBC` 数字，仍仅对追踪 Knowledge 的 Mage 显示。Breach Upgrade 卡牌以手牌尺寸悬停显示，并横向放在 Prototype Breach 左侧。前三个 Breach 隐藏外观但保留位置，为升级卡留出空间。
 
 Mage ability 的 OR 决策使用可复用的 `Decision.MageAbilityChoice`：弹窗上方展示能力来源 Mage 的正面 mat 并裁切为统一圆角；下方显示与 mat 同宽、上下排列的两个可点击按钮。按钮使用蓝底深色文字，悬停时平滑变暗。所有 `choose_one` Ability 决策都应声明 `layout: 'mage-ability'`；非 Ability 的卡牌选择沿用普通决策 UI。Mage mat 宽度、选项文字大小和按钮最小高度集中在 `.decision-modal.mage-ability-modal` 的 CSS 自定义属性中，方便统一微调。Specific Deck 中需要直接辨认的升级卡选择使用 large 卡牌尺寸。
+
+`choose_one` 的 `large-card-selection` 用于需要辨认卡面的多张卡牌选择：卡图以 large 尺寸显示，玩家先点选一张，再点 Confirm；选择状态复用 2px 边界线。Setup 的 Market 卡牌替换弹窗按候选卡牌所属 Wave 提供 Wave tabs，默认切到当前槽位卡牌所属的 Wave。弹窗中的卡图悬停预览复用 `CardHoverPreview`，并高于该 Setup 弹窗显示。
 
 Wolf 的 5 枚 Doom token 显示在控制栏 Activate Ability 按钮右侧；未获得的 token 使用灰度与低透明度，已获得的 token 保留原图颜色。尺寸、间距与相对位置集中在 `.doom-token-track` 的四个 CSS 自定义属性中，方便微调。
 
@@ -115,7 +118,7 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - 原生下拉框不显示浏览器默认白色焦点框，其余外观保持原样。
 - Debug Tools 的数字输入框使用统一的主题色步进箭头：鼠标悬停或键盘聚焦时显示；无悬停能力的设备保持可见。
 - 正常卡牌、背面卡牌和弹窗内卡牌都必须有统一圆角。
-- 图片填满卡牌时使用继承圆角，不能让图片盖住边界线。
+- 图片填满卡牌时应贴合边框内侧圆角：内侧半径需从卡牌外侧半径扣除边框宽度，不能让图片盖住边界线，也不能在四角留下灰色缺口。
 - Breach 上面朝下的 Conjure 卡与玩家 Deck 牌背使用同一张图片和 `--pile-card-aspect-ratio`；不应用面朝下牌背专属缩放，保留原图白边。
 - Casting Phase 中可释放的面朝下法术使用 `--face-down-cast-border` 边框颜色；必须释放的状态继续使用 `--must-cast`。
 - `Card.AttachedQuarter` 使用自己的圆角，不能依赖下方 Supply pile 的圆角。
@@ -128,8 +131,10 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - 牌堆区域本身不因 hover 整体上浮，也不出现额外的蓝色区域边框。
 - 数量徽章固定在左上角，不能因 hover 或卡牌内容发生位移。
 - Played、Swap、Develop 短内容居中；内容溢出时横向滚动，不能裁切卡牌边界。
-- Swap、Develop 等区域是否出现由游戏状态决定，没有相关机制时隐藏。
-- 三个区域共用一排：全部存在时各占 1/3；缺少 Swap 时 Played 占左侧 2/3、Develop 占右侧 1/3；缺少 Develop 时 Swap 占左侧 1/3、Played 占右侧 2/3。单侧布局中 Played 卡牌仍以整行中心为基准；卡牌轨道接触相邻侧区边界时就要钉在 Played 内侧边缘，Swap-only 向右增加、Develop-only 向左增加。只有轨道超过 Played 整个可视宽度时才显示横向滚动条。
+- 如果开局任一 Mage 需要 Swap，或市场中有可 Develop 的牌，则每个 Mage 视角都保留 Swap / Played / Develop 三栏；没有相关机制时隐藏整组侧栏。Swap cards 始终归其 Mage 所有，但所有 Mage 视角都公开显示并标明归属；Develop 是全局共享区。
+- 可 Develop 的 Supply pile 左键仍执行购买，右键支付 Develop cost 并将一张卡移入 Develop 区；Develop 区的卡片可左键或右键支付 Develop cost 后获得。可用操作显示绿色 2px 高亮和费用提示；普通获得效果不能从 Develop 区拿牌。
+- Develop 区可操作卡牌的绿色边界沿卡牌外缘连续绘制；Recall 可用时，弃牌堆顶牌本身沿卡牌外缘显示蓝色边界，不在牌外额外画矩形框。
+- 没有侧栏需求时 Played 占整行；一旦任一侧栏需求存在，Swap / Played / Develop 三栏都保留并各占 1/3。Gallery 中若单独预览 Swap-only 或 Develop-only 布局，Played 卡牌仍以整行中心为基准；轨道接触相邻侧区边界时要钉在 Played 内侧边缘，Swap-only 向右增加、Develop-only 向左增加。只有轨道超过 Played 整个可视宽度时才显示横向滚动条。
 
 ### 弹窗
 
@@ -138,6 +143,7 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - 标题过长时换行，不能通过无限拉宽弹窗解决。
 - 选择按钮在选中前后保持稳定位置。
 - 牌堆查看弹窗说明明确的顺序：顶牌在左、底牌在右，每行最多 5 张。
+- Trinket Deck 使用标准牌堆查看弹窗，不因查看而翻开牌；揭示知识跟随牌堆中的实体副本移动，返回牌堆底部的 Trinket 保持正面可见。
 - 牌堆查看弹窗设定视口内的最小宽度：带行标签的 Deck/Discard 至少 280px，其他牌堆至少 440px，避免空牌堆或单张牌时长标题被挤成多行；窄窗口以视口宽度为上限。
 - Nemesis 四个牌堆均可打开查看弹窗；未启用的专属区域显示空内容。Nemesis Deck 始终只显示牌背，Specific Deck 按 Nemesis 配置显示牌背或正面。
 - `ModalBase` 的遮罩点击默认关闭对应弹窗；只有仍需引擎决策的弹窗显式设置 `blocking`，由游戏操作继续流程。
@@ -209,6 +215,8 @@ Exit modal
 2. 其他卡牌不能响应 hover、点击或预览。
 3. 拖拽预览保持允许公开的朝向，并高于手牌和普通卡牌。
 4. 结束或取消拖拽后必须恢复正常 hover 行为。
+
+Setup 的 Market picker 是 `CardHoverPreview` 的层级特例：其卡图预览只需比 picker overlay 高一个层级，使用 `calc(var(--z-supply-decision) + 1)`；不要提升其他预览或底层游戏区域。
 
 ## 7. 新 UI 需求流程
 

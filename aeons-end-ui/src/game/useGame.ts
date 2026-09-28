@@ -7,7 +7,10 @@ import {
   playCard as enginePlayCard, prepSpell as enginePrepSpell,
   movePreppedSpell as engineMovePreppedSpell,
   returnPreppedSpellToHand as engineReturnPreppedSpellToHand,
-  getBuyableCards, buyCard as engineBuyCard, buySpecificPileCard as engineBuySpecificPileCard,
+  getBuyableCards, buyCard as engineBuyCard,
+  developCardFromSupply as engineDevelopCardFromSupply,
+  developCardFromZone as engineDevelopCardFromZone,
+  buySpecificPileCard as engineBuySpecificPileCard,
   gainFirethornTopCard as engineGainFirethornTopCard,
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
   gainCharge as engineGainCharge, activateAbility as engineActivateAbility,
@@ -17,6 +20,7 @@ import {
   getPreppedCardActions, activatePreppedCardAction as engineActivatePreppedCardAction,
   activatePreppedSpellAction as engineActivatePreppedSpellAction,
   getPlayerCardInPlayActions, activatePlayerCardInPlayAction as engineActivatePlayerCardInPlayAction,
+  getRecallActions as engineGetRecallActions, activateRecall as engineActivateRecall,
   resolvePendingDecision as engineResolvePendingDecision,
   canPlayerAct, canActivateAbilityDuringMain, toRoman,
   advanceNemesisTurn, getNemesisDiscardActions, discardNemesisPower,
@@ -79,7 +83,7 @@ const state = reactive({
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
   drawPhaseHandGainTotals: {} as Record<PlayerId, number>, // UI-only counts excluded from Mage draw feedback
-  viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'nemesis_deck' | 'nemesis_discard' | 'nemesis_specific' | 'nemesis_specific_discard' | 'player_cards_in_play' | null,
+  viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'trinket_deck' | 'nemesis_deck' | 'nemesis_discard' | 'nemesis_specific' | 'nemesis_specific_discard' | 'player_cards_in_play' | null,
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
   debugOpen: false,
@@ -864,6 +868,12 @@ export function openSpecificDeckPile() {
   state.viewPile = 'specific_deck'
 }
 
+/** Open the shared Trinket deck for face-down/known-card inspection. */
+export function openTrinketDeckPile() {
+  closeDismissibleOverlays()
+  state.viewPile = 'trinket_deck'
+}
+
 /** Open the displayed player's face-up in-play cards for action selection. */
 export function openPlayerCardsInPlayPile() {
   const cards = displayPlayer.value?.playerCardsInPlay ?? []
@@ -1253,6 +1263,44 @@ export function gainFirethornTopCard() {
   finishAction(previous)
 }
 
+/** Develop a supply pile or gain a card from the shared Develop zone. */
+export function developCard(source: 'supply' | 'develop_zone', index: number) {
+  if (!state.game) return
+  const previous = beforeAction()
+  const playerId = state.selectedPlayer
+  const message = source === 'supply'
+    ? engineDevelopCardFromSupply(state.game, playerId, index)
+    : engineDevelopCardFromZone(state.game, playerId, index)
+  if (message) {
+    const failed = message.startsWith('Need ') || message.startsWith('Develop is only') || message.startsWith('Pile empty') || message.startsWith('Develop zone card')
+    pushLog(message, failed ? 'warn' : 'ok')
+  }
+  if (state.game.gameOver) {
+    state.phase = 'gameover'
+    finishAction(previous)
+    return
+  }
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
+/** Return Recall cards currently available to the selected Mage. */
+export function getRecallActionsForPlayer(playerId: PlayerId = state.selectedPlayer) {
+  return state.game ? engineGetRecallActions(state.game, playerId) : []
+}
+
+/** Activate a Recall effect from the selected Mage's Discard pile. */
+export function activateRecall(discardIndex: number, playerId: PlayerId = state.selectedPlayer) {
+  if (!state.game) return
+  const previous = beforeAction()
+  const messages = engineActivateRecall(state.game, playerId, discardIndex)
+  for (const message of messages) {
+    pushLog(message, message.startsWith('That ') || message.startsWith('Resolve ') ? 'warn' : 'ok')
+  }
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
 export function useGame() {
   return {
     state,
@@ -1262,12 +1310,15 @@ export function useGame() {
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
     returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
-    buyCard, buyNemesisSpecificTopCard, gainFirethornTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
+    buyCard, developCard,
+    buyNemesisSpecificTopCard, gainFirethornTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     activatePreppedSpellAction,
     activatePlayerCardInPlayAction,
+    getRecallActionsForPlayer,
+    activateRecall,
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, requestEndTurn, discardNemesisCard, undo, aetherInfo, toRoman,
-    selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, openNemesisDeckPile, openNemesisDiscardPile, openNemesisSpecificPile, openNemesisSpecificDiscardPile, closePile,
+    selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openTrinketDeckPile, openPlayerCardsInPlayPile, openNemesisDeckPile, openNemesisDiscardPile, openNemesisSpecificPile, openNemesisSpecificDiscardPile, closePile,
     isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,
     togglePendingBoardCard, confirmPendingBoardCards, skipPendingBoardCards,

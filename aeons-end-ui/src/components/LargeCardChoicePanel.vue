@@ -1,0 +1,44 @@
+<script setup lang="ts">
+import { cardImageUrl } from '../card-images'
+
+export interface LargeCardChoiceOption {
+  id: string
+  cardId: string
+  cardName: string
+  disabled?: boolean
+  disabledReason?: string
+}
+
+defineProps<{
+  choices: LargeCardChoiceOption[]
+}>()
+
+const emit = defineEmits<{
+  choose: [optionId: string]
+}>()
+</script>
+
+<template>
+  <div class="large-card-choice-panel">
+    <div class="large-card-choice-grid">
+      <button
+        v-for="choice in choices"
+        :key="choice.id"
+        class="decision-card-choice large-card-choice"
+        type="button"
+        :aria-label="`Choose ${choice.cardName}`"
+        :disabled="choice.disabled"
+        :title="choice.disabled ? choice.disabledReason : undefined"
+        @click="emit('choose', choice.id)"
+      >
+        <img
+          v-if="cardImageUrl(choice.cardId)"
+          :src="cardImageUrl(choice.cardId)"
+          :alt="choice.cardName"
+          draggable="false"
+        />
+        <span v-else>{{ choice.cardName }}</span>
+      </button>
+    </div>
+  </div>
+</template>

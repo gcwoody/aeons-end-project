@@ -85,7 +85,8 @@ test('Conjure prepares the highlighted hand card by dragging it to an eligible B
   const card = page.locator('.hand .pending-conjure-card')
   const breach = page.locator('.breach[data-breach-index="2"]')
   await expect(card).toBeVisible()
-  await expect(breach.locator('.decision-breach-target')).toBeVisible()
+  await expect(page.locator('.breach .decision-breach-target')).toHaveCount(0)
+  await expect(breach).not.toHaveClass(/drag-target/)
   await expect(page.locator('.decision-modal').getByRole('button', { name: 'Skip' })).toBeVisible()
 
   const source = await card.boundingBox()
@@ -95,6 +96,9 @@ test('Conjure prepares the highlighted hand card by dragging it to an eligible B
   await page.mouse.move(source!.x + source!.width / 2, source!.y + source!.height / 2)
   await page.mouse.down()
   await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 8 })
+  await expect(breach).toHaveClass(/drag-target/)
+  await expect(breach.locator('.breach-token-wrap')).toHaveCSS('outline-color', 'rgb(122, 162, 255)')
+  await expect(page.locator('.breach .decision-breach-target')).toHaveCount(0)
   await page.mouse.up()
 
   await expect(page.locator('.decision-modal')).toHaveCount(0)

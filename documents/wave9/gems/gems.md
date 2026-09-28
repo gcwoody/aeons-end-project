@@ -1,4 +1,4 @@
-# Beyond the Breach — Gems
+# Wave 9 — Gems
 
 > This file was collected from the Aeon's End Wiki for the project's Wave 9 implementation plan.
 > It is a rules reference, not runtime data. Verify disputed text against physical cards and official rulebooks before implementation.
@@ -6,8 +6,9 @@
 ## Source and scope
 
 - Box page: [Beyond the Breach](https://aeonsend.wiki.gg/wiki/Beyond_the_Breach)
-- Collected at (UTC): 2026-09-19T13:02:38.522Z
-- Scope: Five supply Gem sets.
+- Expansion pages: [The Surface](https://aeonsend.wiki.gg/wiki/The_Surface), [The Returned](https://aeonsend.wiki.gg/wiki/The_Returned)
+- Updated: 2026-09-28
+- Scope: Five Beyond the Breach supply Gem sets, two The Surface supply Gem sets, and two The Returned supply Gem sets. The standard Crystal set is unchanged.
 
 ## Atomized Ash
 
@@ -167,3 +168,109 @@ Recall Any ally gains an aether token.
   - Source: [Aether.png](https://aeonsend.wiki.gg/images/Aether.png?baf426)
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/common images/Recall.jpg`
   - Source: [Recall.jpg](https://aeonsend.wiki.gg/images/Recall.jpg?a1207b)
+
+## The Surface
+
+### Chromia Sphere
+
+- Group: Gem
+- Wiki: [Chromia Sphere](https://aeonsend.wiki.gg/wiki/Chromia_Sphere)
+- Source template: `PlayerCard`
+
+**Template fields**
+
+- Cost: 5
+- Develop cost: 3
+- Type: Gem
+- Rules: Gain 2 Aether. If there are two or more copies of this card in the Develop zone, gain an additional 2 Aether.
+- Box 1: The Surface
+- ID 1: TS-021 – TS-027
+- Mechanics: Develop
+
+**Effect**
+
+When you play this, gain 2 Aether. If there are two or more copies of Chromia Sphere in the Develop zone, gain an additional 2 Aether.
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/gems/Chromia Sphere.jpg`
+  - Source: [Chromia Sphere](https://aeonsend.wiki.gg/wiki/Chromia_Sphere)
+
+### Nebulae Fragment
+
+- Group: Gem
+- Wiki: [Nebulae Fragment](https://aeonsend.wiki.gg/wiki/Nebulae_Fragment)
+- Source template: `PlayerCard`
+
+**Template fields**
+
+- Cost: 3
+- Type: Gem
+- Rules: Gain 2 Aether. Any ally may discard a Nebulae Fragment in hand. If they do, that ally gains 1 Aether token and may Conjure to an opened or closed Breach.
+- Box 1: The Surface
+- ID 1: TS-014 – TS-020
+- Mechanics: Aether Token; Conjure
+
+**Effect**
+
+When you play this, gain 2 Aether. Any ally may discard a Nebulae Fragment in hand. If they do, that ally gains 1 Aether token and may Conjure to an opened or closed Breach.
+
+The card's wording allows Conjure to an opened or closed Breach; preserve this target wording when implementing the effect.
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/gems/Nebulae Fragment.jpg`
+  - Source: [The Surface](https://aeonsend.wiki.gg/wiki/The_Surface); text and card number cross-checked against the local card image.
+
+## The Returned
+
+### Coiled Trillium
+
+- Group: Gem
+- Wiki: [Coiled Trillium](https://aeonsend.wiki.gg/wiki/Coiled_Trillium)
+- Source template: `PlayerCard`
+
+**Template fields**
+
+- Cost: 3
+- Type: Gem
+- Rules: Gain 2 Aether. Any ally may discard a Coiled Trillium in hand. If they do, they gain 2 Aether tokens and 1 charge.
+- Box 1: The Returned
+- ID 1: TR-009 – TR-015
+- Mechanics: Aether Token
+
+**Effect**
+
+When you play this, gain 2 Aether. Any ally may discard a Coiled Trillium in hand. If they do, they gain 2 Aether tokens and 1 charge.
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/gems/Coiled Trillium.jpg`
+  - Source: [Coiled Trillium](https://aeonsend.wiki.gg/wiki/Coiled_Trillium)
+
+### Ice-Dusted Jewel
+
+- Group: Gem
+- Wiki: [Ice-Dusted Jewel](https://aeonsend.wiki.gg/wiki/Ice-Dusted_Jewel)
+- Source template: `PlayerCard`
+
+**Template fields**
+
+- Cost: 3
+- Type: Gem
+- Rules: Choose one: gain 2 Aether and 1 Pulse token; or you may lose 5 Pulse tokens to cast any player's prepped spell without discarding it.
+- Box 1: The Returned
+- ID 1: TR-016 – TR-022
+- Mechanics: Pulse Token; Cast Prepped Spell
+
+**Effect**
+
+When you play this, choose one of these effects:
+
+* Gain 2 Aether and 1 Pulse token.
+* You may lose 5 Pulse tokens to cast any player's prepped spell without discarding it.
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/gems/Ice-Dusted Jewel.jpg`
+  - Source: [Ice-Dusted Jewel](https://aeonsend.wiki.gg/wiki/Ice-Dusted_Jewel)

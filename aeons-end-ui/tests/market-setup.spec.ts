@@ -1,5 +1,38 @@
 import { expect, test } from '@playwright/test'
 
+test('Market Supply cards do not lift on hover', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  for (let attempt = 0; attempt < 20; attempt++) {
+    const next = page.getByRole('button', { name: /^(Continue|Resolve Card|Skip|Confirm|Attack .+|Gravehold)$/ }).first()
+    if (!(await next.isVisible().catch(() => false))) break
+    await next.click()
+  }
+  const pile = page.locator('.market-grid .pile').first()
+  await expect(pile).toBeVisible()
+  await pile.hover()
+  await expect(pile).toHaveCSS('transform', 'none')
+})
+
+test('Market card picker filters by Wave and shows previews above the modal', async ({ page }) => {
+  await page.goto('/')
+  await page.locator('.market-slot-card').first().click()
+  const waveTabs = page.getByRole('tablist', { name: 'Market Card Wave' })
+  await expect(waveTabs.getByRole('tab', { name: 'Wave 1' })).toBeVisible()
+  await waveTabs.getByRole('tab', { name: 'Wave 9' }).click()
+
+  const atomizedAsh = page.locator('.market-picker-card').filter({ has: page.locator('img[alt="Atomized Ash"]') })
+  await expect(atomizedAsh).toBeVisible()
+  await atomizedAsh.hover()
+  const preview = page.locator('.card-hover-preview.setup-market-picker-preview')
+  await expect(preview).toBeVisible()
+  const zIndexes = await page.evaluate(() => ({
+    overlay: Number(getComputedStyle(document.querySelector('.setup-market-overlay')!).zIndex),
+    preview: Number(getComputedStyle(document.querySelector('.card-hover-preview.setup-market-picker-preview')!).zIndex),
+  }))
+  expect(zIndexes.preview).toBeGreaterThan(zIndexes.overlay)
+})
+
 test('Setup accepts nine image-based market slot replacements', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -10,6 +43,7 @@ test('Setup accepts nine image-based market slot replacements', async ({ page })
   const selectedNames = ['Jade', "Sifter's Pearl", 'Clouded Sapphire', 'Flexing Dagger', 'Blasting Staff', 'Phoenix Flame', 'Ignite', 'Dark Fire', 'Chaos Arc']
   for (let index = 0; index < selected.length; index++) {
     await slots.nth(index).click()
+    await page.getByRole('tablist', { name: 'Market Card Wave' }).getByRole('tab', { name: 'Wave 1' }).click()
     const card = page.locator('.market-picker-card').filter({ has: page.locator(`img[alt="${selectedNames[index]}"]`) }).first()
     await expect(card).toBeVisible()
     await card.click()
@@ -43,9 +77,12 @@ test('Template 1 creates the requested cost bands', async ({ page }) => {
     flexing_dagger: 2, bottled_vortex: 3, blasting_staff: 4, focusing_orb: 4, mages_talisman: 5, unstable_prism: 3,
     amplify_vision: 4, arcane_nexus: 7, chaos_arc: 6, consuming_void: 7, dark_fire: 5, essence_theft: 5, feral_lightning: 5,
     ignite: 4, lava_tendril: 4, oblivion_swell: 5, phoenix_flame: 3, planar_insight: 6, spectral_echo: 3, wildfire_whip: 6,
+    atomized_ash: 3, hewn_gravitite: 3, irradiax_lump: 6, luminous_facet: 4, phosphor_nugget: 4,
+    chromia_sphere: 5, nebulae_fragment: 3, coiled_trillium: 3, ice_dusted_jewel: 3,
   }
   const types: Record<string, string> = {
     ...Object.fromEntries(['vriswood_amber', 'diamond_cluster', 'burning_opal', 'clouded_sapphire', 'jade', 'searing_ruby', 'sifters_pearl'].map(id => [id, 'gem'])),
+    ...Object.fromEntries(['atomized_ash', 'hewn_gravitite', 'irradiax_lump', 'luminous_facet', 'phosphor_nugget', 'chromia_sphere', 'nebulae_fragment', 'coiled_trillium', 'ice_dusted_jewel'].map(id => [id, 'gem'])),
     ...Object.fromEntries(['flexing_dagger', 'bottled_vortex', 'blasting_staff', 'focusing_orb', 'mages_talisman', 'unstable_prism'].map(id => [id, 'relic'])),
   }
   const picked = piles.map(pile => ({ type: types[pile.cardId] ?? 'spell', cost: costs[pile.cardId] }))
@@ -164,8 +201,8 @@ test('Setup randomizes both Mages on entry and Wave tabs select from their Wave'
   await page.getByRole('button', { name: 'Exit Without Saving' }).click()
   await expect(firstTabs.getByRole('tab', { name: 'Wave 9' })).toHaveAttribute('aria-selected', 'true')
   await expect(secondTabs.getByRole('tab', { name: 'Wave 9' })).toHaveAttribute('aria-selected', 'true')
-  await expect(firstMage.locator('option')).toHaveCount(6)
-  await expect(secondMage.locator('option')).toHaveCount(5)
+  await expect(firstMage.locator('option')).toHaveCount(10)
+  await expect(secondMage.locator('option')).toHaveCount(9)
   expect(await firstMage.inputValue()).not.toBe(await secondMage.inputValue())
 
   await firstTabs.getByRole('tab', { name: 'Wave 1' }).click()

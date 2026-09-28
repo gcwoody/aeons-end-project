@@ -9,6 +9,7 @@ import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-l
 import { useModalDrag } from '../game/useModalDrag'
 import { displayMageName, formatMageNamesInText } from '../game/display-name'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
+import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardChoicePanel.vue'
 import ModalBase from './ModalBase.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
 import CardSurface from './CardSurface.vue'
@@ -52,6 +53,22 @@ const isLargeSpecificDeckSelection = computed(() =>
     && (state.game?.pendingEffect?.specificDeckReveal?.mode === 'put_one_into_play'
       || state.game?.pendingEffect?.awaiting?.kind === 'select_breach_upgrade_card'),
 )
+const isLargeCardSelection = computed(() =>
+  decision.value?.kind === 'choose_one' && decision.value.layout === 'large-card-selection',
+)
+const isLargeCardChoice = computed(() =>
+  decision.value?.kind === 'choose_one' && decision.value.layout === 'large-card-choice',
+)
+const largeCardChoices = computed<LargeCardChoiceOption[]>(() => {
+  if (!isLargeCardChoice.value || decision.value?.kind !== 'choose_one') return []
+  return decision.value.options.flatMap(option => option.cardId ? [{
+    id: option.id,
+    cardId: option.cardId,
+    cardName: getCard(option.cardId).name,
+    disabled: option.disabled,
+    disabledReason: option.disabled ? 'This option is not available right now.' : undefined,
+  }] : [])
+})
 const isMageAbilityChoice = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'mage-ability',
 )
@@ -161,6 +178,17 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
       groupLabel: `${playerName(choice.playerId)} HAND`,
     }))
   }
+  if (isLargeCardSelection.value && decision.value?.kind === 'choose_one') {
+    return decision.value.options.flatMap(option => option.cardId ? [{
+      key: largeCardOptionKey(option.id),
+      cardId: option.cardId,
+      cardName: getCard(option.cardId).name,
+      groupKey: 'options',
+      groupLabel: '',
+      disabled: option.disabled,
+      disabledReason: option.disabled ? 'This option is not available right now.' : undefined,
+    }] : [])
+  }
   return []
 })
 
@@ -169,12 +197,36 @@ const decisionColumns = computed(() => {
   for (const item of selectionItems.value) groupCounts.set(item.groupKey, (groupCounts.get(item.groupKey) ?? 0) + 1)
   return Math.max(1, Math.min(5, Math.max(0, ...[...groupCounts.values()].map(count => Math.min(5, count)))))
 })
-
+const cardSelectionMinimum = computed(() => {
+  if (isLargeCardSelection.value) return 1
+  return decision.value && 'min' in decision.value ? decision.value.min : 0
+})
+const cardSelectionMaximum = computed(() => {
+  if (isLargeCardSelection.value) return 1
+  return decision.value && 'max' in decision.value ? decision.value.max : 0
+})
 function decisionPrompt(prompt: string): string {
   return formatMageNamesInText(prompt, state.game?.players.map(player => player.mageType) ?? [])
 }
 
+function largeCardOptionKey(optionId: string): string {
+  return `large-option:${optionId}`
+}
+
+function chooseLargeCard(optionId: string) {
+  if (!isLargeCardChoice.value || decision.value?.kind !== 'choose_one') return
+  const option = decision.value.options.find(candidate => candidate.id === optionId && !candidate.disabled)
+  if (option) answer({ kind: 'choose_one', optionId: option.id })
+}
+
 function confirmSelectedCards() {
+  if (isLargeCardSelection.value && decision.value?.kind === 'choose_one') {
+    if (selectedCardKeys.value.length !== 1) return
+    const option = decision.value.options.find(candidate =>
+      largeCardOptionKey(candidate.id) === selectedCardKeys.value[0] && !candidate.disabled && candidate.cardId)
+    if (option) answer({ kind: 'choose_one', optionId: option.id })
+    return
+  }
   if (decision.value?.kind === 'select_cards') {
     const choices = decision.value.candidates.filter(choice => selectedCardKeys.value.includes(choiceKey(choice)))
     if (choices.length < decision.value.min || choices.length > decision.value.max) return
@@ -474,6 +526,25 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         @select="answer({ kind: 'choose_one', optionId: $event })"
       />
 
+      <LargeCardChoicePanel
+        v-else-if="isLargeCardChoice"
+        :choices="largeCardChoices"
+        @choose="chooseLargeCard"
+      />
+
+      <CardSelectionPanel
+        v-else-if="decision.kind === 'select_cards' || decision.kind === 'select_collective_cards' || isLargeCardSelection"
+        :key="decision.id"
+        v-model:selected-keys="selectedCardKeys"
+        :choices="selectionItems"
+        :min="cardSelectionMinimum"
+        :max="cardSelectionMaximum"
+        :large-cards="isLargeSpecificDeckSelection || isLargeCardSelection"
+        :group-labels="!isLargeCardSelection"
+        @confirm="confirmSelectedCards"
+        @skip="skipSelectedCards"
+      />
+
       <div
         v-else-if="decision.kind === 'choose_one'"
         class="decision-options"
@@ -506,18 +577,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
           {{ decision.skip.label }}
         </button>
       </div>
-
-      <CardSelectionPanel
-        v-else-if="decision.kind === 'select_cards' || decision.kind === 'select_collective_cards'"
-        :key="decision.id"
-        v-model:selected-keys="selectedCardKeys"
-        :choices="selectionItems"
-        :min="decision.min"
-        :max="decision.max"
-        :large-cards="isLargeSpecificDeckSelection"
-        @confirm="confirmSelectedCards"
-        @skip="skipSelectedCards"
-      />
 
       <template v-else-if="decision.kind === 'reorder_turn_order'">
         <p class="decision-hint">Choose the order of the revealed cards from top to bottom.</p>

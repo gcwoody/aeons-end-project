@@ -4,19 +4,41 @@ import { getCard } from '@engine/data'
 import { cardImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
+import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
+import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardChoicePanel.vue'
 import ZoneScroller from './ZoneScroller.vue'
 import ModalBase from './ModalBase.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
 import TokenBadge from './TokenBadge.vue'
 import { mageImageUrls } from '../mage-images'
 
-type GalleryModal = 'pile' | 'decision' | null
+type GalleryModal = 'pile' | 'decision' | 'instant-choice' | null
 
 const modal = ref<GalleryModal>(null)
 const galleryModalEl = ref<HTMLElement | null>(null)
+const gallerySelectedCardKeys = ref<string[]>([])
+const galleryConfirmedCardNames = ref<string[]>([])
+const galleryCardChoices: CardSelectionItem[] = ['clouded_trinket', 'golden_trinket'].map(cardId => ({
+  key: cardId,
+  cardId,
+  cardName: getCard(cardId).name,
+  groupKey: 'revealed-cards',
+  groupLabel: '',
+}))
+const galleryInstantCardChoices: LargeCardChoiceOption[] = galleryCardChoices.map(choice => ({
+  id: choice.key,
+  cardId: choice.cardId,
+  cardName: choice.cardName,
+}))
+const galleryInstantChoiceConfirmed = ref('')
 
 watch(modal, (value) => {
   if (!value) return
+  if (value === 'decision') {
+    gallerySelectedCardKeys.value = []
+    galleryConfirmedCardNames.value = []
+  }
+  if (value === 'instant-choice') galleryInstantChoiceConfirmed.value = ''
   nextTick(() => galleryModalEl.value?.focus({ preventScroll: true }))
 })
 
@@ -50,6 +72,19 @@ const selectedMageAbilityChoiceLabel = computed(() =>
 
 function cardName(cardId: string): string {
   return getCard(cardId).name
+}
+
+function confirmGalleryCardSelection() {
+  galleryConfirmedCardNames.value = galleryCardChoices
+    .filter(choice => gallerySelectedCardKeys.value.includes(choice.key))
+    .map(choice => choice.cardName)
+}
+
+function confirmGalleryInstantChoice(optionId: string) {
+  const choice = galleryInstantCardChoices.find(option => option.id === optionId)
+  if (!choice) return
+  galleryInstantChoiceConfirmed.value = choice.cardName
+  modal.value = null
 }
 
 </script>
@@ -233,7 +268,11 @@ function cardName(cardId: string): string {
       <div class="ui-gallery-modal-launchers">
         <button class="btn primary" data-gallery-open="pile" @click="modal = 'pile'">Open PileViewer</button>
         <button class="btn" data-gallery-open="decision" @click="modal = 'decision'">Open CardSelectionModal</button>
+        <button class="btn" data-gallery-open="instant-choice" @click="modal = 'instant-choice'">Open Instant Card Choice</button>
       </div>
+      <p v-if="galleryInstantChoiceConfirmed" class="ui-gallery-ability-choice-selection" role="status">
+        Instant choice confirmed: {{ galleryInstantChoiceConfirmed }}
+      </p>
       <article class="ui-gallery-item" data-component="Decision.MageAbilityChoice">
         <h3>Decision.MageAbilityChoice</h3>
         <p class="ui-gallery-caption">Two ability effects, presented as choices beneath the Mage mat</p>
@@ -287,21 +326,31 @@ function cardName(cardId: string): string {
           </div>
           <button class="btn" @click="modal = null">Close</button>
         </template>
+        <template v-else-if="modal === 'decision'">
+          <p class="ui-gallery-index">Decision.CardSelection · large cards</p>
+          <h2>Choose one or more cards</h2>
+          <p class="ui-gallery-modal-hint">Select cards, then confirm the choice. The selection border follows each card edge.</p>
+          <CardSelectionPanel
+            v-model:selected-keys="gallerySelectedCardKeys"
+            :choices="galleryCardChoices"
+            :min="1"
+            :max="2"
+            :large-cards="true"
+            :group-labels="false"
+            @confirm="confirmGalleryCardSelection"
+          />
+          <p v-if="galleryConfirmedCardNames.length" class="ui-gallery-modal-hint" role="status">
+            Confirmed: {{ galleryConfirmedCardNames.join(', ') }}
+          </p>
+        </template>
         <template v-else>
-          <p class="ui-gallery-index">CardSelectionModal · large cards</p>
-          <h2>Choose a revealed card</h2>
-          <p class="ui-gallery-modal-hint">Readable cards remain fixed while the player makes a choice.</p>
-          <div class="ui-gallery-modal-reveal">
-            <CardHoverPreview v-for="cardId in pileCards.slice(0, 2)" :key="cardId" :card-id="cardId">
-              <div class="gallery-modal-reveal-card">
-                <img :src="cardImageUrl(cardId)" :alt="cardName(cardId)" draggable="false" />
-              </div>
-            </CardHoverPreview>
-          </div>
-          <div class="ui-gallery-modal-actions">
-            <button class="btn primary" @click="modal = null">Return to Top</button>
-            <button class="btn" @click="modal = null">Return to Bottom</button>
-          </div>
+          <p class="ui-gallery-index">Decision.LargeCardChoice · immediate confirmation</p>
+          <h2>Choose a Trinket</h2>
+          <p class="ui-gallery-modal-hint">Click a card to confirm immediately.</p>
+          <LargeCardChoicePanel
+            :choices="galleryInstantCardChoices"
+            @choose="confirmGalleryInstantChoice"
+          />
         </template>
     </ModalBase>
   </main>

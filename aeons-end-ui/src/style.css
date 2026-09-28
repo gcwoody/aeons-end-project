@@ -74,6 +74,7 @@
   --text: #dfe4f0;
   --muted: #8b93a7;
   --accent: #7aa2ff;
+  --recall-highlight: #65b8ff;
   --gem: #5ad1c5;
   --spell: #c678dd;
   --must-cast: #ff3030;
@@ -326,6 +327,15 @@ body {
 
 @media (max-width: 900px) {
   :root { --market-width: 280px; }
+  .breaches { flex-wrap: wrap; }
+  .trinket-deck-pile {
+    position: relative;
+    top: auto;
+    right: auto;
+    flex: 0 0 var(--pile-card-width);
+    margin-inline-start: auto;
+    transform: none;
+  }
 }
 
 @media (max-width: 1400px) {
@@ -677,8 +687,23 @@ body {
 .pile.can-buy:focus-visible {
   position: relative;
   z-index: var(--z-card-hover);
-  transform: translateY(-3px);
 }
+.pile.develop-action-available { cursor: context-menu; }
+.develop-cost-badge {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  z-index: 4;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: rgba(24, 30, 44, .9);
+  color: #c4c9d3;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1.2;
+  pointer-events: none;
+}
+.develop-cost-badge.available { background: #467b58; color: #fff; }
 .market-set-card-overlay {
   position: absolute;
   z-index: calc(2 + var(--set-card-index, 0));
@@ -721,7 +746,6 @@ body {
 .pile.decision-market-choice:hover,
 .pile.decision-market-choice:focus-visible {
   z-index: var(--z-card-hover);
-  transform: translateY(-3px);
   box-shadow: 0 0 0 2px rgba(230, 200, 79, .28);
 }
 .pile.pile-empty {
@@ -767,7 +791,7 @@ body {
   min-height: 0;
   background: var(--panel);
 }
-.player-area.turn-arrival {
+.player-area.turn-arrival > :not(.controls):not(.spell-drag-preview) {
   animation: player-area-turn-arrival var(--transition-player-turn) cubic-bezier(.22, .61, .36, 1) both;
 }
 @keyframes player-area-turn-arrival {
@@ -827,11 +851,34 @@ body {
 .phase-line .phase { color: var(--warn); }
 
 .breaches {
+  position: relative;
   display: flex;
   gap: 14px;
   justify-content: center;
   min-height: calc(var(--breach-size) + var(--breach-action-space));
 }
+.trinket-deck-pile {
+  position: absolute;
+  /* Prepped spells are anchored to the Breach artwork, not the taller row
+     that also includes focus/open buttons. Keep the shared 30% artwork anchor. */
+  top: calc(var(--breach-size) * .3);
+  right: calc(var(--market-width) / 6 - 70px);
+  z-index: var(--z-board-interaction);
+  display: block;
+  width: var(--pile-card-width);
+  height: var(--pile-card-height);
+  margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: var(--card-radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.trinket-deck-pile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.trinket-deck-pile .player-pile-card { width: 100%; height: 100%; }
+.trinket-deck-pile .player-pile-card img { object-fit: cover; }
 .breach {
   flex: 0 1 var(--breach-size);
   width: var(--breach-size);
@@ -1158,6 +1205,23 @@ body {
   text-transform: uppercase;
   letter-spacing: 1px;
 }
+.played-zone-develop .develop-action-available {
+  position: relative;
+  cursor: pointer;
+}
+.played-zone-develop .develop-action-available::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 2px solid var(--ok);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.played-zone-develop .develop-action-available:hover {
+  box-shadow: 0 0 10px rgba(93, 194, 131, .34);
+}
 .played-zone:has(.card:hover) { z-index: var(--z-local-hover); }
 .played-zone .empty { color: var(--muted); font-size: 12px; font-style: italic; }
 .zone-scroller { min-width: 0; }
@@ -1187,6 +1251,13 @@ body {
   gap: var(--zone-gap);
   /* Auto margins center short rows and collapse to zero when the row overflows. */
   margin-inline: auto;
+}
+.swap-zone-owner-label {
+  align-self: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .zone-card-scroll .card, .played-card-scroll .card { flex: 0 0 auto; }
 .zone-card-scroll::-webkit-scrollbar, .played-card-scroll::-webkit-scrollbar { height: var(--scrollbar-compact-size); }
@@ -1274,6 +1345,12 @@ body {
 .discard-pile .top { color: var(--spell); font-size: 11px; text-align: center; }
 .discard-pile { grid-column: var(--discard-column); }
 .player-discard-pile { padding: 5px; gap: 2px; overflow: visible; }
+.player-discard-pile.recall-action-available {
+  outline: none;
+}
+.player-discard-pile.recall-action-available .player-discard-top-card {
+  border-color: var(--recall-highlight);
+}
 .specific-deck-back {
   display: block;
   width: 100%;
@@ -1537,7 +1614,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: inherit;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
 }
 
 /* Shared card shell image contract used by CardSurface across game zones. */
@@ -1554,7 +1631,7 @@ body {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: inherit;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
 }
 /* Keep player-in-play cards full-size even when they also carry the generic
    image-card class. The card image must fill its entire pile. */
@@ -1624,6 +1701,7 @@ body.spell-dragging .card-hover-preview {
 .card-hover-preview.mage-preview {
   border-radius: 6%;
 }
+.card-hover-preview.setup-market-picker-preview { z-index: calc(var(--z-supply-decision) + 1); }
 .card-hover-preview img {
   display: block;
   width: 100%;
@@ -1740,7 +1818,8 @@ body.spell-dragging .card-hover-preview {
   font-size: 12px;
   font-weight: 700;
 }
-.controls .aether-token-status {
+.controls .aether-token-status,
+.controls .pulse-token-status {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1749,8 +1828,10 @@ body.spell-dragging .card-hover-preview {
   font-weight: 700;
   white-space: nowrap;
 }
-.controls .aether-token-status img { display: block; width: var(--control-aether-token-size); height: var(--control-aether-token-size); object-fit: contain; }
-.controls .aether-token-status strong { color: inherit; }
+.controls .aether-token-status img,
+.controls .pulse-token-status img { display: block; width: var(--control-aether-token-size); height: var(--control-aether-token-size); object-fit: contain; }
+.controls .aether-token-status strong,
+.controls .pulse-token-status strong { color: inherit; }
 .doom-token-track {
   /* Wolf token tuning: size, spacing, and visual offset from the centered slot. */
   --doom-token-size: 34px;
@@ -1936,7 +2017,8 @@ body.spell-dragging .card-hover-preview {
 }
 @media (prefers-reduced-motion: reduce) {
   .overlay, .overlay-card { animation: none; }
-  .player-area.turn-arrival, .char-btn.cur.turn-marker-arrival { animation: none; }
+  .player-area.turn-arrival > :not(.controls):not(.spell-drag-preview),
+  .char-btn.cur.turn-marker-arrival { animation: none; }
 }
 
 .decision-modal {
@@ -1959,6 +2041,10 @@ body.spell-dragging .card-hover-preview {
   line-height: 1.25;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.decision-modal:has(.card-selection-panel.large-cards.no-group-labels),
+.decision-modal:has(.large-card-choice-panel) {
+  width: min(620px, calc(100vw - 32px));
 }
 .decision-form-card {
   margin: 14px auto 0;
@@ -2212,9 +2298,8 @@ body.spell-dragging .card-hover-preview {
   justify-content: center;
 }
 
-/* Dezmodia's Stash reveal exposes only two cards. Show them at the same
-   readable scale as the Nemesis draw confirmation instead of relying on a
-   hover preview to read the card text. */
+/* Small, fixed card choices use readable cards instead of hover previews.
+   This is shared by specific-deck reveals and gained-card decisions. */
 .card-selection-panel.large-cards .decision-card-zone {
   width: calc(var(--decision-columns, 2) * 262px + 130px);
 }
@@ -2225,6 +2310,46 @@ body.spell-dragging .card-hover-preview {
   width: 252px;
   height: 378px;
   border-radius: 8px;
+}
+.card-selection-panel.no-group-labels .decision-card-zone {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  padding: 0;
+  overflow: visible;
+  border: 0;
+  background: transparent;
+}
+.card-selection-panel.no-group-labels .decision-card-rows {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  padding: 6px 2px 2px;
+}
+.card-selection-panel.no-group-labels .decision-card-zone .decision-card-row {
+  grid-template-columns: repeat(var(--choice-columns), minmax(0, 252px));
+}
+.large-card-choice-panel {
+  max-width: 100%;
+  margin-top: 16px;
+}
+.large-card-choice-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(0, 252px));
+  justify-content: center;
+  gap: 12px;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+.large-card-choice-panel .large-card-choice.decision-card-choice {
+  width: 252px;
+  height: 378px;
+  border-radius: 8px;
+}
+.large-card-choice:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 @media (max-width: 840px) {
@@ -2591,6 +2716,7 @@ body.spell-dragging .card-hover-preview {
 .setup-market-overlay { z-index: var(--z-supply-decision); }
 .setup-market-picker { width: min(960px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow-y: auto; }
 .setup-market-picker:focus { outline: none; }
+.setup-market-picker .mage-picker-wave-tabs { margin-bottom: 14px; }
 .setup-mage-overlay { z-index: var(--z-decision); }
 .setup-mage-picker { width: min(1120px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow-y: auto; }
 .setup-mage-picker:focus { outline: none; }
@@ -2785,6 +2911,13 @@ body.spell-dragging .card-hover-preview {
 .pile-card.player-card-in-play-choice.player-card-in-play-action:hover {
   border-color: var(--ok);
 }
+.pile-card.recall-card-action {
+  border-color: var(--recall-highlight);
+  box-shadow: 0 0 0 2px rgba(101, 184, 255, .28) inset;
+  cursor: pointer;
+}
+.pile-card.recall-card-action:hover { border-color: var(--recall-highlight); }
+.recall-pile-hint { margin: 0 0 8px; color: var(--recall-highlight); font-size: var(--font-size-small); }
 
 @media (max-width: 520px) {
   .pile-row {
@@ -2815,8 +2948,9 @@ body.spell-dragging .card-hover-preview {
   border: 2px solid #e6c84f;
   cursor: pointer;
 }
+.hand .card.pending-conjure-card,
 .hand .card.pending-conjure-card:hover,
-.hand .card.pending-conjure-card.dragging { border-color: #e6c84f; }
+.hand .card.pending-conjure-card.dragging { border: 2px solid #e6c84f; }
 .card.pending-board-card-selected {
   /* Selected board cards stay in the same top board layer as hovered cards. */
   z-index: var(--z-card-hover);

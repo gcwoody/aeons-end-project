@@ -1,7 +1,8 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, specificDeckBackUrl, specificDeckCardImageUrl } from '../card-images'
+import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
+import { getTrinketDeckCards, isTrinketDeckCardRevealed } from '@engine/engine'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
@@ -11,7 +12,10 @@ import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
 import { registerDismissibleOverlay } from '../game/dismissible-overlays'
 
-const { state, displayPlayer, closePile, playerCardInPlayActions, activatePlayerCardInPlayAction } = useGame()
+const {
+  state, displayPlayer, closePile, playerCardInPlayActions, activatePlayerCardInPlayAction,
+  getRecallActionsForPlayer, activateRecall,
+} = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
 const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
@@ -22,6 +26,7 @@ const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
 onBeforeUnmount(unregisterDismissibleOverlay)
 
 const title = computed(() => {
+  if (state.viewPile === 'trinket_deck') return 'Trinket Deck'
   if (state.viewPile === 'specific_deck') {
     return MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckName ?? 'Specific Deck'
   }
@@ -38,6 +43,7 @@ const title = computed(() => {
 })
 const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
 const isSpecificDeck = computed(() => state.viewPile === 'specific_deck')
+const isTrinketDeck = computed(() => state.viewPile === 'trinket_deck')
 const isQuFormDeck = computed(() => isSpecificDeck.value && displayPlayer.value?.mageType === 'qu')
 const isNemesisFaceDown = computed(() => state.viewPile === 'nemesis_deck'
   || (state.viewPile === 'nemesis_specific'
@@ -52,6 +58,7 @@ const specificDeckBackImage = computed(() =>
   specificDeckBackUrl(MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckBack ?? 'player'),
 )
 const faceDownBackImage = computed(() => {
+  if (state.viewPile === 'trinket_deck') return trinketDeckBackUrl()
   if (state.viewPile === 'nemesis_deck') return nemesisCardBackUrl()
   if (state.viewPile === 'nemesis_specific') return nemesisSpecificDeckBackUrl(state.game?.nemesis.type ?? '')
   return specificDeckBackImage.value
@@ -63,6 +70,7 @@ const playerCardEntries = computed(() =>
     .filter(({ cardIndex }) => displayPlayer.value?.playerCardSupplyTargets?.[cardIndex] == null),
 )
 const cards = computed(() => {
+  if (state.viewPile === 'trinket_deck') return state.game ? getTrinketDeckCards(state.game) : []
   if (state.viewPile === 'specific_deck') return displayPlayer.value?.specificDeck ?? []
   if (state.viewPile === 'nemesis_specific') return state.game?.nemesis.strikeDeck ?? []
   if (state.viewPile === 'nemesis_specific_discard') return state.game?.nemesis.strikeDiscard ?? []
@@ -71,6 +79,9 @@ const cards = computed(() => {
   if (state.viewPile === 'player_cards_in_play') return playerCardEntries.value.map(entry => entry.cardId)
   return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
 })
+const recallActions = computed(() => state.viewPile === 'discard' && displayPlayer.value
+  ? getRecallActionsForPlayer(displayPlayer.value.id)
+  : [])
 
 const deckCount = computed(() => displayPlayer.value?.deck.length ?? 0)
 const playerPileKind = computed<PileKind | null>(() =>
@@ -108,8 +119,15 @@ function cardIndexInPile(groupIndex: number, cardIndex: number): number {
 }
 
 function selectPileCard(groupIndex: number, cardIndex: number) {
-  if (!isPlayerCardsInPlay.value) return
   const index = cardIndexInPile(groupIndex, cardIndex)
+  if (state.viewPile === 'discard') {
+    const action = recallActions.value.find(candidate => candidate.discardIndex === index)
+    if (!action || !displayPlayer.value) return
+    closePile()
+    activateRecall(index, displayPlayer.value.id)
+    return
+  }
+  if (!isPlayerCardsInPlay.value) return
   const cardId = cards.value[index]
   if (!cardId || !playerCardActionAvailable(index, cardId)) return
   closePile()
@@ -120,7 +138,12 @@ function isKnownSpecificDeckCard(cardId: string): boolean {
   return knownSpecificDeckCards.value.has(cardId)
 }
 
+function recallActionAvailable(index: number, cardId: string): boolean {
+  return recallActions.value.some(action => action.discardIndex === index && action.cardId === cardId)
+}
+
 function isFaceVisible(cardId: string, index: number): boolean {
+  if (isTrinketDeck.value) return state.game ? isTrinketDeckCardRevealed(state.game, index) : false
   return !isNemesisFaceDown.value && (!isSpecificDeck.value || specificDeckFaceUp.value ||
     (specificDeckTopRevealed.value && index === 0) || isKnownSpecificDeckCard(cardId))
 }
@@ -150,6 +173,7 @@ function specificCardImage(cardId: string): string | undefined {
         {{ title }}
         <span class="muted">{{ orderLabel }}</span>
       </h3>
+      <p v-if="recallActions.length > 0" class="recall-pile-hint">Click a blue highlighted card to activate its Recall effect.</p>
       <div v-if="cards.length === 0" class="empty">— empty —</div>
       <div v-else class="pile-rows">
         <div
@@ -176,6 +200,7 @@ function specificCardImage(cardId: string): string | undefined {
                 'player-card-in-play-choice': isPlayerCardsInPlay,
                 'player-card-in-play-action': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
                 'player-card-in-play-disabled': isPlayerCardsInPlay && !playerCardActionAvailable(cardIndexInPile(gi, i), cid),
+                'recall-card-action': recallActionAvailable(cardIndexInPile(gi, i), cid),
               }"
               @click="selectPileCard(gi, i)"
             />
@@ -188,7 +213,7 @@ function specificCardImage(cardId: string): string | undefined {
             <CardSurface
               base-class="pile-card"
               size="pile"
-              class="pile-card-image specific-deck-unknown-card"
+              class="pile-card-image pile-unknown-card"
               :image-url="faceDownBackImage"
               :image-alt="`${title} card back`"
             >

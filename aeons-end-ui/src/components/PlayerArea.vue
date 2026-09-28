@@ -1,8 +1,12 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getPrepSpellLimit, getSpellDamagePreviewRange, toRoman } from '@engine/engine'
+import {
+  getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getPrepSpellLimit,
+  getSpellDamagePreviewRange, getSupplyMechanics, getGameZoneVisibility,
+  getDevelopZoneCards, getDevelopActions, getTrinketDeckCards, isTrinketDeckCardRevealed, toRoman,
+} from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
-import { aetherTokenImageUrl, cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerTurnOrderTokenUrl, specificDeckBackUrl, specificDeckCardImageUrl } from '../card-images'
+import { aetherTokenImageUrl, cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerTurnOrderTokenUrl, pulseTokenImageUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
 import type { BreachState, CardChoice, PlayerState } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
@@ -30,7 +34,8 @@ const {
   getBoardCardSelection, isPendingBoardCardSelected, togglePendingBoardCard,
   playCard, playAllGems, castSpell, movePreppedSpell, returnPreppedSpellToHand, requestEndTurn, toMainPhase,
   gainFirethornTopCard,
-  selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openPlayerCardsInPlayPile, resolveDecision, toggleHelp,
+  selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openTrinketDeckPile, openPlayerCardsInPlayPile, resolveDecision, toggleHelp,
+  getRecallActionsForPlayer, developCard,
 } = useGame()
 
 const players = computed(() => state.game?.players ?? [])
@@ -41,6 +46,8 @@ let playerAreaTurnArrivalFrame: number | null = null
 const handIncrease = ref<Record<string, number>>({})
 const handIncreaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
 let imageWarmupTimer: ReturnType<typeof setTimeout> | null = null
+const trinketDeckCards = computed(() => state.game ? getTrinketDeckCards(state.game) : [])
+const trinketDeckTopCardKnown = computed(() => state.game ? isTrinketDeckCardRevealed(state.game, 0) : false)
 
 function visiblePlayerImageUrls(candidate: PlayerState): string[] {
   const urls = new Set<string>()
@@ -82,9 +89,23 @@ function visiblePlayerImageUrls(candidate: PlayerState): string[] {
 }
 
 watch(
-  () => [...players.value]
-    .sort((left, right) => Number(left.id === state.selectedPlayer) - Number(right.id === state.selectedPlayer))
-    .flatMap(visiblePlayerImageUrls),
+  () => {
+    const playerImages = [...players.value]
+      .sort((left, right) => Number(left.id === state.selectedPlayer) - Number(right.id === state.selectedPlayer))
+      .flatMap(visiblePlayerImageUrls)
+    const developImages = state.game
+      ? getDevelopZoneCards(state.game).flatMap(cardId => {
+        const url = cardImageUrl(cardId)
+        return url ? [url] : []
+      })
+      : []
+    const trinketDeckImages = state.game
+      ? [trinketDeckBackUrl(), ...(trinketDeckTopCardKnown.value && trinketDeckCards.value[0]
+        ? [cardImageUrl(trinketDeckCards.value[0])].filter((url): url is string => !!url)
+        : [])]
+      : []
+    return [...new Set([...playerImages, ...developImages, ...trinketDeckImages])]
+  },
   (imageUrls) => {
     if (imageWarmupTimer) clearTimeout(imageWarmupTimer)
     imageWarmupTimer = setTimeout(() => {
@@ -144,11 +165,22 @@ const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order' && state.selectedPlayer === state.game?.currentTurn)
 const discardTopCard = computed(() => player.value.discard[0] ?? null)
-const swapZoneCards = computed(() => player.value.swapZone ?? [])
-const developZoneCards = computed(() => player.value.developZone ?? [])
+const eligibleRecallActions = computed(() => getRecallActionsForPlayer(player.value.id))
+const hasRecallAction = computed(() => eligibleRecallActions.value.length > 0)
+const showPulseTokens = computed(() => !!state.game && getSupplyMechanics(state.game).includes('pulse_token'))
+const swapZoneOwners = computed(() => players.value.filter(candidate =>
+  (candidate.swapZone?.length ?? 0) > 0 || MAGES[candidate.mageType]?.hasSwapZone === true ||
+  (MAGES[candidate.mageType]?.swapZone?.length ?? 0) > 0,
+))
+const developZoneCards = computed(() => state.game ? getDevelopZoneCards(state.game) : [])
 const mageDefinition = computed(() => MAGES[player.value?.mageType ?? ''])
-const hasSwapZone = computed(() => mageDefinition.value?.hasSwapZone === true || swapZoneCards.value.length > 0)
-const hasDevelopZone = computed(() => mageDefinition.value?.hasDevelopZone === true || developZoneCards.value.length > 0)
+const gameZoneVisibility = computed(() => state.game
+  ? getGameZoneVisibility(state.game)
+  : { swap: false, develop: false })
+const hasSpecialZoneRow = computed(() => gameZoneVisibility.value.swap || gameZoneVisibility.value.develop)
+const hasSwapZone = computed(() => hasSpecialZoneRow.value)
+const hasDevelopZone = computed(() => hasSpecialZoneRow.value)
+const developActions = computed(() => state.game ? getDevelopActions(state.game, state.selectedPlayer) : [])
 const hasSpecificDeck = computed(() => mageDefinition.value?.hasSpecificDeck === true)
 const specificDeckName = computed(() => mageDefinition.value?.specificDeckName ?? 'Specific Deck')
 const specificDeckFaceUp = computed(() => mageDefinition.value?.specificDeckDisplay === 'face_up')
@@ -174,7 +206,6 @@ const specificDeckBackImage = computed(() =>
     ? specificDeckBackUrl(mageDefinition.value.specificDeckBack)
     : undefined,
 )
-
 function onSpecificDeckClick() {
   if (canBuyFirethorn.value) {
     gainFirethornTopCard()
@@ -406,7 +437,7 @@ function dismissEndTurnWarning(event: PointerEvent) {
 
 function isDecisionBreachTarget(b: BreachState): boolean {
   const decision = state.game?.pendingDecision
-  return (decision?.kind === 'select_breach' || decision?.kind === 'select_exhaust_breach' || decision?.kind === 'select_conjure_breach')
+  return (decision?.kind === 'select_breach' || decision?.kind === 'select_exhaust_breach')
     && decision.candidates.some(choice => choice.playerId === player.value.id && choice.breachIndex === b.index)
 }
 
@@ -437,10 +468,9 @@ function clickPlayedCard(index: number) {
   })
 }
 
-function clickSwapZoneCard(index: number) {
-  const cardId = swapZoneCards.value[index]
+function clickSwapZoneCard(ownerId: string, index: number, cardId: string) {
   if (!cardId) return
-  const boardChoice = boardCardChoice('swap_zone', index, cardId)
+  const boardChoice = getBoardCardSelection(ownerId, 'swap_zone', index, cardId)
   if (boardChoice) togglePendingBoardCard(boardChoice)
 }
 
@@ -562,6 +592,15 @@ function startSpellPointerDrag(i: number, event: PointerEvent) {
   window.addEventListener('pointermove', handleSpellPointerMove, { passive: false })
   window.addEventListener('pointerup', finishSpellPointerDrag, { once: true })
   window.addEventListener('pointercancel', cancelSpellPointerDrag, { once: true })
+}
+
+function developZoneActionAvailable(index: number): boolean {
+  return developActions.value.some(action => action.source === 'develop_zone' && action.index === index)
+}
+
+function clickDevelopZoneCard(index: number) {
+  if (!developZoneActionAvailable(index)) return
+  developCard('develop_zone', index)
 }
 
 function startConjuredCardDrag(event: PointerEvent) {
@@ -1032,6 +1071,34 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
         </div>
         </template>
       </div>
+      <button
+        class="trinket-deck-pile"
+        type="button"
+        aria-label="Open Trinket Deck"
+        @click.stop="openTrinketDeckPile()"
+      >
+        <CardHoverPreview
+          :card-id="trinketDeckTopCardKnown ? trinketDeckCards[0] : undefined"
+          :image-url="trinketDeckTopCardKnown ? undefined : trinketDeckCards.length > 0 ? trinketDeckBackUrl() : undefined"
+          :image-alt="trinketDeckTopCardKnown && trinketDeckCards[0]
+            ? getCard(trinketDeckCards[0]).name
+            : 'Trinket deck card back'"
+        >
+          <CardSurface
+            base-class="player-pile-card"
+            size="pile"
+            :card-id="trinketDeckTopCardKnown ? trinketDeckCards[0] : undefined"
+            :image-url="trinketDeckTopCardKnown ? undefined : trinketDeckCards.length > 0 ? trinketDeckBackUrl() : undefined"
+            :image-alt="trinketDeckTopCardKnown && trinketDeckCards[0]
+              ? getCard(trinketDeckCards[0]).name
+              : 'Trinket deck card back'"
+            class="trinket-deck-top-card"
+          >
+            <span v-if="trinketDeckCards.length === 0">Trinket Deck</span>
+          </CardSurface>
+        </CardHoverPreview>
+        <PileCountBadge :count="trinketDeckCards.length" label="Trinkets" />
+      </button>
     </div>
 
     <div class="played-zones" :class="{ 'has-swap-zone': hasSwapZone, 'has-develop-zone': hasDevelopZone }">
@@ -1039,20 +1106,24 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
         <span class="label">Swap Zone</span>
         <ZoneScroller class="zone-card-scroll">
           <div class="zone-card-track">
-            <CardHoverPreview
-              v-for="(cid, i) in swapZoneCards" :key="`swap-${cid}-${i}`"
-              :card-id="cid"
-            >
-              <CardSurface
+            <template v-for="owner in swapZoneOwners" :key="`swap-owner-${owner.id}`">
+              <span class="swap-zone-owner-label">{{ displayMageName(owner.mageType) }}</span>
+              <CardHoverPreview
+                v-for="(cid, i) in owner.swapZone ?? []" :key="`swap-${owner.id}-${cid}-${i}`"
                 :card-id="cid"
-                size="mini"
-                :class="[typeClass(cid), {
-                  'pending-board-card': !!boardCardChoice('swap_zone', i, cid),
-                  'pending-board-card-selected': !!boardCardChoice('swap_zone', i, cid) && isPendingBoardCardSelected(boardCardChoice('swap_zone', i, cid)!),
-                }]"
-                @click="clickSwapZoneCard(i)"
-              />
-            </CardHoverPreview>
+              >
+                <CardSurface
+                  :card-id="cid"
+                  size="mini"
+                  :class="[typeClass(cid), {
+                    'pending-board-card': !!getBoardCardSelection(owner.id, 'swap_zone', i, cid),
+                    'pending-board-card-selected': !!getBoardCardSelection(owner.id, 'swap_zone', i, cid) && isPendingBoardCardSelected(getBoardCardSelection(owner.id, 'swap_zone', i, cid)!),
+                  }]"
+                  :title="`${displayMageName(owner.mageType)}'s Swap Zone`"
+                  @click="clickSwapZoneCard(owner.id, i, cid)"
+                />
+              </CardHoverPreview>
+            </template>
           </div>
         </ZoneScroller>
       </section>
@@ -1109,7 +1180,14 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
               v-for="(cid, i) in developZoneCards" :key="`develop-${cid}-${i}`"
               :card-id="cid"
             >
-              <CardSurface :card-id="cid" size="mini" :class="typeClass(cid)" />
+              <CardSurface
+                :card-id="cid"
+                size="mini"
+                :title="developZoneActionAvailable(i) ? `Develop for ${getCard(cid).developCost ?? 0} Aether to gain this card` : undefined"
+                :class="[typeClass(cid), { 'develop-action-available': developZoneActionAvailable(i) }]"
+                @click="clickDevelopZoneCard(i)"
+                @contextmenu.prevent="clickDevelopZoneCard(i)"
+              />
             </CardHoverPreview>
           </div>
         </ZoneScroller>
@@ -1245,7 +1323,8 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       </div>
       <div
         class="discard-pile clickable player-discard-pile"
-        :class="{ 'has-cards': player.discard.length > 0 }"
+        :class="{ 'has-cards': player.discard.length > 0, 'recall-action-available': hasRecallAction }"
+        :title="hasRecallAction ? 'Recall is available from this Discard' : undefined"
         @click="openPile('discard')"
         @contextmenu.prevent="openPile('discard')"
       >
@@ -1298,6 +1377,15 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
         >
           <img :src="aetherTokenImageUrl()" alt="Aether Token" draggable="false" />
           <strong class="controls-number">{{ aether.aetherTokens }}</strong>
+        </span>
+        <span
+          v-if="showPulseTokens"
+          class="pulse-token-status"
+          :aria-label="`${player.pulseTokens ?? 0} Pulse Tokens`"
+          :title="`${player.pulseTokens ?? 0} Pulse Tokens`"
+        >
+          <img :src="pulseTokenImageUrl()" alt="Pulse Token" draggable="false" />
+          <strong class="controls-number">{{ player.pulseTokens ?? 0 }}</strong>
         </span>
         <template v-if="isCurrentSelected">
           <button v-if="isCasting" class="btn" @click="toMainPhase">Start Main Phase →</button>

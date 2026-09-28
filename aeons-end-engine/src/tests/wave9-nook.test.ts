@@ -56,7 +56,7 @@ function testNookSetup(): void {
     'infused_crystal', 'dim_crystal', 'empty_crystal',
     'infused_spark', 'empty_spark', 'dim_spark',
   ], 'Nook Swap zone starts in its documented left-to-right order')
-  assertCards(nook.developZone ?? [], [], 'All Mages start with an empty Develop zone')
+  assertCards(game.developZone ?? [], [], 'The shared Develop zone starts empty')
 }
 
 function testCrystalSwapSequence(): void {

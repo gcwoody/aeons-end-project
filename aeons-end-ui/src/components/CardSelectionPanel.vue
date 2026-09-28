@@ -21,6 +21,8 @@ const props = defineProps<{
   selectedKeys: string[]
   /** Render a small, fixed set of revealed cards at readable card size. */
   largeCards?: boolean
+  /** Omit source labels when the decision prompt already describes the group. */
+  groupLabels?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -67,9 +69,9 @@ function toggle(key: string): void {
 </script>
 
 <template>
-  <div class="card-selection-panel" :class="{ 'large-cards': props.largeCards }">
+  <div class="card-selection-panel" :class="{ 'large-cards': props.largeCards, 'no-group-labels': props.groupLabels === false }">
     <div v-for="group in groups" :key="group.key" class="decision-card-zone">
-      <span class="decision-card-zone-label">{{ group.label }}</span>
+      <span v-if="props.groupLabels !== false && group.label" class="decision-card-zone-label">{{ group.label }}</span>
       <div class="decision-card-rows">
         <div
           v-for="(row, index) in group.rows"
@@ -87,6 +89,8 @@ function toggle(key: string): void {
               class="decision-card-choice"
               :class="{ selected: isSelected(choice.key), unavailable: choice.disabled }"
               type="button"
+              :aria-label="`Select ${choice.cardName}`"
+              :aria-pressed="isSelected(choice.key)"
               :disabled="choice.disabled"
               :title="choice.disabled ? choice.disabledReason : undefined"
               @click="toggle(choice.key)"
