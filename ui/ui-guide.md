@@ -74,7 +74,9 @@ Wolf 的 5 枚 Doom token 显示在控制栏 Activate Ability 按钮右侧；未
 
 Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显示玩家和当前回合玩家仍由按钮边界状态区分，控制栏不重复显示 Mage 名称。未显示玩家的手牌数增加时，该按钮的 Hand 数字变绿，并在其右下方向右伸出约 3 秒的 `+N` 标记，标记底边不超过按钮底边；点击按钮查看该玩家时清除标记，不自动切换玩家。撤销、载入存档或替换游戏状态时不重播旧标记。桌面控制栏的 Aether 和操作按钮相对于控制栏水平居中；紧凑宽度下按钮、阶段和操作区保持互不重叠。
 
-控制栏内部下侧留白由 `.controls` 的 `--control-bar-bottom-padding` 调整，控制栏外侧到玩家区域底部的留白由 `.player-area` 的 `--player-area-bottom-padding` 调整；当前均为 6px。抽牌气泡在按钮右侧伸出，并由两个 Mage 按钮之间及 Mage 按钮与阶段文字之间的 24px 间距预留位置。
+弃牌排序阶段的 Played 区域只在当前回合 Mage 的视角显示待排序卡牌；切换到另一名 Mage 时仍显示该 Mage 自己的 Played 区域，不混入当前回合玩家的弃牌队列。
+
+控制栏内部下侧留白由 `.controls` 的 `--control-bar-bottom-padding` 调整，控制栏外侧到玩家区域底部的留白由 `.player-area` 的 `--player-area-bottom-padding` 调整；当前均为 6px。抽牌气泡在按钮右侧伸出，并由两个 Mage 按钮之间及 Mage 按钮与阶段文字之间的 24px 间距预留位置。玩家回合结束后 Draw Phase 补足 5 张手牌时不显示抽牌气泡；卡牌和能力效果抽牌仍显示。
 
 主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`MageAbilityChoice.vue`、`CardSelectionPanel.vue`、
 `PileModal.vue`、`PileCountBadge.vue`、`TokenBadge.vue`。
@@ -114,6 +116,8 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - Debug Tools 的数字输入框使用统一的主题色步进箭头：鼠标悬停或键盘聚焦时显示；无悬停能力的设备保持可见。
 - 正常卡牌、背面卡牌和弹窗内卡牌都必须有统一圆角。
 - 图片填满卡牌时使用继承圆角，不能让图片盖住边界线。
+- Breach 上面朝下的 Conjure 卡与玩家 Deck 牌背使用同一张图片和 `--pile-card-aspect-ratio`；不应用面朝下牌背专属缩放，保留原图白边。
+- Casting Phase 中可释放的面朝下法术使用 `--face-down-cast-border` 边框颜色；必须释放的状态继续使用 `--must-cast`。
 - `Card.AttachedQuarter` 使用自己的圆角，不能依赖下方 Supply pile 的圆角。
 - 选中、可触发和目标高亮只改变颜色或内阴影，不改成 1px 边界。
 
@@ -138,6 +142,8 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - Nemesis 四个牌堆均可打开查看弹窗；未启用的专属区域显示空内容。Nemesis Deck 始终只显示牌背，Specific Deck 按 Nemesis 配置显示牌背或正面。
 - `ModalBase` 的遮罩点击默认关闭对应弹窗；只有仍需引擎决策的弹窗显式设置 `blocking`，由游戏操作继续流程。
 - 只有不需要决策的查看类弹窗允许 ESC 关闭；决策弹窗不能被 ESC 取消。
+- Conjure 的牌库顶牌在决策期间以临时手牌显示，复用 `CardSurface`、`CardHoverPreview` 和待选牌的黄色边界；合法 Breach 复用棋盘目标高亮。弹窗沿用可操作棋盘的非遮挡样式，仅提供 Skip。拖动这张牌到合法 Breach 时准备为面朝下法术；Skip 将牌放回牌库顶。即使没有合法 Breach，也必须展示此牌并允许 Skip。
+- 效果要求玩家选择一个 Breach 来 Focus 时，所有合法目标都显示橙色边框的 `Focus` 按钮；点击按钮或 Breach 图像都提交同一个效果决策，不支付 Aether。普通主阶段 Focus 按钮只在没有待处理决策时执行付费 Focus。
 
 ## 5. 尺寸和响应式规则
 

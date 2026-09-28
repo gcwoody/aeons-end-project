@@ -1,11 +1,14 @@
 import { reactive, computed, watch } from 'vue'
 import {
   createGame, startTurn, getPlayer,
+  resolveMageSetups as engineResolveMageSetups,
+  resolvePlayerInPlayPhaseEffects as engineResolvePlayerInPlayPhaseEffects,
   getCastableSpells, castSpell as engineCastSpell,
   playCard as enginePlayCard, prepSpell as enginePrepSpell,
   movePreppedSpell as engineMovePreppedSpell,
   returnPreppedSpellToHand as engineReturnPreppedSpellToHand,
   getBuyableCards, buyCard as engineBuyCard, buySpecificPileCard as engineBuySpecificPileCard,
+  gainFirethornTopCard as engineGainFirethornTopCard,
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
   gainCharge as engineGainCharge, activateAbility as engineActivateAbility,
   resolveDrawPhase, getTotalAether, getAllRemainingConditional,
@@ -27,6 +30,7 @@ import type {
   CardChoice, CollectiveCardChoice, GameState, NemesisDifficulty, PendingDecisionAnswer,
   PendingDecision, PlayerId, PlayerState, PreppedSpellChoice, MarketSetupConfig,
 } from '@engine/types'
+import { displayMageName, formatMageNamesInText } from './display-name'
 
 export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'gameover'
 
@@ -74,6 +78,7 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
+  drawPhaseHandGainTotals: {} as Record<PlayerId, number>, // UI-only counts excluded from Mage draw feedback
   viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'nemesis_deck' | 'nemesis_discard' | 'nemesis_specific' | 'nemesis_specific_discard' | 'player_cards_in_play' | null,
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
@@ -101,10 +106,6 @@ let storedSaves: StoredSave[] = []
 // Save & Exit. Resumed games keep the existing auto-save behavior.
 let autoSaveEnabled = false
 
-function displayName(id: string): string {
-  return id ? id.charAt(0).toUpperCase() + id.slice(1) : id
-}
-
 const undoStack: Snapshot[] = []
 const MAX_UNDO = 10
 
@@ -112,11 +113,11 @@ function saveSummary(save: StoredSave): SaveSummary {
   const currentPlayer = save.game.players.find(player => player.id === save.currentTurn)
   return {
     id: save.id,
-    players: save.players.map(displayName),
-    nemesisType: displayName(save.nemesisType),
+    players: save.players.map(displayMageName),
+    nemesisType: displayMageName(save.nemesisType),
     round: save.round,
     turn: save.turn,
-    currentTurn: currentPlayer ? displayName(currentPlayer.mageType) : 'Nemesis',
+    currentTurn: currentPlayer ? displayMageName(currentPlayer.mageType) : 'Nemesis',
     updatedAt: save.updatedAt,
   }
 }
@@ -178,6 +179,12 @@ function soleCandidateOwner(playerIds: PlayerId[]): PlayerId | null {
 function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefined): PlayerId | null {
   if (!decision) return null
 
+  if (decision.kind === 'choose_optional') {
+    return state.game?.pendingEffect?.effectPlayerId
+      ?? state.game?.pendingEffect?.sourcePlayerId
+      ?? null
+  }
+
   if (decision.kind === 'select_cards') {
     return state.game?.pendingEffect?.effectPlayerId
       ?? state.game?.pendingEffect?.sourcePlayerId
@@ -199,6 +206,10 @@ function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefine
 
   if (decision.kind === 'select_exhaust_breach') {
     return soleCandidateOwner(decision.candidates.map(candidate => candidate.playerId))
+  }
+
+  if (decision.kind === 'select_conjure_breach') {
+    return state.game?.pendingEffect?.conjuredCard?.playerId ?? null
   }
 
   if (decision.kind === 'choose_one' && state.game?.pendingEffect?.awaiting?.kind === 'reveal_top_cards') {
@@ -347,8 +358,8 @@ function saveCurrentGame(force = false) {
     state.activeSaveId = id
   }
   save.updatedAt = now
-  save.players = state.game.players.map(player => displayName(player.mageType))
-  save.nemesisType = displayName(state.game.nemesis.type)
+  save.players = state.game.players.map(player => displayMageName(player.mageType))
+  save.nemesisType = displayMageName(state.game.nemesis.type)
   save.round = state.game.round
   save.turn = state.game.turnOrderDiscard.length
   save.currentTurn = state.game.currentTurn
@@ -391,7 +402,8 @@ watch(
 )
 
 function pushLog(text: string, kind: LogEntry['kind'] = 'info') {
-  state.log.push({ id: ++logId, text, kind })
+  const mageTypes = state.game?.players.map(player => player.mageType) ?? []
+  state.log.push({ id: ++logId, text: formatMageNamesInText(text, mageTypes), kind })
 }
 
 function cp(): PlayerState {
@@ -554,6 +566,8 @@ function enterMainPhase() {
   const messages = resolvePreppedEffects(g, p.id, 'casting_phase_end')
   for (const message of messages) pushLog(message, 'info')
   if (g.pendingDecision || g.pendingEffect) return
+  for (const message of engineResolvePlayerInPlayPhaseEffects(g, p.id, 'casting_phase_end')) pushLog(message, 'info')
+  if (g.pendingDecision || g.pendingEffect) return
   if (g.gameOver) { state.phase = 'gameover'; return }
   state.phase = 'main'
   // Ability activation is validated by the engine, so persist the phase
@@ -576,7 +590,7 @@ function beginTurn() {
     continueNemesisTurn()
   } else {
     const p = getPlayer(g, g.currentTurn)
-    pushLog(`Turn ${turnNum} — ${displayName(p.mageType)} begins`, 'info')
+    pushLog(`Turn ${turnNum} — ${displayMageName(p.mageType)} begins`, 'info')
     state.selectedPlayer = g.currentTurn
     if (g.pendingDecision || getCastableSpells(g, g.currentTurn).length > 0) state.phase = 'casting'
     else enterMainPhase()
@@ -598,6 +612,9 @@ export function newGame(
   state.nemesisDifficulty = nemesisDifficulty
   const scenario = createTwoPlayerScenario([m1, m2], nemesisType, nemesisDifficulty, marketSetup)
   const g = reactive(createGame(scenario)) as GameState
+  if (!g.pendingDecision && !g.pendingEffect) {
+    for (const message of engineResolveMageSetups(g)) pushLog(message, 'info')
+  }
   state.game = g
   state.log = []
   state.pendingPreppedSpells = []
@@ -610,10 +627,10 @@ export function newGame(
   state.helpOpen = false
   state.viewPile = null
   undoStack.length = 0
-  pushLog(`Game started: ${m1.toUpperCase()} + ${m2.toUpperCase()} vs ${g.nemesis.name} (${nemesisDifficulty})`, 'ok')
+  pushLog(`Game started: ${displayMageName(m1)} + ${displayMageName(m2)} vs ${g.nemesis.name} (${nemesisDifficulty})`, 'ok')
   if (g.pendingDecision) {
     state.phase = 'casting'
-    pushLog('Complete the Nemesis setup before the first turn begins', 'info')
+    pushLog('Complete the setup choices before the first turn begins', 'info')
     return
   }
   startTurn(g)
@@ -657,6 +674,13 @@ export function resumeGame(saveId?: string): boolean {
     }
     if (undoStack.length > MAX_UNDO) undoStack.splice(0, undoStack.length - MAX_UNDO)
     pushLog('Game resumed', 'ok')
+    if (!resumedGame.gameOver && resumedGame.currentTurn === 'nemesis' &&
+      !resumedGame.pendingDecision && !resumedGame.pendingEffect) {
+      // Older saves may have been written after confirming a Nemesis card but
+      // before the turn state machine resumed. Continue that serialized step
+      // on load so the save does not remain stuck between decisions.
+      continueNemesisTurn()
+    }
     maybeAutoEnd()
     return true
   } catch {
@@ -799,17 +823,22 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
     pushLog(checkGameOver(state.game) ?? 'Game over', 'warn')
     state.phase = 'gameover'
   } else if (!state.game.pendingDecision && wasInitialSetup) {
-    pushLog('Nemesis setup complete — first turn begins', 'ok')
-    startTurn(state.game)
-    beginTurn()
+    for (const message of engineResolveMageSetups(state.game)) pushLog(message, 'info')
+    if (!state.game.pendingDecision && !state.game.pendingEffect) {
+      pushLog('Setup complete — first turn begins', 'ok')
+      startTurn(state.game)
+      beginTurn()
+    }
+  } else if (!state.game.pendingDecision && wasNemesisTurnWaiting) {
+    continueNemesisTurn()
+  } else if (!state.game.pendingDecision && state.game.currentTurn !== 'nemesis' && cp().drawPhaseSetupComplete) {
+    finalizeDraw()
   } else if (!state.game.pendingDecision && wasCasting) {
     const noSpellsRemain = getCastableSpells(state.game, cp().id).length === 0
     if (wasCastingPhaseEnd || noSpellsRemain) enterMainPhase()
   } else if (!state.game.pendingDecision && state.phase === 'main') {
     resolveMainPhasePreppedEffects()
     maybeAutoEnd()
-  } else if (!state.game.pendingDecision && wasNemesisTurnWaiting) {
-    continueNemesisTurn()
   }
   finishAction(previous)
 }
@@ -1015,7 +1044,16 @@ function finalizeDraw() {
   const g = state.game!
   const p = cp()
   state.discardRemaining = []
+  const handBeforeDraw = p.hand.length
   for (const m of resolveDrawPhase(g, p.id)) pushLog(m)
+  if (g.pendingDecision || g.pendingEffect) {
+    pushLog('Resolve the end-of-turn card effect before drawing', 'info')
+    return
+  }
+  const drawn = p.hand.length - handBeforeDraw
+  if (drawn > 0) {
+    state.drawPhaseHandGainTotals[p.id] = (state.drawPhaseHandGainTotals[p.id] ?? 0) + drawn
+  }
   const over = checkGameOver(g)
   if (over) { pushLog(over, 'warn'); state.phase = 'gameover'; return }
   startTurn(g)
@@ -1081,7 +1119,7 @@ export function requestEndTurn() {
 }
 
 export function clickDiscardCard(index: number) {
-  if (state.phase !== 'discard_order') return
+  if (state.phase !== 'discard_order' || state.selectedPlayer !== state.game?.currentTurn) return
   if (index < 0 || index >= state.discardRemaining.length) return
   state.discardRemaining.splice(index, 1)
   moveToDiscard(index)
@@ -1206,6 +1244,15 @@ export function buyNemesisSpecificTopCard() {
   finishAction(previous)
 }
 
+export function gainFirethornTopCard() {
+  if (!state.game || !canActMain.value) return
+  const previous = beforeAction()
+  const message = engineGainFirethornTopCard(state.game, cp().id)
+  if (message) pushLog(message, message.startsWith('Gained') ? 'ok' : 'warn')
+  maybeAutoEnd()
+  finishAction(previous)
+}
+
 export function useGame() {
   return {
     state,
@@ -1215,7 +1262,7 @@ export function useGame() {
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
     returnToMainMenu,
     toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
-    buyCard, buyNemesisSpecificTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
+    buyCard, buyNemesisSpecificTopCard, gainFirethornTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     activatePreppedSpellAction,
     activatePlayerCardInPlayAction,
     movePreppedSpell, returnPreppedSpellToHand,

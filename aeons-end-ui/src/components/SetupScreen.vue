@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useGame } from '../game/useGame'
+import { displayMageName } from '../game/display-name'
 import { useModalDrag } from '../game/useModalDrag'
 import { MAGES, NEMESES, ALL_MARKET_CARDS, MARKET_SLOT_TYPES } from '@engine/data'
 import type { MarketSetupConfig } from '@engine/types'
@@ -225,7 +226,7 @@ function turnLabel(turn: string): string {
           <span class="setup-select-row">
           <select id="player1-mage-select" v-model="state.mage1" aria-label="Player 1 Mage">
             <option v-for="mage in mage1Options" :key="mage.type" :value="mage.type">
-              {{ mage.type }}
+              {{ displayMageName(mage.type) }}
             </option>
           </select>
           <button type="button" class="btn small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Reroll</button>
@@ -237,7 +238,7 @@ function turnLabel(turn: string): string {
           @click="openMagePicker(1)"
         >
           <span class="sr-only">Choose First Mage</span>
-          <img v-if="mage1Preview" :src="mage1Preview.front" :alt="`${state.mage1} mage mat`" draggable="false" />
+          <img v-if="mage1Preview" :src="mage1Preview.front" :alt="`${displayMageName(state.mage1)} mage mat`" draggable="false" />
         </button>
         <div class="setup-mage-field">
           <label for="player2-mage-select">Player 2 Mage</label>
@@ -247,7 +248,7 @@ function turnLabel(turn: string): string {
           <span class="setup-select-row">
           <select id="player2-mage-select" v-model="state.mage2" aria-label="Player 2 Mage">
             <option v-for="mage in player2MageOptions" :key="mage.type" :value="mage.type">
-              {{ mage.type }}
+              {{ displayMageName(mage.type) }}
             </option>
           </select>
           <button type="button" class="btn small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Reroll</button>
@@ -259,7 +260,7 @@ function turnLabel(turn: string): string {
           @click="openMagePicker(2)"
         >
           <span class="sr-only">Choose Second Mage</span>
-          <img v-if="mage2Preview" :src="mage2Preview.front" :alt="`${state.mage2} mage mat`" draggable="false" />
+          <img v-if="mage2Preview" :src="mage2Preview.front" :alt="`${displayMageName(state.mage2)} mage mat`" draggable="false" />
         </button>
       </section>
 
@@ -433,7 +434,7 @@ function turnLabel(turn: string): string {
             v-for="mage in magePickerOptions"
             :key="mage.type"
             :image-url="mageImageUrls(mage.type)?.front"
-            :image-alt="`${mage.type} mage mat`"
+            :image-alt="`${displayMageName(mage.type)} mage mat`"
             :preview-width="840"
             :preview-height="604"
             :preview-delay="200"
@@ -443,7 +444,7 @@ function turnLabel(turn: string): string {
             <button
               type="button"
               class="mage-picker-card"
-              :aria-label="`Choose ${mage.type} Mage`"
+              :aria-label="`Choose ${displayMageName(mage.type)} Mage`"
               :class="{ selected: mage.type === magePickerCurrent }"
               :disabled="mageOptionDisabled(mage.type)"
               @click="selectMage(mage.type)"
@@ -451,7 +452,7 @@ function turnLabel(turn: string): string {
               <img
                 v-if="mageImageUrls(mage.type)?.front"
                 :src="mageImageUrls(mage.type)!.front"
-                :alt="`${mage.type} mage mat`"
+                :alt="`${displayMageName(mage.type)} mage mat`"
                 draggable="false"
               />
             </button>

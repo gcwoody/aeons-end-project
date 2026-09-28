@@ -440,10 +440,7 @@ function testNewCardEffectPrimitives(): void {
   optionalAlly.hand = []
   optionalAlly.deck = ['jade']
   playCard(optionalGame, optionalPlayer.id, 'burning_opal')
-  const optionalDecision = optionalGame.pendingDecision
-  assert(optionalDecision?.kind === 'choose_optional', 'Burning Opal exposes its optional discard')
-  if (!optionalDecision || optionalDecision.kind !== 'choose_optional') return
-  resolvePendingDecision(optionalGame, optionalDecision.id, { kind: 'choose_optional', accepted: true })
+  assertEqual(optionalGame.pendingDecision, null, 'Burning Opal skips its discard offer when no card is available')
   assertEqual(optionalAlly.hand.length, 0, 'Burning Opal does not draw when no card was discarded')
 
   const replayGame = createGame(scenario)

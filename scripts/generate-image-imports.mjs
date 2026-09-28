@@ -62,8 +62,8 @@ async function walkSourceFiles(directory) {
 
 function extractRegisteredCardIds(source) {
   const ids = new Set()
-  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|breach_upgrade|attack|minion|power|strike)['"]/g
-  const factoryCardPattern = /\bmake(?:Nemesis|Strike)Card\(\s*['"]([a-z0-9_]+)['"]/g
+  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|mage_form|breach_upgrade|attack|minion|power|strike)['"]/g
+  const factoryCardPattern = /\b(?:make(?:Nemesis|Strike)Card|vaultCard)\(\s*['"]([a-z0-9_]+)['"]/g
   for (const pattern of [directCardPattern, factoryCardPattern]) {
     for (const match of source.matchAll(pattern)) ids.add(match[1])
   }
@@ -135,7 +135,7 @@ function getMageImageIndex(files) {
     const baseName = basename(file)
     const match = baseName.match(/^(.+)\s+(Front|Back)\.[^.]+$/i)
     if (!match) continue
-    const mageType = slug(match[1]).replace(/_beyond_the_breach$/, '')
+    const mageType = slug(match[1]).replace(/_(?:beyond_the_breach|the_surface|the_returned)$/, '')
     const side = match[2].toLowerCase()
     const images = index.get(mageType) ?? {}
     if (images[side] && images[side] !== file) {

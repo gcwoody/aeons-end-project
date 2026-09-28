@@ -1,0 +1,1082 @@
+{
+  "source": [
+    "https://aeonsend.wiki.gg/wiki/The_Surface",
+    "https://aeonsend.wiki.gg/wiki/The_Returned"
+  ],
+  "proxy": "http://127.0.0.1:7897",
+  "generatedAt": "2026-09-27T07:52:24.497Z",
+  "images": [
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Inco (The Surface) Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Inco_%28The_Surface%29_Front.jpg?958b6d",
+      "localPath": "image-database/cards/wave9/mages/inco/Inco (The Surface) Front.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Inco (The Surface) Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Inco_%28The_Surface%29_Back.jpg?5e4651",
+      "localPath": "image-database/cards/wave9/mages/inco/Inco (The Surface) Back.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Genesis Emerald.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Genesis_Emerald.jpg?eccb27",
+      "localPath": "image-database/cards/wave9/mages/inco/Genesis Emerald.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Arcing Firethorn.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Arcing_Firethorn.jpg?98b555",
+      "localPath": "image-database/cards/wave9/mages/inco/Arcing Firethorn.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Blooming Firethorn.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Blooming_Firethorn.jpg?813dce",
+      "localPath": "image-database/cards/wave9/mages/inco/Blooming Firethorn.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Calming Firethorn.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Calming_Firethorn.jpg?8ab434",
+      "localPath": "image-database/cards/wave9/mages/inco/Calming Firethorn.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Imbued Firethorn.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Imbued_Firethorn.jpg?47077d",
+      "localPath": "image-database/cards/wave9/mages/inco/Imbued Firethorn.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Inco (The Surface)",
+      "imageName": "Revealing Firethorn.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Revealing_Firethorn.jpg?4834ef",
+      "localPath": "image-database/cards/wave9/mages/inco/Revealing Firethorn.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Qu (The Surface)",
+      "imageName": "Qu (The Surface) Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Qu_%28The_Surface%29_Front.jpg?22f34c",
+      "localPath": "image-database/cards/wave9/mages/qu/Qu (The Surface) Front.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Qu (The Surface)",
+      "imageName": "Qu (The Surface) Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Qu_%28The_Surface%29_Back.jpg?18939a",
+      "localPath": "image-database/cards/wave9/mages/qu/Qu (The Surface) Back.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Qu (The Surface)",
+      "imageName": "Qu's Form Card.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Qu%27s_Form_Card.jpg?fc6847",
+      "localPath": "image-database/cards/wave9/mages/qu/Qu's Form Card.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Qu (The Surface)",
+      "imageName": "Qu's Form Card Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Qu%27s_Form_Card_Back.jpg?efc591",
+      "localPath": "image-database/cards/wave9/mages/qu/Qu's Form Card Back.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Mages",
+      "page": "Qu (The Surface)",
+      "imageName": "Molded Valite.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Molded_Valite.jpg?8913ad",
+      "localPath": "image-database/cards/wave9/mages/qu/Molded Valite.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "The Timeless Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/The_Timeless_Front.jpg?b82dae",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/The Timeless Front.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "The Timeless Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/The_Timeless_Back.jpg?bd59b8",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/The Timeless Back.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Bubbling Anachro.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Bubbling_Anachro.jpg?c08161",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Bubbling Anachro.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Infinity Warp.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Infinity_Warp.jpg?896624",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Infinity Warp.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Subside.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Subside.jpg?748fa6",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Subside.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Beyond Time and Space.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Beyond_Time_and_Space.jpg?621d78",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Beyond Time and Space.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Crushing Eventuality.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Crushing_Eventuality.jpg?8249d1",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Crushing Eventuality.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Paradox Scourge.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Paradox_Scourge.jpg?ababdf",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Paradox Scourge.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Ghastly Epoch.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Ghastly_Epoch.jpg?8c85cc",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Ghastly Epoch.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Ossilith.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Ossilith.jpg?6703a3",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Ossilith.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Wipe.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Wipe.jpg?fbdc85",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Wipe.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Curse of Exhaustion.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Curse_of_Exhaustion.jpg?361a96",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Curse of Exhaustion.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Nemesis",
+      "page": "The Timeless",
+      "imageName": "Finality.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Finality.jpg?f045a4",
+      "localPath": "image-database/cards/wave9/nemesis/The Timeless/Finality.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Friend",
+      "page": "Sahala, the Apprentice",
+      "imageName": "Sahala, the Apprentice Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Sahala%2C_the_Apprentice_Front.jpg?bb7e6e",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Sahala, the Apprentice Front.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Friend",
+      "page": "Sahala, the Apprentice",
+      "imageName": "Sahala, the Apprentice Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Sahala%2C_the_Apprentice_Back.jpg?357956",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Sahala, the Apprentice Back.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Friend",
+      "page": "Sahala, the Apprentice",
+      "imageName": "Temporal Claw.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Temporal_Claw.jpg?54024c",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Temporal Claw.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Friend",
+      "page": "Sahala, the Apprentice",
+      "imageName": "Fission.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Fission.jpg?c5ef26",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Fission.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Friend",
+      "page": "Sahala, the Apprentice",
+      "imageName": "Galaxy Warp.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Galaxy_Warp.jpg?deed24",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Galaxy Warp.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Friend",
+      "page": "Sahala, the Apprentice",
+      "imageName": "Guiding Star.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Guiding_Star.jpg?a53715",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Guiding Star.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Friend",
+      "page": "Sahala, the Apprentice",
+      "imageName": "Nova Burst.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Nova_Burst.jpg?368603",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Nova Burst.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Foe",
+      "page": "The Mask",
+      "imageName": "The Mask Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/The_Mask_Front.jpg?1b8504",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/The Mask Front.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Foe",
+      "page": "The Mask",
+      "imageName": "The Mask Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/The_Mask_Back.jpg?e5367d",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/The Mask Back.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Foe",
+      "page": "The Mask",
+      "imageName": "Corruption's Kiss.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Corruption%27s_Kiss.jpg?64bc7f",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Corruption's Kiss.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Foe",
+      "page": "The Mask",
+      "imageName": "Devil's Bargain.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Devil%27s_Bargain.jpg?d3f035",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Devil's Bargain.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Foe",
+      "page": "The Mask",
+      "imageName": "Pay the Piper.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Pay_the_Piper.jpg?353a64",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Pay the Piper.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Foe",
+      "page": "The Mask",
+      "imageName": "Poisonous Promises.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Poisonous_Promises.jpg?b8a43d",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Poisonous Promises.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Gems",
+      "page": "Chromia Sphere",
+      "imageName": "Chromia Sphere.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Chromia_Sphere.jpg?f44b4c",
+      "localPath": "image-database/cards/wave9/gems/Chromia Sphere.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Gems",
+      "page": "Nebulae Fragment",
+      "imageName": "Nebulae Fragment.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Nebulae_Fragment.jpg?8c2b83",
+      "localPath": "image-database/cards/wave9/gems/Nebulae Fragment.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Spells",
+      "page": "Boundless Fire",
+      "imageName": "Boundless Fire.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Boundless_Fire.jpg?e859fb",
+      "localPath": "image-database/cards/wave9/spells/Boundless Fire.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Spells",
+      "page": "Cosmic Pulse",
+      "imageName": "Cosmic Pulse.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Cosmic_Pulse.jpg?bc2048",
+      "localPath": "image-database/cards/wave9/spells/Cosmic Pulse.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Spells",
+      "page": "Obliterating Arc",
+      "imageName": "Obliterating Arc.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Obliterating_Arc.jpg?ecec54",
+      "localPath": "image-database/cards/wave9/spells/Obliterating Arc.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Relics",
+      "page": "Dreamer's Crown",
+      "imageName": "Dreamer's Crown.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Dreamer%27s_Crown.jpg?70ed56",
+      "localPath": "image-database/cards/wave9/relics/Dreamer's Crown.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Relics",
+      "page": "Stormspinner Wand",
+      "imageName": "Stormspinner Wand.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Stormspinner_Wand.jpg?7d5723",
+      "localPath": "image-database/cards/wave9/relics/Stormspinner Wand.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 1",
+      "page": "Brama's Funneled Rage",
+      "imageName": "Brama's Funneled Rage.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Brama%27s_Funneled_Rage.jpg?f5201b",
+      "localPath": "image-database/cards/wave9/treasures/Level 1/Brama's Funneled Rage.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 1",
+      "page": "Kain's Spilt Light",
+      "imageName": "Kain's Spilt Light.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Kain%27s_Spilt_Light.jpg?643810",
+      "localPath": "image-database/cards/wave9/treasures/Level 1/Kain's Spilt Light.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 2",
+      "page": "Gravi-Matrix",
+      "imageName": "Gravi-Matrix.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Gravi-Matrix.jpg?676c44",
+      "localPath": "image-database/cards/wave9/treasures/Level 2/Gravi-Matrix.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 2",
+      "page": "Vigor Siphon",
+      "imageName": "Vigor Siphon.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Vigor_Siphon.jpg?fb56e2",
+      "localPath": "image-database/cards/wave9/treasures/Level 2/Vigor Siphon.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 3",
+      "page": "Feedback Field",
+      "imageName": "Feedback Field.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Feedback_Field.jpg?77108f",
+      "localPath": "image-database/cards/wave9/treasures/Level 3/Feedback Field.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 3",
+      "page": "Reliquary's Mark",
+      "imageName": "Reliquary's Mark.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Reliquary%27s_Mark.jpg?e3cdf0",
+      "localPath": "image-database/cards/wave9/treasures/Level 3/Reliquary's Mark.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 4",
+      "page": "Astral Tesseract",
+      "imageName": "Astral Tesseract.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Astral_Tesseract.jpg?f1278f",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Astral Tesseract.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 4",
+      "page": "Celestial Slayer",
+      "imageName": "Celestial Slayer.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Celestial_Slayer.jpg?cd3ab1",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Celestial Slayer.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 4",
+      "page": "Planar Visions",
+      "imageName": "Planar Visions.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Planar_Visions.jpg?1b8256",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Planar Visions.jpg"
+    },
+    {
+      "expansion": "The Surface",
+      "group": "Level 4",
+      "page": "Prismatic Cluster",
+      "imageName": "Prismatic Cluster.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Prismatic_Cluster.jpg?e68888",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Prismatic Cluster.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Tressa Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Tressa_Front.jpg?a2e2ba",
+      "localPath": "image-database/cards/wave9/mages/tressa/Tressa Front.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Tressa Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Tressa_Back.jpg?b7c3b7",
+      "localPath": "image-database/cards/wave9/mages/tressa/Tressa Back.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Transmaterium.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Transmaterium.jpg?7e3aa4",
+      "localPath": "image-database/cards/wave9/mages/tressa/Transmaterium.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Translocate.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Translocate.jpg?3c5c05",
+      "localPath": "image-database/cards/wave9/mages/tressa/Translocate.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Alchemic Stance.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Alchemic_Stance.jpg?7e5fc9",
+      "localPath": "image-database/cards/wave9/mages/tressa/Alchemic Stance.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Artifact Stance.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Artifact_Stance.jpg?12a1ec",
+      "localPath": "image-database/cards/wave9/mages/tressa/Artifact Stance.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Breach Stance.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Breach_Stance.jpg?4bf226",
+      "localPath": "image-database/cards/wave9/mages/tressa/Breach Stance.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Creator Stance.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Creator_Stance.jpg?6f8333",
+      "localPath": "image-database/cards/wave9/mages/tressa/Creator Stance.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Tressa",
+      "imageName": "Overload Stance.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Overload_Stance.jpg?daac9f",
+      "localPath": "image-database/cards/wave9/mages/tressa/Overload Stance.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Yan Magda (The Returned) Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Yan_Magda_%28The_Returned%29_Front.jpg?d10635",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Yan Magda (The Returned) Front.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Yan Magda (The Returned) Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Yan_Magda_%28The_Returned%29_Back.jpg?91d667",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Yan Magda (The Returned) Back.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Intoned Breach III Icon.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Intoned_Breach_III_Icon.jpg?c8faf7",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Intoned Breach III Icon.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Intoned Breach IV Icon.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Intoned_Breach_IV_Icon.jpg?ea3957",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Intoned Breach IV Icon.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Opened Intoned Breach III.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Opened_Intoned_Breach_III.jpg?ce13da",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Opened Intoned Breach III.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Intoned Breach III.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Intoned_Breach_III.jpg?c793eb",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Intoned Breach III.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Opened Intoned Breach IV.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Opened_Intoned_Breach_IV.jpg?1a755d",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Opened Intoned Breach IV.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Intoned Breach IV.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Intoned_Breach_IV.jpg?2ee00c",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Intoned Breach IV.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Foretold Flame.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Foretold_Flame.jpg?3d2bf6",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Foretold Flame.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Mages",
+      "page": "Yan Magda (The Returned)",
+      "imageName": "Vitrification.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Vitrification.jpg?8dd3bb",
+      "localPath": "image-database/cards/wave9/mages/yan magda/Vitrification.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Rampaging Vin Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Rampaging_Vin_Front.jpg?da7b34",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Rampaging Vin Front.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Rampaging Vin Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Rampaging_Vin_Back.jpg?8a8895",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Rampaging Vin Back.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Rampaging Vin Board.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Rampaging_Vin_Board.jpg?bbdcd7",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Rampaging Vin Board.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Rampaging Vin Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Rampaging_Vin_Standee.jpg?8a5b7a",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Rampaging Vin Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Player 1 Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Player_1_Standee.jpg?21f9af",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Player 1 Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Player 2 Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Player_2_Standee.jpg?1bd93d",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Player 2 Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Player 3 Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Player_3_Standee.jpg?2a6f20",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Player 3 Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Player 4 Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Player_4_Standee.jpg?1a6fa5",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Player 4 Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Dross Eater Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Dross_Eater_Standee.jpg?45a359",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Dross Eater Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Grubbite Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Grubbite_Standee.jpg?a6a182",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Grubbite Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Slorg Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Slorg_Standee.jpg?146e37",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Slorg Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Pistil Cur Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Pistil_Cur_Standee.jpg?47b2b9",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Pistil Cur Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Biting Rubble Standee.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Biting_Rubble_Standee.jpg?5848aa",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Biting Rubble Standee.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Dross Eater.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Dross_Eater.jpg?c31c58",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Dross Eater.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Mycopod.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Mycopod.jpg?55a487",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Mycopod.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Grubbite.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Grubbite.jpg?86dd96",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Grubbite.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Brutal Instinct.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Brutal_Instinct.jpg?595a2d",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Brutal Instinct.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Pistil Cur.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Pistil_Cur.jpg?fb8832",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Pistil Cur.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Slorg.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Slorg.jpg?450b9d",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Slorg.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Biting Rubble.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Biting_Rubble.jpg?1e26c4",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Biting Rubble.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Chomp.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Chomp.jpg?578e06",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Chomp.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Underearth Assault.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Underearth_Assault.jpg?40c6bf",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Underearth Assault.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Grace Conduit.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Grace_Conduit.jpg?908c0d",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Grace Conduit.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Nemesis",
+      "page": "Rampaging Vin",
+      "imageName": "Enrage (Rampaging Vin).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Enrage_%28Rampaging_Vin%29.jpg?30382f",
+      "localPath": "image-database/cards/wave9/nemesis/Rampaging Vin/Enrage (Rampaging Vin).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Grimoire, the Archive Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Grimoire%2C_the_Archive_Front.jpg?c4f99d",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Grimoire, the Archive Front.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Grimoire, the Archive Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Grimoire%2C_the_Archive_Back.jpg?4f4e22",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Grimoire, the Archive Back.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Consuming Void (Grimoire).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Consuming_Void_%28Grimoire%29.jpg?1276cb",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Consuming Void (Grimoire).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Disintegrating Scythe (Grimoire).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Disintegrating_Scythe_%28Grimoire%29.jpg?97e394",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Disintegrating Scythe (Grimoire).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Equilibrium (Grimoire).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Equilibrium_%28Grimoire%29.jpg?6d8096",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Equilibrium (Grimoire).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Monstrous Inferno (Grimoire).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Monstrous_Inferno_%28Grimoire%29.jpg?793f3b",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Monstrous Inferno (Grimoire).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Radiance (Grimoire).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Radiance_%28Grimoire%29.jpg?1b9197",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Radiance (Grimoire).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Ancient Knowledge.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Ancient_Knowledge.jpg?2ee420",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Ancient Knowledge.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Arcane Wisdom.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Arcane_Wisdom.jpg?c73c17",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Arcane Wisdom.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Study (Grimoire).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Study_%28Grimoire%29.jpg?744368",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Study (Grimoire).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Friend",
+      "page": "Grimoire, the Archive",
+      "imageName": "Turn the Page.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Turn_the_Page.jpg?4d71ee",
+      "localPath": "image-database/cards/wave9/friends-and-foes/friends/Turn the Page.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Foe",
+      "page": "Jeweled Wrath",
+      "imageName": "Jeweled Wrath Front.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Jeweled_Wrath_Front.jpg?380d02",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Jeweled Wrath Front.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Foe",
+      "page": "Jeweled Wrath",
+      "imageName": "Jeweled Wrath Back.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Jeweled_Wrath_Back.jpg?10506e",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Jeweled Wrath Back.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Foe",
+      "page": "Jeweled Wrath",
+      "imageName": "Cursed Shard (Jeweled Wrath).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Cursed_Shard_%28Jeweled_Wrath%29.jpg?9ac060",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Cursed Shard (Jeweled Wrath).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Foe",
+      "page": "Jeweled Wrath",
+      "imageName": "Corrode.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Corrode.jpg?d8a5de",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Corrode.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Foe",
+      "page": "Jeweled Wrath",
+      "imageName": "Encrust (Jeweled Wrath).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Encrust_%28Jeweled_Wrath%29.jpg?55fea9",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Encrust (Jeweled Wrath).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Foe",
+      "page": "Jeweled Wrath",
+      "imageName": "Rust (Jeweled Wrath).jpg",
+      "source": "https://aeonsend.wiki.gg/images/Rust_%28Jeweled_Wrath%29.jpg?827143",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Rust (Jeweled Wrath).jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Foe",
+      "page": "Jeweled Wrath",
+      "imageName": "Splinter.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Splinter.jpg?eb17b6",
+      "localPath": "image-database/cards/wave9/friends-and-foes/foes/Splinter.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Gems",
+      "page": "Coiled Trillium",
+      "imageName": "Coiled Trillium.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Coiled_Trillium.jpg?8f95ac",
+      "localPath": "image-database/cards/wave9/gems/Coiled Trillium.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Gems",
+      "page": "Ice-Dusted Jewel",
+      "imageName": "Ice-Dusted Jewel.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Ice-Dusted_Jewel.jpg?dd6fc3",
+      "localPath": "image-database/cards/wave9/gems/Ice-Dusted Jewel.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Spells",
+      "page": "Infernal Cascade",
+      "imageName": "Infernal Cascade.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Infernal_Cascade.jpg?f4044e",
+      "localPath": "image-database/cards/wave9/spells/Infernal Cascade.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Spells",
+      "page": "Torrential Spike",
+      "imageName": "Torrential Spike.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Torrential_Spike.jpg?376129",
+      "localPath": "image-database/cards/wave9/spells/Torrential Spike.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Relics",
+      "page": "Book of Before",
+      "imageName": "Book of Before.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Book_of_Before.jpg?6c8cca",
+      "localPath": "image-database/cards/wave9/relics/Book of Before.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Relics",
+      "page": "Pact Prism",
+      "imageName": "Pact Prism.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Pact_Prism.jpg?51b39b",
+      "localPath": "image-database/cards/wave9/relics/Pact Prism.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Relics",
+      "page": "Visionary Staff",
+      "imageName": "Visionary Staff.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Visionary_Staff.jpg?67519c",
+      "localPath": "image-database/cards/wave9/relics/Visionary Staff.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 1",
+      "page": "Quilius's Backstab",
+      "imageName": "Quilius's Backstab.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Quilius%27s_Backstab.jpg?c8b630",
+      "localPath": "image-database/cards/wave9/treasures/Level 1/Quilius's Backstab.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 1",
+      "page": "Thraxir's Infuser",
+      "imageName": "Thraxir's Infuser.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Thraxir%27s_Infuser.jpg?73716d",
+      "localPath": "image-database/cards/wave9/treasures/Level 1/Thraxir's Infuser.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 2",
+      "page": "Ancient Archive",
+      "imageName": "Ancient Archive.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Ancient_Archive.jpg?541f9f",
+      "localPath": "image-database/cards/wave9/treasures/Level 2/Ancient Archive.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 2",
+      "page": "Relay Amplifier",
+      "imageName": "Relay Amplifier.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Relay_Amplifier.jpg?d605da",
+      "localPath": "image-database/cards/wave9/treasures/Level 2/Relay Amplifier.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 3",
+      "page": "Leisan's Book",
+      "imageName": "Leisan's Book.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Leisan%27s_Book.jpg?c92592",
+      "localPath": "image-database/cards/wave9/treasures/Level 3/Leisan's Book.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 3",
+      "page": "Tethered Bracers",
+      "imageName": "Tethered Bracers.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Tethered_Bracers.jpg?dffe2a",
+      "localPath": "image-database/cards/wave9/treasures/Level 3/Tethered Bracers.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 4",
+      "page": "Burning Phoenix",
+      "imageName": "Burning Phoenix.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Burning_Phoenix.jpg?500f46",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Burning Phoenix.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 4",
+      "page": "Fiend Neutralizer",
+      "imageName": "Fiend Neutralizer.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Fiend_Neutralizer.jpg?bbbaf6",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Fiend Neutralizer.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 4",
+      "page": "Pyroclastic Slag",
+      "imageName": "Pyroclastic Slag.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Pyroclastic_Slag.jpg?352aee",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Pyroclastic Slag.jpg"
+    },
+    {
+      "expansion": "The Returned",
+      "group": "Level 4",
+      "page": "Quasar Forge",
+      "imageName": "Quasar Forge.jpg",
+      "source": "https://aeonsend.wiki.gg/images/Quasar_Forge.jpg?14027d",
+      "localPath": "image-database/cards/wave9/treasures/Level 4/Quasar Forge.jpg"
+    }
+  ]
+}

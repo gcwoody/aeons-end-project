@@ -2,15 +2,16 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
 import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
-import { cardImageUrl } from '../card-images'
+import { cardImageUrl, specificDeckCardImageUrl } from '../card-images'
 import { mageImageUrls } from '../mage-images'
 import { useGame } from '../game/useGame'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
 import { useModalDrag } from '../game/useModalDrag'
-import CardHoverPreview from './CardHoverPreview.vue'
+import { displayMageName, formatMageNamesInText } from '../game/display-name'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 import ModalBase from './ModalBase.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
+import CardSurface from './CardSurface.vue'
 
 const {
   state, resolveDecision, confirmPendingPreppedSpells,
@@ -21,6 +22,14 @@ const selectedCardKeys = ref<string[]>([])
 const selectedTurnOrder = ref<number[]>([])
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
+const decisionFormPreview = computed(() => {
+  const preview = decision.value?.cardPreview
+  if (!preview) return null
+  return {
+    ...preview,
+    imageUrl: specificDeckCardImageUrl(preview.mageType, preview.cardId, preview.formSide),
+  }
+})
 const isDirectBoardCardDecision = computed(() => isBoardCardSelectionActive())
 const revealedCardId = computed(() => {
   const current = decision.value
@@ -136,10 +145,11 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
       groupKey: choice.zone,
       groupLabel: choice.zone === 'hand' ? 'HAND'
         : choice.zone === 'discard' ? 'DISCARD PILE'
+          : choice.zone === 'deck' ? 'DECK'
           : choice.zone === 'swap_zone' ? 'SWAP ZONE'
             : choice.zone === 'specific_deck' ? specificDeckName.value : 'PLAYED THIS TURN',
       disabled: choice.disabled,
-      disabledReason: choice.disabled ? 'Not enough Knowledge to install this upgrade.' : undefined,
+      disabledReason: choice.disabledReason ?? (choice.disabled ? 'Not enough Knowledge to install this upgrade.' : undefined),
     }))
   }
   if (decision.value?.kind === 'select_collective_cards') {
@@ -159,6 +169,10 @@ const decisionColumns = computed(() => {
   for (const item of selectionItems.value) groupCounts.set(item.groupKey, (groupCounts.get(item.groupKey) ?? 0) + 1)
   return Math.max(1, Math.min(5, Math.max(0, ...[...groupCounts.values()].map(count => Math.min(5, count)))))
 })
+
+function decisionPrompt(prompt: string): string {
+  return formatMageNamesInText(prompt, state.game?.players.map(player => player.mageType) ?? [])
+}
 
 function confirmSelectedCards() {
   if (decision.value?.kind === 'select_cards') {
@@ -184,8 +198,7 @@ function skipSelectedCards() {
 
 function playerName(playerId: string): string {
   const player = state.game?.players.find(candidate => candidate.id === playerId)
-  if (!player) return playerId
-  return player.mageType.charAt(0).toUpperCase() + player.mageType.slice(1)
+  return displayMageName(player?.mageType ?? playerId.replace(/^wave\d+_/i, ''))
 }
 
 function playerTargetLabel(playerId: string): string {
@@ -277,7 +290,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     :dragging="dragging"
     @panel-pointerdown="startDrag"
   >
-      <h2>{{ decision?.prompt }}</h2>
+      <h2>{{ decisionPrompt(decision?.prompt ?? '') }}</h2>
       <p class="decision-hint">Select a highlighted supply pile directly in the Market.</p>
   </ModalBase>
 
@@ -291,7 +304,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     :dragging="dragging"
     @panel-pointerdown="startDrag"
   >
-      <h2>{{ decision.prompt }}</h2>
+      <h2>{{ decisionPrompt(decision.prompt) }}</h2>
       <p class="decision-hint">Select prepped spells directly on the player boards. You can switch players while this panel remains open.</p>
       <div class="decision-footer">
         <span class="stat">{{ state.pendingPreppedSpells.length }}/{{ decision.max }} chosen prepped spells</span>
@@ -315,10 +328,31 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     :dragging="dragging"
     @panel-pointerdown="startDrag"
   >
-      <h2>{{ decision.prompt }}</h2>
+      <h2>{{ decisionPrompt(decision.prompt) }}</h2>
       <p class="decision-hint">Select a highlighted prepped spell on the player board to cast it, or skip to finish.</p>
       <div class="decision-footer">
         <button class="btn" @click="skipPreppedSpell">Skip</button>
+      </div>
+  </ModalBase>
+
+  <ModalBase
+    v-if="decision?.kind === 'select_conjure_breach'"
+    overlay-class="decision-overlay non-blocking-decision-overlay"
+    :blocking="true"
+    v-model:panel-ref="modalEl"
+    panel-class="decision-modal non-blocking-prepped-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
+      <h2>Conjure</h2>
+      <p class="decision-hint">
+        {{ decision.candidates.length > 0
+          ? 'Drag the highlighted card from your hand to a highlighted Breach, or skip to leave it on top of your deck.'
+          : 'No eligible Breach is available. Skip to leave the highlighted card on top of your deck.' }}
+      </p>
+      <div class="decision-footer">
+        <button class="btn" @click="answer({ kind: 'select_conjure_breach', choice: null })">Skip</button>
       </div>
   </ModalBase>
 
@@ -350,7 +384,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
   </ModalBase>
 
   <ModalBase
-    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'"
+    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'"
     overlay-class="decision-overlay"
     :blocking="true"
     v-model:panel-ref="modalEl"
@@ -359,7 +393,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     :dragging="dragging"
     @panel-pointerdown="startDrag"
   >
-      <h2>{{ decision.prompt }}</h2>
+      <h2>{{ decisionPrompt(decision.prompt) }}</h2>
+      <CardSurface
+        v-if="decisionFormPreview"
+        base-class="decision-form-card"
+        size="large"
+        :card-id="decisionFormPreview.cardId"
+        :image-url="decisionFormPreview.imageUrl"
+        :image-alt="`${getCard(decisionFormPreview.cardId).name} — ${decisionFormPreview.formSide === 'taker' ? 'Taker' : 'Giver'} Form`"
+      />
 
       <template v-if="decision.kind === 'choose_one' && revealedCardId">
         <p class="decision-hint" v-if="revealedCardOwnerId">
@@ -464,22 +506,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
           {{ decision.skip.label }}
         </button>
       </div>
-
-      <template v-else-if="decision.kind === 'select_conjure_breach'">
-        <p class="decision-hint">Reveal the top card, then choose an eligible Breach to prepare it face-down.</p>
-        <div class="reveal-top-card">
-          <CardHoverPreview :card-id="decision.cardId">
-            <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
-            <span v-else>{{ getCard(decision.cardId).name }}</span>
-          </CardHoverPreview>
-        </div>
-        <div class="decision-options">
-          <button v-for="candidate in decision.candidates" :key="`${candidate.playerId}:${candidate.breachIndex}`" class="btn primary decision-option" @click="answer({ kind: 'select_conjure_breach', choice: candidate })">
-            Prep on Breach {{ candidate.breachIndex === 1 ? 'I' : candidate.breachIndex === 2 ? 'II' : candidate.breachIndex === 3 ? 'III' : 'IV' }}
-          </button>
-          <button class="btn decision-option" @click="answer({ kind: 'select_conjure_breach', choice: null })">Leave on Top</button>
-        </div>
-      </template>
 
       <CardSelectionPanel
         v-else-if="decision.kind === 'select_cards' || decision.kind === 'select_collective_cards'"

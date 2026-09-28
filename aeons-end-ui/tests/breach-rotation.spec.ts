@@ -82,7 +82,7 @@ async function focusUniqueBreach(
   await breach.getByRole('button', { name: `Focus ${focusCost}`, exact: true }).click()
   if (focusesToOpen === 2) {
     await expect(image).toHaveAttribute('alt', `Breach IV closed`)
-    await expect(image).toHaveAttribute('style', /rotate\(0deg\)/)
+    await expect(image).toHaveAttribute('style', /rotate\(90deg\)/)
     await breach.getByRole('button', { name: `Focus ${focusCost}`, exact: true }).click()
   }
   if (focusesToOpen > 0) {
@@ -97,7 +97,7 @@ async function focusUniqueBreach(
 test('unique breaches rotate on focus or open directly when fully focused', async ({ page }) => {
   for (const setup of [
     { mage: 'remnant', breachIndex: 3, focusCost: 3 },
-    { mage: 'remnant', breachIndex: 4, focusCost: 4, focusesToOpen: 2, initialRotation: 270 },
+    { mage: 'remnant', breachIndex: 4, focusCost: 4, focusesToOpen: 2, initialRotation: 0 },
     { mage: 'indira', breachIndex: 3, focusCost: 3 },
     { mage: 'stake', breachIndex: 4, focusCost: 4, focusesToOpen: 1 },
   ]) {
@@ -183,7 +183,7 @@ test('resuming a one-focus Rift IV save repairs it to the two-focus opening rule
   await page.getByRole('button', { name: 'Resume Game', exact: true }).click()
   const image = page.locator('.breach[data-breach-index="4"] img.breach-token')
   await expect(image).toHaveAttribute('alt', 'Breach IV closed')
-  await expect(image).toHaveAttribute('style', /rotate\(0deg\)/)
+  await expect(image).toHaveAttribute('style', /rotate\(90deg\)/)
   const breach = page.locator('.breach[data-breach-index="4"]')
   await expect(breach.getByRole('button', { name: 'Focus 4', exact: true })).toBeVisible()
   await breach.getByRole('button', { name: 'Focus 4', exact: true }).click()

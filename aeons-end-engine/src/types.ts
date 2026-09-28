@@ -1,5 +1,5 @@
 // ===== Card Types =====
-export type CardType = 'gem' | 'relic' | 'spell' | 'treasure' | 'breach_upgrade' | 'attack' | 'minion' | 'power' | 'strike'
+export type CardType = 'gem' | 'relic' | 'spell' | 'treasure' | 'mage_form' | 'breach_upgrade' | 'attack' | 'minion' | 'power' | 'strike'
 
 export type TreasureLevel = 1 | 2 | 3
 
@@ -46,6 +46,8 @@ export type EffectAmount =
 export type EffectComparison = 'equals' | 'at_least'
 
 export type CardEffectCondition =
+  | { kind: 'all_of'; conditions: CardEffectCondition[] }
+  | { kind: 'player_relation_to_source'; relation: 'same' | 'ally' }
   | {
       kind: 'card_play_count_this_turn'
       cardId: string
@@ -73,6 +75,7 @@ export type CardEffectCondition =
       kind: 'has_unopened_breach'
     }
   | { kind: 'all_breaches_opened' }
+  | { kind: 'mage_form_is'; form: 'giver' | 'taker'; player?: 'source' | 'active' }
   | { kind: 'has_charge'; amount: number }
   | { kind: 'has_knowledge'; amount: number; player?: 'source' | 'active' }
   | { kind: 'has_doom'; amount: number }
@@ -81,6 +84,10 @@ export type CardEffectCondition =
   | { kind: 'has_affordable_card_in_specific_deck'; cardType: CardType; payment: 'knowledge'; player?: 'source' | 'active' }
   | { kind: 'has_installed_breach_upgrade'; breachIndex: number }
   | { kind: 'has_card_in_hand'; cardType: 'gem' | 'relic' | 'spell' }
+  | { kind: 'has_eligible_card_in_zone'; zone: CardZone | 'hand_or_discard'; cardTypes: CardType[]; minimumCost?: number; treasureLevel?: TreasureLevel; target?: PlayerTargetScope | 'source' }
+  | { kind: 'has_opened_breach'; target: PlayerTargetScope; breachIndices?: number[] }
+  | { kind: 'has_ally_prepped_spell' }
+  | { kind: 'spells_cast_this_turn'; comparison: EffectComparison; count: number }
   | {
       kind: 'hand_card_count'
       cardTypes: Array<'gem' | 'relic' | 'spell'>
@@ -116,7 +123,7 @@ export type CardEffectTrigger =
     }
   | {
       kind: 'while_in_play'
-      phase: 'main_phase'
+      phase: 'main_phase' | 'casting_phase_end' | 'end_turn_before_draw'
     }
 
 export type AbilityTrigger =
@@ -137,9 +144,9 @@ export type PlayerSelectionRule =
 export type PlayerTargetRef = { kind: 'player'; playerId: PlayerId }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
-export type CardSelectionSource = 'hand' | 'discard' | 'hand_or_discard' | 'played_gem_this_turn' | 'swap_zone' | 'specific_deck'
+export type CardSelectionSource = 'hand' | 'discard' | 'hand_or_discard' | 'deck_or_discard' | 'played_gem_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardSelectionLayout = 'simple' | 'pile'
-export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck'
+export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardGainDestination = 'discard_top' | 'deck_top'
 
 export interface CardChoice {
@@ -149,6 +156,7 @@ export interface CardChoice {
   cardName: string
   /** The card remains visible in a selection panel but cannot currently be chosen. */
   disabled?: boolean
+  disabledReason?: string
 }
 
 export interface CollectiveCardChoice {
@@ -206,6 +214,8 @@ export interface PendingDecisionBase {
   id: string
   prompt: string
   context?: PendingDecisionContext
+  /** Optional card artwork to show while resolving a card-specific decision. */
+  cardPreview?: { cardId: string; mageType: string; formSide?: 'giver' | 'taker' }
 }
 
 /** Serializable continuation data used while an effect waits for a choice. */
@@ -265,6 +275,10 @@ export interface PendingEffectResolution {
     topCards?: string[]
     bottomCards?: string[]
   }
+  /** Inco's ability resolves each player's revealed Firethorn choices in turn. */
+  firethornPlayerIds?: PlayerId[]
+  firethornPlayerIndex?: number
+  firethornCurrentPlayerId?: PlayerId
 }
 
 export interface PendingSpellCast {
@@ -277,6 +291,8 @@ export interface PendingSpellCast {
   discard: boolean
   /** Transfer Breach casts must be placed into an ally's hand after resolving. */
   transferToAlly?: boolean
+  /** Qu's Taker effect returns the cast spell to the Mage's hand. */
+  returnToCasterHand?: boolean
   destinationPlayerId?: PlayerId
   /** A face-down Conjure spell uses the synthetic 2-damage Cast effect. */
   faceDown?: boolean
@@ -477,7 +493,25 @@ export type CardEffect =
   | { kind: 'gain_aether_token'; amount?: number; target?: PlayerTargetScope }
   | { kind: 'conjure' }
   | { kind: 'spend_aether'; amount: number }
-  | { kind: 'gain_charge'; amount: number; target: 'self' | 'allies_collectively' | 'breach_owner' }
+  | {
+      kind: 'gain_charge'
+      amount: number
+      target: 'self' | 'ally' | 'allies_collectively' | 'breach_owner'
+      /** Continue the following effects from the selected ally's perspective. */
+      continueAsTarget?: boolean
+    }
+  | { kind: 'flip_mage_form'; target?: 'source' | 'active' }
+  | {
+      /** Internal continuation for an optional Mage Form supply-gain effect. */
+      kind: 'resolve_mage_form_supply_gain'
+      formSide: 'giver' | 'taker'
+      step: 'offer' | 'choose_ally' | 'apply'
+      formCardId?: string
+      formOwnerId?: PlayerId
+      gainingPlayerId?: PlayerId
+      gainedCardId?: string
+      destination?: CardGainDestination
+    }
   | { kind: 'reveal_turn_order_deck' }
   | {
       kind: 'reveal_turn_order_card'
@@ -506,7 +540,16 @@ export type CardEffect =
       selection?: PlayerSelectionRule
       /** Resolve self/ally relative to the Mage who initiated the current spell cast. */
       relativeToSpellCaster?: boolean
+      /** Resolve self/ally relative to the Mage who began this effect sequence. */
+      relativeToSource?: boolean
     }
+  | { kind: 'reveal_firethorns'; playerCount?: number }
+  | { kind: 'gain_specific_deck_top'; target?: PlayerTargetScope; destination?: CardGainDestination }
+  | { kind: 'gain_firethorn_top_for_five' }
+  | { kind: 'move_specific_deck_top_to_bottom' }
+  | { kind: 'cycle_specific_deck_with_in_play_treasure' }
+  | { kind: 'reset_open_breach'; target: 'ally'; breachIndices: number[] }
+  | { kind: 'reduce_card_type_cost'; cardTypes: CardType[]; amount: number }
   /** The engine must clamp the resulting life to the target object's maxHp. */
   | { kind: 'gain_life'; amount: number; target: LifeTargetScope }
   | {
@@ -541,8 +584,9 @@ export type CardEffect =
   | { kind: 'move_gained_card'; destination: 'deck_top' | 'hand' }
   | {
       kind: 'gain_card_from_market'
-      maxCost: number
+      maxCost?: number
       destination?: CardGainDestination
+      bonusOverLastSelection?: number
     }
   | {
       kind: 'set_next_to_supply_pile'
@@ -592,6 +636,12 @@ export type CardEffect =
       minAmount?: number
       maxAmount?: number
       cardType?: 'gem' | 'relic' | 'spell'
+      cardTypes?: CardType[]
+      minCost?: number
+      target?: PlayerTargetScope
+      prompt?: string
+      /** Restore the effect sequence to its source after this selection resolves. */
+      restoreToSourceAfterSelection?: boolean
     }
   | { kind: 'conditional'; condition: CardEffectCondition; effects: CardEffect[] }
   | {
@@ -629,6 +679,8 @@ export type CardEffect =
       effects: CardEffect[]
       /** Disable the accept option when a nested card-selection effect has no valid cards. */
       disableIfUnavailable?: boolean
+      /** Skip this prompt when a nested card-selection effect has no valid cards. */
+      skipIfUnavailable?: boolean
       /** Disable the accept option when this condition is not currently met. */
       acceptCondition?: CardEffectCondition
     }
@@ -641,7 +693,7 @@ export type CardEffect =
       kind: 'return_card_to_hand'
       source: 'played_gem_this_turn'
     }
-  | { kind: 'return_cards_to_hand'; source: 'discard'; amount: number; minAmount?: number }
+  | { kind: 'return_cards_to_hand'; source: 'discard'; amount: number; minAmount?: number; cardTypes?: CardType[] }
   | { kind: 'set_prep_limit'; amount: number | 'unlimited'; breachIndices?: number[] }
   | { kind: 'place_revealed_turn_order_card' }
   | {
@@ -651,6 +703,8 @@ export type CardEffect =
        * effects such as Jian's Black Mirror first cast. */
       discard?: boolean
       bonusDamage?: number
+      ownerScope?: 'any_player' | 'ally'
+      returnToCasterHand?: boolean
     }
   /** Shuffle a selected player turn-order card back into the deck and damage its owner. */
   | { kind: 'shuffle_turn_order_card'; damage: number; target?: 'self' | 'any_player' }
@@ -695,6 +749,10 @@ export interface CardEffectBlock {
   effects: CardEffect[]
   condition?: CardEffectCondition
   oncePerTurn?: boolean
+  /** Mage context for implicit "you/your" references when a card is activated during another Mage's turn. */
+  effectPlayerScope?: 'owner' | 'active'
+  /** The active turn must belong to the owner of this in-play card. */
+  ownerTurnOnly?: boolean
   /** Main-phase effects that wait for an explicit click on the prepped spell. */
   manualActivation?: boolean
   /** Pause for player confirmation before resolving a mandatory prepped effect. */
@@ -842,6 +900,11 @@ export interface BreachState {
   /** Parallel flags for face-down Conjure spells. */
   preppedSpellFaceDown?: boolean[]
   focusDirection: Direction
+  /** Direction and costs the Breach had at setup, used by reset effects. */
+  startingDirection?: Direction
+  startingFocusCost?: number
+  startingFocusToOpen?: number
+  startingOpenCost?: Record<Direction, number>
   focusCost: number
   focusCount: number
   focusToOpen: number
@@ -855,7 +918,7 @@ export interface BreachState {
   /** Breaches such as Stake's Prototype cannot be destroyed. */
   indestructible?: boolean
   /** Special Breach rules, e.g. Indira's Transfer, Remnant's Rift, and Stake's Prototype. */
-  special?: 'transfer' | 'rift' | 'prototype'
+  special?: 'transfer' | 'rift' | 'prototype' | 'intoned'
 }
 
 // ===== Nemesis Cards In Play =====
@@ -890,6 +953,14 @@ export interface PlayerState {
   developZone?: string[]
   /** Face-down Mage-specific deck, such as Dezmodia's Stash. */
   specificDeck?: string[]
+  /** Qu's currently displayed side of the Mage Form card. */
+  mageFormSide?: 'giver' | 'taker'
+  /** True after setup choices for this Mage's specific deck have resolved. */
+  mageSetupComplete?: boolean
+  /** Turn cleanup has moved played cards and is waiting for end-of-turn effects. */
+  drawPhaseSetupComplete?: boolean
+  /** Number of spells this player has cast during their current turn. */
+  spellsCastThisTurn?: number
   /** Mage-specific cards whose faces have been revealed to the player. */
   knownSpecificDeckCards?: string[]
   /** Face-up Mage cards placed into play; later cards are placed on top. */

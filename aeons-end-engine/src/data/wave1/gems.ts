@@ -156,6 +156,7 @@ export const burningOpal: GemCard = {
       {
         kind: 'choose_optional',
         prompt: 'Discard a card to let an ally draw a card?',
+        skipIfUnavailable: true,
         effects: [
           { kind: 'discard_cards', source: 'hand', amount: 1 },
           {

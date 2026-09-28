@@ -8,6 +8,7 @@ import { cardImageUrl } from '../card-images'
 import DebugCardPicker from './DebugCardPicker.vue'
 import DebugNumberInput from './DebugNumberInput.vue'
 import CardHoverPreview from './CardHoverPreview.vue'
+import { displayMageName, displayPlayerId } from '../game/display-name'
 
 const { state, toggleDebug, clearSaves } = useGame()
 
@@ -288,30 +289,30 @@ onBeforeUnmount(() => {
       </div>
 
       <div v-for="p in players" :key="p.id" class="debug-section">
-        <span class="debug-player">{{ p.mageType }} ({{ p.id }})</span>
+        <span class="debug-player">{{ displayMageName(p.mageType) }} ({{ displayPlayerId(p.id) }})</span>
         <div class="debug-row">
           <div class="debug-stat-field">
             <span>HP</span>
-            <DebugNumberInput v-model="p.hp" :label="`HP for ${p.mageType}`" :min="0" />
+            <DebugNumberInput v-model="p.hp" :label="`HP for ${displayMageName(p.mageType)}`" :min="0" />
           </div>
           <div class="debug-stat-field">
             <span>Aether</span>
             <DebugNumberInput
               :model-value="availableRegularAether(p)"
-              :label="`Aether for ${p.mageType}`"
+              :label="`Aether for ${displayMageName(p.mageType)}`"
               :min="0"
               @change="updateAether(p.id, $event)"
             />
           </div>
           <div class="debug-stat-field">
             <span>Charge</span>
-            <DebugNumberInput v-model="p.charge" :label="`Charge for ${p.mageType}`" :min="0" />
+            <DebugNumberInput v-model="p.charge" :label="`Charge for ${displayMageName(p.mageType)}`" :min="0" />
           </div>
           <div class="debug-stat-field">
             <span>Knowledge</span>
             <DebugNumberInput
               :model-value="p.knowledge ?? 0"
-              :label="`Knowledge for ${p.mageType}`"
+              :label="`Knowledge for ${displayMageName(p.mageType)}`"
               :min="0"
               @change="updateKnowledge(p.id, $event)"
             />
@@ -342,7 +343,7 @@ onBeforeUnmount(() => {
           <label>
             Player
             <select v-model="selectedAddPlayer" aria-label="Debug card player">
-              <option v-for="p in players" :key="p.id" :value="p.id">{{ p.mageType }} ({{ p.id }})</option>
+              <option v-for="p in players" :key="p.id" :value="p.id">{{ displayMageName(p.mageType) }} ({{ displayPlayerId(p.id) }})</option>
             </select>
           </label>
           <label>

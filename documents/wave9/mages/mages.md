@@ -1,13 +1,13 @@
-# Beyond the Breach — Breach Mages
+# Wave 9 — Breach Mages
 
 > This file was collected from the Aeon's End Wiki for the project's Wave 9 implementation plan.
 > It is a rules reference, not runtime data. Verify disputed text against physical cards and official rulebooks before implementation.
 
 ## Source and scope
 
-- Box page: [Beyond the Breach](https://aeonsend.wiki.gg/wiki/Beyond_the_Breach)
-- Collected at (UTC): 2026-09-19T13:02:38.522Z
-- Scope: Six Breach Mages and their unique cards.
+- Box pages: [Beyond the Breach](https://aeonsend.wiki.gg/wiki/Beyond_the_Breach), [The Surface](https://aeonsend.wiki.gg/wiki/The_Surface), and [The Returned](https://aeonsend.wiki.gg/wiki/The_Returned)
+- Collected at (UTC): 2026-09-27
+- Scope: Ten Wave 9 Breach Mages and their unique cards.
 
 ## Indira (Beyond the Breach)
 
@@ -75,6 +75,157 @@ See here for sources.
   - Source: [Transfer Breach Icon.jpg](https://aeonsend.wiki.gg/images/Transfer_Breach_Icon.jpg?3b64bf)
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/common images/Aether.png`
   - Source: [Aether.png](https://aeonsend.wiki.gg/images/Aether.png?baf426)
+
+## Inco (The Surface)
+
+- Group: Breach Mage
+- Wiki: [Inco (The Surface)](https://aeonsend.wiki.gg/wiki/Inco_%28The_Surface%29)
+- Source template: `Mage`
+
+**Template fields**
+
+- Title: The Outsider
+- Box: The Surface
+- Complexity: 4
+- Breaches: I open; II, III, and IV closed, starting down
+- Starting hand: 3x Crystal, Genesis Emerald, Spark
+- Starting deck: 4x Crystal, Spark
+- Charge threshold: 5
+- Ability: Massive Growth — Cast any player's prepped spell. Then two different players reveal their decks and each may put up to two Firethorns from their deck or discard into their hand. They return their decks in the same order.
+- Firethorn deck: Shuffle two copies of each Firethorn into a separate deck. Its top card is always revealed. Inco may spend 5 Aether to gain its top card.
+
+### Genesis Emerald
+
+- Wiki: [Genesis Emerald](https://aeonsend.wiki.gg/wiki/Genesis_Emerald)
+- Cost 0, Gem. Gain 1 Aether, or discard two cards from hand to gain the top Firethorn and put it on top of any player's discard pile.
+
+### Arcing Firethorn
+
+- Wiki: [Arcing Firethorn](https://aeonsend.wiki.gg/wiki/Arcing_Firethorn)
+- Cost 5, Spell. Cast: Deal 3 damage. You may cast any player's prepped spell; if you do, that spell deals +1 damage.
+
+### Blooming Firethorn
+
+- Wiki: [Blooming Firethorn](https://aeonsend.wiki.gg/wiki/Blooming_Firethorn)
+- Cost 5, Spell. Cast: Deal 2 damage. Conjure.
+
+### Calming Firethorn
+
+- Wiki: [Calming Firethorn](https://aeonsend.wiki.gg/wiki/Calming_Firethorn)
+- Cost 5, Spell. Cast: Deal 3 damage and gain 1 charge.
+
+### Imbued Firethorn
+
+- Wiki: [Imbued Firethorn](https://aeonsend.wiki.gg/wiki/Imbued_Firethorn)
+- Cost 5, Spell. Cast: Deal 3 damage. You may destroy a card in hand.
+
+### Revealing Firethorn
+
+- Wiki: [Revealing Firethorn](https://aeonsend.wiki.gg/wiki/Revealing_Firethorn)
+- Cost 5, Spell. Cast: Deal 3 damage and focus your breach with the lowest focus cost.
+
+## Qu (The Surface)
+
+- Group: Breach Mage
+- Wiki: [Qu (The Surface)](https://aeonsend.wiki.gg/wiki/Qu_%28The_Surface%29)
+- Source template: `Mage`
+
+**Template fields**
+
+- Title: The Changeling
+- Box: The Surface
+- Complexity: 4
+- Breaches: I open; II closed left; III and IV closed down
+- Starting hand: 3x Crystal, Molded Valite, Spark
+- Starting deck: 3x Crystal, 2x Spark
+- Charge threshold: 4
+- Form card: Qu's Form Card starts with its Giver side face up; effects can flip it between Giver and Taker.
+- Ability: Twinned Retrieval — Giver: allies collectively draw 3 cards, then flip the form. Taker: cast any ally's prepped spell and put that spell into your hand, then flip the form.
+
+### Molded Valite
+
+- Wiki: [Molded Valite](https://aeonsend.wiki.gg/wiki/Molded_Valite)
+- Cost 0, Gem. Gain 1 Aether. You may flip Qu's Form Card.
+
+### Qu's Form Card
+
+- Mage-specific card; its two faces are Giver and Taker. It is not a supply card and has no play cost.
+
+## Tressa (The Returned)
+
+- Group: Breach Mage
+- Wiki: [Tressa](https://aeonsend.wiki.gg/wiki/Tressa)
+- Source template: `Mage`
+
+**Template fields**
+
+- Title: The Collector
+- Box: The Returned
+- Complexity: 9
+- Breaches: I absent; II closed left; III closed right; IV closed left
+- Starting hand: 3x Crystal, Transmaterium, Spark
+- Starting deck: Translocate, 4x Crystal
+- Charge threshold: 4
+- Tressa's Vault: Five associated level-3 Treasures, shuffled face down with its top card always revealed. At setup reveal the top two, put one into play, and put the other on the bottom. Use `common images/treasure 3 back.jpg` for the hidden cards.
+- Ability: Reconnect Tissue — Any ally gains 2 charges and may destroy a card in hand or discard. You may put a level-3 Treasure in play on the bottom of the Vault; if you do, put the Vault's top card in play. Resolve its “At the start of your first turn of the game” text immediately, if present.
+
+### Transmaterium
+
+- Wiki: [Transmaterium](https://aeonsend.wiki.gg/wiki/Transmaterium)
+- Cost 0, Gem. Gain 1 charge.
+
+### Translocate
+
+- Wiki: [Translocate](https://aeonsend.wiki.gg/wiki/Translocate)
+- Cost 0, Spell. Cast: Deal 1 damage. You may put the top card of Tressa's Vault on its bottom.
+
+### Alchemic Stance (Treasure, level 3)
+
+- Wiki: [Alchemic Stance](https://aeonsend.wiki.gg/wiki/Alchemic_Stance)
+- At the end of your turn, before drawing, you may return a Relic or Spell from your discard pile to your hand.
+
+### Artifact Stance (Treasure, level 3)
+
+- Wiki: [Artifact Stance](https://aeonsend.wiki.gg/wiki/Artifact_Stance)
+- Once during your main phase, you may destroy a Gem or Relic in hand with cost 2 or more to gain a card costing up to 2 Aether more.
+
+### Breach Stance (Treasure, level 3)
+
+- Wiki: [Breach Stance](https://aeonsend.wiki.gg/wiki/Breach_Stance)
+- Once during your main phase, you may discard a card to focus your closed breach with the lowest focus cost.
+
+### Creator Stance (Treasure, level 3)
+
+- Wiki: [Creator Stance](https://aeonsend.wiki.gg/wiki/Creator_Stance)
+- Gems and Relics cost 1 less Aether to gain.
+
+### Overload Stance (Treasure, level 3)
+
+- Wiki: [Overload Stance](https://aeonsend.wiki.gg/wiki/Overload_Stance)
+- At the end of the casting phase, if you cast 1 or 2 spells this turn, deal 1 damage; if you cast 3 or more, deal 4 damage.
+
+## Yan Magda (The Returned)
+
+- Group: Breach Mage
+- Wiki: [Yan Magda (The Returned)](https://aeonsend.wiki.gg/wiki/Yan_Magda_%28The_Returned%29)
+- Source template: `Mage`
+
+**Template fields**
+
+- Title: The Leader
+- Box: The Returned
+- Complexity: 4
+- Breaches: I and II open; III and IV are closed Intoned Breaches starting east
+- Starting hand: 3x Crystal, Foretold Flame, Spark
+- Starting deck: 3x Crystal, 2x Spark
+- Charge threshold: 5
+- Intoned Breaches: When a spell is cast from an opened Intoned Breach, any player focuses a breach. Spells cast from an opened Intoned Breach deal +1 damage.
+- Ability: Void Touch — Gain any card from the supply. Any ally may reset one of their opened III or IV breaches to its game-start position; if they do, that ally gains any supply card on top of their deck. “Starting position” means the direction the breach had at setup.
+
+### Foretold Flame
+
+- Wiki: [Foretold Flame](https://aeonsend.wiki.gg/wiki/Foretold_Flame)
+- Cost 0, Spell. While prepped, when any player opens a breach, deal 2 damage. Cast: Deal 1 damage. The while-prepped effect can trigger multiple times in a turn.
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/mages/Opened Transfer Breach.jpg`
   - Source: [Opened Transfer Breach.jpg](https://aeonsend.wiki.gg/images/Opened_Transfer_Breach.jpg?1ce412)
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/mages/Transfer Breach.jpg`

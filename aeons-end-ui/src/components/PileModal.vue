@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, specificDeckBackUrl } from '../card-images'
+import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, specificDeckBackUrl, specificDeckCardImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
@@ -38,11 +38,15 @@ const title = computed(() => {
 })
 const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
 const isSpecificDeck = computed(() => state.viewPile === 'specific_deck')
+const isQuFormDeck = computed(() => isSpecificDeck.value && displayPlayer.value?.mageType === 'qu')
 const isNemesisFaceDown = computed(() => state.viewPile === 'nemesis_deck'
   || (state.viewPile === 'nemesis_specific'
     && getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.display !== 'face_up'))
 const specificDeckFaceUp = computed(() =>
   MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckDisplay === 'face_up',
+)
+const specificDeckTopRevealed = computed(() =>
+  MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckDisplay === 'top_revealed',
 )
 const specificDeckBackImage = computed(() =>
   specificDeckBackUrl(MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckBack ?? 'player'),
@@ -116,8 +120,15 @@ function isKnownSpecificDeckCard(cardId: string): boolean {
   return knownSpecificDeckCards.value.has(cardId)
 }
 
-function isFaceVisible(cardId: string): boolean {
-  return !isNemesisFaceDown.value && (!isSpecificDeck.value || specificDeckFaceUp.value || isKnownSpecificDeckCard(cardId))
+function isFaceVisible(cardId: string, index: number): boolean {
+  return !isNemesisFaceDown.value && (!isSpecificDeck.value || specificDeckFaceUp.value ||
+    (specificDeckTopRevealed.value && index === 0) || isKnownSpecificDeckCard(cardId))
+}
+
+function specificCardImage(cardId: string): string | undefined {
+  return specificDeckCardImageUrl(
+    displayPlayer.value?.mageType ?? '', cardId, displayPlayer.value?.mageFormSide,
+  )
 }
 </script>
 
@@ -126,7 +137,10 @@ function isFaceVisible(cardId: string): boolean {
     v-if="state.viewPile"
     overlay-class="pile-viewer-overlay"
     v-model:panel-ref="modalEl"
-    :panel-class="['pile-modal', 'draggable-modal', { 'pile-modal-with-labels': usesRowLabels }]"
+    :panel-class="['pile-modal', 'draggable-modal', {
+      'pile-modal-with-labels': usesRowLabels,
+      'qu-form-pile-modal': isQuFormDeck,
+    }]"
     :panel-style="{ ...modalStyle, '--pile-columns': columns }"
     :dragging="dragging"
     @overlay-click="closePile"
@@ -142,18 +156,23 @@ function isFaceVisible(cardId: string): boolean {
           v-for="(group, gi) in groups"
           :key="gi"
           class="pile-row"
-          :class="{ 'pile-row-labeled': usesRowLabels }"
+          :class="{
+            'pile-row-labeled': usesRowLabels,
+            'qu-form-pile-row': isQuFormDeck,
+          }"
         >
           <span v-if="usesRowLabels" class="pile-row-label">{{ rowLabel(gi) }}</span>
           <template v-for="(cid, i) in group" :key="cid + i">
-          <CardHoverPreview v-if="isFaceVisible(cid)" :card-id="cid">
+          <CardHoverPreview v-if="isFaceVisible(cid, cardIndexInPile(gi, i))" :card-id="cid" :image-url="isSpecificDeck ? specificCardImage(cid) : undefined">
             <CardSurface
               base-class="pile-card"
-              size="pile"
+              :size="getCard(cid).type === 'mage_form' ? 'large' : 'pile'"
               :card-id="cid"
+              :image-url="isSpecificDeck ? specificCardImage(cid) : undefined"
               :image-alt="getCard(cid).name"
               :class="{
                 'pile-card-image': cardImageUrl(cid),
+                'qu-form-pile-card': getCard(cid).type === 'mage_form',
                 'player-card-in-play-choice': isPlayerCardsInPlay,
                 'player-card-in-play-action': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
                 'player-card-in-play-disabled': isPlayerCardsInPlay && !playerCardActionAvailable(cardIndexInPile(gi, i), cid),

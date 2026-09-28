@@ -219,7 +219,7 @@ test('Nemesis mat modal receives focus and remains draggable', async ({ page }) 
   expect(after!.x).toBeGreaterThan(before!.x + 20)
 
   await page.keyboard.press('Digit2')
-  await expect(page.locator('.mage-image')).toHaveAttribute('alt', 'brama mage board')
+  await expect(page.locator('.mage-image')).toHaveAttribute('alt', 'Brama mage board')
   await expect.poll(() => page.evaluate(() => document.activeElement?.classList.contains('draggable-modal'))).toBe(true)
 })
 
@@ -262,6 +262,55 @@ test('Space confirms the red-highlighted Nemesis Main Phase card in order', asyn
   await expect(page.locator('.nemesis-play-card.effect-target')).toHaveCount(1)
   await page.keyboard.press('Space')
   await expect(page.getByText('Nemesis Draw Phase', { exact: true })).toBeVisible()
+})
+
+test('resuming a save between Nemesis confirmation and continuation advances the turn', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  const instanceId = 'blood-cry:interrupted-save'
+  debugState.phase = 'nemesis_main'
+  debugState.selectedPlayer = player.id
+  debugState.game.currentTurn = 'nemesis'
+  debugState.game.currentPhase = 'nemesis_main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  debugState.game.nemesis.nemesisTurnNumber = 1
+  debugState.game.nemesis.playArea = [{
+    instanceId, cardId: 'blood_cry', cardType: 'power', placedAt: 1,
+    enteredOnNemesisTurn: 0, powerTokens: 1,
+  }]
+  debugState.game.nemesisResolution = {
+    step: 'main', mainQueue: [instanceId], mainIndex: 0,
+    activeCardInstanceId: instanceId, activeCardId: 'blood_cry',
+    activeTrigger: 'power_resolved', mainEffectConfirmed: true,
+  }
+
+  const now = Date.now()
+  const save = {
+    id: 'interrupted-nemesis-save', createdAt: now, updatedAt: now,
+    players: debugState.game.players.map((mage: { mageType: string }) => mage.mageType),
+    nemesisType: debugState.game.nemesis.type,
+    round: debugState.game.round, turn: debugState.game.turnOrderDiscard.length,
+    currentTurn: 'nemesis', game: debugState.game, phase: 'nemesis_main',
+    selectedPlayer: player.id, discardRemaining: [], undoStack: [],
+  }
+  await page.evaluate(storedSave => {
+    localStorage.setItem('aeons-end-saves-v3', JSON.stringify([storedSave]))
+  }, save)
+  await page.reload()
+
+  await page.getByRole('button', { name: 'Resume Game', exact: true }).click()
+  await expect(page.locator('.nemesis-reveal-modal')).toBeVisible()
+  await expect(page.locator('.nemesis-play-card')).toHaveCount(0)
+  await expect(page.locator('.nemesis-reveal-modal').getByRole('button', { name: 'Confirm' })).toBeVisible()
 })
 
 test('To Discard does not show or retain the Power card preview', async ({ page }) => {

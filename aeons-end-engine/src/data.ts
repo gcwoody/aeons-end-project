@@ -24,6 +24,10 @@ import { createDezmodia, DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS } from './data/wa
 import { createRemnant, REMNANT_CARDS, REMNANT_UNIQUE_CARDS } from './data/wave9/remnant'
 import { createStake, STAKE_CARDS, STAKE_UNIQUE_CARDS } from './data/wave9/stake'
 import { createWolf, WOLF_CARDS, WOLF_UNIQUE_CARDS } from './data/wave9/wolf'
+import { createInco, INCO_CARDS, INCO_UNIQUE_CARDS } from './data/wave9/inco'
+import { createQu, QU_CARDS, QU_UNIQUE_CARDS } from './data/wave9/qu'
+import { createTressa, TRESSA_CARDS, TRESSA_UNIQUE_CARDS } from './data/wave9/tressa'
+import { createYanMagda, YAN_MAGDA_CARDS, YAN_MAGDA_UNIQUE_CARDS } from './data/wave9/yanmagda'
 import { wave9Crystal, wave9Spark } from './data/wave9/basic'
 import {
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
@@ -47,6 +51,10 @@ export {
   REMNANT_CARDS, REMNANT_UNIQUE_CARDS,
   STAKE_CARDS, STAKE_UNIQUE_CARDS,
   WOLF_CARDS, WOLF_UNIQUE_CARDS,
+  INCO_CARDS, INCO_UNIQUE_CARDS,
+  QU_CARDS, QU_UNIQUE_CARDS,
+  TRESSA_CARDS, TRESSA_UNIQUE_CARDS,
+  YAN_MAGDA_CARDS, YAN_MAGDA_UNIQUE_CARDS,
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
   BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER, PRINCE_OF_GLUTTONS_UNIQUE_CARDS, PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
@@ -62,6 +70,10 @@ export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
   remnant: REMNANT_UNIQUE_CARDS,
   stake: STAKE_UNIQUE_CARDS,
   wolf: WOLF_UNIQUE_CARDS,
+  inco: INCO_UNIQUE_CARDS,
+  qu: QU_UNIQUE_CARDS,
+  tressa: TRESSA_UNIQUE_CARDS,
+  yan_magda: YAN_MAGDA_UNIQUE_CARDS,
 }
 
 export function getNemesisDefinition(type: string) {
@@ -113,6 +125,10 @@ export const INITIAL_CARDS: Record<string, CardDef> = {
   ...REMNANT_CARDS,
   ...STAKE_CARDS,
   ...WOLF_CARDS,
+  ...INCO_CARDS,
+  ...QU_CARDS,
+  ...TRESSA_CARDS,
+  ...YAN_MAGDA_CARDS,
 }
 
 export const ALL_MARKET_CARDS: Record<string, CardDef> = {
@@ -275,13 +291,18 @@ export function makeBreach(
   const dir = startDir!
   const resolvedFocusCost = COMMON_BREACH_FOCUS_COSTS[index] ?? 0
   const commonOpenCosts = COMMON_BREACH_OPEN_COSTS[index]
+  const startingOpenCost = special === 'rift'
+    ? RIFT_BREACH_OPEN_COSTS[index] ?? commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost)
+    : commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost)
   return {
     index, present: true, opened: false, prepSpells: [], preppedThisTurn: [], preppedSpellFaceDown: [],
     focusDirection: dir, focusCost: resolvedFocusCost, focusCount: 0,
     focusToOpen: focusesToOpen(dir),
-    openCost: special === 'rift'
-      ? RIFT_BREACH_OPEN_COSTS[index] ?? commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost)
-      : commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost),
+    openCost: { ...startingOpenCost },
+    startingDirection: dir,
+    startingFocusCost: resolvedFocusCost,
+    startingFocusToOpen: focusesToOpen(dir),
+    startingOpenCost: { ...startingOpenCost },
     focusedThisTurn: false,
     damageBonus, special,
   }
@@ -302,4 +323,8 @@ export const lash = wave1Mages.lash
 export const mist = wave1Mages.mist
 export const phaedraxa = wave1Mages.phaedraxa
 export const wolf = createWolf(makeBreach)
-export const MAGES: Record<string, MageDef> = { ...wave1Mages, nook, indira, dezmodia, remnant, stake, wolf }
+export const inco = createInco(makeBreach)
+export const qu = createQu(makeBreach)
+export const tressa = createTressa(makeBreach)
+export const yanMagda = createYanMagda(makeBreach)
+export const MAGES: Record<string, MageDef> = { ...wave1Mages, nook, indira, dezmodia, remnant, stake, wolf, inco, qu, tressa, yan_magda: yanMagda }

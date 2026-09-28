@@ -97,7 +97,8 @@ test('Mage mat images open a picker and sync the Mage dropdown', async ({ page }
   await page.getByRole('button', { name: `Choose ${chosenMage} Mage` }).click()
   await expect(mageSelect).toHaveValue(chosenMage)
   await expect(page.getByRole('dialog', { name: 'Choose Player 1 Mage' })).toHaveCount(0)
-  await expect(page.getByRole('img', { name: `${chosenMage} mage mat` })).toBeVisible()
+  const chosenMageName = chosenMage.split('_').map(part => `${part[0]!.toUpperCase()}${part.slice(1)}`).join(' ')
+  await expect(page.getByRole('img', { name: `${chosenMageName} mage mat` })).toBeVisible()
 })
 
 test('Nemesis mat image opens a picker and syncs the Nemesis dropdown', async ({ page }) => {

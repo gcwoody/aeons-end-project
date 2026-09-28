@@ -28,7 +28,11 @@ export interface MageDef {
   /** Optional card-back family used by the Mage-specific deck UI. */
   specificDeckBack?: 'treasure_1' | 'treasure_2' | 'treasure_3' | 'player'
   /** Display the top card of the Mage-specific deck face up. */
-  specificDeckDisplay?: 'face_down' | 'face_up'
+  specificDeckDisplay?: 'face_down' | 'face_up' | 'top_revealed'
+  /** Effects resolved as part of initial Mage setup. */
+  setupEffects?: CardEffect[]
+  /** Initial face of a Mage-specific Form card. */
+  initialFormSide?: 'giver' | 'taker'
   /** Display a Knowledge counter in the player control bar. */
   tracksKnowledge?: boolean
   /** Display Doom tokens in the player control bar. */

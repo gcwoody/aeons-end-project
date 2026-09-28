@@ -2,6 +2,10 @@ import { test, expect, type Locator, type Page } from '@playwright/test'
 
 const newMages = ['adelheim', 'kadir', 'lash', 'mist', 'phaedraxa']
 
+function displayMageName(mage: string): string {
+  return mage.split('_').map(part => `${part[0]!.toUpperCase()}${part.slice(1)}`).join(' ')
+}
+
 async function resetSetup(page: Page) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -111,7 +115,7 @@ test('all new Wave 1 Mages can start with their boards visible', async ({ page }
     await resolveStartupInterrupts(page)
     await expectAllImagesLoaded(page)
     await page.locator('.char-btn').first().click()
-    await expect(page.getByRole('img', { name: `${mage} mage board` })).toBeVisible()
+    await expect(page.getByRole('img', { name: `${displayMageName(mage)} mage board` })).toBeVisible()
     await resolveAttackIfNeeded(page)
   }
 })
@@ -463,7 +467,7 @@ test('Oblivion Swell highlights and grants Aether when its prepped spell is clic
   await expect(page.locator('.aether > span')).toHaveText('1')
 })
 
-test('Focusing Orb selects a Breach directly from highlighted board targets', async ({ page }) => {
+test('Focusing Orb exposes clickable orange focus buttons for effect targets', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -483,8 +487,32 @@ test('Focusing Orb selects a Breach directly from highlighted board targets', as
   await expect(page.locator('.non-blocking-selection-modal')).toHaveCount(0)
   const target = page.locator('.breach-token-wrap.decision-breach-target').first()
   await expect(target).toBeVisible()
-  await target.click()
+  const targetBreach = page.locator('.breach').filter({ has: target }).first()
+  const effectFocusButton = targetBreach.locator('.btns button.effect-focus-target')
+  await expect(effectFocusButton).toHaveAttribute('aria-label', /Focus Breach .+ with effect/)
+  await expect.poll(async () => effectFocusButton.evaluate(element => getComputedStyle(element).borderTopColor))
+    .toBe('rgb(242, 153, 74)')
+  await effectFocusButton.click()
   await expect(page.locator('.breach-token-wrap.decision-breach-target')).toHaveCount(0)
+})
+
+test('Burning Opal skips the discard prompt when it is the only hand card', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = ['burning_opal']
+    game.players[0].playedThisTurn = []
+    game.players[0].bonusAether = 0
+  }, 'main')
+
+  await page.locator('.hand .card').filter({ has: page.locator('img[alt="Burning Opal"]') }).click()
+  await expect(page.locator('.decision-modal')).toHaveCount(0)
 })
 
 test('Wildfire Whip is a repeatable blue prepped action that requires two Aether', async ({ page }) => {
@@ -781,6 +809,8 @@ test('dragging a spell suppresses Breach preview and accepts an overlapping drop
   await resetSetup(page)
   await page.setViewportSize({ width: 1920, height: 1100 })
   await page.reload()
+  await page.getByRole('tab', { name: 'Wave 1' }).first().click()
+  await page.getByRole('tab', { name: 'Wave 1' }).last().click()
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
   await page.getByRole('button', { name: 'Start Game' }).click()

@@ -11,7 +11,7 @@ const props = withDefaults(defineProps<{
   imageAlt?: string
   imageFit?: 'cover' | 'contain' | 'fill' | 'none'
   baseClass?: string
-  size?: 'hand' | 'mini' | 'pile' | 'fill'
+  size?: 'hand' | 'mini' | 'pile' | 'large' | 'fill'
 }>(), {
   baseClass: 'card',
   size: 'hand',

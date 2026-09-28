@@ -8,6 +8,10 @@ import riftBreachIVClosed from '../../image-database/cards/wave9/mages/remnant/R
 import riftBreachIVOpen from '../../image-database/cards/wave9/mages/remnant/Opened Rift Breach IV.jpg'
 import prototypeBreachClosed from '../../image-database/cards/wave9/mages/stake/Prototype Breach.jpg'
 import prototypeBreachOpen from '../../image-database/cards/wave9/mages/stake/Opened Prototype Breach.jpg'
+import intonedBreachIIIClosed from '../../image-database/cards/wave9/mages/yan magda/Intoned Breach III.jpg'
+import intonedBreachIIIOpen from '../../image-database/cards/wave9/mages/yan magda/Opened Intoned Breach III.jpg'
+import intonedBreachIVClosed from '../../image-database/cards/wave9/mages/yan magda/Intoned Breach IV.jpg'
+import intonedBreachIVOpen from '../../image-database/cards/wave9/mages/yan magda/Opened Intoned Breach IV.jpg'
 
 export interface BreachPresentation {
   imageUrl: string
@@ -23,7 +27,12 @@ interface BreachArtwork {
 
 const riftArtwork: Record<number, BreachArtwork> = {
   3: { closed: riftBreachIIIClosed, open: riftBreachIIIOpen, baseDirection: 'south' },
-  4: { closed: riftBreachIVClosed, open: riftBreachIVOpen, baseDirection: 'north' },
+  4: { closed: riftBreachIVClosed, open: riftBreachIVOpen, baseDirection: 'west' },
+}
+
+const intonedArtwork: Record<number, BreachArtwork> = {
+  3: { closed: intonedBreachIIIClosed, open: intonedBreachIIIOpen, baseDirection: 'east' },
+  4: { closed: intonedBreachIVClosed, open: intonedBreachIVOpen, baseDirection: 'east' },
 }
 
 const directionDegrees: Record<Direction, number> = {
@@ -40,6 +49,7 @@ function breachArtwork(breach: BreachState): BreachArtwork {
   if (breach.special === 'prototype') {
     return { closed: prototypeBreachClosed, open: prototypeBreachOpen, baseDirection: 'north' }
   }
+  if (breach.special === 'intoned' && intonedArtwork[breach.index]) return intonedArtwork[breach.index]!
   if (breach.special === 'rift' && riftArtwork[breach.index]) return riftArtwork[breach.index]!
 
   const open = BREACH_IMAGE_IMPORTS[`${breach.index}:open`]!

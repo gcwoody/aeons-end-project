@@ -1,4 +1,4 @@
-﻿:root {
+:root {
   --viewport-height: 100vh;
   /* ===== Design tokens: geometry, rhythm, type and interaction ===== */
   --font-family-ui: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
@@ -27,6 +27,9 @@
   --mini-card-height: 82px;
   --pile-card-width: 122px;
   --pile-card-height: 178px;
+  --pile-card-aspect-ratio: 122 / 178;
+  --large-card-width: 252px;
+  --large-card-height: 378px;
   --card-hover-lift: 3px;
   --control-height: 32px;
   --control-gap: 10px;
@@ -37,6 +40,7 @@
   --transition-border: .12s;
   --transition-overlay: .12s;
   --transition-modal: .22s;
+  --transition-player-turn: 600ms;
   --modal-padding: 26px 32px;
   --breach-radius: 24%;
   --breach-size: clamp(96px, 10vw, 132px);
@@ -73,12 +77,14 @@
   --gem: #5ad1c5;
   --spell: #c678dd;
   --must-cast: #ff3030;
+  --face-down-cast-border: #e6c84f;
   --relic: #e0af68;
   --nemesis: #f7768e;
   --danger: #f7768e;
   --player-hp: #8f0e1f;
   --ok: #9ece6a;
   --warn: #e0af68;
+  --decision-focus-target: #f2994a;
   /* Global backdrop used by every modal overlay. Lower alpha shows more of the board. */
   --overlay-backdrop: rgba(8, 10, 16, .38);
   --overlay-in-duration: var(--transition-overlay);
@@ -761,6 +767,13 @@ body {
   min-height: 0;
   background: var(--panel);
 }
+.player-area.turn-arrival {
+  animation: player-area-turn-arrival var(--transition-player-turn) cubic-bezier(.22, .61, .36, 1) both;
+}
+@keyframes player-area-turn-arrival {
+  from { opacity: .68; }
+  to { opacity: 1; }
+}
 .char-row { display: flex; align-items: center; gap: 14px; justify-content: center; min-height: 34px; }
 .char-select { display: flex; gap: 24px; }
 .char-btn {
@@ -780,6 +793,11 @@ body {
 }
 .char-btn.sel { border: 2px solid var(--accent); }
 .char-btn.cur { outline: 2px solid var(--ok); outline-offset: 1px; }
+.char-btn.cur.turn-marker-arrival { animation: turn-marker-arrival var(--transition-player-turn) ease-out; }
+@keyframes turn-marker-arrival {
+  0%, 100% { background-color: var(--panel-2); }
+  45% { background-color: rgba(112, 214, 156, .2); }
+}
 .char-btn .char-turn-token { grid-area: 1 / 1 / 3 / 2; display: block; width: var(--control-player-token-size); height: var(--control-player-token-size); border-radius: 6px; object-fit: cover; }
 .char-btn .cn { grid-area: 1 / 2; font-weight: 700; text-transform: capitalize; }
 .char-btn .chp { grid-area: 1 / 3; color: var(--danger); font-size: 12px; font-weight: 700; }
@@ -906,6 +924,9 @@ body {
   overflow: hidden;
   border-radius: 9px;
 }
+.breach-spell-card-frame.face-down-spell {
+  aspect-ratio: var(--pile-card-aspect-ratio);
+}
 .breach-spell-card-frame .spell-damage-badge {
   position: absolute;
   top: 36%;
@@ -937,7 +958,10 @@ body {
   visibility: visible;
   transition-delay: 0s;
 }
-.breach-spell-card-frame.castable-spell { border: 2px solid #e6c84f; }
+.breach-spell-card-frame.castable-spell { border: 3px solid #e6c84f; }
+.breach-spell-card-frame.face-down-spell.castable-spell:not(.must-cast-spell) {
+  border-color: var(--face-down-cast-border);
+}
 .breach-spell-card-frame.manual-prepped-action {
   border: 2px solid var(--ok);
   box-shadow: 0 0 0 var(--pixel-border-width) rgba(97, 218, 151, .35) inset;
@@ -1007,6 +1031,15 @@ body {
   min-height: 30px;
   padding: 5px 10px;
   font-size: 12px;
+}
+.breach .btns .btn.small.effect-focus-target {
+  border-color: var(--decision-focus-target);
+  color: #ffd2a1;
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(242, 153, 74, .28);
+}
+.breach .btns .btn.small.effect-focus-target:hover:not(:disabled) {
+  border-color: var(--decision-focus-target);
+  background: rgba(242, 153, 74, .14);
 }
 
 .played-zones {
@@ -1250,6 +1283,7 @@ body {
   object-fit: cover;
 }
 .player-specific-deck-pile {
+  position: relative;
   min-width: 0;
   height: var(--hand-card-height);
   align-self: center;
@@ -1261,6 +1295,11 @@ body {
   width: 100%;
   height: 100%;
   border-radius: var(--card-radius);
+}
+.player-specific-deck-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 .player-specific-deck-face-up.is-primary-action { cursor: pointer; }
 .player-pile-count {
@@ -1504,6 +1543,11 @@ body {
 /* Shared card shell image contract used by CardSurface across game zones. */
 .card-surface {
   position: relative;
+}
+.card-surface--large {
+  width: var(--large-card-width);
+  height: var(--large-card-height);
+  flex: 0 0 auto;
 }
 .card-surface > img {
   display: block;
@@ -1892,6 +1936,7 @@ body.spell-dragging .card-hover-preview {
 }
 @media (prefers-reduced-motion: reduce) {
   .overlay, .overlay-card { animation: none; }
+  .player-area.turn-arrival, .char-btn.cur.turn-marker-arrival { animation: none; }
 }
 
 .decision-modal {
@@ -1914,6 +1959,13 @@ body.spell-dragging .card-hover-preview {
   line-height: 1.25;
   white-space: normal;
   overflow-wrap: anywhere;
+}
+.decision-form-card {
+  margin: 14px auto 0;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--panel);
 }
 .decision-options {
   display: flex;
@@ -2189,6 +2241,11 @@ body.spell-dragging .card-hover-preview {
 }
 
 @media (max-width: 520px) {
+  .card-surface--large {
+    width: min(var(--large-card-width), calc(100vw - 64px));
+    height: auto;
+    aspect-ratio: var(--card-aspect-ratio);
+  }
   .decision-modal {
     width: calc(100vw - 12px);
     padding-left: 14px;
@@ -2648,6 +2705,10 @@ body.spell-dragging .card-hover-preview {
   width: min(calc(var(--pile-columns, 5) * 92px + 64px), calc(100vw - 32px));
   min-width: min(440px, calc(100vw - 32px));
 }
+.pile-modal.qu-form-pile-modal {
+  width: min(calc(var(--large-card-width) + 64px), calc(100vw - 32px));
+  min-width: min(calc(var(--large-card-width) + 64px), calc(100vw - 32px));
+}
 .pile-viewer-overlay { z-index: var(--z-pile-viewer); }
 .pile-rows {
   display: flex;
@@ -2666,6 +2727,12 @@ body.spell-dragging .card-hover-preview {
   width: 100%;
   grid-template-columns: 92px repeat(var(--pile-columns, 5), minmax(0, 82px));
   justify-content: start;
+}
+.pile-modal.qu-form-pile-modal .qu-form-pile-row {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  justify-content: center;
 }
 .pile-row-label {
   align-self: center;
@@ -2691,6 +2758,12 @@ body.spell-dragging .card-hover-preview {
   height: 123px;
   padding: 0;
   overflow: hidden;
+}
+.pile-card.pile-card-image.card-surface--large {
+  width: var(--large-card-width);
+  height: var(--large-card-height);
+  padding: 0;
+  border-radius: var(--radius-card);
 }
 .pile-card-image img {
   display: block;
@@ -2726,6 +2799,11 @@ body.spell-dragging .card-hover-preview {
     height: auto;
     aspect-ratio: 2 / 3;
   }
+  .pile-modal.qu-form-pile-modal .pile-card.pile-card-image.card-surface--large {
+    width: min(var(--large-card-width), calc(100vw - 64px));
+    height: auto;
+    aspect-ratio: var(--card-aspect-ratio);
+  }
   .decision-card-zone .decision-card-row {
     width: max-content;
     grid-template-columns: repeat(var(--choice-columns), 82px);
@@ -2737,6 +2815,8 @@ body.spell-dragging .card-hover-preview {
   border: 2px solid #e6c84f;
   cursor: pointer;
 }
+.hand .card.pending-conjure-card:hover,
+.hand .card.pending-conjure-card.dragging { border-color: #e6c84f; }
 .card.pending-board-card-selected {
   /* Selected board cards stay in the same top board layer as hovered cards. */
   z-index: var(--z-card-hover);

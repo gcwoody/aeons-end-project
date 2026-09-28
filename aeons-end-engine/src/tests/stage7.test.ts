@@ -318,6 +318,17 @@ function testGemEffects(): void {
   assertEqual(ally.hand[ally.hand.length - 1], 'crystal', 'Ally draws the card')
 }
 
+function testBurningOpalSkipsDiscardOfferWithoutHandCards(): void {
+  const game = freshGame()
+  const player = game.players[0]!
+  player.hand = ['burning_opal']
+  player.playedThisTurn = []
+
+  assert(playCard(game, player.id, 'burning_opal')?.includes('Played Burning Opal'), 'Burning Opal plays')
+  assertEqual(game.pendingDecision, null, 'Burning Opal does not ask to discard when no other hand card is available')
+  assertEqual(player.bonusAether, 3, 'Burning Opal still grants three Aether without a discard target')
+}
+
 function testInitialCardEffects(): void {
   const game = freshGame()
   const player = game.players[0]!
@@ -1054,6 +1065,7 @@ function run(): void {
   testStage3AbilityTriggers()
   testGainAndSaveShape()
   testGemEffects()
+  testBurningOpalSkipsDiscardOfferWithoutHandCards()
   testInitialCardEffects()
   testRelicEffects()
   testSpellEffects()

@@ -100,10 +100,11 @@ function toggle(key: string): void {
     </div>
 
     <div class="decision-footer">
-      <span class="stat">Selected {{ selectedKeys.length }} / {{ max }}</span>
+      <span v-if="props.max > 0" class="stat">Selected {{ selectedKeys.length }} / {{ max }}</span>
       <div class="decision-footer-actions">
         <button v-if="min === 0" class="btn" type="button" @click="emit('skip')">Skip</button>
         <button
+          v-if="props.max > 0 || props.min > 0"
           class="btn primary"
           type="button"
           :disabled="selectedKeys.length < min || selectedKeys.length > max"

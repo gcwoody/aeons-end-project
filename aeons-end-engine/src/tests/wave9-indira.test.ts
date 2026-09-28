@@ -66,6 +66,27 @@ function testSpellOnlyAetherKeepsTurnOpen(): void {
   assert(canPlayerAct(game, indira.id), 'Spell-only Aether keeps the Main Phase open for a Spell purchase')
 }
 
+function testConjureRevealsWithoutEligibleBreach(): void {
+  const game = freshGame()
+  const indira = game.players[0]!
+  indira.hand = ['fused_opal']
+  indira.deck = ['spark']
+  indira.discard = []
+  playCard(game, indira.id, 'fused_opal')
+  resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'choose_one', optionId: 'conjure' })
+
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'select_conjure_breach', 'Conjure reveals the top card even without an eligible Breach')
+  assertEqual(decision.cardId, 'spark', 'The revealed card is available to the decision UI')
+  assertEqual(decision.candidates.length, 0, 'No closed, unfocused Breach is offered for prep')
+  assertEqual(indira.deck.length, 0, 'The revealed card is held by the pending effect')
+
+  const restored = JSON.parse(JSON.stringify(game)) as GameState
+  resolvePendingDecision(restored, decision.id, { kind: 'select_conjure_breach', choice: null })
+  assertEqual(restored.players[0]!.deck.join(','), 'spark', 'Leaving the revealed card returns it to the top after JSON restore')
+  assertEqual(restored.pendingDecision, null, 'The Conjure decision finishes after leaving the card on top')
+}
+
 function testFaceDownConjureMovement(): void {
   const game = freshGame()
   const indira = game.players[0]!
@@ -118,6 +139,7 @@ function testTransferAndAbility(): void {
 }
 
 testSetupAndConjure()
+testConjureRevealsWithoutEligibleBreach()
 testTransferAndAbility()
 testSpellOnlyAetherKeepsTurnOpen()
 testFaceDownConjureMovement()
