@@ -70,7 +70,7 @@ function testSupplyData(): void {
     planar_insight: { type: 'spell', cost: 6 },
     arcane_nexus: { type: 'spell', cost: 7 },
   }
-  assertEqual(Object.keys(MARKET_CARDS).length, 36, 'All registered market cards, including Wave 9 Gems, are available')
+  assertEqual(Object.keys(MARKET_CARDS).length, 52, 'All registered market cards, including Wave 9 Gems and Spells, are available')
   for (const [cardId, definition] of Object.entries(expected)) {
     const card = getCard(cardId)
     assertEqual(card.type, definition.type, `${cardId} type`)

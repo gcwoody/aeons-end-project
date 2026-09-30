@@ -51,12 +51,15 @@ UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
 
 Nemesis mat 右侧的 Info Bar 横跨剩余区域；左侧从 Fury token 开始，随后是 Nemesis 血条，中间为六个 Turn Order token 与垂直居中的轮数，右侧为 Gravehold 血条。三个布局区域之间不显示分隔线，血条标签不重复写 `HP`。未揭示的 Turn Order 槽位显示问号，不暴露抽牌顺序，当前回合 token 不加边框。下方依次是两列 `Card.Pile` 和场上卡牌区：第一列上方为 Specific Discard、下方为 Nemesis Discard；第二列上方为 Specific Deck、下方为 Nemesis Deck。牌堆按剩余高度保持卡牌比例缩放，未使用的专属槽位固定显示 `Not used`，四个槽位均可点击查看。有牌图片在悬停时不改变边框颜色；Rageborne 的 Strike Deck 用带白边的专属牌背，牌堆和弹窗保持一致。Nemesis Play 区域与左侧牌堆一样分为两行高度，顶部留空、卡牌从下排左侧起横向排列并在需要时滚动；卡牌悬停时不移动，区域用深蓝色底区分且不绘制边框。Nemesis Play、Played、Develop 和 Swap 区域为空时不显示占位文案。`.nemesis-area` 的 `--info-*-share` 和 `--info-*-hp-width` 调整三块区域份额和血条宽度；`--info-turn-token-size`、`--info-turn-token-gap`、`--info-turn-round-gap`、`--info-turn-round-font-size` 调整 Turn Order token 和轮数；`--info-nemesis-token-size` 调整 Fury 尺寸；`--info-hp-label-font-size` 与 `--info-hp-value-font-size` 调整血条文字。`.controls` 的 `--control-player-token-size`、`--control-aether-token-size` 和 `--control-main-offset-x` 分别调整玩家按钮 token、Aether Token 大小与中间操作区的屏幕居中偏移。
 
+执行 `deal_damage_divided` 时，合法 Nemesis 和 Minion 目标沿用棋盘目标高亮。每次点击把一点伤害暂存在该单位的 `+N` 徽标中，直到最后一次点击才由引擎统一结算；UI Gallery 的 `Damage.DividedAllocation` 示例展示这个状态。
+
 ### 弹窗、标记和控制
 
 | 名称 | 用途 |
 | --- | --- |
 | `ModalBase` | 所有标准弹窗的遮罩、焦点、拖动和 dialog 外壳 |
 | `Modal.Decision` | 引擎产生的阻塞式决策；一般 `choose_one` 用按钮，`large-card-selection` 显示可选大图并要求显式 Confirm |
+| `Decision.RevealCard` | 展示引擎挂起的 revealed card；没有后续选择时使用单个 Confirm，卡牌在确认前保持可见 |
 | `Decision.MageAbilityChoice` | Mage mat 下方竖向排列的 Ability 二选一按钮 |
 | `Modal.CardSelection` | 从手牌、弃牌堆或候选卡牌中选择 |
 | `Modal.PileViewer` | 查看牌堆，不做决策 |
@@ -71,6 +74,10 @@ Nemesis mat 右侧的 Info Bar 横跨剩余区域；左侧从 Fury token 开始�
 
 Mage ability 的 OR 决策使用可复用的 `Decision.MageAbilityChoice`：弹窗上方展示能力来源 Mage 的正面 mat 并裁切为统一圆角；下方显示与 mat 同宽、上下排列的两个可点击按钮。按钮使用蓝底深色文字，悬停时平滑变暗。所有 `choose_one` Ability 决策都应声明 `layout: 'mage-ability'`；非 Ability 的卡牌选择沿用普通决策 UI。Mage mat 宽度、选项文字大小和按钮最小高度集中在 `.decision-modal.mage-ability-modal` 的 CSS 自定义属性中，方便统一微调。Specific Deck 中需要直接辨认的升级卡选择使用 large 卡牌尺寸。
 
+普通的二选一决策使用 `Decision.TwoButtonChoice`：两个等宽蓝色按钮，点击后立即提交选择。需要玩家决定消耗多少 token 时使用 `Decision.TokenAmountChoice`：显示 token 图片、带数字步进器的输入框、实时效果句子和 Confirm 按钮。带有 `deal_damage_divided` 的效果按当前生命值由低到高自动分配伤害，使用红底白字的 `−X` 徽标展示；右键取消一点、左键补分配，全部分配后再次点击该 Spell 确认结算。
+
+伤害分配时 Nemesis 区域的 `Damage assigned` 状态提示保持原有居中位置。只调 `style.css` 根部的 `--damage-assigned-size` 即可等比改变正文、标题、间距、内边距、描边和圆角；默认值为 `1.35`。选择单个伤害目标或分配伤害时，敌方单位显示覆盖式黄色边框，同时显示已分配伤害徽标。Nemesis Mat 使用 `--damage-target-mat-border-width`（当前 `3px`），mini 卡使用 `--damage-target-card-border-width`（当前 `2px`）。目标状态下 mini 卡的基础灰色边框透明，只保留黄色覆盖层；颜色和外发光可通过 `--damage-target-border-color`、`--damage-target-border-glow` 调整。覆盖层不会改变 Nemesis Mat 或敌方卡牌的图片尺寸。等待二次点击确认的 Spell 沿用原准备位置和堆叠层级。
+
 `choose_one` 的 `large-card-selection` 用于需要辨认卡面的多张卡牌选择：卡图以 large 尺寸显示，玩家先点选一张，再点 Confirm；选择状态复用 2px 边界线。Setup 的 Market 卡牌替换弹窗按候选卡牌所属 Wave 提供 Wave tabs，默认切到当前槽位卡牌所属的 Wave。弹窗中的卡图悬停预览复用 `CardHoverPreview`，并高于该 Setup 弹窗显示。
 
 Wolf 的 5 枚 Doom token 显示在控制栏 Activate Ability 按钮右侧；未获得的 token 使用灰度与低透明度，已获得的 token 保留原图颜色。尺寸、间距与相对位置集中在 `.doom-token-track` 的四个 CSS 自定义属性中，方便微调。
@@ -81,7 +88,7 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 
 控制栏内部下侧留白由 `.controls` 的 `--control-bar-bottom-padding` 调整，控制栏外侧到玩家区域底部的留白由 `.player-area` 的 `--player-area-bottom-padding` 调整；当前均为 6px。抽牌气泡在按钮右侧伸出，并由两个 Mage 按钮之间及 Mage 按钮与阶段文字之间的 24px 间距预留位置。玩家回合结束后 Draw Phase 补足 5 张手牌时不显示抽牌气泡；卡牌和能力效果抽牌仍显示。
 
-主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`MageAbilityChoice.vue`、`CardSelectionPanel.vue`、
+主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`MageAbilityChoice.vue`、`TwoButtonChoice.vue`、`TokenAmountChoicePanel.vue`、`CardSelectionPanel.vue`、
 `PileModal.vue`、`PileCountBadge.vue`、`TokenBadge.vue`。
 
 ## 3. 状态组合规则
@@ -117,6 +124,8 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - 所有可见 `border`、`outline` 和 outline 风格的阴影都使用 2px。
 - 原生下拉框不显示浏览器默认白色焦点框，其余外观保持原样。
 - Debug Tools 的数字输入框使用统一的主题色步进箭头：鼠标悬停或键盘聚焦时显示；无悬停能力的设备保持可见。
+- Debug Tools 的牌序编辑需要先开启 `Enable deck order editing`，随后在面板中选择玩家并确认打开独立弹窗；弹窗复用 Deck 查看器的卡牌网格，直接拖拽大卡牌调整顺序。
+- 图片卡牌的可操作/选中边界必须叠加在卡面上，用 2px 伪元素边框或内阴影绘制；状态变化不能增减卡牌容器的 `border-width`，避免缩放内部卡图。Breach spell frame 状态使用 `::after`；Supply pile 目标提示使用内阴影。
 - 正常卡牌、背面卡牌和弹窗内卡牌都必须有统一圆角。
 - 图片填满卡牌时应贴合边框内侧圆角：内侧半径需从卡牌外侧半径扣除边框宽度，不能让图片盖住边界线，也不能在四角留下灰色缺口。
 - Breach 上面朝下的 Conjure 卡与玩家 Deck 牌背使用同一张图片和 `--pile-card-aspect-ratio`；不应用面朝下牌背专属缩放，保留原图白边。
@@ -142,6 +151,10 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - 弹窗内卡牌可以使用 `CardHoverPreview`，但不能提升整个手牌或玩家区域。
 - 标题过长时换行，不能通过无限拉宽弹窗解决。
 - 选择按钮在选中前后保持稳定位置。
+- Tressa's Vault 开局二选一使用 `LargeCardChoicePanel`，点击一张 Treasure 立即确认；多步选牌仍使用带 Confirm 的 `CardSelectionPanel`。
+- `Decision.TwoButtonChoice` 使用上下堆叠、等宽且文字居中的蓝色按钮。可在 `style.css` 根 token 调整 `--two-button-choice-width`、`--two-button-choice-gap`、`--two-button-choice-button-height` 和 `--two-button-choice-font-size`；游戏与 Gallery 共用此组件和样式。
+- `Decision.RevealCard` 用于需要玩家看见牌面后才能继续的 reveal 效果；无选择余地时只显示一个 Confirm，若效果有分支则沿用 revealed card 区域并显示对应选择按钮。Conjure 继续使用已有的专用流程。
+- `Decision.TokenAmountChoice` 依次展示标题、居中的 token 图片与 `DebugNumberInput`、实时效果句子；Confirm 位于下方操作区。输入框和步进箭头与 Debug Tools 共用配色；弹窗的数字框为 92×44px，数字为 20px 粗体。点击箭头仅调整数值并让输入框失焦，直接点击输入框才进入手动编辑。可选的 summary 模板用 `{amount}` 插入按所选 token 数计算的卡牌效果值。
 - 牌堆查看弹窗说明明确的顺序：顶牌在左、底牌在右，每行最多 5 张。
 - Trinket Deck 使用标准牌堆查看弹窗，不因查看而翻开牌；揭示知识跟随牌堆中的实体副本移动，返回牌堆底部的 Trinket 保持正面可见。
 - 牌堆查看弹窗设定视口内的最小宽度：带行标签的 Deck/Discard 至少 280px，其他牌堆至少 440px，避免空牌堆或单张牌时长标题被挤成多行；窄窗口以视口宽度为上限。
@@ -165,6 +178,8 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 | Zone 间距 | `--zone-gap: 10px` |
 | 普通滚动条 | `--scrollbar-size: 10px` |
 | 紧凑横向滚动条 | `--scrollbar-compact-size: 8px` |
+| 二选一按钮组 | `--two-button-choice-width: 420px`、`--two-button-choice-gap: 10px`、`--two-button-choice-button-height: 56px`、`--two-button-choice-font-size: 14px` |
+| Debug / token amount 数字框 | `--debug-number-width: 58px`（Token Amount 面板可用组件局部尺寸覆盖） |
 
 布局要求：
 

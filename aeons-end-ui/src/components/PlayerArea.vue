@@ -28,6 +28,7 @@ const {
   state, displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast,
   canActivateAbilityInMain,
   aetherInfo, prepSpell, focusBreach, openBreach, gainCharge, activateAbility,
+  debugCastAnyPreppedSpell,
   activatePreppedCardAction, activatePreppedSpellAction, preppedCardActions,
   activatePlayerCardInPlayAction, playerCardInPlayActions,
   isPendingPreppedSpellSelected, togglePendingPreppedSpell,
@@ -311,6 +312,12 @@ const preppedSpellCastChoice = (b: BreachState, spellIndex = 0) => {
   ) ?? null
 }
 
+const isRepeatCastConfirmation = (b: BreachState, spellIndex = 0) => {
+  const decision = state.game?.pendingDecision
+  return decision?.kind === 'select_prepped_spell' && decision.repeat === true
+    && !!preppedSpellCastChoice(b, spellIndex)
+}
+
 const pendingPreppedSpellChoice = (b: BreachState, spellIndex = 0) => {
   const decision = state.game?.pendingDecision
   if (decision?.kind !== 'select_prepped_spells' || !b.prepSpells[spellIndex]) return null
@@ -329,6 +336,38 @@ const pendingCastSpell = (b: BreachState, spellIndex = 0) => {
     && pending.breachIndex === b.index
     && pending.spellIndex === spellIndex
     && pending.cardId === b.prepSpells[spellIndex]
+}
+
+function isAwaitingDividedDamageConfirmation(b: BreachState, spellIndex: number): boolean {
+  const decision = state.game?.pendingDecision
+  const pending = state.game?.pendingEffect?.pendingSpellCast
+  return decision?.kind === 'allocate_divided_damage'
+    && !!pending
+    && pending.playerId === player.value.id
+    && pending.breachIndex === b.index
+    && pending.spellIndex === spellIndex
+    && pending.cardId === b.prepSpells[spellIndex]
+}
+
+function dividedDamageConfirmationSpell(b: BreachState) {
+  const decision = state.game?.pendingDecision
+  const pending = state.game?.pendingEffect?.pendingSpellCast
+  if (decision?.kind !== 'allocate_divided_damage' || !pending) return null
+  if (pending.playerId !== player.value.id || pending.breachIndex !== b.index) return null
+  // The engine removes a spell from its breach when casting starts. Keep its
+  // art in the original breach while damage is being allocated so the player
+  // can click the spell a second time to confirm the allocation.
+  if (!pending.discard) return null
+  return pending
+}
+
+function displayedSpellStackIndex(b: BreachState, spellIndex: number): number {
+  const pending = dividedDamageConfirmationSpell(b)
+  return pending && spellIndex >= pending.spellIndex ? spellIndex + 1 : spellIndex
+}
+
+function confirmDividedDamageAllocation() {
+  resolveDecision({ kind: 'allocate_divided_damage', action: 'confirm' })
 }
 
 const spellDamagePreview = (b: BreachState, spellIndex = 0) => {
@@ -907,6 +946,10 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
     suppressSpellClick.value = false
     return
   }
+  if (isAwaitingDividedDamageConfirmation(b, spellIndex)) {
+    resolveDecision({ kind: 'allocate_divided_damage', action: 'confirm' })
+    return
+  }
   const pendingChoice = pendingPreppedSpellChoice(b, spellIndex)
   if (pendingChoice) {
     togglePendingPreppedSpell(pendingChoice)
@@ -1005,12 +1048,13 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
             v-for="(spellId, spellIndex) in b.prepSpells"
             :key="`${spellId}:${spellIndex}`"
             class="spell"
-            :style="{ '--spell-stack-index': spellIndex, zIndex: spellIndex + 3 }"
+            :style="{ '--spell-stack-index': displayedSpellStackIndex(b, spellIndex), zIndex: displayedSpellStackIndex(b, spellIndex) + 3 }"
             :class="{
               'castable-spell': isCastableBreach(b),
               'must-cast-spell': isMustCastBreach(b),
               'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
               'ability-prepped-spell': !!preppedSpellCastChoice(b, spellIndex),
+              'repeat-cast-confirmation': isRepeatCastConfirmation(b, spellIndex),
               'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
                   'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
                   'pending-cast-spell': pendingCastSpell(b, spellIndex),
@@ -1031,6 +1075,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
                   'must-cast-spell': isMustCastBreach(b),
                   'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
                   'ability-prepped-spell': !!preppedSpellCastChoice(b, spellIndex),
+                  'repeat-cast-confirmation': isRepeatCastConfirmation(b, spellIndex),
                   'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
                   'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
                   'pending-cast-spell': pendingCastSpell(b, spellIndex),
@@ -1053,6 +1098,29 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
               </div>
             </CardHoverPreview>
           </div>
+          <template v-for="pendingSpell in [dividedDamageConfirmationSpell(b)]" :key="pendingSpell?.cardId">
+            <div
+              v-if="pendingSpell"
+              class="spell"
+              :style="{ '--spell-stack-index': pendingSpell.spellIndex, zIndex: pendingSpell.spellIndex + 3 }"
+            >
+              <button
+                type="button"
+                class="breach-spell-card-frame divided-damage-confirm-spell"
+                :aria-label="`Confirm ${getCard(pendingSpell.cardId).name} damage allocation`"
+                :title="`Click to confirm ${getCard(pendingSpell.cardId).name}`"
+                @click.stop="confirmDividedDamageAllocation"
+              >
+                <img
+                  v-if="cardImageUrl(pendingSpell.cardId)"
+                  :src="cardImageUrl(pendingSpell.cardId)"
+                  :alt="getCard(pendingSpell.cardId).name"
+                  draggable="false"
+                />
+                <span v-else>{{ getCard(pendingSpell.cardId).name }}</span>
+              </button>
+            </div>
+          </template>
         </div>
         <div
           v-if="!b.opened && (effectFocusChoice(b) || (canActMain && !state.game?.pendingDecision))"
@@ -1071,35 +1139,36 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
         </div>
         </template>
       </div>
-      <button
-        class="trinket-deck-pile"
-        type="button"
-        aria-label="Open Trinket Deck"
-        @click.stop="openTrinketDeckPile()"
+    </div>
+
+    <button
+      class="trinket-deck-pile"
+      type="button"
+      aria-label="Open Trinket Deck"
+      @click.stop="openTrinketDeckPile()"
+    >
+      <CardHoverPreview
+        :card-id="trinketDeckTopCardKnown ? trinketDeckCards[0] : undefined"
+        :image-url="trinketDeckTopCardKnown ? undefined : trinketDeckCards.length > 0 ? trinketDeckBackUrl() : undefined"
+        :image-alt="trinketDeckTopCardKnown && trinketDeckCards[0]
+          ? getCard(trinketDeckCards[0]).name
+          : 'Trinket deck card back'"
       >
-        <CardHoverPreview
+        <CardSurface
+          base-class="player-pile-card"
+          size="pile"
           :card-id="trinketDeckTopCardKnown ? trinketDeckCards[0] : undefined"
           :image-url="trinketDeckTopCardKnown ? undefined : trinketDeckCards.length > 0 ? trinketDeckBackUrl() : undefined"
           :image-alt="trinketDeckTopCardKnown && trinketDeckCards[0]
             ? getCard(trinketDeckCards[0]).name
             : 'Trinket deck card back'"
+          class="trinket-deck-top-card"
         >
-          <CardSurface
-            base-class="player-pile-card"
-            size="pile"
-            :card-id="trinketDeckTopCardKnown ? trinketDeckCards[0] : undefined"
-            :image-url="trinketDeckTopCardKnown ? undefined : trinketDeckCards.length > 0 ? trinketDeckBackUrl() : undefined"
-            :image-alt="trinketDeckTopCardKnown && trinketDeckCards[0]
-              ? getCard(trinketDeckCards[0]).name
-              : 'Trinket deck card back'"
-            class="trinket-deck-top-card"
-          >
-            <span v-if="trinketDeckCards.length === 0">Trinket Deck</span>
-          </CardSurface>
-        </CardHoverPreview>
-        <PileCountBadge :count="trinketDeckCards.length" label="Trinkets" />
-      </button>
-    </div>
+          <span v-if="trinketDeckCards.length === 0">Trinket Deck</span>
+        </CardSurface>
+      </CardHoverPreview>
+      <PileCountBadge :count="trinketDeckCards.length" label="Trinkets" />
+    </button>
 
     <div class="played-zones" :class="{ 'has-swap-zone': hasSwapZone, 'has-develop-zone': hasDevelopZone }">
       <section v-if="hasSwapZone" class="played-zone played-zone-swap">
@@ -1400,6 +1469,12 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
             </span>
           </template>
         </template>
+        <button
+          v-if="state.debugFreeSpellCastEnabled && isMain && isCurrentSelected"
+          class="btn small"
+          :disabled="!hasPreppedSpell || !!state.game?.pendingDecision || !!state.game?.pendingEffect"
+          @click="debugCastAnyPreppedSpell()"
+        >Cast Prepped Spell</button>
         <button
           v-if="isMain && canActivateAbilityInMain"
           class="btn small"

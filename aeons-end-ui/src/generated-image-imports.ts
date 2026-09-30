@@ -16,181 +16,197 @@ import image12 from "../../image-database/cards/wave1/nemesis/basic nemesis card
 import image13 from "../../image-database/cards/wave1/nemesis/Rageborne/Blood Cry.jpg"
 import image14 from "../../image-database/cards/wave9/mages/inco/Blooming Firethorn.jpg"
 import image15 from "../../image-database/cards/wave1/relics/Bottled Vortex.jpg"
-import image16 from "../../image-database/cards/wave9/mages/tressa/Breach Stance.jpg"
-import image17 from "../../image-database/cards/wave1/mages/Buried Light.jpg"
-import image18 from "../../image-database/cards/wave1/gems/Burning Opal.jpg"
-import image19 from "../../image-database/cards/wave9/mages/dezmodia/Calcified Electinium.jpg"
-import image20 from "../../image-database/cards/wave9/mages/inco/Calming Firethorn.jpg"
-import image21 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Cauterizer.jpg"
-import image22 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Cerephage.jpg"
-import image23 from "../../image-database/cards/wave1/spells/Chaos Arc.jpg"
-import image24 from "../../image-database/cards/wave9/gems/Chromia Sphere.jpg"
-import image25 from "../../image-database/cards/wave1/nemesis/Rageborne/Cleave.jpg"
-import image26 from "../../image-database/cards/wave1/gems/Clouded Sapphire.jpg"
-import image27 from "../../image-database/cards/wave9/trinkets/Clouded Trinket.jpg"
-import image28 from "../../image-database/cards/wave9/gems/Coiled Trillium.jpg"
-import image29 from "../../image-database/cards/wave1/spells/Consuming Void.jpg"
-import image30 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Convoke.jpg"
-import image31 from "../../image-database/cards/wave9/mages/dezmodia/Corrupted Coil.jpg"
-import image32 from "../../image-database/cards/wave9/mages/tressa/Creator Stance.jpg"
-import image33 from "../../image-database/cards/wave1/gems/Crystal (Aeon's End) Front.jpg"
-import image34 from "../../image-database/cards/wave1/spells/Dark Fire.jpg"
-import image35 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Devastate.jpg"
-import image36 from "../../image-database/cards/wave1/gems/Diamond Cluster.jpg"
-import image37 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Digest.jpg"
-import image38 from "../../image-database/cards/wave9/mages/nook/Dim Crystal.jpg"
-import image39 from "../../image-database/cards/wave9/mages/nook/Dim Spark.jpg"
-import image40 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Dispel.jpg"
-import image41 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Doom Aegis.jpg"
-import image42 from "../../image-database/cards/wave9/mages/wolf/Doom Howl.jpg"
-import image43 from "../../image-database/cards/wave9/mages/wolf/Doomstone.jpg"
-import image44 from "../../image-database/cards/wave1/mages/Emerald Shard.jpg"
-import image45 from "../../image-database/cards/wave9/mages/nook/Empty Crystal.jpg"
-import image46 from "../../image-database/cards/wave9/mages/nook/Empty Spark.jpg"
-import image47 from "../../image-database/cards/wave9/mages/dezmodia/Energized Stone.jpg"
-import image48 from "../../image-database/cards/wave1/spells/Essence Theft.jpg"
-import image49 from "../../image-database/cards/wave9/trinkets/Ethereal Trinket.jpg"
-import image50 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Eviscerate.jpg"
-import image51 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Eye of Nothing.jpg"
-import image52 from "../../image-database/cards/wave1/spells/Feral Lightning.jpg"
-import image53 from "../../image-database/cards/wave1/mages/Flare.jpg"
-import image54 from "../../image-database/cards/wave1/relics/Flexing Dagger.jpg"
-import image55 from "../../image-database/cards/wave1/relics/Focusing Orb.jpg"
-import image56 from "../../image-database/cards/wave9/mages/yan magda/Foretold Flame.jpg"
-import image57 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Frenzy.jpg"
-import image58 from "../../image-database/cards/wave9/mages/dezmodia/Fungal Network.jpg"
-import image59 from "../../image-database/cards/wave9/mages/indira/Fused Opal.jpg"
-import image60 from "../../image-database/cards/wave1/mages/Garnet Shard.jpg"
-import image61 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Gather Darkness.jpg"
-import image62 from "../../image-database/cards/wave9/mages/inco/Genesis Emerald.jpg"
-import image63 from "../../image-database/cards/wave9/trinkets/Glittering Trinket.jpg"
-import image64 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Godfeeders.jpg"
-import image65 from "../../image-database/cards/wave9/trinkets/Golden Trinket.jpg"
-import image66 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Gorge.jpg"
-import image67 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Haze Spewer.jpg"
-import image68 from "../../image-database/cards/wave9/gems/Hewn Gravitite.jpg"
-import image69 from "../../image-database/cards/wave9/gems/Ice-Dusted Jewel.jpg"
-import image70 from "../../image-database/cards/wave9/mages/dezmodia/Ice-Heart Shard.jpg"
-import image71 from "../../image-database/cards/wave1/spells/Ignite.jpg"
-import image72 from "../../image-database/cards/wave9/mages/inco/Imbued Firethorn.jpg"
-import image73 from "../../image-database/cards/wave9/mages/nook/Infused Crystal.jpg"
-import image74 from "../../image-database/cards/wave9/mages/nook/Infused Spark.jpg"
-import image75 from "../../image-database/cards/wave1/nemesis/Rageborne/Invoke Carnage.jpg"
-import image76 from "../../image-database/cards/wave9/gems/Irradiax Lump.jpg"
-import image77 from "../../image-database/cards/wave1/gems/Jade.jpg"
-import image78 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Jagged One.jpg"
-import image79 from "../../image-database/cards/wave1/spells/Lava Tendril.jpg"
-import image80 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Lay Waste.jpg"
-import image81 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Lobotomize.jpg"
-import image82 from "../../image-database/cards/wave9/gems/Luminous Facet.jpg"
-import image83 from "../../image-database/cards/wave1/relics/Mage's Talisman.jpg"
-import image84 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Memory Eater.jpg"
-import image85 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Mindguzzler.jpg"
-import image86 from "../../image-database/cards/wave9/mages/qu/Molded Valite.jpg"
-import image87 from "../../image-database/cards/wave1/mages/Moonstone Shard.jpg"
-import image88 from "../../image-database/cards/wave9/gems/Nebulae Fragment.jpg"
-import image89 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Needlemaw (Aeon's End).jpg"
-import image90 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Obliterate.jpg"
-import image91 from "../../image-database/cards/wave1/spells/Oblivion Swell.jpg"
-import image92 from "../../image-database/cards/wave1/nemesis/Rageborne/Onslaught.jpg"
-import image93 from "../../image-database/cards/wave9/mages/tressa/Overload Stance.jpg"
-import image94 from "../../image-database/cards/wave1/spells/Phoenix Flame.jpg"
-import image95 from "../../image-database/cards/wave9/gems/Phosphor Nugget.jpg"
-import image96 from "../../image-database/cards/wave9/mages/stake/Piercing Light.jpg"
-import image97 from "../../image-database/cards/wave1/spells/Planar Insight.jpg"
-import image98 from "../../image-database/cards/wave9/mages/dezmodia/Polished Dyaminium.jpg"
-import image99 from "../../image-database/cards/wave9/trinkets/Power Trinket.jpg"
-import image100 from "../../image-database/cards/wave1/nemesis/Rageborne/Provoker.jpg"
-import image101 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Pulverizing Ray.jpg"
-import image102 from "../../image-database/cards/wave1/mages/Quartz Shard.jpg"
-import image103 from "../../image-database/cards/wave9/mages/qu/Qu's Form Card.jpg"
-import image104 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Raze.jpg"
-import image105 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Reality Rupture.jpg"
-import image106 from "../../image-database/cards/wave9/mages/inco/Revealing Firethorn.jpg"
-import image107 from "../../image-database/cards/wave1/nemesis/Rageborne/Rolling Death.jpg"
-import image108 from "../../image-database/cards/wave9/mages/dezmodia/Runic Flute.jpg"
-import image109 from "../../image-database/cards/wave9/mages/stake/Sagestone.jpg"
-import image110 from "../../image-database/cards/wave1/nemesis/Rageborne/Scorn.jpg"
-import image111 from "../../image-database/cards/wave1/gems/Searing Ruby.jpg"
-import image112 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Seize.jpg"
-import image113 from "../../image-database/cards/wave1/gems/Sifter's Pearl.jpg"
-import image114 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Skewer.jpg"
-import image115 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Slaughter.jpg"
-import image116 from "../../image-database/cards/wave1/spells/Spark (Aeon's End).jpg"
-import image117 from "../../image-database/cards/wave1/spells/Spectral Echo.jpg"
-import image118 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Sunder (Aeon's End).jpg"
-import image119 from "../../image-database/cards/wave9/mages/nook/Superior Crystal.jpg"
-import image120 from "../../image-database/cards/wave9/mages/nook/Superior Spark.jpg"
-import image121 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Thought Biter.jpg"
-import image122 from "../../image-database/cards/wave9/mages/dezmodia/Time Cortex.jpg"
-import image123 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Topple.jpg"
-import image124 from "../../image-database/cards/wave1/mages/Tourmaline Shard.jpg"
-import image125 from "../../image-database/cards/wave9/mages/tressa/Translocate.jpg"
-import image126 from "../../image-database/cards/wave9/mages/tressa/Transmaterium.jpg"
-import image127 from "../../image-database/cards/wave1/nemesis/Rageborne/Unrelenting Ire.jpg"
-import image128 from "../../image-database/cards/wave1/relics/Unstable Prism.jpg"
-import image129 from "../../image-database/cards/wave9/mages/stake/Upgraded Efficiency.jpg"
-import image130 from "../../image-database/cards/wave9/mages/stake/Upgraded Energetics.jpg"
-import image131 from "../../image-database/cards/wave9/mages/stake/Upgraded Focus.jpg"
-import image132 from "../../image-database/cards/wave9/mages/stake/Upgraded Potential.jpg"
-import image133 from "../../image-database/cards/wave9/mages/stake/Upgraded Reflex.jpg"
-import image134 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Venomite.jpg"
-import image135 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Vile Feast.jpg"
-import image136 from "../../image-database/cards/wave9/mages/remnant/Violet Shard.jpg"
-import image137 from "../../image-database/cards/wave9/mages/dezmodia/Vision Shard.jpg"
-import image138 from "../../image-database/cards/wave1/gems/V'riswood Amber.jpg"
-import image139 from "../../image-database/cards/wave9/gems/Crystal.jpg"
-import image140 from "../../image-database/cards/wave9/spells/Spark.jpg"
-import image141 from "../../image-database/cards/wave1/spells/Wildfire Whip.jpg"
-import image142 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Woven Sky.jpg"
-import image143 from "../../image-database/cards/wave1/mages/Adelheim Front.jpg"
-import image144 from "../../image-database/cards/wave1/mages/Adelheim Back.jpg"
-import image145 from "../../image-database/cards/wave1/mages/Brama Front.jpg"
-import image146 from "../../image-database/cards/wave1/mages/Brama Back.jpg"
-import image147 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Front.jpg"
-import image148 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Back.jpg"
-import image149 from "../../image-database/cards/wave9/mages/inco/Inco (The Surface) Front.jpg"
-import image150 from "../../image-database/cards/wave9/mages/inco/Inco (The Surface) Back.jpg"
-import image151 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Front.jpg"
-import image152 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Back.jpg"
-import image153 from "../../image-database/cards/wave1/mages/Jian Front.jpg"
-import image154 from "../../image-database/cards/wave1/mages/Jian Back.jpg"
-import image155 from "../../image-database/cards/wave1/mages/Kadir Front.jpg"
-import image156 from "../../image-database/cards/wave1/mages/Kadir Back.jpg"
-import image157 from "../../image-database/cards/wave1/mages/Lash Front.jpg"
-import image158 from "../../image-database/cards/wave1/mages/Lash Back.jpg"
-import image159 from "../../image-database/cards/wave1/mages/Mist Front.jpg"
-import image160 from "../../image-database/cards/wave1/mages/Mist Back.jpg"
-import image161 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Front.jpg"
-import image162 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Back.jpg"
-import image163 from "../../image-database/cards/wave1/mages/Phaedraxa Front.jpg"
-import image164 from "../../image-database/cards/wave1/mages/Phaedraxa Back.jpg"
-import image165 from "../../image-database/cards/wave9/mages/qu/Qu (The Surface) Front.jpg"
-import image166 from "../../image-database/cards/wave9/mages/qu/Qu (The Surface) Back.jpg"
-import image167 from "../../image-database/cards/wave9/mages/remnant/Remnant (Beyond the Breach) Front.jpg"
-import image168 from "../../image-database/cards/wave9/mages/remnant/Remnant (Beyond the Breach) Back.jpg"
-import image169 from "../../image-database/cards/wave9/mages/stake/Stake Front.jpg"
-import image170 from "../../image-database/cards/wave9/mages/stake/Stake Back.jpg"
-import image171 from "../../image-database/cards/wave9/mages/tressa/Tressa Front.jpg"
-import image172 from "../../image-database/cards/wave9/mages/tressa/Tressa Back.jpg"
-import image173 from "../../image-database/cards/wave9/mages/wolf/Wolf Front.jpg"
-import image174 from "../../image-database/cards/wave9/mages/wolf/Wolf Back.jpg"
-import image175 from "../../image-database/cards/wave1/mages/Xaxos Front.jpg"
-import image176 from "../../image-database/cards/wave1/mages/Xaxos Back.jpg"
-import image177 from "../../image-database/cards/wave9/mages/yan magda/Yan Magda (The Returned) Front.jpg"
-import image178 from "../../image-database/cards/wave9/mages/yan magda/Yan Magda (The Returned) Back.jpg"
-import image179 from "../../image-database/cards/wave9/mages/wolf/Doom token transparent.png"
-import image180 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Front.jpg"
-import image181 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Back.jpg"
-import image182 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Front.jpg"
-import image183 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Back.jpg"
-import image184 from "../../image-database/common breach/Breach_I_Open.jpg"
-import image185 from "../../image-database/common breach/Breach_II_Down.jpg"
-import image186 from "../../image-database/common breach/Breach_II_Open.jpg"
-import image187 from "../../image-database/common breach/Breach_III_Down.jpg"
-import image188 from "../../image-database/common breach/Breach_III_Open.jpg"
-import image189 from "../../image-database/common breach/Breach_IV_Down.jpg"
-import image190 from "../../image-database/common breach/Breach_IV_Open.jpg"
+import image16 from "../../image-database/cards/wave9/spells/Boundless Fire.jpg"
+import image17 from "../../image-database/cards/wave9/mages/tressa/Breach Stance.jpg"
+import image18 from "../../image-database/cards/wave1/mages/Buried Light.jpg"
+import image19 from "../../image-database/cards/wave1/gems/Burning Opal.jpg"
+import image20 from "../../image-database/cards/wave9/mages/dezmodia/Calcified Electinium.jpg"
+import image21 from "../../image-database/cards/wave9/mages/inco/Calming Firethorn.jpg"
+import image22 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Cauterizer.jpg"
+import image23 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Cerephage.jpg"
+import image24 from "../../image-database/cards/wave1/spells/Chaos Arc.jpg"
+import image25 from "../../image-database/cards/wave9/gems/Chromia Sphere.jpg"
+import image26 from "../../image-database/cards/wave1/nemesis/Rageborne/Cleave.jpg"
+import image27 from "../../image-database/cards/wave1/gems/Clouded Sapphire.jpg"
+import image28 from "../../image-database/cards/wave9/trinkets/Clouded Trinket.jpg"
+import image29 from "../../image-database/cards/wave9/gems/Coiled Trillium.jpg"
+import image30 from "../../image-database/cards/wave1/spells/Consuming Void.jpg"
+import image31 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Convoke.jpg"
+import image32 from "../../image-database/cards/wave9/mages/dezmodia/Corrupted Coil.jpg"
+import image33 from "../../image-database/cards/wave9/spells/Cosmic Pulse.jpg"
+import image34 from "../../image-database/cards/wave9/mages/tressa/Creator Stance.jpg"
+import image35 from "../../image-database/cards/wave1/gems/Crystal (Aeon's End) Front.jpg"
+import image36 from "../../image-database/cards/wave1/spells/Dark Fire.jpg"
+import image37 from "../../image-database/cards/wave9/spells/Deadly Accord.jpg"
+import image38 from "../../image-database/cards/wave9/spells/Descent of Destruction.jpg"
+import image39 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Devastate.jpg"
+import image40 from "../../image-database/cards/wave1/gems/Diamond Cluster.jpg"
+import image41 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Digest.jpg"
+import image42 from "../../image-database/cards/wave9/mages/nook/Dim Crystal.jpg"
+import image43 from "../../image-database/cards/wave9/mages/nook/Dim Spark.jpg"
+import image44 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Dispel.jpg"
+import image45 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Doom Aegis.jpg"
+import image46 from "../../image-database/cards/wave9/mages/wolf/Doom Howl.jpg"
+import image47 from "../../image-database/cards/wave9/mages/wolf/Doomstone.jpg"
+import image48 from "../../image-database/cards/wave9/spells/Ember Gale.jpg"
+import image49 from "../../image-database/cards/wave1/mages/Emerald Shard.jpg"
+import image50 from "../../image-database/cards/wave9/mages/nook/Empty Crystal.jpg"
+import image51 from "../../image-database/cards/wave9/mages/nook/Empty Spark.jpg"
+import image52 from "../../image-database/cards/wave9/mages/dezmodia/Energized Stone.jpg"
+import image53 from "../../image-database/cards/wave1/spells/Essence Theft.jpg"
+import image54 from "../../image-database/cards/wave9/spells/Eternity's Echo.jpg"
+import image55 from "../../image-database/cards/wave9/trinkets/Ethereal Trinket.jpg"
+import image56 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Eviscerate.jpg"
+import image57 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Eye of Nothing.jpg"
+import image58 from "../../image-database/cards/wave1/spells/Feral Lightning.jpg"
+import image59 from "../../image-database/cards/wave1/mages/Flare.jpg"
+import image60 from "../../image-database/cards/wave1/relics/Flexing Dagger.jpg"
+import image61 from "../../image-database/cards/wave1/relics/Focusing Orb.jpg"
+import image62 from "../../image-database/cards/wave9/mages/yan magda/Foretold Flame.jpg"
+import image63 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Frenzy.jpg"
+import image64 from "../../image-database/cards/wave9/spells/Frostfire Maelstrom.jpg"
+import image65 from "../../image-database/cards/wave9/mages/dezmodia/Fungal Network.jpg"
+import image66 from "../../image-database/cards/wave9/mages/indira/Fused Opal.jpg"
+import image67 from "../../image-database/cards/wave1/mages/Garnet Shard.jpg"
+import image68 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Gather Darkness.jpg"
+import image69 from "../../image-database/cards/wave9/mages/inco/Genesis Emerald.jpg"
+import image70 from "../../image-database/cards/wave9/trinkets/Glittering Trinket.jpg"
+import image71 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Godfeeders.jpg"
+import image72 from "../../image-database/cards/wave9/trinkets/Golden Trinket.jpg"
+import image73 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Gorge.jpg"
+import image74 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Haze Spewer.jpg"
+import image75 from "../../image-database/cards/wave9/gems/Hewn Gravitite.jpg"
+import image76 from "../../image-database/cards/wave9/gems/Ice-Dusted Jewel.jpg"
+import image77 from "../../image-database/cards/wave9/mages/dezmodia/Ice-Heart Shard.jpg"
+import image78 from "../../image-database/cards/wave1/spells/Ignite.jpg"
+import image79 from "../../image-database/cards/wave9/mages/inco/Imbued Firethorn.jpg"
+import image80 from "../../image-database/cards/wave9/spells/Infernal Cascade.jpg"
+import image81 from "../../image-database/cards/wave9/mages/nook/Infused Crystal.jpg"
+import image82 from "../../image-database/cards/wave9/mages/nook/Infused Spark.jpg"
+import image83 from "../../image-database/cards/wave9/spells/Inundate.jpg"
+import image84 from "../../image-database/cards/wave1/nemesis/Rageborne/Invoke Carnage.jpg"
+import image85 from "../../image-database/cards/wave9/gems/Irradiax Lump.jpg"
+import image86 from "../../image-database/cards/wave1/gems/Jade.jpg"
+import image87 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Jagged One.jpg"
+import image88 from "../../image-database/cards/wave9/spells/Jeweled Shrapnel.jpg"
+import image89 from "../../image-database/cards/wave1/spells/Lava Tendril.jpg"
+import image90 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Lay Waste.jpg"
+import image91 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Lobotomize.jpg"
+import image92 from "../../image-database/cards/wave9/gems/Luminous Facet.jpg"
+import image93 from "../../image-database/cards/wave1/relics/Mage's Talisman.jpg"
+import image94 from "../../image-database/cards/wave9/spells/Megaflux Slice.jpg"
+import image95 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Memory Eater.jpg"
+import image96 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Mindguzzler.jpg"
+import image97 from "../../image-database/cards/wave9/mages/qu/Molded Valite.jpg"
+import image98 from "../../image-database/cards/wave1/mages/Moonstone Shard.jpg"
+import image99 from "../../image-database/cards/wave9/gems/Nebulae Fragment.jpg"
+import image100 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Needlemaw (Aeon's End).jpg"
+import image101 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Obliterate.jpg"
+import image102 from "../../image-database/cards/wave9/spells/Obliterating Arc.jpg"
+import image103 from "../../image-database/cards/wave1/spells/Oblivion Swell.jpg"
+import image104 from "../../image-database/cards/wave1/nemesis/Rageborne/Onslaught.jpg"
+import image105 from "../../image-database/cards/wave9/mages/tressa/Overload Stance.jpg"
+import image106 from "../../image-database/cards/wave1/spells/Phoenix Flame.jpg"
+import image107 from "../../image-database/cards/wave9/gems/Phosphor Nugget.jpg"
+import image108 from "../../image-database/cards/wave9/mages/stake/Piercing Light.jpg"
+import image109 from "../../image-database/cards/wave1/spells/Planar Insight.jpg"
+import image110 from "../../image-database/cards/wave9/mages/dezmodia/Polished Dyaminium.jpg"
+import image111 from "../../image-database/cards/wave9/trinkets/Power Trinket.jpg"
+import image112 from "../../image-database/cards/wave1/nemesis/Rageborne/Provoker.jpg"
+import image113 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Pulverizing Ray.jpg"
+import image114 from "../../image-database/cards/wave1/mages/Quartz Shard.jpg"
+import image115 from "../../image-database/cards/wave9/mages/qu/Qu's Form Card.jpg"
+import image116 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Raze.jpg"
+import image117 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Reality Rupture.jpg"
+import image118 from "../../image-database/cards/wave9/mages/inco/Revealing Firethorn.jpg"
+import image119 from "../../image-database/cards/wave1/nemesis/Rageborne/Rolling Death.jpg"
+import image120 from "../../image-database/cards/wave9/mages/dezmodia/Runic Flute.jpg"
+import image121 from "../../image-database/cards/wave9/mages/stake/Sagestone.jpg"
+import image122 from "../../image-database/cards/wave1/nemesis/Rageborne/Scorn.jpg"
+import image123 from "../../image-database/cards/wave1/gems/Searing Ruby.jpg"
+import image124 from "../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Seize.jpg"
+import image125 from "../../image-database/cards/wave1/gems/Sifter's Pearl.jpg"
+import image126 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Skewer.jpg"
+import image127 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Slaughter.jpg"
+import image128 from "../../image-database/cards/wave1/spells/Spark (Aeon's End).jpg"
+import image129 from "../../image-database/cards/wave1/spells/Spectral Echo.jpg"
+import image130 from "../../image-database/cards/wave9/spells/Stonefury Eruption.jpg"
+import image131 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Sunder (Aeon's End).jpg"
+import image132 from "../../image-database/cards/wave9/mages/nook/Superior Crystal.jpg"
+import image133 from "../../image-database/cards/wave9/mages/nook/Superior Spark.jpg"
+import image134 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Thought Biter.jpg"
+import image135 from "../../image-database/cards/wave9/mages/dezmodia/Time Cortex.jpg"
+import image136 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 3/Topple.jpg"
+import image137 from "../../image-database/cards/wave9/spells/Torrential Spike.jpg"
+import image138 from "../../image-database/cards/wave1/mages/Tourmaline Shard.jpg"
+import image139 from "../../image-database/cards/wave9/mages/tressa/Translocate.jpg"
+import image140 from "../../image-database/cards/wave9/mages/tressa/Transmaterium.jpg"
+import image141 from "../../image-database/cards/wave1/nemesis/Rageborne/Unrelenting Ire.jpg"
+import image142 from "../../image-database/cards/wave1/relics/Unstable Prism.jpg"
+import image143 from "../../image-database/cards/wave9/mages/stake/Upgraded Efficiency.jpg"
+import image144 from "../../image-database/cards/wave9/mages/stake/Upgraded Energetics.jpg"
+import image145 from "../../image-database/cards/wave9/mages/stake/Upgraded Focus.jpg"
+import image146 from "../../image-database/cards/wave9/mages/stake/Upgraded Potential.jpg"
+import image147 from "../../image-database/cards/wave9/mages/stake/Upgraded Reflex.jpg"
+import image148 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 2/Venomite.jpg"
+import image149 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Vile Feast.jpg"
+import image150 from "../../image-database/cards/wave9/mages/remnant/Violet Shard.jpg"
+import image151 from "../../image-database/cards/wave9/mages/dezmodia/Vision Shard.jpg"
+import image152 from "../../image-database/cards/wave9/spells/Vitrification.jpg"
+import image153 from "../../image-database/cards/wave1/gems/V'riswood Amber.jpg"
+import image154 from "../../image-database/cards/wave9/gems/Crystal.jpg"
+import image155 from "../../image-database/cards/wave9/spells/Spark.jpg"
+import image156 from "../../image-database/cards/wave1/spells/Wildfire Whip.jpg"
+import image157 from "../../image-database/cards/wave9/spells/Worldshift.jpg"
+import image158 from "../../image-database/cards/wave1/nemesis/basic nemesis cards/Tier 1/Woven Sky.jpg"
+import image159 from "../../image-database/cards/wave1/mages/Adelheim Front.jpg"
+import image160 from "../../image-database/cards/wave1/mages/Adelheim Back.jpg"
+import image161 from "../../image-database/cards/wave1/mages/Brama Front.jpg"
+import image162 from "../../image-database/cards/wave1/mages/Brama Back.jpg"
+import image163 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Front.jpg"
+import image164 from "../../image-database/cards/wave9/mages/dezmodia/Dezmodia (Beyond the Breach) Back.jpg"
+import image165 from "../../image-database/cards/wave9/mages/inco/Inco (The Surface) Front.jpg"
+import image166 from "../../image-database/cards/wave9/mages/inco/Inco (The Surface) Back.jpg"
+import image167 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Front.jpg"
+import image168 from "../../image-database/cards/wave9/mages/indira/Indira (Beyond the Breach) Back.jpg"
+import image169 from "../../image-database/cards/wave1/mages/Jian Front.jpg"
+import image170 from "../../image-database/cards/wave1/mages/Jian Back.jpg"
+import image171 from "../../image-database/cards/wave1/mages/Kadir Front.jpg"
+import image172 from "../../image-database/cards/wave1/mages/Kadir Back.jpg"
+import image173 from "../../image-database/cards/wave1/mages/Lash Front.jpg"
+import image174 from "../../image-database/cards/wave1/mages/Lash Back.jpg"
+import image175 from "../../image-database/cards/wave1/mages/Mist Front.jpg"
+import image176 from "../../image-database/cards/wave1/mages/Mist Back.jpg"
+import image177 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Front.jpg"
+import image178 from "../../image-database/cards/wave9/mages/nook/Nook (Beyond the Breach) Back.jpg"
+import image179 from "../../image-database/cards/wave1/mages/Phaedraxa Front.jpg"
+import image180 from "../../image-database/cards/wave1/mages/Phaedraxa Back.jpg"
+import image181 from "../../image-database/cards/wave9/mages/qu/Qu (The Surface) Front.jpg"
+import image182 from "../../image-database/cards/wave9/mages/qu/Qu (The Surface) Back.jpg"
+import image183 from "../../image-database/cards/wave9/mages/remnant/Remnant (Beyond the Breach) Front.jpg"
+import image184 from "../../image-database/cards/wave9/mages/remnant/Remnant (Beyond the Breach) Back.jpg"
+import image185 from "../../image-database/cards/wave9/mages/stake/Stake Front.jpg"
+import image186 from "../../image-database/cards/wave9/mages/stake/Stake Back.jpg"
+import image187 from "../../image-database/cards/wave9/mages/tressa/Tressa Front.jpg"
+import image188 from "../../image-database/cards/wave9/mages/tressa/Tressa Back.jpg"
+import image189 from "../../image-database/cards/wave9/mages/wolf/Wolf Front.jpg"
+import image190 from "../../image-database/cards/wave9/mages/wolf/Wolf Back.jpg"
+import image191 from "../../image-database/cards/wave1/mages/Xaxos Front.jpg"
+import image192 from "../../image-database/cards/wave1/mages/Xaxos Back.jpg"
+import image193 from "../../image-database/cards/wave9/mages/yan magda/Yan Magda (The Returned) Front.jpg"
+import image194 from "../../image-database/cards/wave9/mages/yan magda/Yan Magda (The Returned) Back.jpg"
+import image195 from "../../image-database/cards/wave9/mages/wolf/Doom token transparent.png"
+import image196 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Front.jpg"
+import image197 from "../../image-database/cards/wave1/nemesis/Prince of Gluttons/Prince of Gluttons Back.jpg"
+import image198 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Front.jpg"
+import image199 from "../../image-database/cards/wave1/nemesis/Rageborne/Rageborne Back.jpg"
+import image200 from "../../image-database/common breach/Breach_I_Open.jpg"
+import image201 from "../../image-database/common breach/Breach_II_Down.jpg"
+import image202 from "../../image-database/common breach/Breach_II_Open.jpg"
+import image203 from "../../image-database/common breach/Breach_III_Down.jpg"
+import image204 from "../../image-database/common breach/Breach_III_Open.jpg"
+import image205 from "../../image-database/common breach/Breach_IV_Down.jpg"
+import image206 from "../../image-database/common breach/Breach_IV_Open.jpg"
 
 export interface GeneratedImagePair {
   front: string
@@ -214,172 +230,188 @@ export const CARD_IMAGE_IMPORTS: Record<string, string> = {
   blood_cry: image13,
   blooming_firethorn: image14,
   bottled_vortex: image15,
-  breach_stance: image16,
-  buried_light: image17,
-  burning_opal: image18,
-  calcified_electinium: image19,
-  calming_firethorn: image20,
-  cauterizer: image21,
-  cerephage: image22,
-  chaos_arc: image23,
-  chromia_sphere: image24,
-  cleave: image25,
-  clouded_sapphire: image26,
-  clouded_trinket: image27,
-  coiled_trillium: image28,
-  consuming_void: image29,
-  convoke: image30,
-  corrupted_coil: image31,
-  creator_stance: image32,
-  crystal: image33,
-  dark_fire: image34,
-  devastate: image35,
-  diamond_cluster: image36,
-  digest: image37,
-  dim_crystal: image38,
-  dim_spark: image39,
-  dispel: image40,
-  doom_aegis: image41,
-  doom_howl: image42,
-  doomstone: image43,
-  emerald_shard: image44,
-  empty_crystal: image45,
-  empty_spark: image46,
-  energized_stone: image47,
-  essence_theft: image48,
-  ethereal_trinket: image49,
-  eviscerate: image50,
-  eye_of_nothing: image51,
-  feral_lightning: image52,
-  flare: image53,
-  flexing_dagger: image54,
-  focusing_orb: image55,
-  foretold_flame: image56,
-  frenzy: image57,
-  fungal_network: image58,
-  fused_opal: image59,
-  garnet_shard: image60,
-  gather_darkness: image61,
-  genesis_emerald: image62,
-  glittering_trinket: image63,
-  godfeeders: image64,
-  golden_trinket: image65,
-  gorge: image66,
-  haze_spewer: image67,
-  hewn_gravitite: image68,
-  ice_dusted_jewel: image69,
-  ice_heart_shard: image70,
-  ignite: image71,
-  imbued_firethorn: image72,
-  infused_crystal: image73,
-  infused_spark: image74,
-  invoke_carnage: image75,
-  irradiax_lump: image76,
-  jade: image77,
-  jagged_one: image78,
-  lava_tendril: image79,
-  lay_waste: image80,
-  lobotomize: image81,
-  luminous_facet: image82,
-  mages_talisman: image83,
-  memory_eater: image84,
-  mindguzzler: image85,
-  molded_valite: image86,
-  moonstone_shard: image87,
-  nebulae_fragment: image88,
-  needlemaw: image89,
-  obliterate: image90,
-  oblivion_swell: image91,
-  onslaught: image92,
-  overload_stance: image93,
-  phoenix_flame: image94,
-  phosphor_nugget: image95,
-  piercing_light: image96,
-  planar_insight: image97,
-  polished_dyaminium: image98,
-  power_trinket: image99,
-  provoker: image100,
-  pulverizing_ray: image101,
-  quartz_shard: image102,
-  qus_form_card: image103,
-  raze: image104,
-  reality_rupture: image105,
-  revealing_firethorn: image106,
-  rolling_death: image107,
-  runic_flute: image108,
-  sagestone: image109,
-  scorn: image110,
-  searing_ruby: image111,
-  seize: image112,
-  sifters_pearl: image113,
-  skewer: image114,
-  slaughter: image115,
-  spark: image116,
-  spectral_echo: image117,
-  sunder: image118,
-  superior_crystal: image119,
-  superior_spark: image120,
-  thought_biter: image121,
-  time_cortex: image122,
-  topple: image123,
-  tourmaline_shard: image124,
-  translocate: image125,
-  transmaterium: image126,
-  unrelenting_ire: image127,
-  unstable_prism: image128,
-  upgraded_efficiency: image129,
-  upgraded_energetics: image130,
-  upgraded_focus: image131,
-  upgraded_potential: image132,
-  upgraded_reflex: image133,
-  venomite: image134,
-  vile_feast: image135,
-  violet_shard: image136,
-  vision_shard: image137,
-  vriswood_amber: image138,
-  wave9_crystal: image139,
-  wave9_spark: image140,
-  wildfire_whip: image141,
-  woven_sky: image142,
+  boundless_fire: image16,
+  breach_stance: image17,
+  buried_light: image18,
+  burning_opal: image19,
+  calcified_electinium: image20,
+  calming_firethorn: image21,
+  cauterizer: image22,
+  cerephage: image23,
+  chaos_arc: image24,
+  chromia_sphere: image25,
+  cleave: image26,
+  clouded_sapphire: image27,
+  clouded_trinket: image28,
+  coiled_trillium: image29,
+  consuming_void: image30,
+  convoke: image31,
+  corrupted_coil: image32,
+  cosmic_pulse: image33,
+  creator_stance: image34,
+  crystal: image35,
+  dark_fire: image36,
+  deadly_accord: image37,
+  descent_of_destruction: image38,
+  devastate: image39,
+  diamond_cluster: image40,
+  digest: image41,
+  dim_crystal: image42,
+  dim_spark: image43,
+  dispel: image44,
+  doom_aegis: image45,
+  doom_howl: image46,
+  doomstone: image47,
+  ember_gale: image48,
+  emerald_shard: image49,
+  empty_crystal: image50,
+  empty_spark: image51,
+  energized_stone: image52,
+  essence_theft: image53,
+  eternitys_echo: image54,
+  ethereal_trinket: image55,
+  eviscerate: image56,
+  eye_of_nothing: image57,
+  feral_lightning: image58,
+  flare: image59,
+  flexing_dagger: image60,
+  focusing_orb: image61,
+  foretold_flame: image62,
+  frenzy: image63,
+  frostfire_maelstrom: image64,
+  fungal_network: image65,
+  fused_opal: image66,
+  garnet_shard: image67,
+  gather_darkness: image68,
+  genesis_emerald: image69,
+  glittering_trinket: image70,
+  godfeeders: image71,
+  golden_trinket: image72,
+  gorge: image73,
+  haze_spewer: image74,
+  hewn_gravitite: image75,
+  ice_dusted_jewel: image76,
+  ice_heart_shard: image77,
+  ignite: image78,
+  imbued_firethorn: image79,
+  infernal_cascade: image80,
+  infused_crystal: image81,
+  infused_spark: image82,
+  inundate: image83,
+  invoke_carnage: image84,
+  irradiax_lump: image85,
+  jade: image86,
+  jagged_one: image87,
+  jeweled_shrapnel: image88,
+  lava_tendril: image89,
+  lay_waste: image90,
+  lobotomize: image91,
+  luminous_facet: image92,
+  mages_talisman: image93,
+  megaflux_slice: image94,
+  memory_eater: image95,
+  mindguzzler: image96,
+  molded_valite: image97,
+  moonstone_shard: image98,
+  nebulae_fragment: image99,
+  needlemaw: image100,
+  obliterate: image101,
+  obliterating_arc: image102,
+  oblivion_swell: image103,
+  onslaught: image104,
+  overload_stance: image105,
+  phoenix_flame: image106,
+  phosphor_nugget: image107,
+  piercing_light: image108,
+  planar_insight: image109,
+  polished_dyaminium: image110,
+  power_trinket: image111,
+  provoker: image112,
+  pulverizing_ray: image113,
+  quartz_shard: image114,
+  qus_form_card: image115,
+  raze: image116,
+  reality_rupture: image117,
+  revealing_firethorn: image118,
+  rolling_death: image119,
+  runic_flute: image120,
+  sagestone: image121,
+  scorn: image122,
+  searing_ruby: image123,
+  seize: image124,
+  sifters_pearl: image125,
+  skewer: image126,
+  slaughter: image127,
+  spark: image128,
+  spectral_echo: image129,
+  stonefury_eruption: image130,
+  sunder: image131,
+  superior_crystal: image132,
+  superior_spark: image133,
+  thought_biter: image134,
+  time_cortex: image135,
+  topple: image136,
+  torrential_spike: image137,
+  tourmaline_shard: image138,
+  translocate: image139,
+  transmaterium: image140,
+  unrelenting_ire: image141,
+  unstable_prism: image142,
+  upgraded_efficiency: image143,
+  upgraded_energetics: image144,
+  upgraded_focus: image145,
+  upgraded_potential: image146,
+  upgraded_reflex: image147,
+  venomite: image148,
+  vile_feast: image149,
+  violet_shard: image150,
+  vision_shard: image151,
+  vitrification: image152,
+  vriswood_amber: image153,
+  wave9_crystal: image154,
+  wave9_spark: image155,
+  wildfire_whip: image156,
+  worldshift: image157,
+  woven_sky: image158,
 }
 
 export const MAGE_IMAGE_IMPORTS: Record<string, GeneratedImagePair> = {
-  adelheim: { front: image143, back: image144 },
-  brama: { front: image145, back: image146 },
-  dezmodia: { front: image147, back: image148 },
-  inco: { front: image149, back: image150 },
-  indira: { front: image151, back: image152 },
-  jian: { front: image153, back: image154 },
-  kadir: { front: image155, back: image156 },
-  lash: { front: image157, back: image158 },
-  mist: { front: image159, back: image160 },
-  nook: { front: image161, back: image162 },
-  phaedraxa: { front: image163, back: image164 },
-  qu: { front: image165, back: image166 },
-  remnant: { front: image167, back: image168 },
-  stake: { front: image169, back: image170 },
-  tressa: { front: image171, back: image172 },
-  wolf: { front: image173, back: image174 },
-  xaxos: { front: image175, back: image176 },
-  yan_magda: { front: image177, back: image178 },
+  adelheim: { front: image159, back: image160 },
+  brama: { front: image161, back: image162 },
+  dezmodia: { front: image163, back: image164 },
+  inco: { front: image165, back: image166 },
+  indira: { front: image167, back: image168 },
+  jian: { front: image169, back: image170 },
+  kadir: { front: image171, back: image172 },
+  lash: { front: image173, back: image174 },
+  mist: { front: image175, back: image176 },
+  nook: { front: image177, back: image178 },
+  phaedraxa: { front: image179, back: image180 },
+  qu: { front: image181, back: image182 },
+  remnant: { front: image183, back: image184 },
+  stake: { front: image185, back: image186 },
+  tressa: { front: image187, back: image188 },
+  wolf: { front: image189, back: image190 },
+  xaxos: { front: image191, back: image192 },
+  yan_magda: { front: image193, back: image194 },
 }
 
 export const MAGE_TOKEN_IMAGE_IMPORTS: Record<string, string> = {
-  doom_token_transparent: image179,
+  doom_token_transparent: image195,
 }
 
 export const NEMESIS_MAT_IMAGE_IMPORTS: Record<string, GeneratedImagePair> = {
-  prince_of_gluttons: { front: image180, back: image181 },
-  rageborne: { front: image182, back: image183 },
+  prince_of_gluttons: { front: image196, back: image197 },
+  rageborne: { front: image198, back: image199 },
 }
 
 export const BREACH_IMAGE_IMPORTS: Record<string, string> = {
-  "1:open": image184,
-  "2:down": image185,
-  "2:open": image186,
-  "3:down": image187,
-  "3:open": image188,
-  "4:down": image189,
-  "4:open": image190,
+  "1:open": image200,
+  "2:down": image201,
+  "2:open": image202,
+  "3:down": image203,
+  "3:open": image204,
+  "4:down": image205,
+  "4:open": image206,
 }
 

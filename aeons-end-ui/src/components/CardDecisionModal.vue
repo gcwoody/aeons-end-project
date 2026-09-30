@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
 import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
-import { cardImageUrl, specificDeckCardImageUrl } from '../card-images'
+import { cardImageUrl, pulseTokenImageUrl, specificDeckCardImageUrl } from '../card-images'
 import { mageImageUrls } from '../mage-images'
 import { useGame } from '../game/useGame'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
@@ -13,6 +13,8 @@ import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardCho
 import ModalBase from './ModalBase.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
 import CardSurface from './CardSurface.vue'
+import TwoButtonChoice from './TwoButtonChoice.vue'
+import TokenAmountChoicePanel from './TokenAmountChoicePanel.vue'
 
 const {
   state, resolveDecision, confirmPendingPreppedSpells,
@@ -21,6 +23,7 @@ const {
 const { modalEl, modalStyle, dragging, startDrag, resetModalPosition } = useModalDrag()
 const selectedCardKeys = ref<string[]>([])
 const selectedTurnOrder = ref<number[]>([])
+const selectedTokenAmount = ref(0)
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
 const decisionFormPreview = computed(() => {
@@ -34,6 +37,7 @@ const decisionFormPreview = computed(() => {
 const isDirectBoardCardDecision = computed(() => isBoardCardSelectionActive())
 const revealedCardId = computed(() => {
   const current = decision.value
+  if (current?.kind === 'confirm_revealed_card') return current.cardId
   if (current?.kind !== 'choose_one' || state.game?.pendingEffect?.awaiting?.kind !== 'reveal_top_cards') return null
   return state.game.pendingEffect.revealedTopCard?.cardId ?? null
 })
@@ -50,14 +54,32 @@ const isDirectMarketDecision = computed(() =>
 const isLargeSpecificDeckSelection = computed(() =>
   decision.value?.kind === 'select_cards'
     && decision.value.source === 'specific_deck'
-    && (state.game?.pendingEffect?.specificDeckReveal?.mode === 'put_one_into_play'
+    && ((state.game?.pendingEffect?.specificDeckReveal?.mode === 'put_one_into_play'
+      && decision.value.layout !== 'instant-card-choice')
       || state.game?.pendingEffect?.awaiting?.kind === 'select_breach_upgrade_card'),
 )
+const isInstantCardChoice = computed(() =>
+  decision.value?.kind === 'select_cards' && decision.value.layout === 'instant-card-choice',
+)
+const instantCardChoices = computed<LargeCardChoiceOption[]>(() => {
+  const current = decision.value
+  if (!isInstantCardChoice.value || current?.kind !== 'select_cards') return []
+  return current.candidates.map(choice => ({
+    id: choiceKey(choice),
+    cardId: choice.cardId,
+    cardName: choice.cardName,
+    disabled: choice.disabled,
+    disabledReason: choice.disabledReason,
+  }))
+})
 const isLargeCardSelection = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'large-card-selection',
 )
 const isLargeCardChoice = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'large-card-choice',
+)
+const isTwoButtonChoice = computed(() =>
+  decision.value?.kind === 'choose_one' && decision.value.layout === 'two-button-choice',
 )
 const largeCardChoices = computed<LargeCardChoiceOption[]>(() => {
   if (!isLargeCardChoice.value || decision.value?.kind !== 'choose_one') return []
@@ -88,6 +110,9 @@ const showsPlayerLife = computed(() => {
 watch(() => decision.value?.id, () => {
   selectedCardKeys.value = []
   selectedTurnOrder.value = []
+  selectedTokenAmount.value = decision.value?.kind === 'choose_token_amount'
+    ? decision.value.minAmount
+    : 0
   // Each decision is a new modal context. Do not carry a position dragged
   // for a previous decision into the next one.
   resetModalPosition()
@@ -217,6 +242,13 @@ function chooseLargeCard(optionId: string) {
   if (!isLargeCardChoice.value || decision.value?.kind !== 'choose_one') return
   const option = decision.value.options.find(candidate => candidate.id === optionId && !candidate.disabled)
   if (option) answer({ kind: 'choose_one', optionId: option.id })
+}
+
+function chooseInstantCardChoice(choiceId: string) {
+  const current = decision.value
+  if (!isInstantCardChoice.value || current?.kind !== 'select_cards') return
+  const choice = current.candidates.find(candidate => choiceKey(candidate) === choiceId && !candidate.disabled)
+  if (choice) answer({ kind: 'select_cards', choices: [choice] })
 }
 
 function confirmSelectedCards() {
@@ -436,7 +468,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
   </ModalBase>
 
   <ModalBase
-    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target'"
+    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target' && decision.kind !== 'allocate_divided_damage'"
     overlay-class="decision-overlay"
     :blocking="true"
     v-model:panel-ref="modalEl"
@@ -455,7 +487,36 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         :image-alt="`${getCard(decisionFormPreview.cardId).name} — ${decisionFormPreview.formSide === 'taker' ? 'Taker' : 'Giver'} Form`"
       />
 
-      <template v-if="decision.kind === 'choose_one' && revealedCardId">
+      <TokenAmountChoicePanel
+        v-if="decision.kind === 'choose_token_amount'"
+        token-name="Pulse"
+        :token-image-url="pulseTokenImageUrl()"
+        :min-amount="decision.minAmount"
+        :max-amount="decision.maxAmount"
+        :summary="decision.summary"
+        v-model="selectedTokenAmount"
+        @confirm="answer({ kind: 'choose_token_amount', amount: selectedTokenAmount })"
+      />
+
+      <template v-else-if="decision.kind === 'confirm_revealed_card' && revealedCardId">
+        <p class="decision-hint" v-if="revealedCardOwnerId">
+          {{ playerName(revealedCardOwnerId) }} revealed this card from the top of their deck.
+        </p>
+        <p class="decision-hint" v-else>
+          A card was revealed from the top of a deck.
+        </p>
+        <div class="reveal-top-card">
+          <img v-if="cardImageUrl(revealedCardId)" :src="cardImageUrl(revealedCardId)" :alt="getCard(revealedCardId).name" draggable="false" />
+          <span v-else>{{ getCard(revealedCardId).name }}</span>
+        </div>
+        <div class="decision-options">
+          <button class="btn primary decision-option" @click="answer({ kind: 'confirm_revealed_card', accepted: true })">
+            Confirm
+          </button>
+        </div>
+      </template>
+
+      <template v-else-if="decision.kind === 'choose_one' && revealedCardId">
         <p class="decision-hint" v-if="revealedCardOwnerId">
           {{ playerName(revealedCardOwnerId) }} revealed this card from the top of their deck.
         </p>
@@ -526,10 +587,22 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         @select="answer({ kind: 'choose_one', optionId: $event })"
       />
 
+      <TwoButtonChoice
+        v-else-if="isTwoButtonChoice && decision.kind === 'choose_one'"
+        :options="decision.options"
+        @select="answer({ kind: 'choose_one', optionId: $event })"
+      />
+
       <LargeCardChoicePanel
         v-else-if="isLargeCardChoice"
         :choices="largeCardChoices"
         @choose="chooseLargeCard"
+      />
+
+      <LargeCardChoicePanel
+        v-else-if="isInstantCardChoice"
+        :choices="instantCardChoices"
+        @choose="chooseInstantCardChoice"
       />
 
       <CardSelectionPanel

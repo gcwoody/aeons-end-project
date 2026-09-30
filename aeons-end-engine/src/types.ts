@@ -1,6 +1,6 @@
 // ===== Card Types =====
 export type CardType = 'gem' | 'relic' | 'spell' | 'treasure' | 'mage_form' | 'breach_upgrade' | 'attack' | 'minion' | 'power' | 'strike'
-export type CardMechanic = 'pulse_token' | 'recall' | 'develop' | 'trinket'
+export type CardMechanic = 'pulse_token' | 'recall' | 'develop' | 'trinket' | 'unlimited_conjure'
 
 export type TreasureLevel = 1 | 2 | 3
 
@@ -42,6 +42,7 @@ export type EffectAmount =
       /** Cost of the card selected by the immediately preceding card-selection effect. */
       kind: 'last_selection_cost'
     }
+  | { kind: 'last_chosen_token_amount' }
   | { kind: 'current_minion_life' }
 
 export type EffectComparison = 'equals' | 'at_least'
@@ -85,12 +86,23 @@ export type CardEffectCondition =
       kind: 'has_unopened_breach'
     }
   | { kind: 'all_breaches_opened' }
+  | { kind: 'has_pulse_token_capacity' }
+  | { kind: 'has_focusable_breach'; target: 'self' | 'ally' | 'any_player' }
   | { kind: 'mage_form_is'; form: 'giver' | 'taker'; player?: 'source' | 'active' }
   | { kind: 'has_charge'; amount: number }
   | { kind: 'has_knowledge'; amount: number; player?: 'source' | 'active' }
   | { kind: 'has_doom'; amount: number }
   | { kind: 'has_aether'; amount: number }
-  | { kind: 'has_card_in_zone'; zone: CardZone; cardType?: CardType }
+  | { kind: 'has_card_in_zone'; zone: CardZone; cardType?: CardType; cardId?: string }
+  | {
+      /** Number of cards matching these optional filters in one player zone. */
+      kind: 'zone_card_count'
+      zone: CardZone
+      cardId?: string
+      cardType?: CardType
+      comparison: EffectComparison
+      count: number
+    }
   | { kind: 'has_affordable_card_in_specific_deck'; cardType: CardType; payment: 'knowledge'; player?: 'source' | 'active' }
   | { kind: 'has_installed_breach_upgrade'; breachIndex: number }
   | { kind: 'has_card_in_hand'; cardType: 'gem' | 'relic' | 'spell' }
@@ -106,6 +118,7 @@ export type CardEffectCondition =
       count: number
     }
   | { kind: 'set_supply_pile_empty'; cardId: string }
+  | { kind: 'supply_pile_empty'; cardId: string }
   /** True when the immediately preceding card-selection effect selected at least one card. */
   | { kind: 'last_selection_nonempty' }
   /** True when the immediately preceding optional choice was accepted. */
@@ -157,9 +170,18 @@ export type PlayerTargetRef = { kind: 'player'; playerId: PlayerId }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
 export type CardSelectionSource = 'hand' | 'discard' | 'hand_or_discard' | 'deck_or_discard' | 'played_gem_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
-export type CardSelectionLayout = 'simple' | 'pile'
+export type CardSelectionLayout = 'simple' | 'pile' | 'instant-card-choice'
 export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardGainDestination = 'discard_top' | 'deck_top'
+
+export interface TokenAmountChoiceSummary {
+  /** Sentence containing `{amount}`, rendered above the confirmation button. */
+  template: string
+  /** Amount contributed by the card before the selected token count. */
+  baseAmount: number
+  /** Amount added to the summary per selected token. Defaults to one. */
+  amountPerToken?: number
+}
 
 export interface CardChoice {
   zone: CardZone
@@ -250,6 +272,8 @@ export interface PendingEffectResolution {
   effectPlayerId?: string
   /** The prepped spell selected by an ability and reused by later effects. */
   selectedPreppedSpell?: PreppedSpellChoice
+  /** Nested cast effects temporarily hide an outer selected-spell continuation. */
+  preppedSpellSelectionStack?: Array<PreppedSpellChoice | null>
   /** Confirms a board click before a prepped-spell cast effect continues. */
   confirmedPreppedSpell?: PreppedSpellChoice
   /** Resume the Nemesis state machine when this effect frame finishes. */
@@ -263,6 +287,8 @@ export interface PendingEffectResolution {
   lastSelectedCardCost?: number
   /** Number of Doom lost by the most recent lose_doom effect. */
   lastDoomLost?: number
+  /** Token amount selected by the most recent choose_token_amount effect. */
+  lastChosenTokenAmount?: number
   /** Result of the most recent optional choice in this effect frame. */
   lastOptionalAccepted?: boolean
   /** Players still waiting to reveal a top deck card for a reveal effect. */
@@ -291,6 +317,13 @@ export interface PendingEffectResolution {
   firethornPlayerIds?: PlayerId[]
   firethornPlayerIndex?: number
   firethornCurrentPlayerId?: PlayerId
+  /** Damage allocations while resolving a divided-damage spell. */
+  dividedDamageAllocation?: {
+    total: number
+    remaining: number
+    target: DamageTargetScope
+    amounts: Record<string, number>
+  }
 }
 
 export interface PendingSpellCast {
@@ -338,7 +371,22 @@ export type PendingDecision = PendingDecisionBase & (
       kind: 'choose_one'
       options: DecisionOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
+      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
+    }
+  | {
+      /** Adjustable damage allocation stays active while targets are clicked. */
+      kind: 'allocate_divided_damage'
+      targets: DamageTargetRef[]
+      total: number
+    }
+  | {
+      /** Spend an adjustable number of one token type before continuing effects. */
+      kind: 'choose_token_amount'
+      token: 'pulse'
+      minAmount: number
+      maxAmount: number
+      available: number
+      summary?: TokenAmountChoiceSummary
     }
   | {
       kind: 'choose_optional'
@@ -365,6 +413,8 @@ export type PendingDecision = PendingDecisionBase & (
       candidates: PreppedSpellChoice[]
       /** Allows an effect such as Runic Flute to stop after any cast. */
       allowSkip?: boolean
+      /** This is an explicit confirmation of a repeated cast of the same spell. */
+      repeat?: boolean
     }
   | { kind: 'select_breach'; candidates: BreachChoice[] }
   | { kind: 'select_conjure_breach'; cardId: string; candidates: BreachChoice[] }
@@ -429,6 +479,12 @@ export type PendingDecision = PendingDecisionBase & (
       trigger: NemesisEffectTrigger
     }
   | {
+      /** A revealed player-deck card must remain visible until the effect is confirmed. */
+      kind: 'confirm_revealed_card'
+      cardId: string
+      playerId: PlayerId
+    }
+  | {
       kind: 'choose_turn_order_position'
       cardId: string
     }
@@ -454,6 +510,9 @@ export type PendingDecisionAnswer =
   | { kind: 'select_life_target'; target: LifeTargetRef }
   | { kind: 'select_player_target'; target: PlayerTargetRef }
   | { kind: 'select_damage_target'; target: DamageTargetRef }
+  | { kind: 'allocate_divided_damage'; action: 'add' | 'remove'; targetId: string }
+  | { kind: 'allocate_divided_damage'; action: 'confirm' }
+  | { kind: 'choose_token_amount'; amount: number }
   | { kind: 'select_market_pile'; choice: MarketPileChoice }
   | { kind: 'select_setup_devour_pile'; choice: MarketPileChoice }
   | { kind: 'reorder_turn_order'; order: number[] }
@@ -461,6 +520,7 @@ export type PendingDecisionAnswer =
   | { kind: 'confirm_turn_order_reveal'; accepted: true }
   | { kind: 'confirm_nemesis_draw'; accepted: true }
   | { kind: 'confirm_nemesis_effect'; accepted: true }
+  | { kind: 'confirm_revealed_card'; accepted: true }
   | { kind: 'choose_turn_order_position'; position: 'top' | 'bottom' }
   | { kind: 'confirm_prepped_effect'; accepted: true }
 
@@ -481,6 +541,8 @@ export interface PlayerTurnEffects {
   prepSpellLimitByBreach?: Record<number, number | 'unlimited'>
   /** Breach upgrade triggers already used during this active player's turn. */
   usedBreachUpgradeEffects?: string[]
+  /** Spell damage bonuses that last until this player's Draw Phase. */
+  spellDamageBonuses?: Array<{ amount: number; maxCost: number }>
 }
 
 export interface CardEffectOption {
@@ -496,13 +558,30 @@ export interface CardEffectOption {
 /** A small, serializable vocabulary for reusable card rules. */
 export type CardEffect =
   | { kind: 'gain_pulse_token'; amount?: number; target?: PlayerTargetScope }
-  | { kind: 'lose_pulse_token'; amount: number; target?: PlayerTargetScope }
+  | { kind: 'lose_pulse_token'; amount: EffectAmount; target?: PlayerTargetScope }
+  | {
+      kind: 'choose_token_amount'
+      token: 'pulse'
+      prompt: string
+      minAmount?: number
+      maxAmount?: number
+      summary?: TokenAmountChoiceSummary
+      effects: CardEffect[]
+    }
   | { kind: 'gain_knowledge'; amount: number; target?: 'self' | 'breach_owner' }
   | { kind: 'lose_knowledge'; amount: number }
   | { kind: 'gain_doom'; amount: number }
   | { kind: 'lose_doom'; amount: number | 'all' }
   | { kind: 'repeat_effect'; count: 'last_doom_lost'; effects: CardEffect[] }
   | { kind: 'deal_damage_to_each_enemy'; amount: number }
+  /** Deal one damage pool, initially auto-allocate by current life, then allow edits and explicit confirmation. */
+  | {
+      kind: 'deal_damage_divided'
+      amount: EffectAmount
+      target: DamageTargetScope
+      /** Damage modifiers are added to this single pool before players divide it. */
+      additionalDamage?: AdditionalDamage[]
+    }
   | { kind: 'install_breach_upgrade'; breachIndex: number; cardType: 'breach_upgrade'; player?: 'source' | 'active' }
   | { kind: 'select_breach_upgrade_card'; breachIndex: number; ownerId: PlayerId }
   /** Internal continuation after the player selects a Breach Upgrade card. */
@@ -525,11 +604,22 @@ export type CardEffect =
   /** Return the currently played Trinket to the shared deck's known bottom. */
   | { kind: 'return_trinket_to_deck' }
   | { kind: 'conjure'; breachEligibility?: 'standard' | 'any_present' }
+  /** Reveal an ally's top card and put it in hand only if it is a spell. */
+  | { kind: 'reveal_top_card_to_hand_if_spell'; target: PlayerTargetScope }
+  /** Return the card that created this effect frame from discard to its owner's hand. */
+  | { kind: 'move_source_card_to_hand' }
+  /** Remove one card from a supply pile, identified directly or by this effect's source card. */
+  /** Remove one card from the explicitly named Supply pile. */
+  | { kind: 'destroy_market_card'; cardId: string }
+  /** Grant a temporary bonus to the caster's later spells within this cost limit. */
+  | { kind: 'grant_spell_damage_bonus'; amount: number; maxCost: number }
   | { kind: 'spend_aether'; amount: number }
   | {
       kind: 'gain_charge'
       amount: number
-      target: 'self' | 'ally' | 'allies_collectively' | 'breach_owner'
+      target: 'self' | 'ally' | 'each_ally' | 'allies_collectively' | 'breach_owner'
+      /** Filter individually targeted allies before granting charge. */
+      condition?: CardEffectCondition
       /** Continue the following effects from the selected ally's perspective. */
       continueAsTarget?: boolean
     }
@@ -604,7 +694,12 @@ export type CardEffect =
   /** Gain a matching card from the active Mage's Swap zone onto their discard pile. */
   | { kind: 'gain_card_from_swap_zone'; nameIncludes: string[] }
   /** Reveal and resolve the top cards of the active Mage's specific deck. */
-  | { kind: 'reveal_specific_deck'; mode: 'put_one_into_play' | 'return_each' }
+  | {
+      kind: 'reveal_specific_deck'
+      mode: 'put_one_into_play' | 'return_each'
+      /** Optional one-click presentation for choosing one revealed card. */
+      choiceLayout?: CardSelectionLayout
+    }
   /** Move cards from one supply pile to the active Nemesis' specific pile. */
   | {
       kind: 'devour_market_cards'
@@ -639,11 +734,14 @@ export type CardEffect =
       amount: number
       minAmount?: number
       maxAmount?: number
+      minCost?: number
       cardType?: 'gem' | 'relic' | 'spell'
       /** Restrict this discard to exact card definitions. */
       cardIds?: string[]
       target?: PlayerTargetScope
       selection?: PlayerSelectionRule
+      /** Restore the effect to its source Mage after a player-targeted discard. */
+      restoreToSourceAfterSelection?: boolean
     }
   | {
       kind: 'discard_prepped_spells'
@@ -681,10 +779,14 @@ export type CardEffect =
   | { kind: 'conditional'; condition: CardEffectCondition; effects: CardEffect[] }
   | {
       kind: 'focus_breach'
-      target: 'self' | 'any_player'
+      target: 'self' | 'ally' | 'any_player'
       selection?: 'choose' | 'lowest_focus_cost'
     }
-  | { kind: 'focus_breach_all_players' }
+  | {
+      kind: 'focus_breach_all_players'
+      target?: 'all_players' | 'allies'
+      condition?: CardEffectCondition
+    }
   | { kind: 'reveal_top_cards' }
   | {
       kind: 'deal_damage_from_last_selection'
@@ -706,7 +808,7 @@ export type CardEffect =
       prompt: string
       options: CardEffectOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
+      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
     }
   | {
       kind: 'choose_optional'
@@ -734,13 +836,21 @@ export type CardEffect =
   | {
       kind: 'cast_prepped_spell'
       source: 'any_prepped_spell' | 'selected_prepped_spell' | 'prepped_spell_prepped_this_turn'
-      /** Cast spells are discarded by default; set false only for explicit
-       * effects such as Jian's Black Mirror first cast. */
+      /** Cast spells are discarded by default; set false only for an explicit
+       * exception such as Jian's Black Mirror or the first Infernal Cascade
+       * cast. Repeated casts are separate casts and regain the default. */
       discard?: boolean
       /** Let a "may cast" effect skip without choosing a spell. */
       allowSkip?: boolean
+      /** Minimum and maximum printed/prepared cost eligible for this cast. */
+      minCost?: number
+      maxCost?: number
+      /** Total number of times to cast the chosen spell. */
+      times?: number
+      /** Require the player to click the same prepped spell before each repeat. */
+      repeatConfirmation?: boolean
       bonusDamage?: number
-      ownerScope?: 'any_player' | 'ally'
+      ownerScope?: 'any_player' | 'ally' | 'self'
       returnToCasterHand?: boolean
     }
   /** Shuffle a selected player turn-order card back into the deck and damage its owner. */
@@ -938,6 +1048,8 @@ export interface BreachState {
   prepSpells: string[]
   /** Parallel flags used by effects that target spells prepped this turn. */
   preppedThisTurn?: boolean[]
+  /** Stable identities for prepped spell copies, preserved when they move between Breaches. */
+  preppedSpellInstanceIds?: string[]
   /** Parallel flags for face-down Conjure spells. */
   preppedSpellFaceDown?: boolean[]
   focusDirection: Direction
@@ -986,6 +1098,10 @@ export interface PlayerState {
   maxHp: number
   deck: string[]
   hand: string[]
+  /** Identity carried in hand for a spell returned from a Breach this turn. */
+  handPreppedSpellInstanceIds?: Array<string | null>
+  /** Monotonic source for stable identities assigned when spells are first prepped. */
+  preppedSpellInstanceCounter?: number
   discard: string[]
   playedThisTurn: string[]
   /** Mage-specific face-up cards waiting to be swapped into the deck. */

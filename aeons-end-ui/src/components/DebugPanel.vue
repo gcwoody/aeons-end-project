@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
-import { getPlayer, toRoman } from '@engine/engine'
+import { getPlayer, MAX_PULSE_TOKENS, toRoman } from '@engine/engine'
 import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
 import type { CardDef, GameState, PlayerState } from '@engine/types'
 import { useGame } from '../game/useGame'
@@ -8,9 +8,10 @@ import { cardImageUrl } from '../card-images'
 import DebugCardPicker from './DebugCardPicker.vue'
 import DebugNumberInput from './DebugNumberInput.vue'
 import CardHoverPreview from './CardHoverPreview.vue'
+import DebugDeckOrderModal from './DebugDeckOrderModal.vue'
 import { displayMageName, displayPlayerId } from '../game/display-name'
 
-const { state, toggleDebug, clearSaves } = useGame()
+const { state, toggleDebug, setDebugFreeSpellCastEnabled, clearSaves } = useGame()
 
 const panelEl = ref<HTMLElement | null>(null)
 const panelPosition = reactive({ x: 24, y: 16, width: 680, height: 760 })
@@ -43,7 +44,7 @@ function clampPanelPosition() {
 
 function isInteractiveTarget(target: EventTarget | null) {
   return target instanceof Element && Boolean(
-    target.closest('button, input, select, textarea, option, label, a, [data-debug-resize]'),
+    target.closest('button, input, select, textarea, option, label, a, [draggable="true"], [data-debug-resize]'),
   )
 }
 
@@ -152,6 +153,39 @@ const addZone = ref<'hand' | 'deck' | 'discard'>('hand')
 const addCard = ref('crystal')
 const addNemesisCard = ref(allNemesisCards.value[0] ?? '')
 
+const deckOrderEditingEnabled = ref(false)
+const deckOrderModalOpen = ref(false)
+const deckOrderPlayerId = ref('')
+const deckOrderPlayer = computed(() =>
+  players.value.find(player => player.id === deckOrderPlayerId.value)
+    ?? players.value.find(player => player.id === currentTurnPlayerId.value)
+    ?? players.value[0],
+)
+
+watch(
+  () => [state.game, currentTurnPlayerId.value] as const,
+  ([, playerId]) => {
+    if (!players.value.some(player => player.id === deckOrderPlayerId.value)) {
+      deckOrderPlayerId.value = playerId
+    }
+  },
+  { immediate: true },
+)
+
+function setDeckOrderEditing(enabled: boolean) {
+  deckOrderEditingEnabled.value = enabled
+  if (!enabled) deckOrderModalOpen.value = false
+}
+
+function openDeckOrderModal() {
+  if (!deckOrderEditingEnabled.value) return
+  deckOrderModalOpen.value = true
+}
+
+function closeDeckOrderModal() {
+  deckOrderModalOpen.value = false
+}
+
 function addCardToPlayer() {
   const playerId = selectedAddPlayer.value
   if (!playerId) return
@@ -215,6 +249,16 @@ function updateKnowledge(playerId: string, event: Event) {
   input.value = String(player.knowledge)
 }
 
+function updatePulseTokens(playerId: string, event: Event) {
+  const input = event.target as HTMLInputElement
+  const player = getPlayer(state.game!, playerId)
+  const amount = input.valueAsNumber
+  player.pulseTokens = Number.isFinite(amount)
+    ? Math.min(MAX_PULSE_TOKENS, Math.max(0, Math.floor(amount)))
+    : Math.min(MAX_PULSE_TOKENS, Math.max(0, player.pulseTokens ?? 0))
+  input.value = String(player.pulseTokens)
+}
+
 const jsonText = ref('')
 function loadCurrentJson() {
   jsonText.value = JSON.stringify({
@@ -251,6 +295,7 @@ onMounted(() => {
 
 watch(() => state.debugOpen, (open) => {
   if (open) nextTick(() => panelEl.value?.focus({ preventScroll: true }))
+  else closeDeckOrderModal()
 })
 
 onBeforeUnmount(() => {
@@ -275,6 +320,42 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="debug-content">
+      <div class="debug-section">
+        <label class="debug-toggle-row">
+          <input
+            type="checkbox"
+            :checked="state.debugFreeSpellCastEnabled"
+            @change="setDebugFreeSpellCastEnabled(($event.target as HTMLInputElement).checked)"
+          />
+          <span>Enable free prepped spell casting</span>
+        </label>
+        <span class="debug-hint">Shows a control bar button during a player Main Phase.</span>
+      </div>
+
+      <div class="debug-section">
+        <label class="debug-toggle-row">
+          <input
+            :checked="deckOrderEditingEnabled"
+            type="checkbox"
+            aria-label="Enable deck order editing"
+            @change="setDeckOrderEditing(($event.target as HTMLInputElement).checked)"
+          />
+          <span>Enable deck order editing</span>
+        </label>
+        <span class="debug-hint">Choose a player, then open a separate deck window to reorder cards. The first card is the next card drawn.</span>
+        <div v-if="deckOrderEditingEnabled" class="debug-deck-controls">
+          <label>
+            Player
+            <select v-model="deckOrderPlayerId" aria-label="Deck order player">
+              <option v-for="p in players" :key="p.id" :value="p.id">
+                {{ displayMageName(p.mageType) }} ({{ displayPlayerId(p.id) }})
+              </option>
+            </select>
+          </label>
+          <button class="btn small" type="button" :disabled="!deckOrderPlayer" @click="openDeckOrderModal">Edit Deck Order</button>
+        </div>
+      </div>
+
       <div class="debug-section">
         <div class="debug-row debug-vitals-row">
           <div class="debug-vital-field">
@@ -315,6 +396,16 @@ onBeforeUnmount(() => {
               :label="`Knowledge for ${displayMageName(p.mageType)}`"
               :min="0"
               @change="updateKnowledge(p.id, $event)"
+            />
+          </div>
+          <div class="debug-stat-field">
+            <span>Pulse tokens</span>
+            <DebugNumberInput
+              :model-value="p.pulseTokens ?? 0"
+              :label="`Pulse tokens for ${displayMageName(p.mageType)}`"
+              :min="0"
+              :max="MAX_PULSE_TOKENS"
+              @change="updatePulseTokens(p.id, $event)"
             />
           </div>
         </div>
@@ -405,4 +496,10 @@ onBeforeUnmount(() => {
       @pointerdown.stop="startResize"
     ></button>
   </div>
+
+  <DebugDeckOrderModal
+    v-if="deckOrderModalOpen && state.game"
+    :player="deckOrderPlayer"
+    @close="closeDeckOrderModal"
+  />
 </template>

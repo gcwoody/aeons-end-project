@@ -40,7 +40,7 @@ test('Recall highlighting appears only while an unused paid Recall is available'
     state.game.pendingDecision = null
     state.game.pendingEffect = null
     player.hand = ['crystal']
-    player.discard = ['atomized_ash']
+    player.discard = ['atomized_ash', 'phosphor_nugget']
     player.pulseTokens = 1
     player.turnEffects.usedRecallEffects = {}
   })
@@ -49,10 +49,13 @@ test('Recall highlighting appears only while an unused paid Recall is available'
   await expect(discard).toHaveClass(/recall-action-available/)
   await discard.click()
   const recallCard = page.locator('.pile-modal .pile-card.recall-card-action')
-  await expect(recallCard).toHaveCount(1)
+  await expect(recallCard).toHaveCount(2)
   const recalledDiscardCard = discard.locator('.player-discard-top-card')
   await expect(recalledDiscardCard).toHaveCSS('border-top-color', 'rgb(101, 184, 255)')
-  await recallCard.click()
+  await recallCard.first().click()
+  await expect(page.locator('.pile-modal')).toHaveCount(1)
+  await expect(page.locator('.pile-modal .pile-card.recall-card-action')).toHaveCount(1)
+  await page.locator('.pile-modal .pile-card.recall-card-action').click()
   await expect(page.locator('.pile-modal')).toHaveCount(0)
   await expect(discard).not.toHaveClass(/recall-action-available/)
 
@@ -62,6 +65,33 @@ test('Recall highlighting appears only while an unused paid Recall is available'
   const result = JSON.parse(await field.inputValue())
   const player = result.game.players.find((candidate: { id: string }) => candidate.id === playerId)
   expect(player.pulseTokens).toBe(0)
+})
+
+test('Recall closes the discard viewer before a follow-up spell decision', async ({ page }) => {
+  await startJianGame(page)
+  await applyDebugState(page, state => {
+    const player = state.game.players[0]
+    state.selectedPlayer = player.id
+    state.phase = 'main'
+    state.game.currentTurn = player.id
+    state.game.currentPhase = 'main'
+    state.game.pendingDecision = null
+    state.game.pendingEffect = null
+    player.hand = ['crystal']
+    player.deck = ['crystal']
+    player.discard = ['eternitys_echo']
+    player.turnEffects.usedRecallEffects = {}
+    const breach = player.breaches[0]
+    breach.opened = true
+    breach.prepSpells = ['spark']
+    breach.preppedThisTurn = [false]
+    breach.preppedSpellFaceDown = [false]
+  })
+
+  await page.locator('.player-discard-pile').click()
+  await page.locator('.pile-modal .pile-card.recall-card-action').click()
+  await expect(page.locator('.pile-modal')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Choose a prepped spell to cast' })).toBeVisible()
 })
 
 test('Pulse, Recall usage, shared Develop, and Trinket knowledge survive Save & Exit and Resume', async ({ page }) => {

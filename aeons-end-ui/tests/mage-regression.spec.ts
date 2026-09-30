@@ -1,4 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test'
+import { resolve } from 'node:path'
 
 const newMages = ['adelheim', 'kadir', 'lash', 'mist', 'phaedraxa']
 
@@ -379,7 +380,10 @@ test('a spell stays highlighted until its damage target is confirmed', async ({ 
   const pendingSpell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
   await expect(pendingSpell).toHaveClass(/pending-cast-spell/)
   await expect(pendingSpell.locator('.spell-damage-badge')).toHaveText('3')
-  await expect(page.locator('.nemesis-play-card.damage-target')).toBeVisible()
+  const enemyMinion = page.locator('.nemesis-play-card').filter({ has: page.locator('img[alt="Bane Sire"]') })
+  await expect(enemyMinion).toBeVisible()
+  await expect(enemyMinion).toHaveClass(/damage-target/)
+  await expect(page.locator('.nemesis-mat-wrap')).toHaveClass(/damage-target/)
 
   await page.locator('.char-btn').nth(1).click()
   await page.locator('.deck-pile.clickable').click()
@@ -387,7 +391,7 @@ test('a spell stays highlighted until its damage target is confirmed', async ({ 
   await page.locator('.pile-modal').getByRole('button', { name: 'Close', exact: true }).click()
   await page.locator('.char-btn').first().click()
 
-  await page.locator('.nemesis-play-card.damage-target').click()
+  await enemyMinion.click()
   await expect(pendingSpell).toHaveCount(0)
 })
 
@@ -442,7 +446,7 @@ test('Flare shows a conditional damage range before the next turn-order card is 
   await expect(badge).toHaveText('1/3')
 })
 
-test('Oblivion Swell highlights and grants Aether when its prepped spell is clicked', async ({ page }) => {
+test('Frostfire Maelstrom prepped highlight overlays the card without resizing its image', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -452,19 +456,25 @@ test('Oblivion Swell highlights and grants Aether when its prepped spell is clic
   await applyDebugGameState(page, game => {
     game.currentTurn = game.players[0].id
     game.currentPhase = 'main'
-    game.players[0].hand = ['crystal']
-    game.players[0].bonusAether = 0
+    game.players[0].pulseTokens = 0
     game.players[0].turnEffects.usedPreppedEffects = []
     game.players[0].breaches[0].opened = true
-    game.players[0].breaches[0].prepSpells = ['oblivion_swell']
+    game.players[0].breaches[0].prepSpells = ['frostfire_maelstrom']
   }, 'main')
 
   const spell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
   await expect(spell).toHaveClass(/manual-prepped-action/)
+  const imageSizeBefore = await spell.locator('img').evaluate(image => {
+    const rect = image.getBoundingClientRect()
+    return { width: rect.width, height: rect.height }
+  })
   await spell.click()
   await expect(spell).not.toHaveClass(/manual-prepped-action/)
-  await expect(page.locator('.aether img[alt="Aether"]')).toBeVisible()
-  await expect(page.locator('.aether > span')).toHaveText('1')
+  const imageSizeAfter = await spell.locator('img').evaluate(image => {
+    const rect = image.getBoundingClientRect()
+    return { width: rect.width, height: rect.height }
+  })
+  expect(imageSizeAfter).toEqual(imageSizeBefore)
 })
 
 test('Focusing Orb exposes clickable orange focus buttons for effect targets', async ({ page }) => {
@@ -1101,4 +1111,95 @@ test('mage view transition fades the player board without fading the control bar
   await expect(page.locator('.player-area > .breaches')).toHaveCSS('animation-name', 'player-area-turn-arrival')
   await expect(page.locator('.player-area')).toHaveCSS('animation-name', 'none')
   await expect(page.locator('.controls')).toHaveCSS('animation-name', 'none')
+})
+
+test('Frostfire Maelstrom stages automatic divided damage for mouse adjustment and spell confirmation', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    const player = game.players[0]
+    player.pulseTokens = 2
+    player.breaches.forEach((breach: any) => { breach.prepSpells = [] })
+    const breach = player.breaches.find((item: any) => item.index === 3)
+    breach.opened = true
+    breach.damageBonus = 1
+    breach.prepSpells = ['frostfire_maelstrom', 'spark']
+    breach.preppedThisTurn = [false, false]
+    breach.preppedSpellFaceDown = [false, false]
+    game.currentTurn = player.id
+    game.currentPhase = 'casting'
+    game.nemesis.playArea = [
+      { cardId: 'needlemaw', cardType: 'minion', placedAt: 101, lifeTokens: 1 },
+      { cardId: 'cauterizer', cardType: 'minion', placedAt: 202, lifeTokens: 2 },
+    ]
+  }, 'casting')
+
+  const spell = page.locator('.breach[data-breach-index="3"] .breach-spell-card-frame[data-spell-index="0"]')
+  const otherSpell = page.locator('.breach[data-breach-index="3"] .breach-spell-card-frame[data-spell-index="1"]')
+  const originalSpellBox = await spell.boundingBox()
+  const originalOtherSpellBox = await otherSpell.boundingBox()
+  expect(originalSpellBox).not.toBeNull()
+  expect(originalOtherSpellBox).not.toBeNull()
+  await spell.click({ position: { x: originalSpellBox!.width / 2, y: originalSpellBox!.height - 8 } })
+  const tokenInput = page.getByRole('spinbutton', { name: 'Pulse token amount' })
+  await expect(tokenInput).toHaveAttribute('max', '2')
+  await expect(page.locator('.decision-modal img[alt="Pulse token"]')).toBeVisible()
+  await expect(page.locator('.token-amount-choice-summary')).toHaveText('Deal 2 damage divided however you choose among enemies.')
+  await tokenInput.fill('2')
+  await expect(page.locator('.token-amount-choice-summary')).toHaveText('Deal 4 damage divided however you choose among enemies.')
+  await page.locator('.decision-modal').getByRole('button', { name: 'Confirm', exact: true }).click()
+
+  const smallMinion = page.locator('.nemesis-play-card').filter({ has: page.locator('img[alt="Needlemaw"]') })
+  const secondMinion = page.locator('.nemesis-play-card').filter({ has: page.locator('img[alt="Cauterizer"]') })
+  const nemesis = page.locator('.nemesis-mat-wrap')
+  await expect(smallMinion.locator('.damage-allocation-badge')).toHaveText('−1')
+  await expect(secondMinion.locator('.damage-allocation-badge')).toHaveText('−2')
+  await expect(nemesis.locator('.damage-allocation-badge')).toHaveText('−2')
+  await expect(smallMinion).toHaveClass(/damage-target/)
+  await expect(secondMinion).toHaveClass(/damage-target/)
+  await expect(nemesis).toHaveClass(/damage-target/)
+  await expect.poll(() => nemesis.evaluate(element => getComputedStyle(element, '::after').borderTopWidth)).toBe('3px')
+  await expect.poll(() => smallMinion.evaluate(element => getComputedStyle(element, '::after').borderTopWidth)).toBe('2px')
+  await expect.poll(() => smallMinion.evaluate(element => getComputedStyle(element).borderTopColor)).toBe('rgba(0, 0, 0, 0)')
+  await expect(page.getByRole('status')).toContainText('Damage assigned: 5/5')
+  const damageInstructions = page.locator('.divided-damage-instructions')
+  const popupPosition = await damageInstructions.evaluate(element => {
+    const parent = element.parentElement!.getBoundingClientRect()
+    const popup = element.getBoundingClientRect()
+    return {
+      horizontalOffset: Math.abs((popup.left + popup.right - parent.left - parent.right) / 2),
+      topOverflow: Math.max(0, parent.top - popup.top),
+      bottomOverflow: Math.max(0, popup.bottom - parent.bottom),
+    }
+  })
+  expect(popupPosition.horizontalOffset).toBeLessThan(2)
+  expect(popupPosition.topOverflow).toBeLessThan(1)
+  expect(popupPosition.bottomOverflow).toBeLessThan(1)
+  await page.locator('.nemesis-play').screenshot({ path: resolve(process.cwd(), '..', 'ui', 'screenshots', 'damage-assigned-status.png') })
+
+  await secondMinion.click({ button: 'right' })
+  await expect(secondMinion.locator('.damage-allocation-badge')).toHaveText('−1')
+  await expect(page.getByRole('status')).toContainText('Damage assigned: 4/5')
+  await nemesis.click()
+  await expect(nemesis.locator('.damage-allocation-badge')).toHaveText('−3')
+  await expect(page.getByRole('status')).toContainText('Damage assigned: 5/5')
+
+  const confirmSpell = page.locator('.divided-damage-confirm-spell')
+  await expect(confirmSpell).toHaveAccessibleName('Confirm Frostfire Maelstrom damage allocation')
+  const confirmSpellBox = await confirmSpell.boundingBox()
+  const remainingSpellBox = await page.locator('.breach[data-breach-index="3"] .breach-spell-card-frame')
+    .filter({ has: page.locator('img[alt="Spark"]') }).boundingBox()
+  expect(confirmSpellBox).not.toBeNull()
+  expect(remainingSpellBox).not.toBeNull()
+  for (const dimension of ['x', 'y', 'width', 'height'] as const) {
+    expect(Math.abs(originalSpellBox![dimension] - confirmSpellBox![dimension])).toBeLessThan(1)
+    expect(Math.abs(originalOtherSpellBox![dimension] - remainingSpellBox![dimension])).toBeLessThan(1)
+  }
+  await page.keyboard.press('Space')
+  await expect(page.locator('.damage-allocation-badge')).toHaveCount(0)
+  await expect(confirmSpell).toHaveCount(0)
 })

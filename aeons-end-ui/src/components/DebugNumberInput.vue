@@ -7,6 +7,7 @@ const props = defineProps<{
   min?: number
   max?: number
   step?: number
+  focusInputAfterStep?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -34,7 +35,8 @@ function changeBy(direction: 1 | -1) {
   else field.stepDown()
   field.dispatchEvent(new Event('input', { bubbles: true }))
   field.dispatchEvent(new Event('change', { bubbles: true }))
-  field.focus({ preventScroll: true })
+  if (props.focusInputAfterStep === false) field.blur()
+  else field.focus({ preventScroll: true })
 }
 </script>
 

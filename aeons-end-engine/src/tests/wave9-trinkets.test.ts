@@ -31,8 +31,17 @@ function testTrinketDeckCompositionAndShuffle(): void {
   }
   assert(deck.join(',') !== TRINKET_DECK_CARD_IDS.join(','), 'Setup shuffles the fixed composition')
 
-  const game = createGame(createTwoPlayerScenario(['jian', 'brama']))
+  const originalRandom = Math.random
+  let game: GameState
+  Math.random = () => 0
+  try {
+    game = createGame(createTwoPlayerScenario(['jian', 'brama']))
+  } finally {
+    Math.random = originalRandom
+  }
   assertEqual(game.trinketDeck?.length, 13, 'Every new game initializes the shared Trinket deck')
+  assert(game.trinketDeck?.join(',') !== TRINKET_DECK_CARD_IDS.join(','),
+    'Game setup stores the shuffled Trinket order, not the fixed composition order')
   assertEqual(game.trinketDeckRevealed?.filter(Boolean).length, 0, 'Setup starts every physical Trinket face-down')
   assertEqual(ALL_MARKET_CARDS.clouded_trinket, undefined, 'Trinkets do not enter the Supply catalog')
   assertEqual(getCard('clouded_trinket').mechanics?.includes('trinket'), true, 'Trinket cards are registered as player cards')

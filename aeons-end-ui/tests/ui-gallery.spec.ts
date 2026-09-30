@@ -25,6 +25,7 @@ test.describe('UI Gallery', () => {
     await expect(page.locator('[data-component="Card.Pile"] .gallery-pile-card-back img')).toHaveCSS('object-fit', 'fill')
     await expect(page.locator('[data-component="Card.Mini"] .gallery-mini-card').first()).toHaveCSS('width', '78px')
     await expect(page.locator('[data-component="Card.Mini"] .gallery-mini-card').first()).toHaveCSS('height', '118px')
+    await expect(page.locator('[data-component="Damage.DividedAllocation"] .damage-allocation-badge')).toHaveText(['−1', '−2'])
     const emptyPile = page.locator('[data-component="Pile.Empty"] .ui-gallery-empty-pile')
     await expect(emptyPile).toHaveCSS('width', '122px')
     await expect(emptyPile).toHaveCSS('height', '178px')
@@ -44,6 +45,13 @@ test.describe('UI Gallery', () => {
       path: resolve(screenshotRoot, 'ui-gallery-overview-1440x900.png'),
       fullPage: true,
     })
+
+    const dividedDamage = page.locator('[data-component="Damage.DividedAllocation"]')
+    await dividedDamage.scrollIntoViewIfNeeded()
+    await dividedDamage.screenshot({
+      path: resolve(screenshotRoot, 'damage-divided-allocation-1440x900.png'),
+    })
+    await page.locator('[data-ui-gallery]').evaluate(element => element.scrollTo(0, 0))
 
     for (const sectionName of ['card-surfaces', 'piles-and-zones', 'modals', 'naming']) {
       await page.evaluate((name) => {
@@ -92,6 +100,13 @@ test.describe('UI Gallery', () => {
     await expect(page.locator('[data-gallery-modal]')).toBeVisible()
     await page.getByRole('button', { name: 'Close gallery modal' }).click()
 
+    await page.getByRole('button', { name: 'Open Reveal Card' }).click()
+    const revealModal = page.locator('[data-gallery-modal]')
+    await expect(revealModal.getByRole('heading', { name: 'Reveal a Card' })).toBeVisible()
+    await expect(revealModal.locator('.gallery-modal-reveal-card img')).toBeVisible()
+    await revealModal.getByRole('button', { name: 'Confirm', exact: true }).click()
+    await expect(page.locator('[data-gallery-modal]')).toHaveCount(0)
+
     await page.getByRole('button', { name: 'Open Instant Card Choice' }).click()
     await expect(page.locator('[data-gallery-modal]')).toBeVisible()
     const instantChoices = page.locator('[data-gallery-modal] .large-card-choice')
@@ -103,6 +118,55 @@ test.describe('UI Gallery', () => {
     await instantChoices.filter({ has: page.locator('img[alt="Golden Trinket"]') }).click()
     await expect(page.locator('[data-gallery-modal]')).toHaveCount(0)
     await expect(page.getByText('Instant choice confirmed: Golden Trinket', { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Open Two Button Choice' }).click()
+    const twoButtonModal = page.locator('[data-gallery-modal]')
+    const twoButtonChoices = twoButtonModal.locator('[data-ui-component="Decision.TwoButtonChoice"] .decision-option')
+    await expect(twoButtonChoices).toHaveCount(2)
+    await expect(twoButtonChoices.first()).toHaveClass(/btn primary/)
+    const twoButtonBoxes = await twoButtonChoices.evaluateAll(buttons => buttons.map(button => {
+      const rect = button.getBoundingClientRect()
+      return { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+    }))
+    expect(twoButtonBoxes[0]!.x).toBe(twoButtonBoxes[1]!.x)
+    expect(twoButtonBoxes[0]!.width).toBe(twoButtonBoxes[1]!.width)
+    expect(twoButtonBoxes[1]!.y).toBeGreaterThan(twoButtonBoxes[0]!.y)
+    await expect(twoButtonChoices.first()).toHaveCSS('text-align', 'center')
+    await expect(twoButtonChoices.first()).toHaveCSS('min-height', '56px')
+    await twoButtonModal.screenshot({ path: resolve(screenshotRoot, 'decision-two-button-modal-1440x900.png') })
+    await twoButtonChoices.first().click()
+    await expect(page.getByText('Two-button choice confirmed: Deal 2 damage and gain 1 Pulse token', { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Open Token Amount Choice' }).click()
+    const tokenAmountModal = page.locator('[data-gallery-modal]')
+    await expect(tokenAmountModal.getByRole('heading', { name: 'Choose how many Pulse tokens to lose' })).toBeVisible()
+    await expect(tokenAmountModal.locator('[data-ui-component="Decision.TokenAmountChoice"] img[alt="Pulse token"]')).toBeVisible()
+    const tokenAmountControl = tokenAmountModal.locator('.token-amount-choice-control')
+    await expect(tokenAmountControl.locator(':scope > *')).toHaveCount(2)
+    const tokenAmountInput = tokenAmountModal.getByRole('spinbutton', { name: 'Pulse token amount' })
+    await expect(tokenAmountModal.locator('.token-amount-choice-summary')).toHaveText('Deal 2 damage divided however you choose among enemies.')
+    await expect(tokenAmountInput).toHaveCSS('text-align', 'center')
+    await expect(tokenAmountInput).toHaveCSS('width', '92px')
+    await expect(tokenAmountInput).toHaveCSS('height', '44px')
+    await expect(tokenAmountInput).toHaveCSS('font-size', '20px')
+    await expect(tokenAmountInput).toHaveCSS('font-weight', '700')
+    await expect(tokenAmountInput).toHaveCSS('border-radius', '6px')
+    await tokenAmountInput.hover()
+    await expect(tokenAmountModal.locator('.debug-number-steps')).toHaveCSS('opacity', '1')
+    await tokenAmountInput.click()
+    await expect(tokenAmountInput).toBeFocused()
+    const increaseTokenAmount = tokenAmountModal.getByRole('button', { name: 'Increase Pulse token amount' })
+    await increaseTokenAmount.click()
+    await expect(tokenAmountInput).toHaveValue('1')
+    await expect(tokenAmountInput).not.toBeFocused()
+    await expect(tokenAmountModal.locator('.token-amount-choice-summary')).toHaveText('Deal 3 damage divided however you choose among enemies.')
+    await tokenAmountInput.fill('3')
+    await expect(tokenAmountInput).toBeFocused()
+    await expect(tokenAmountModal.locator('.token-amount-choice-summary')).toHaveText('Deal 5 damage divided however you choose among enemies.')
+    await tokenAmountInput.blur()
+    await tokenAmountModal.screenshot({ path: resolve(screenshotRoot, 'decision-token-amount-modal-1440x900.png') })
+    await tokenAmountModal.getByRole('button', { name: 'Confirm', exact: true }).click()
+    await expect(page.getByText('Pulse amount confirmed: 3', { exact: true })).toBeVisible()
   })
 
   test('keeps the catalogue usable at a compact viewport', async ({ page }) => {

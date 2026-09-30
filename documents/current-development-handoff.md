@@ -206,7 +206,7 @@ npm run build
 - Add Card 只允许 Gem、Relic、Spell。未来增加其他卡牌类型时，不应自动放入该选择器。
 - 玩家选择默认跟随当前回合角色；Add Card 按钮与选择框保持同高。
 - 面板高度留出上下边距，Nemesis HP 和 Gravehold HP 同排显示；文本输入框和下拉框不显示浏览器白色焦点环。
-- 数字输入框宽度为 74px；`DebugNumberInput.vue` 提供统一的步进箭头，颜色取自 UI 主题，鼠标悬停或键盘聚焦时显示，在触屏设备保持可见。原生 Chromium 箭头已隐藏；点击箭头仍通过输入框事件更新现有数值逻辑。
+- 数字输入框宽度为 58px；`DebugNumberInput.vue` 提供统一的步进箭头，颜色取自 UI 主题，鼠标悬停或键盘聚焦时显示，在触屏设备保持可见。原生 Chromium 箭头已隐藏；点击箭头仍通过输入框事件更新现有数值逻辑。
 - `aeons-end-ui/src/components/DebugPanel.vue` 包含 Knowledge 的直接编辑入口。维护它时保留现有 Aether/Knowledge 更新逻辑和 Add Card 的类型白名单。
 
 数字输入框优化由 `tests/debug-number-input.spec.ts` 验证悬停、聚焦和步进更新。

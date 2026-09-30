@@ -1,7 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
-import { cardImageUrl, playerCardBackUrl, specificDeckBackUrl } from '../card-images'
+import { cardImageUrl, playerCardBackUrl, pulseTokenImageUrl, specificDeckBackUrl } from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
@@ -9,10 +9,12 @@ import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardCho
 import ZoneScroller from './ZoneScroller.vue'
 import ModalBase from './ModalBase.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
+import TwoButtonChoice from './TwoButtonChoice.vue'
+import TokenAmountChoicePanel from './TokenAmountChoicePanel.vue'
 import TokenBadge from './TokenBadge.vue'
 import { mageImageUrls } from '../mage-images'
 
-type GalleryModal = 'pile' | 'decision' | 'instant-choice' | null
+type GalleryModal = 'pile' | 'decision' | 'reveal' | 'instant-choice' | 'two-button' | 'token-amount' | null
 
 const modal = ref<GalleryModal>(null)
 const galleryModalEl = ref<HTMLElement | null>(null)
@@ -31,6 +33,17 @@ const galleryInstantCardChoices: LargeCardChoiceOption[] = galleryCardChoices.ma
   cardName: choice.cardName,
 }))
 const galleryInstantChoiceConfirmed = ref('')
+const galleryTwoButtonChoiceConfirmed = ref('')
+const galleryPulseAmount = ref(0)
+const galleryPulseAmountConfirmed = ref<number | null>(null)
+const galleryPulseSummary = {
+  template: 'Deal {amount} damage divided however you choose among enemies.',
+  baseAmount: 2,
+}
+const galleryTwoButtonOptions = [
+  { id: 'damage', label: 'Deal 2 damage and gain 1 Pulse token' },
+  { id: 'spend', label: 'Lose 3 Pulse tokens to deal 7 damage', disabled: false },
+]
 
 watch(modal, (value) => {
   if (!value) return
@@ -39,6 +52,11 @@ watch(modal, (value) => {
     galleryConfirmedCardNames.value = []
   }
   if (value === 'instant-choice') galleryInstantChoiceConfirmed.value = ''
+  if (value === 'two-button') galleryTwoButtonChoiceConfirmed.value = ''
+  if (value === 'token-amount') {
+    galleryPulseAmount.value = 0
+    galleryPulseAmountConfirmed.value = null
+  }
   nextTick(() => galleryModalEl.value?.focus({ preventScroll: true }))
 })
 
@@ -84,6 +102,16 @@ function confirmGalleryInstantChoice(optionId: string) {
   const choice = galleryInstantCardChoices.find(option => option.id === optionId)
   if (!choice) return
   galleryInstantChoiceConfirmed.value = choice.cardName
+  modal.value = null
+}
+
+function confirmGalleryTwoButtonChoice(optionId: string) {
+  galleryTwoButtonChoiceConfirmed.value = galleryTwoButtonOptions.find(option => option.id === optionId)?.label ?? ''
+  modal.value = null
+}
+
+function confirmGalleryPulseAmount() {
+  galleryPulseAmountConfirmed.value = galleryPulseAmount.value
   modal.value = null
 }
 
@@ -187,6 +215,17 @@ function confirmGalleryInstantChoice(optionId: string) {
             </CardHoverPreview>
           </div>
         </article>
+
+        <article class="ui-gallery-item" data-component="Damage.DividedAllocation">
+          <h3>Damage.DividedAllocation</h3>
+          <p class="ui-gallery-caption">Red minus badges show the automatic assignment; adjust with right-click and confirm by clicking the Spell again</p>
+          <div class="ui-gallery-surface gallery-damage-allocation">
+            <div v-for="(cardId, index) in ['needlemaw', 'cauterizer']" :key="cardId" class="gallery-damage-unit">
+              <img :src="cardImageUrl(cardId)" :alt="cardName(cardId)" draggable="false" />
+              <span class="damage-allocation-badge" :aria-label="`${index + 1} damage assigned`">−{{ index + 1 }}</span>
+            </div>
+          </div>
+        </article>
       </div>
 
       <div class="ui-gallery-state-row" data-component="Card.States">
@@ -268,10 +307,19 @@ function confirmGalleryInstantChoice(optionId: string) {
       <div class="ui-gallery-modal-launchers">
         <button class="btn primary" data-gallery-open="pile" @click="modal = 'pile'">Open PileViewer</button>
         <button class="btn" data-gallery-open="decision" @click="modal = 'decision'">Open CardSelectionModal</button>
+        <button class="btn" data-gallery-open="reveal" @click="modal = 'reveal'">Open Reveal Card</button>
         <button class="btn" data-gallery-open="instant-choice" @click="modal = 'instant-choice'">Open Instant Card Choice</button>
+        <button class="btn" data-gallery-open="two-button" @click="modal = 'two-button'">Open Two Button Choice</button>
+        <button class="btn" data-gallery-open="token-amount" @click="modal = 'token-amount'">Open Token Amount Choice</button>
       </div>
       <p v-if="galleryInstantChoiceConfirmed" class="ui-gallery-ability-choice-selection" role="status">
         Instant choice confirmed: {{ galleryInstantChoiceConfirmed }}
+      </p>
+      <p v-if="galleryTwoButtonChoiceConfirmed" class="ui-gallery-ability-choice-selection" role="status">
+        Two-button choice confirmed: {{ galleryTwoButtonChoiceConfirmed }}
+      </p>
+      <p v-if="galleryPulseAmountConfirmed !== null" class="ui-gallery-ability-choice-selection" role="status">
+        Pulse amount confirmed: {{ galleryPulseAmountConfirmed }}
       </p>
       <article class="ui-gallery-item" data-component="Decision.MageAbilityChoice">
         <h3>Decision.MageAbilityChoice</h3>
@@ -343,13 +391,47 @@ function confirmGalleryInstantChoice(optionId: string) {
             Confirmed: {{ galleryConfirmedCardNames.join(', ') }}
           </p>
         </template>
-        <template v-else>
+        <template v-else-if="modal === 'reveal'">
+          <p class="ui-gallery-index">Decision.RevealCard · mandatory confirmation</p>
+          <h2>Reveal a Card</h2>
+          <p class="ui-gallery-modal-hint">The revealed card stays visible until the effect is confirmed.</p>
+          <div class="ui-gallery-modal-reveal">
+            <CardHoverPreview :card-id="pileCards[0]">
+              <div class="gallery-modal-reveal-card">
+                <img :src="cardImageUrl(pileCards[0])" :alt="cardName(pileCards[0])" draggable="false" />
+              </div>
+            </CardHoverPreview>
+          </div>
+          <div class="ui-gallery-modal-actions">
+            <button class="btn primary" @click="modal = null">Confirm</button>
+          </div>
+        </template>
+        <template v-else-if="modal === 'instant-choice'">
           <p class="ui-gallery-index">Decision.LargeCardChoice · immediate confirmation</p>
           <h2>Choose a Trinket</h2>
           <p class="ui-gallery-modal-hint">Click a card to confirm immediately.</p>
           <LargeCardChoicePanel
             :choices="galleryInstantCardChoices"
             @choose="confirmGalleryInstantChoice"
+          />
+        </template>
+        <template v-else-if="modal === 'two-button'">
+          <p class="ui-gallery-index">Decision.TwoButtonChoice · immediate decision</p>
+          <h2>Choose one effect</h2>
+          <p class="ui-gallery-modal-hint">Two clear blue buttons for a single choice.</p>
+          <TwoButtonChoice :options="galleryTwoButtonOptions" @select="confirmGalleryTwoButtonChoice" />
+        </template>
+        <template v-else-if="modal === 'token-amount'">
+          <p class="ui-gallery-index">Decision.TokenAmountChoice · confirm amount</p>
+          <h2>Choose how many Pulse tokens to lose</h2>
+          <TokenAmountChoicePanel
+            token-name="Pulse"
+            :token-image-url="pulseTokenImageUrl()"
+            :min-amount="0"
+            :max-amount="5"
+            :summary="galleryPulseSummary"
+            v-model="galleryPulseAmount"
+            @confirm="confirmGalleryPulseAmount"
           />
         </template>
     </ModalBase>
@@ -517,6 +599,10 @@ function confirmGalleryInstantChoice(optionId: string) {
 }
 .reveal-surface { min-height: 270px; }
 .gallery-reveal-card { width: 96px; height: 144px; overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-damage-allocation { display: flex; min-height: 174px; align-items: center; justify-content: center; gap: 18px; }
+.gallery-damage-unit { position: relative; width: 74px; height: 110px; overflow: visible; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-damage-unit > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+.gallery-damage-unit .damage-allocation-badge { top: -10px; right: -10px; }
 .ui-gallery-state-row {
   display: flex;
   align-items: center;

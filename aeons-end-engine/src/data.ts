@@ -30,6 +30,7 @@ import { createTressa, TRESSA_CARDS, TRESSA_UNIQUE_CARDS } from './data/wave9/tr
 import { createYanMagda, YAN_MAGDA_CARDS, YAN_MAGDA_UNIQUE_CARDS } from './data/wave9/yanmagda'
 import { wave9Crystal, wave9Spark } from './data/wave9/basic'
 import { WAVE9_GEM_CARDS, chromiaSphere } from './data/wave9/gems'
+import { WAVE9_SPELL_CARDS } from './data/wave9/spells'
 import { TRINKET_CARDS } from './data/wave9/trinkets'
 import {
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
@@ -48,6 +49,7 @@ export {
   phoenixFlame, spectralEcho, wildfireWhip,
   wave9Crystal, wave9Spark,
   chromiaSphere, WAVE9_GEM_CARDS,
+  WAVE9_SPELL_CARDS,
   NOOK_CARDS, NOOK_UNIQUE_CARDS,
   INDIRA_CARDS, INDIRA_UNIQUE_CARDS,
   DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS,
@@ -140,6 +142,7 @@ export const ALL_MARKET_CARDS: Record<string, CardDef> = {
   ...WAVE9_GEM_CARDS,
   ...MARKET_RELIC_CARDS,
   ...MARKET_SPELL_CARDS,
+  ...WAVE9_SPELL_CARDS,
 }
 
 /** The original nine-card market remains the default preset for backwards-compatible saves. */

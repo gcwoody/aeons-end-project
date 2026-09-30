@@ -123,7 +123,6 @@ function selectPileCard(groupIndex: number, cardIndex: number) {
   if (state.viewPile === 'discard') {
     const action = recallActions.value.find(candidate => candidate.discardIndex === index)
     if (!action || !displayPlayer.value) return
-    closePile()
     activateRecall(index, displayPlayer.value.id)
     return
   }

@@ -77,6 +77,12 @@ function onKeydown(e: KeyboardEvent) {
     resolveDecision({ kind: 'confirm_nemesis_effect', accepted: true })
     return
   }
+  if (e.code === 'Space' && !e.shiftKey && canConfirmDividedDamageWithSpace()) {
+    e.preventDefault()
+    if (e.repeat) return
+    resolveDecision({ kind: 'allocate_divided_damage', action: 'confirm' })
+    return
+  }
   if (e.code === 'Space' && !e.shiftKey && canAdvancePhaseWithSpace()) {
     e.preventDefault()
     if (e.repeat) return
@@ -131,6 +137,24 @@ function canConfirmNemesisEffectWithSpace(): boolean {
     && state.phase === 'nemesis_main'
     && game.currentTurn === 'nemesis'
     && game.pendingDecision?.kind === 'confirm_nemesis_effect'
+    && !state.viewPile
+    && !state.helpOpen
+    && !state.exitPrompt
+    && !state.debugOpen
+}
+
+/** Match the second-click confirmation for a completed divided-damage allocation. */
+function canConfirmDividedDamageWithSpace(): boolean {
+  const game = state.game
+  const pendingSpell = game?.pendingEffect?.pendingSpellCast
+  const allocation = game?.pendingEffect?.dividedDamageAllocation
+  return !!game
+    && game.pendingDecision?.kind === 'allocate_divided_damage'
+    && allocation?.remaining === 0
+    && !!pendingSpell
+    && pendingSpell.breachIndex >= 0
+    && pendingSpell.spellIndex >= 0
+    && pendingSpell.playerId === state.selectedPlayer
     && !state.viewPile
     && !state.helpOpen
     && !state.exitPrompt
@@ -216,7 +240,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
-            <div class="help-row"><kbd>Space</kbd><span>Confirm a decision when its Confirm button is available, confirm a revealed Nemesis card, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Confirm a decision when its Confirm button is available, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 

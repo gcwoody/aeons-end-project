@@ -36,8 +36,15 @@ function measureMat(event: Event) {
   if (image.naturalHeight) matRatio.value = image.naturalWidth / image.naturalHeight
 }
 const playCards = computed(() => [...nemesis.value.playArea].sort((a, b) => a.placedAt - b.placedAt))
-const damageDecision = computed(() => state.game?.pendingDecision?.kind === 'select_damage_target'
-  ? state.game.pendingDecision : null)
+const damageDecision = computed(() => {
+  const decision = state.game?.pendingDecision
+  return decision?.kind === 'select_damage_target' || decision?.kind === 'allocate_divided_damage'
+    ? decision
+    : null
+})
+const dividedDamageDecision = computed(() => damageDecision.value?.kind === 'allocate_divided_damage'
+  ? damageDecision.value : null)
+const dividedDamageAllocation = computed(() => state.game?.pendingEffect?.dividedDamageAllocation ?? null)
 const mainEffectDecision = computed(() => state.game?.pendingDecision?.kind === 'confirm_nemesis_effect'
   ? state.game.pendingDecision : null)
 const matPreviewHeight = 840
@@ -87,9 +94,30 @@ function isDamageTarget(targetId: string): boolean {
   return damageDecision.value?.targets.some(target => target.id === targetId) ?? false
 }
 
+function dividedDamageAssigned(targetId: string): number {
+  return state.game?.pendingEffect?.dividedDamageAllocation?.amounts[targetId] ?? 0
+}
+
+function minionTargetId(placedAt: number): string {
+  return `minion:${placedAt}`
+}
+
 function chooseDamageTarget(targetId: string) {
+  if (dividedDamageDecision.value) {
+    resolveDecision({ kind: 'allocate_divided_damage', action: 'add', targetId })
+    return
+  }
   const target = damageDecision.value?.targets.find(candidate => candidate.id === targetId)
-  if (target) resolveDecision({ kind: 'select_damage_target', target })
+  if (target && damageDecision.value?.kind === 'select_damage_target') {
+    resolveDecision({ kind: 'select_damage_target', target })
+  }
+}
+
+function cancelDamageTarget(targetId: string, event: MouseEvent) {
+  if (!dividedDamageDecision.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  resolveDecision({ kind: 'allocate_divided_damage', action: 'remove', targetId })
 }
 
 function isMainEffectTarget(instanceId: string): boolean {
@@ -149,8 +177,15 @@ onBeforeUnmount(() => {
         image-object-fit="contain"
         preview-class="nemesis-mat-preview"
       >
-        <button class="nemesis-mat-wrap" :class="{ 'damage-target': isDamageTarget('nemesis') }" :aria-label="`Open ${nemesis.name} mat`" @click="isDamageTarget('nemesis') ? chooseDamageTarget('nemesis') : openMat()">
+        <button
+          class="nemesis-mat-wrap"
+          :class="{ 'damage-target': isDamageTarget('nemesis') }"
+          :aria-label="`Open ${nemesis.name} mat`"
+          @click="isDamageTarget('nemesis') ? chooseDamageTarget('nemesis') : openMat()"
+          @contextmenu="cancelDamageTarget('nemesis', $event)"
+        >
           <img class="nemesis-mat-image" :src="nemesisMatImageUrl(nemesis.type, 'front')" :alt="`${nemesis.name} mat`" draggable="false" @load="measureMat" />
+          <span v-if="dividedDamageAssigned('nemesis') > 0" class="damage-allocation-badge" :aria-label="`${dividedDamageAssigned('nemesis')} damage assigned`">−{{ dividedDamageAssigned('nemesis') }}</span>
         </button>
       </CardHoverPreview>
       <div v-else class="nemesis-mat-wrap"><div class="nemesis-mat-fallback">{{ nemesis.name }}</div></div>
@@ -229,13 +264,19 @@ onBeforeUnmount(() => {
         </section>
 
         <section class="nemesis-play" aria-label="Nemesis Cards in Play">
-          <div class="nemesis-play-top" aria-hidden="true"></div>
+          <div class="nemesis-play-top">
+            <div v-if="dividedDamageDecision && dividedDamageAllocation" class="divided-damage-instructions" role="status" aria-live="polite">
+              <strong>Damage assigned: {{ dividedDamageAllocation.total - dividedDamageAllocation.remaining }}/{{ dividedDamageAllocation.total }}</strong>
+              <span>Left-click to assign unassigned damage. Right-click to cancel 1 damage. Click the casting spell again to resolve.</span>
+            </div>
+          </div>
           <div v-if="playCards.length > 0" ref="playScroll" class="nemesis-play-row nemesis-card-scroll">
             <div class="nemesis-card-track">
               <CardHoverPreview v-for="card in playCards" :key="card.instanceId ?? `${card.cardId}:${card.placedAt}`" :card-id="card.cardId" :preview-width="210" :preview-height="315">
-                <div class="nemesis-play-card" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === card.instanceId), 'damage-target': isDamageTarget(`minion:${card.placedAt}`), 'effect-target': isMainEffectTarget(card.instanceId ?? `${card.cardId}:${card.placedAt}`) }]" @click="isDamageTarget(`minion:${card.placedAt}`) ? chooseDamageTarget(`minion:${card.placedAt}`) : confirmMainEffect(card)">
+                <div class="nemesis-play-card" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === card.instanceId), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(card.instanceId ?? `${card.cardId}:${card.placedAt}`) }]" @click="isDamageTarget(minionTargetId(card.placedAt)) ? chooseDamageTarget(minionTargetId(card.placedAt)) : confirmMainEffect(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
                   <img v-if="cardImageUrl(card.cardId)" :src="cardImageUrl(card.cardId)" :alt="getCard(card.cardId).name" draggable="false" />
                   <div v-else class="nemesis-card-fallback">{{ getCard(card.cardId).name }}</div>
+                  <span v-if="dividedDamageAssigned(minionTargetId(card.placedAt)) > 0" class="damage-allocation-badge" :aria-label="`${dividedDamageAssigned(minionTargetId(card.placedAt))} damage assigned`">−{{ dividedDamageAssigned(minionTargetId(card.placedAt)) }}</span>
                   <div class="nemesis-card-meta"><span>{{ cardCounter(card) }}</span><button v-if="nemesisDiscardActions.some(action => action.instanceId === card.instanceId)" class="btn small" data-card-preview-disabled @click.stop="discardAction(card)">To Discard</button></div>
                 </div>
               </CardHoverPreview>

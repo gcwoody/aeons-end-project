@@ -15,9 +15,10 @@ test('Tressa setup reveals loaded level-three Treasure fronts', async ({ page })
   await page.getByRole('button', { name: 'Start Game' }).click()
 
   const decision = page.locator('.decision-modal')
-  const revealedTreasures = decision.locator('.card-selection-panel .decision-card-choice img')
+  const revealedTreasures = decision.locator('.large-card-choice img')
   await expect(decision).toBeVisible()
   await expect(revealedTreasures).toHaveCount(2)
+  await expect(decision.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0)
   await expect.poll(() => revealedTreasures.evaluateAll(images =>
     images.every(image => image.complete && image.naturalWidth > 0),
   )).toBe(true)
@@ -25,9 +26,9 @@ test('Tressa setup reveals loaded level-three Treasure fronts', async ({ page })
   expect(revealedNames.every(name => name.endsWith(' Stance'))).toBe(true)
 
   await revealedTreasures.first().click()
-  await decision.getByRole('button', { name: 'Confirm' }).click()
   await expect(decision).toBeHidden()
 
+  await page.locator('.char-btn').filter({ hasText: 'Tressa' }).click()
   await page.locator('.player-specific-deck-pile').click()
   const vault = page.locator('.pile-modal')
   await expect(vault).toBeVisible()
@@ -51,8 +52,7 @@ test('Reconnect Tissue switches to the ally card choice and returns to Tressa af
 
   const setupDecision = page.locator('.decision-modal')
   await expect(setupDecision).toBeVisible()
-  await setupDecision.locator('.decision-card-choice').first().click()
-  await setupDecision.getByRole('button', { name: 'Confirm' }).click()
+  await setupDecision.locator('.large-card-choice').first().click()
   await expect(setupDecision).toBeHidden()
 
   await page.keyboard.press('Control+d')
@@ -111,8 +111,7 @@ test('Tressa Treasure action glow follows eligibility and the owning Mage turn',
 
   const setupDecision = page.locator('.decision-modal')
   await expect(setupDecision).toBeVisible()
-  await setupDecision.locator('.decision-card-choice').first().click()
-  await setupDecision.getByRole('button', { name: 'Confirm' }).click()
+  await setupDecision.locator('.large-card-choice').first().click()
   await expect(setupDecision).toBeHidden()
 
   await page.keyboard.press('Control+d')
@@ -120,6 +119,10 @@ test('Tressa Treasure action glow follows eligibility and the owning Mage turn',
   const editState = async (edit: (saved: any) => void) => {
     await page.getByRole('button', { name: 'Load Current', exact: true }).click()
     const saved = JSON.parse(await stateField.inputValue())
+    saved.game.pendingDecision = null
+    saved.game.pendingEffect = null
+    saved.game.pendingNemesisDiscard = null
+    saved.game.nemesisResolution = null
     edit(saved)
     await stateField.fill(JSON.stringify(saved))
     await page.getByRole('button', { name: 'Apply', exact: true }).click()

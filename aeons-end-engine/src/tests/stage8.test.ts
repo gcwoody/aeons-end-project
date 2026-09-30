@@ -26,7 +26,7 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
 }
 
 function testWave1CatalogAndMarketSetup(): void {
-  assertEqual(Object.keys(ALL_MARKET_CARDS).length, 36, 'All Wave 1 and implemented Wave 9 market cards are registered')
+  assertEqual(Object.keys(ALL_MARKET_CARDS).length, 52, 'All Wave 1 and implemented Wave 9 market cards are registered')
   assert(Object.values(ALL_MARKET_CARDS).every(card => (card.effects?.length ?? 0) > 0), 'Every registered market card has a playable effect definition')
   assertEqual(DEFAULT_MARKET_SLOTS.length, 9, 'Default market has nine slots')
   const manual = resolveMarketCardIds({ mode: 'manual', slots: ['jade', 'searing_ruby', 'clouded_sapphire', 'flexing_dagger', 'blasting_staff', 'phoenix_flame', 'ignite', 'dark_fire', 'chaos_arc'] })

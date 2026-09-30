@@ -3,7 +3,7 @@ import {
   createGame, startTurn, getPlayer,
   resolveMageSetups as engineResolveMageSetups,
   resolvePlayerInPlayPhaseEffects as engineResolvePlayerInPlayPhaseEffects,
-  getCastableSpells, castSpell as engineCastSpell,
+  getCastableSpells, getPreppedSpellChoices, castSpell as engineCastSpell,
   playCard as enginePlayCard, prepSpell as enginePrepSpell,
   movePreppedSpell as engineMovePreppedSpell,
   returnPreppedSpellToHand as engineReturnPreppedSpellToHand,
@@ -14,6 +14,7 @@ import {
   gainFirethornTopCard as engineGainFirethornTopCard,
   focusBreach as engineFocusBreach, openBreachDirect as engineOpenBreach,
   gainCharge as engineGainCharge, activateAbility as engineActivateAbility,
+  resolveEffects as engineResolveEffects,
   resolveDrawPhase, getTotalAether, getAllRemainingConditional,
   getConditionalAetherByType,
   resolvePreppedEffects,
@@ -87,6 +88,7 @@ const state = reactive({
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
   debugOpen: false,
+  debugFreeSpellCastEnabled: false,
   helpOpen: false,
   hasSave: false,
   saves: [] as SaveSummary[],
@@ -216,8 +218,9 @@ function soleDecisionDisplayPlayerId(decision: PendingDecision | null | undefine
     return state.game?.pendingEffect?.conjuredCard?.playerId ?? null
   }
 
-  if (decision.kind === 'choose_one' && state.game?.pendingEffect?.awaiting?.kind === 'reveal_top_cards') {
-    return state.game.pendingEffect.revealedTopCard?.playerId ?? null
+  if ((decision.kind === 'choose_one' && state.game?.pendingEffect?.awaiting?.kind === 'reveal_top_cards') ||
+    decision.kind === 'confirm_revealed_card') {
+    return state.game?.pendingEffect?.revealedTopCard?.playerId ?? null
   }
 
   return null
@@ -773,6 +776,10 @@ export function toggleDebug() {
   state.debugOpen = !state.debugOpen
 }
 
+export function setDebugFreeSpellCastEnabled(enabled: boolean) {
+  state.debugFreeSpellCastEnabled = enabled
+}
+
 export function toggleHelp() {
   state.helpOpen = !state.helpOpen
 }
@@ -1263,6 +1270,22 @@ export function gainFirethornTopCard() {
   finishAction(previous)
 }
 
+/** Open the standard prepped-spell choice so debugging can cast any Mage's spell. */
+export function debugCastAnyPreppedSpell() {
+  const g = state.game
+  if (!g || !state.debugFreeSpellCastEnabled || !canActMain.value ||
+    g.pendingDecision || g.pendingEffect || getPreppedSpellChoices(g).length === 0) return
+
+  const previous = beforeAction()
+  const messages = engineResolveEffects(g, g.currentTurn, [{
+    kind: 'cast_prepped_spell',
+    source: 'any_prepped_spell',
+    ownerScope: 'any_player',
+  }])
+  for (const message of messages) pushLog(message)
+  finishAction(previous)
+}
+
 /** Develop a supply pile or gain a card from the shared Develop zone. */
 export function developCard(source: 'supply' | 'develop_zone', index: number) {
   if (!state.game) return
@@ -1292,12 +1315,22 @@ export function getRecallActionsForPlayer(playerId: PlayerId = state.selectedPla
 /** Activate a Recall effect from the selected Mage's Discard pile. */
 export function activateRecall(discardIndex: number, playerId: PlayerId = state.selectedPlayer) {
   if (!state.game) return
+  const openedDiscardPile = state.viewPile === 'discard'
+  const availableRecallCount = openedDiscardPile
+    ? engineGetRecallActions(state.game, playerId).length
+    : 0
   const previous = beforeAction()
   const messages = engineActivateRecall(state.game, playerId, discardIndex)
   for (const message of messages) {
     pushLog(message, message.startsWith('That ') || message.startsWith('Resolve ') ? 'warn' : 'ok')
   }
-  maybeAutoEnd()
+  const followUpDecision = !!state.game.pendingDecision || !!state.game.pendingEffect
+  const keepDiscardPileOpen = openedDiscardPile && availableRecallCount > 1 && !followUpDecision
+  if (openedDiscardPile && !keepDiscardPileOpen) state.viewPile = null
+  // Keep the discard-pile viewer available for consecutive Recall actions
+  // only when the current Recall resolved synchronously and another Recall
+  // was available before it was activated.
+  if (state.viewPile !== 'discard') maybeAutoEnd()
   finishAction(previous)
 }
 
@@ -1309,7 +1342,8 @@ export function useGame() {
     requestDeleteSave, cancelDeleteSave, deleteSave,
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
     returnToMainMenu,
-    toggleDebug, toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
+    toggleDebug, setDebugFreeSpellCastEnabled, debugCastAnyPreppedSpell,
+    toggleHelp, closeHelp, castSpell, toMainPhase, resolveDecision, playCard, playAllGems, prepSpell,
     buyCard, developCard,
     buyNemesisSpecificTopCard, gainFirethornTopCard, focusBreach, openBreach, gainCharge, activateAbility, activatePreppedCardAction,
     activatePreppedSpellAction,

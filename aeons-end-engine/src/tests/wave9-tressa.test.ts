@@ -316,6 +316,7 @@ function testTressaSetupPutsOneOfTwoRevealedTreasuresIntoPlay(): void {
   const startingVault = [...tressa.specificDeck!]
   const reveal = game.pendingDecision
   assert(reveal?.kind === 'select_cards', 'Tressa setup asks which of the top two Vault cards to put in play')
+  assertEqual(reveal.layout, 'instant-card-choice', 'Tressa setup resolves a Treasure choice on one click')
   assertEqual(reveal.candidates.length, 2, 'Tressa setup reveals exactly two Vault cards')
   assert(reveal.candidates.every(candidate => startingVault.slice(0, 2).includes(candidate.cardId)),
     'Only the two current top cards of Tressa\'s Vault are offered')

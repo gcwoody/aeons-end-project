@@ -6,8 +6,8 @@
 ## Source and scope
 
 - Box page: [Beyond the Breach](https://aeonsend.wiki.gg/wiki/Beyond_the_Breach)
-- Collected at (UTC): 2026-09-19T13:02:38.522Z
-- Scope: Eleven supply Spell sets.
+- Collected at (UTC): 2026-09-29
+- Scope: Sixteen supply Spell sets across Beyond the Breach, The Surface, and The Returned.
 
 ## Deadly Accord
 
@@ -339,3 +339,48 @@ On Cast:
   - Source: [Worldshift.jpg](https://aeonsend.wiki.gg/images/Worldshift.jpg?623554)
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/common images/Aether.png`
   - Source: [Aether.png](https://aeonsend.wiki.gg/images/Aether.png?baf426)
+
+## The Surface
+
+Source: [The Surface — Spells](https://aeonsend.wiki.gg/wiki/The_Surface#Spells_(3))
+
+### Boundless Fire
+
+- Cost: 3; Type: Spell; Box: The Surface; Card numbers: TS-038 – TS-042.
+- Rules: **Cast:** Deal 2 damage. **Recall:** Lose 1 charge to place this into your hand.
+- Mechanics: Recall.
+- Local image: `image-database/cards/wave9/spells/Boundless Fire.jpg`
+- Wiki: [Boundless Fire](https://aeonsend.wiki.gg/wiki/Boundless_Fire)
+
+### Cosmic Pulse
+
+- Cost: 6; Type: Spell; Box: The Surface; Card numbers: TS-043 – TS-047.
+- Rules: While prepped, any number of spells may be conjured to this breach. While prepped, once per turn during your main phase, you may Conjure. **Cast:** Deal 3 damage.
+- Mechanics: Conjure; unlimited Conjure capacity on this breach.
+- Local image: `image-database/cards/wave9/spells/Cosmic Pulse.jpg`
+- Wiki: [Cosmic Pulse](https://aeonsend.wiki.gg/wiki/Cosmic_Pulse)
+
+### Obliterating Arc
+
+- Cost: 7; Type: Spell; Box: The Surface; Card numbers: TS-048 – TS-052.
+- Rules: **Cast:** Deal 7 damage. Destroy a card from the Obliterating Arc supply pile. If you can't, suffer 2 damage.
+- Local image: `image-database/cards/wave9/spells/Obliterating Arc.jpg`
+- Wiki: [Obliterating Arc](https://aeonsend.wiki.gg/wiki/Obliterating_Arc)
+
+## The Returned
+
+Source: [The Returned — Spells](https://aeonsend.wiki.gg/wiki/The_Returned#Spells_(2))
+
+### Torrential Spike
+
+- Cost: 4; Type: Spell; Box: The Returned; Card numbers: TR-038 – TR-042.
+- Rules: **Cast:** Deal 3 damage. Any ally may reveal the top card of their deck. If they revealed a spell, that player places that card into their hand.
+- Local image: `image-database/cards/wave9/spells/Torrential Spike.jpg`
+- Wiki: [Torrential Spike](https://aeonsend.wiki.gg/wiki/Torrential_Spike)
+
+### Infernal Cascade
+
+- Cost: 5; Type: Spell; Box: The Returned; Card numbers: TR-043 – TR-047.
+- Rules: **Cast:** Deal 2 damage. You may cast any player's prepped spell that costs 2 or less without discarding it. Then, cast it again.
+- Local image: `image-database/cards/wave9/spells/Infernal Cascade.jpg`
+- Wiki: [Infernal Cascade](https://aeonsend.wiki.gg/wiki/Infernal_Cascade)

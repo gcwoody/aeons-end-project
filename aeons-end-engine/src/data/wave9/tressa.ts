@@ -135,7 +135,11 @@ export function createTressa(makeBreach: BreachFactory): MageDef {
     specificDeckShuffled: true,
     specificDeckDisplay: 'top_revealed',
     specificDeckBack: 'treasure_3',
-    setupEffects: [{ kind: 'reveal_specific_deck', mode: 'put_one_into_play' }],
+    setupEffects: [{
+      kind: 'reveal_specific_deck',
+      mode: 'put_one_into_play',
+      choiceLayout: 'instant-card-choice',
+    }],
     breaches: [
       makeBreach(1, false, null, false),
       makeBreach(2, false, 'west'),
