@@ -60,6 +60,8 @@ Nemesis mat 右侧的 Info Bar 横跨剩余区域；左侧从 Fury token 开始�
 | `ModalBase` | 所有标准弹窗的遮罩、焦点、拖动和 dialog 外壳 |
 | `Modal.Decision` | 引擎产生的阻塞式决策；一般 `choose_one` 用按钮，`large-card-selection` 显示可选大图并要求显式 Confirm |
 | `Decision.RevealCard` | 展示引擎挂起的 revealed card；没有后续选择时使用单个 Confirm，卡牌在确认前保持可见 |
+| `Decision.TurnOrderTokens` | Turn Order deck 的 reveal、arrange 和 card selection 使用 token 图片；整副牌通过拖动 token 排序，单张 token 点击后提交 |
+| `Interaction.PointerReorder` | 卡牌和 token 通过 pointer capture 拖动、跨过目标中线插入，并以平滑位移动画重排；禁止原生 HTML drag image |
 | `Decision.MageAbilityChoice` | Mage mat 下方竖向排列的 Ability 二选一按钮 |
 | `Modal.CardSelection` | 从手牌、弃牌堆或候选卡牌中选择 |
 | `Modal.PileViewer` | 查看牌堆，不做决策 |
@@ -76,9 +78,19 @@ Mage ability 的 OR 决策使用可复用的 `Decision.MageAbilityChoice`：弹�
 
 普通的二选一决策使用 `Decision.TwoButtonChoice`：两个等宽蓝色按钮，点击后立即提交选择。需要玩家决定消耗多少 token 时使用 `Decision.TokenAmountChoice`：显示 token 图片、带数字步进器的输入框、实时效果句子和 Confirm 按钮。带有 `deal_damage_divided` 的效果按当前生命值由低到高自动分配伤害，使用红底白字的 `−X` 徽标展示；右键取消一点、左键补分配，全部分配后再次点击该 Spell 确认结算。
 
+Turn Order deck 的决策使用 `TurnOrderToken.vue` 和 `TurnOrderTokenRow.vue`。`reorder_turn_order` 显示已揭示的玩家/Nemesis token，从左到右对应牌堆顶部到底部，玩家拖动 token 后通过 `Return Cards` 提交；`select_turn_order_card`、`confirm_turn_order_reveal` 和 `choose_turn_order_position` 均显示对应 token 图片，不再使用文字卡片按钮。普通 Turn Order 栏位仍用问号表示未揭示的 token。
+
+### Pointer reorder rule
+
+所有允许玩家拖动卡牌或 token 改变顺序的界面都复用 `usePointerReorder.ts` 和 `pointer-sort-*` 样式：按下时先在卡片上使用 Pointer Events 与 pointer capture；移动超过拖动阈值后，捕获切换到稳定的排序行，避免 `TransitionGroup` 移动卡片节点时中断拖动，同时保留普通点击。越过目标项目的中线时即时调整顺序，`TransitionGroup` 用统一的 0.22 秒位移动画让其他项目平滑让位。卡片离开弹窗时，只要鼠标左键仍按住，拖动就会继续；鼠标释放后立刻结束。拖动状态同时监听全局 `pointerup`、`pointercancel`、`lostpointercapture`、窗口失焦和标签页隐藏；如果鼠标重新移动时主键已松开，也会立刻清理状态，避免卡牌粘在指针上。悬停时显示抓手，按住时显示抓取中；不使用 `draggable="true"`、原生拖动预览图或 dataTransfer。排序列表的项目必须有稳定 key 和 `data-sort-key`，这样跨位置重排时才会动态位移。
+
+当前这套交互用于可重排的 `CardSelectionPanel`、`TurnOrderTokenRow` 和 Debug Tools 的 `DebugDeckOrderModal`。未来新增任何可排序的卡牌、token 或 deck 顺序编辑，都复用相同 composable、TransitionGroup name `pointer-sort` 和 `.pointer-sort-row` / `.pointer-sort-item` 状态。以上示例在 Gallery 的 `Interaction.PointerReorder` 和 Turn Order 决策中展示。
+
 伤害分配时 Nemesis 区域的 `Damage assigned` 状态提示保持原有居中位置。只调 `style.css` 根部的 `--damage-assigned-size` 即可等比改变正文、标题、间距、内边距、描边和圆角；默认值为 `1.35`。选择单个伤害目标或分配伤害时，敌方单位显示覆盖式黄色边框，同时显示已分配伤害徽标。Nemesis Mat 使用 `--damage-target-mat-border-width`（当前 `3px`），mini 卡使用 `--damage-target-card-border-width`（当前 `2px`）。目标状态下 mini 卡的基础灰色边框透明，只保留黄色覆盖层；颜色和外发光可通过 `--damage-target-border-color`、`--damage-target-border-glow` 调整。覆盖层不会改变 Nemesis Mat 或敌方卡牌的图片尺寸。等待二次点击确认的 Spell 沿用原准备位置和堆叠层级。
 
 `choose_one` 的 `large-card-selection` 用于需要辨认卡面的多张卡牌选择：卡图以 large 尺寸显示，玩家先点选一张，再点 Confirm；选择状态复用 2px 边界线。Setup 的 Market 卡牌替换弹窗按候选卡牌所属 Wave 提供 Wave tabs，默认切到当前槽位卡牌所属的 Wave。弹窗中的卡图悬停预览复用 `CardHoverPreview`，并高于该 Setup 弹窗显示。
+
+需要玩家重排已揭示卡牌时，`select_cards` 决策可设置 `reorderable: true`。`CardSelectionPanel` 会在原有多选和 Confirm/Skip 流程中提供可拖动排序，卡牌位置平滑过渡；确认时同时提交选择项和最终顺序。拖动复用 `Interaction.PointerReorder`，已在 UI Gallery 的卡牌选择与 Turn Order 决策示例中展示。
 
 Wolf 的 5 枚 Doom token 显示在控制栏 Activate Ability 按钮右侧；未获得的 token 使用灰度与低透明度，已获得的 token 保留原图颜色。尺寸、间距与相对位置集中在 `.doom-token-track` 的四个 CSS 自定义属性中，方便微调。
 
@@ -88,7 +100,7 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 
 控制栏内部下侧留白由 `.controls` 的 `--control-bar-bottom-padding` 调整，控制栏外侧到玩家区域底部的留白由 `.player-area` 的 `--player-area-bottom-padding` 调整；当前均为 6px。抽牌气泡在按钮右侧伸出，并由两个 Mage 按钮之间及 Mage 按钮与阶段文字之间的 24px 间距预留位置。玩家回合结束后 Draw Phase 补足 5 张手牌时不显示抽牌气泡；卡牌和能力效果抽牌仍显示。
 
-主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`MageAbilityChoice.vue`、`TwoButtonChoice.vue`、`TokenAmountChoicePanel.vue`、`CardSelectionPanel.vue`、
+主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`TurnOrderToken.vue`、`TurnOrderTokenRow.vue`、`MageAbilityChoice.vue`、`TwoButtonChoice.vue`、`TokenAmountChoicePanel.vue`、`CardSelectionPanel.vue`、
 `PileModal.vue`、`PileCountBadge.vue`、`TokenBadge.vue`。
 
 ## 3. 状态组合规则
@@ -124,6 +136,7 @@ Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显
 - 所有可见 `border`、`outline` 和 outline 风格的阴影都使用 2px。
 - 原生下拉框不显示浏览器默认白色焦点框，其余外观保持原样。
 - Debug Tools 的数字输入框使用统一的主题色步进箭头：鼠标悬停或键盘聚焦时显示；无悬停能力的设备保持可见。
+- Debug Tools 文本输入控件获得焦点时，游戏快捷键不触发且字符照常输入；Tab 阻止原生焦点移动并切换 Mage 视角，同时保留输入焦点；Esc 直接关闭 Debug Tools。
 - Debug Tools 的牌序编辑需要先开启 `Enable deck order editing`，随后在面板中选择玩家并确认打开独立弹窗；弹窗复用 Deck 查看器的卡牌网格，直接拖拽大卡牌调整顺序。
 - 图片卡牌的可操作/选中边界必须叠加在卡面上，用 2px 伪元素边框或内阴影绘制；状态变化不能增减卡牌容器的 `border-width`，避免缩放内部卡图。Breach spell frame 状态使用 `::after`；Supply pile 目标提示使用内阴影。
 - 正常卡牌、背面卡牌和弹窗内卡牌都必须有统一圆角。

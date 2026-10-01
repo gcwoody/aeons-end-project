@@ -824,7 +824,15 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
   const wasInitialSetup = !state.game.currentTurn
   const wasCastingPhaseEnd = state.game.pendingEffect?.preppedPhase === 'casting_phase_end'
   const wasNemesisTurnWaiting = state.game.currentTurn === 'nemesis'
-  const previous = beforeAction()
+  const pendingDecision = state.game.pendingDecision
+  const pendingEffect = state.game.pendingEffect
+  const completingAttachPlay = pendingDecision?.kind === 'select_breach' &&
+    pendingDecision.action === 'attach' &&
+    pendingEffect?.awaiting?.kind === 'attach_relic' &&
+    pendingEffect.sourceCardInHandPendingPlay === true
+  // The card click and its Breach confirmation are one action. The click has
+  // already recorded the pre-play snapshot, so do not add an intermediate undo point.
+  const previous = completingAttachPlay ? null : beforeAction()
   const messages = engineResolvePendingDecision(state.game, state.game.pendingDecision.id, answer)
   for (const message of messages) {
     const warning = message.startsWith('Invalid') || message.startsWith('Stale') || message.startsWith('Choose ') || message.startsWith('Decision ')
@@ -1099,6 +1107,10 @@ function doEndTurn() {
     finalizeDraw()
     return
   }
+  // Keep a serializable snapshot for end-of-turn card triggers. The UI moves
+  // played cards into discard before resolveDrawPhase runs, but effects such
+  // as Pact Prism still need to inspect the cards played this turn.
+  p.pendingEndTurnCardIds = [...p.playedThisTurn]
   if (new Set(p.playedThisTurn).size === 1) {
     // All played cards are identical — order is irrelevant, skip the click step.
     const cards = [...p.playedThisTurn]
@@ -1277,7 +1289,8 @@ export function debugCastAnyPreppedSpell() {
     g.pendingDecision || g.pendingEffect || getPreppedSpellChoices(g).length === 0) return
 
   const previous = beforeAction()
-  const messages = engineResolveEffects(g, g.currentTurn, [{
+  const casterPlayerId = cp().id
+  const messages = engineResolveEffects(g, casterPlayerId, [{
     kind: 'cast_prepped_spell',
     source: 'any_prepped_spell',
     ownerScope: 'any_player',

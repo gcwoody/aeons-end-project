@@ -218,3 +218,15 @@ npm run build
 - 当前跟踪文件中有多项修改和删除；另有未跟踪的 BreachArtwork 与回归测试、Modal backdrop 测试、保存 JSON 和多张新增图片。`image-database/common images/treasure 12back.jpg` 删除及 `treasure 2 back.jpg` 新增是用户要求的更名配套；保留 `image-database/TS_Save_135.json` 和其他新增素材。
 - 不要把整个工作树直接提交或清理。继续工作前先对照 `git status --short`、`git diff` 和需要修改的目标文件；不要使用 `git reset --hard`、`git checkout --` 或大范围清理。用户没有要求提交当前工作。
 - `git status --short` 是当前工作树事实来源；文件数量和差异会随任务变化，不沿用旧快照的统计数。
+
+## 10. Deck Reveal 补牌与统一拖动排序（2026-10-01）
+
+- 所有从玩家抽牌堆揭示顶端 N 张牌的效果，在读取牌顶之前先走引擎的 `preparePlayerDeckForReveal()` / `ensureDeckForReveal()`。牌堆不足时，玩家弃牌堆不洗牌、按现有抽牌顺序翻回并接到牌堆后方，随后清空弃牌堆；若牌堆与弃牌堆合计仍少于 N，就展示全部现有牌。Turn Order 弃牌堆则按其规则洗入牌堆，清空弃牌堆，并在回收时推进 round。`DeckRecyclePolicy` 和通用实现位于 `aeons-end-engine/src/types.ts`、`engine.ts`；Thought Totem 多牌揭示与 Sifter's Pearl 单牌揭示有回归覆盖。
+- 玩家牌库抽顶、Conjure、玩家顶牌揭示效果和 Thought Totem 都应复用这套补牌路径。未来新增“reveal top N”不要直接读取 `deck[0]` 或另写单卡补牌逻辑；开发规则已写入 `dev-guide.md`。
+- 所有可排序界面统一使用 `aeons-end-ui/src/game/usePointerReorder.ts` 与 `.pointer-sort-*` CSS。实现使用 Pointer Events、pointer capture、稳定布局中线判定和 TransitionGroup 平滑位移；禁用 HTML 原生 `draggable`/drag image。当前已用于 `CardSelectionPanel.vue`、`TurnOrderTokenRow.vue` 和 `DebugDeckOrderModal.vue`。交互规则及 Gallery 示例已更新至 `ui/ui-guide.md` 和 `UiGallery.vue`。
+- 本轮验证通过：`aeons-end-engine/npm test`、`aeons-end-ui/npx vue-tsc --noEmit`、`aeons-end-ui/npm run build`，以及 `tests/ui-gallery.spec.ts`、`tests/debug-number-input.spec.ts`（5 项 Chromium 测试）。
+
+## 11. Effect source / 卡牌持有者规则（2026-10-01）
+
+- 新增和审查卡牌效果时，先读根目录 [`dev-guide.md`](../dev-guide.md) 的“效果来源、卡牌持有者与目标”表格；不要把行动者、所选目标和卡牌持有者混为一个玩家 ID。
+- 本轮引擎审查修正了嵌套 `On Play` / `On Gain` 触发的来源卡上下文、Recall 行动者与来源卡持有者分离、Qu Form 的事件条件视角，以及 Tressa/其他 Mage 专属牌堆按来源卡持有者访问。跨玩家回归测试新增在 `aeons-end-engine/src/tests/wave9-relics.test.ts`；引擎全套 `npm test` 通过。

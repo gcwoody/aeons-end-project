@@ -2,7 +2,13 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
 import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
-import { cardImageUrl, pulseTokenImageUrl, specificDeckCardImageUrl } from '../card-images'
+import {
+  cardImageUrl,
+  nemesisTurnOrderTokenUrl,
+  playerTurnOrderTokenUrl,
+  pulseTokenImageUrl,
+  specificDeckCardImageUrl,
+} from '../card-images'
 import { mageImageUrls } from '../mage-images'
 import { useGame } from '../game/useGame'
 import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-labels'
@@ -15,6 +21,8 @@ import MageAbilityChoice from './MageAbilityChoice.vue'
 import CardSurface from './CardSurface.vue'
 import TwoButtonChoice from './TwoButtonChoice.vue'
 import TokenAmountChoicePanel from './TokenAmountChoicePanel.vue'
+import TurnOrderToken from './TurnOrderToken.vue'
+import TurnOrderTokenRow, { type TurnOrderTokenItem } from './TurnOrderTokenRow.vue'
 
 const {
   state, resolveDecision, confirmPendingPreppedSpells,
@@ -22,6 +30,7 @@ const {
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag, resetModalPosition } = useModalDrag()
 const selectedCardKeys = ref<string[]>([])
+const selectedCardOrderKeys = ref<string[]>([])
 const selectedTurnOrder = ref<number[]>([])
 const selectedTokenAmount = ref(0)
 
@@ -109,14 +118,19 @@ const showsPlayerLife = computed(() => {
 
 watch(() => decision.value?.id, () => {
   selectedCardKeys.value = []
-  selectedTurnOrder.value = []
+  selectedCardOrderKeys.value = decision.value?.kind === 'select_cards' && decision.value.reorderable
+    ? decision.value.candidates.map(choiceKey)
+    : []
+  selectedTurnOrder.value = decision.value?.kind === 'reorder_turn_order'
+    ? decision.value.cards.map(card => card.index)
+    : []
   selectedTokenAmount.value = decision.value?.kind === 'choose_token_amount'
     ? decision.value.minAmount
     : 0
   // Each decision is a new modal context. Do not carry a position dragged
   // for a previous decision into the next one.
   resetModalPosition()
-})
+}, { immediate: true })
 
 const turnOrderLabels = computed(() => createTurnOrderLabels(state.game?.players ?? []))
 
@@ -133,18 +147,45 @@ function turnOrderCardLabel(cardId: string): string {
   return turnOrderActorLabel(cardId, turnOrderLabels.value)
 }
 
-function turnOrderCardPosition(index: number): number | null {
-  const position = selectedTurnOrder.value.indexOf(index)
-  return position < 0 ? null : position + 1
+function turnOrderTokenUrl(cardId: string): string | undefined {
+  if (cardId === 'nemesis') return nemesisTurnOrderTokenUrl()
+  const playerIndex = state.game?.players.findIndex(player => player.id === cardId) ?? -1
+  return playerIndex >= 0 ? playerTurnOrderTokenUrl(playerIndex + 1) : undefined
 }
 
-function toggleTurnOrderCard(card: TurnOrderCardChoice) {
-  const position = selectedTurnOrder.value.indexOf(card.index)
-  if (position >= 0) {
-    selectedTurnOrder.value = selectedTurnOrder.value.filter(index => index !== card.index)
-  } else {
-    selectedTurnOrder.value = [...selectedTurnOrder.value, card.index]
+function turnOrderTokenItem(card: TurnOrderCardChoice): TurnOrderTokenItem {
+  return {
+    key: String(card.index),
+    label: turnOrderCardLabel(card.cardId),
+    tokenUrl: turnOrderTokenUrl(card.cardId),
   }
+}
+
+const reorderTurnOrderItems = computed<TurnOrderTokenItem[]>(() => {
+  const current = decision.value
+  if (!current || current.kind !== 'reorder_turn_order') return []
+  return selectedTurnOrder.value
+    .map(index => current.cards.find(card => card.index === index))
+    .filter((card): card is TurnOrderCardChoice => !!card)
+    .map(turnOrderTokenItem)
+})
+
+const selectTurnOrderItems = computed<TurnOrderTokenItem[]>(() => {
+  const current = decision.value
+  if (!current || current.kind !== 'select_turn_order_card') return []
+  return current.cards.map(turnOrderTokenItem)
+})
+
+function reorderTurnOrder(keys: string[]) {
+  if (decision.value?.kind !== 'reorder_turn_order') return
+  selectedTurnOrder.value = keys.map(Number).filter(index => Number.isInteger(index))
+}
+
+function chooseTurnOrderCard(item: TurnOrderTokenItem) {
+  const current = decision.value
+  if (!current || current.kind !== 'select_turn_order_card') return
+  const card = current.cards.find(candidate => String(candidate.index) === item.key)
+  if (card) answer({ kind: 'select_turn_order_card', choice: card })
 }
 
 function confirmTurnOrder() {
@@ -159,15 +200,8 @@ function placeSpecificDeckCard(cardId: string, placement: SpecificDeckPlacement)
 }
 
 function resetTurnOrder() {
-  selectedTurnOrder.value = []
-}
-
-function selectedTurnOrderLabel(): string {
-  const currentDecision = decision.value
-  if (!currentDecision || currentDecision.kind !== 'reorder_turn_order') return ''
-  return selectedTurnOrder.value
-    .map(index => turnOrderCardLabel(currentDecision.cards.find(card => card.index === index)?.cardId ?? ''))
-    .join(' → ')
+  if (decision.value?.kind !== 'reorder_turn_order') return
+  selectedTurnOrder.value = decision.value.cards.map(card => card.index)
 }
 
 function choiceKey(choice: CardChoice): string {
@@ -178,9 +212,16 @@ function collectiveChoiceKey(choice: CollectiveCardChoice): string {
   return `${choice.playerId}:${choiceKey(choice.choice)}`
 }
 
+function collectiveZoneLabel(zone: CardChoice['zone']): string {
+  if (zone === 'discard') return 'DISCARD PILE'
+  if (zone === 'played_this_turn') return 'PLAYED THIS TURN'
+  if (zone === 'player_cards_in_play') return 'PLAYER CARDS IN PLAY'
+  return zone.replace(/_/g, ' ').toUpperCase()
+}
+
 const selectionItems = computed<CardSelectionItem[]>(() => {
   if (decision.value?.kind === 'select_cards') {
-    return decision.value.candidates.map(choice => ({
+    const items = decision.value.candidates.map(choice => ({
       key: choiceKey(choice),
       cardId: choice.cardId,
       cardName: choice.cardName,
@@ -192,7 +233,14 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
             : choice.zone === 'specific_deck' ? specificDeckName.value : 'PLAYED THIS TURN',
       disabled: choice.disabled,
       disabledReason: choice.disabledReason ?? (choice.disabled ? 'Not enough Knowledge to install this upgrade.' : undefined),
+      highlight: choice.highlight,
     }))
+    if (decision.value.reorderable) {
+      const order = new Map(selectedCardOrderKeys.value.map((key, index) => [key, index]))
+      items.sort((a, b) => (order.get(a.key) ?? Number.MAX_SAFE_INTEGER) -
+        (order.get(b.key) ?? Number.MAX_SAFE_INTEGER))
+    }
+    return items
   }
   if (decision.value?.kind === 'select_collective_cards') {
     return decision.value.candidates.map(choice => ({
@@ -200,7 +248,7 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
       cardId: choice.choice.cardId,
       cardName: choice.choice.cardName,
       groupKey: choice.playerId,
-      groupLabel: `${playerName(choice.playerId)} HAND`,
+      groupLabel: `${playerName(choice.playerId)} ${collectiveZoneLabel(choice.choice.zone)}`,
     }))
   }
   if (isLargeCardSelection.value && decision.value?.kind === 'choose_one') {
@@ -251,6 +299,28 @@ function chooseInstantCardChoice(choiceId: string) {
   if (choice) answer({ kind: 'select_cards', choices: [choice] })
 }
 
+function reorderSelectionCards(keys: string[]) {
+  const current = decision.value
+  if (current?.kind !== 'select_cards' || !current.reorderable) return
+  const validKeys = new Set(current.candidates.map(choiceKey))
+  const next = keys.filter((key, index) => validKeys.has(key) && keys.indexOf(key) === index)
+  for (const choice of current.candidates) {
+    const key = choiceKey(choice)
+    if (!next.includes(key)) next.push(key)
+  }
+  selectedCardOrderKeys.value = next
+}
+
+function orderedSelectionChoices(): CardChoice[] {
+  const current = decision.value
+  if (current?.kind !== 'select_cards' || !current.reorderable) return []
+  const byKey = new Map(current.candidates.map(choice => [choiceKey(choice), choice]))
+  return selectedCardOrderKeys.value.flatMap(key => {
+    const choice = byKey.get(key)
+    return choice ? [choice] : []
+  })
+}
+
 function confirmSelectedCards() {
   if (isLargeCardSelection.value && decision.value?.kind === 'choose_one') {
     if (selectedCardKeys.value.length !== 1) return
@@ -262,7 +332,10 @@ function confirmSelectedCards() {
   if (decision.value?.kind === 'select_cards') {
     const choices = decision.value.candidates.filter(choice => selectedCardKeys.value.includes(choiceKey(choice)))
     if (choices.length < decision.value.min || choices.length > decision.value.max) return
-    resolveDecision({ kind: 'select_cards', choices })
+    resolveDecision({
+      kind: 'select_cards', choices,
+      ...(decision.value.reorderable ? { order: orderedSelectionChoices() } : {}),
+    })
     return
   }
   if (decision.value?.kind === 'select_collective_cards') {
@@ -274,7 +347,10 @@ function confirmSelectedCards() {
 
 function skipSelectedCards() {
   if (decision.value?.kind === 'select_cards' && decision.value.min === 0) {
-    resolveDecision({ kind: 'select_cards', choices: [] })
+    resolveDecision({
+      kind: 'select_cards', choices: [],
+      ...(decision.value.reorderable ? { order: orderedSelectionChoices() } : {}),
+    })
   } else if (decision.value?.kind === 'select_collective_cards' && decision.value.min === 0) {
     resolveDecision({ kind: 'select_collective_cards', choices: [] })
   }
@@ -614,6 +690,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         :max="cardSelectionMaximum"
         :large-cards="isLargeSpecificDeckSelection || isLargeCardSelection"
         :group-labels="!isLargeCardSelection"
+        :reorderable="decision.kind === 'select_cards' && decision.reorderable === true"
+        @reorder="reorderSelectionCards"
         @confirm="confirmSelectedCards"
         @skip="skipSelectedCards"
       />
@@ -652,29 +730,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
       </div>
 
       <template v-else-if="decision.kind === 'reorder_turn_order'">
-        <p class="decision-hint">Choose the order of the revealed cards from top to bottom.</p>
-        <div class="turn-order-reveal-cards">
-          <button
-            v-for="card in decision.cards"
-            :key="card.index"
-            class="turn-order-reveal-card"
-            :class="{ selected: turnOrderCardPosition(card.index) !== null, nemesis: card.cardId === 'nemesis' }"
-            @click="toggleTurnOrderCard(card)"
-          >
-            <span class="turn-order-reveal-index">{{ turnOrderCardPosition(card.index) ?? '—' }}</span>
-            <span>{{ turnOrderCardLabel(card.cardId) }}</span>
-          </button>
-        </div>
-        <p class="turn-order-reveal-order">
-          Top →
-          <template v-if="selectedTurnOrder.length > 0">
-            {{ selectedTurnOrderLabel() }}
-          </template>
-          <span v-else> choose cards </span>
-          → Bottom
-        </p>
-        <div class="decision-footer">
-          <span class="stat">Order {{ selectedTurnOrder.length }} / {{ decision.cards.length }}</span>
+        <p class="decision-hint">Drag the revealed turn order tokens into the order you want, from top to bottom.</p>
+        <TurnOrderTokenRow
+          :items="reorderTurnOrderItems"
+          :draggable-items="true"
+          aria-label="Revealed turn order tokens"
+          @reorder="reorderTurnOrder"
+        />
+        <div class="decision-footer turn-order-decision-footer">
           <div class="decision-footer-actions">
             <button class="btn" @click="resetTurnOrder">Reset</button>
             <button
@@ -690,20 +753,19 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
 
       <template v-else-if="decision.kind === 'select_turn_order_card'">
         <p class="decision-hint">Choose a player's turn order card from the discard pile.</p>
-        <div class="turn-order-reveal-cards">
-          <button
-            v-for="card in decision.cards"
-            :key="card.index"
-            class="turn-order-reveal-card"
-            @click="answer({ kind: 'select_turn_order_card', choice: card })"
-          >
-            {{ turnOrderCardLabel(card.cardId) }}
-          </button>
-        </div>
+        <TurnOrderTokenRow
+          :items="selectTurnOrderItems"
+          aria-label="Player turn order cards in the discard pile"
+          @choose="chooseTurnOrderCard"
+        />
       </template>
 
       <template v-else-if="decision.kind === 'choose_turn_order_position'">
         <p class="decision-hint">Choose where to place the revealed turn order card.</p>
+        <TurnOrderToken
+          :token-url="turnOrderTokenUrl(decision.cardId)"
+          :label="turnOrderCardLabel(decision.cardId)"
+        />
         <div class="decision-options">
           <button class="btn primary decision-option" @click="answer({ kind: 'choose_turn_order_position', position: 'top' })">
             Place on Top
@@ -716,9 +778,10 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
 
       <template v-else-if="decision.kind === 'confirm_turn_order_reveal'">
         <p class="decision-hint">Flare revealed the top card of the turn order deck.</p>
-        <div class="turn-order-reveal-card" :class="{ nemesis: decision.cardId === 'nemesis' }">
-          {{ turnOrderCardLabel(decision.cardId) }}
-        </div>
+        <TurnOrderToken
+          :token-url="turnOrderTokenUrl(decision.cardId)"
+          :label="turnOrderCardLabel(decision.cardId)"
+        />
         <p class="turn-order-reveal-note">The card will remain on top of the turn order deck.</p>
         <div class="decision-footer">
           <button class="btn primary" @click="answer({ kind: 'confirm_turn_order_reveal', accepted: true })">

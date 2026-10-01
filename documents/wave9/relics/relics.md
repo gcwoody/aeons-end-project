@@ -1,4 +1,4 @@
-# Beyond the Breach — Relics
+# Wave 9 — Relics
 
 > This file was collected from the Aeon's End Wiki for the project's Wave 9 implementation plan.
 > It is a rules reference, not runtime data. Verify disputed text against physical cards and official rulebooks before implementation.
@@ -7,7 +7,7 @@
 
 - Box page: [Beyond the Breach](https://aeonsend.wiki.gg/wiki/Beyond_the_Breach)
 - Collected at (UTC): 2026-09-19T13:02:38.522Z
-- Scope: Five supply Relic sets.
+- Scope: Ten supply Relic cards across Beyond the Breach, The Surface, and The Returned.
 
 ## Chronoid
 
@@ -172,3 +172,106 @@ When you play this:
   - Source: [Thought Totem.jpg](https://aeonsend.wiki.gg/images/Thought_Totem.jpg?d29c1d)
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/common images/Aether.png`
   - Source: [Aether.png](https://aeonsend.wiki.gg/images/Aether.png?baf426)
+
+## The Surface — Relics
+
+> Collected from [The Surface — Relics (2)](https://aeonsend.wiki.gg/wiki/The_Surface#Relics_(2)).
+
+### Dreamer's Crown
+
+- Group: Relic
+- Wiki: [Dreamer's Crown](https://aeonsend.wiki.gg/wiki/Dreamer's_Crown)
+- Cost: 3
+- Type: Relic
+- Rules: Gain 1 charge and 2 pulse tokens.
+
+  OR
+
+  You may lose 4 pulse tokens to deal damage equal to your unspent Aether. Then lose all of your unspent Aether.
+- Box 1: The Surface
+- ID 1: TS-028 – TS-032
+- Mechanics: Pulse Token
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/relics/Dreamer's Crown.jpg`
+  - Source: [Dreamer's Crown.jpg](https://aeonsend.wiki.gg/images/Dreamer%27s_Crown.jpg)
+
+### Stormspinner Wand
+
+- Group: Relic
+- Wiki: [Stormspinner Wand](https://aeonsend.wiki.gg/wiki/Stormspinner_Wand)
+- Cost: 8
+- Develop Cost: 5
+- Type: Relic
+- Rules: When you Develop this, any ally may destroy a card in hand or discard pile.
+
+  When you play this, you and any ally each gain 1 charge for each card in that ally's hand that costs 2 Aether or more.
+- Box 1: The Surface
+- ID 1: TS-033 – TS-037
+- Mechanics: Develop
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/relics/Stormspinner Wand.jpg`
+  - Source: [Stormspinner Wand.jpg](https://aeonsend.wiki.gg/images/Stormspinner_Wand.jpg)
+
+## The Returned — Relics
+
+> Collected from [The Returned — Relics (3)](https://aeonsend.wiki.gg/wiki/The_Returned#Relics_(3)).
+
+### Pact Prism
+
+- Group: Relic
+- Wiki: [Pact Prism](https://aeonsend.wiki.gg/wiki/Pact_Prism)
+- Cost: 3
+- Type: Relic
+- Rules: Gain 2 Aether tokens at the end of your turn.
+
+  Any ally may discard a Pact Prism in hand and draw a card. If they do, you gain 1 life.
+- Box 1: The Returned
+- ID 1: TR-023 – TR-027
+- Mechanics: Aether Token
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/relics/Pact Prism.jpg`
+  - Source: [Pact Prism.jpg](https://aeonsend.wiki.gg/images/Pact_Prism.jpg)
+
+### Book of Before
+
+- Group: Relic
+- Wiki: [Book of Before](https://aeonsend.wiki.gg/wiki/Book_of_Before)
+- Cost: 6
+- Type: Relic
+- Rules: Attach this to any player's Breach.
+
+  When a spell is cast from this Breach, Gravehold gains 1 life.
+- Box 1: The Returned
+- ID 1: TR-028 – TR-032
+- Mechanics: Attach
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/relics/Book of Before.jpg`
+  - Source: [Book of Before.jpg](https://aeonsend.wiki.gg/images/Book_of_Before.jpg)
+
+### Visionary Staff
+
+- Group: Relic
+- Wiki: [Visionary Staff](https://aeonsend.wiki.gg/wiki/Visionary_Staff)
+- Cost: 5
+- Type: Relic
+- Rules: Any ally draws three cards in hand and discards two cards in hand.
+
+  OR
+
+  Resolve a Recall effect in any player's discard pile up to two times; Recall: Gain a charge.
+- Box 1: The Returned
+- ID 1: TR-033 – TR-037
+- Mechanics: Recall
+
+**Images**
+
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/relics/Visionary Staff.jpg`
+  - Source: [Visionary Staff.jpg](https://aeonsend.wiki.gg/images/Visionary_Staff.jpg)

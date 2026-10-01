@@ -142,10 +142,23 @@ function testPulseTokensAreDiscardedWhenTheGameEnds(): void {
   assertEqual(game.players[1]!.pulseTokens, 0, 'Game end clears the ally\'s Pulse tokens')
 }
 
+function testPactPrismEndTurnTriggerSurvivesUiDiscardOrdering(): void {
+  const game = createGame('jian', 'brama')
+  const player = game.players[0]!
+  // The UI's discard-order step moves played cards before it calls the engine
+  // draw-phase resolver. The snapshot is the bridge that preserves this card's
+  // end-of-turn trigger across that ordering.
+  player.playedThisTurn = []
+  player.pendingEndTurnCardIds = ['pact_prism']
+  resolveDrawPhase(game, player.id)
+  assertEqual(player.aetherTokens, 2, 'Pact Prism grants two Aether tokens at end of turn')
+}
+
 testPulseTokensAreCappedPersistentAndSpentExactly()
 testPulseTokenEffectsCanSelectAnyPlayer()
 testPulseTokenSupplyVisibilityUsesSetupMechanics()
 testRecallIsMainPhaseOnlyAndEachDuplicateCanBeUsedOnce()
 testPulseTokensAreDiscardedWhenTheGameEnds()
+testPactPrismEndTurnTriggerSurvivesUiDiscardOrdering()
 
 console.log('Wave 9 Pulse token and Recall tests passed')

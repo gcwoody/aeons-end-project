@@ -503,6 +503,7 @@ function testTurnSpellBonusAppliesWhenCastingAnAllyHandSpell(): void {
   const selected = decision.candidates.find(candidate => candidate.choice.cardId === 'spark')!
   resolvePendingDecision(game, decision.id, { kind: 'select_collective_cards', choices: [selected] })
   assertEqual(game.nemesis.hp, before - 3, 'A hand spell cast this turn receives Descent’s +2 bonus')
+  assertEqual(caster.spellsCastThisTurn, 1, "Casting an ally hand spell increments the caster's spell count")
 }
 
 function testFrostfireMaelstromAllocatesDamageAndGroupsTargetHits(): void {

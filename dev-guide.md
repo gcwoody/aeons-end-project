@@ -3,7 +3,7 @@
 > 这是给独立开发者和 Codex 使用的主开发指南。项目不再依赖临时 `handoff.md`；新对话先阅读
 > [`README.md`](README.md)、本指南和统一的 [`ui/ui-guide.md`](ui/ui-guide.md)。
 
-更新时间：2026-09-19
+更新时间：2026-10-01
 
 ## 先记住三条
 
@@ -43,6 +43,39 @@ Nemesis 作为来源时可以为空；`effectPlayerId` 表示当前效果上下�
 `revealedTopCard.playerId`、`PendingSpellCast.playerId` 或
 `PendingNemesisDiscard.playerId` 等业务字段，不能借用一个隐藏的决策权限字段。
 UI 只有在候选项明确指向唯一角色时才自动切换显示角色；没有唯一目标时保留当前角色。
+
+### 效果来源、卡牌持有者与目标
+
+引擎执行效果时必须把“谁发起效果”与“这张卡属于谁”分开。**卡牌持有者不会自动成为效果来源**；
+选择目标、切换 UI 视角或进入嵌套效果也不能悄悄改写来源。
+
+| 身份 | 引擎字段 | 用途 |
+| --- | --- | --- |
+| 效果发起者 | `PendingEffectResolution.sourcePlayerId` | 卡面中的 `you/your` 和 `ally` 的默认参照；`ally` 排除该 Mage。它代表当前效果帧的行动者，不从 `currentTurn` 或当前 UI 视角推导。 |
+| 卡牌持有者 | `sourceCardOwnerId` | 查找、移动、摧毁来源卡，访问来源 Mage 的专属牌堆，以及确定卡牌的所属牌区。它本身不决定 `you` 或 `ally`。 |
+| 当前目标/效果对象 | `effectPlayerId` | 玩家明确选中目标后，供后续以该目标为对象的 `self` 操作使用。改变它不能改变 `sourcePlayerId`，也不能重新定义后续的 `ally`。 |
+| 事件条件对象 | `matchingBlocks()` 的 `conditionPlayerId` | 判断触发条件时所检查的 Mage。与 `effectSourcePlayerId` 分开传入；例如 Qu 的 Form 要检查 Qu 当前的 Form 面，同时比较本次获得卡牌的玩家是否为 Qu 的 ally。 |
+| 施法者/法术持有者 | `PendingSpellCast.casterPlayerId` / `playerId` | 法术效果按施法者结算；法术离开 Breach 后回到法术持有者的牌区。不可把这两者合并。 |
+
+常见情形按以下规则处理：
+
+| 情形 | 效果来源/`you`/`ally` | 卡牌或区域归属 |
+| --- | --- | --- |
+| 正常打出卡牌、激活 Ability、普通施法 | 发起该动作的 Mage | 来源卡属于该 Mage |
+| A 施放 B Breach 上的法术 | A；法术中的 `draw` 给 A，`any ally` 排除 A | 法术从 B 的 Breach 移除并进入 B 的弃牌堆 |
+| A 触发 B 弃牌堆卡牌的 Recall | A；Recall 中的 `ally` 排除 A | Recall 卡仍属于 B；`move_source_card_to_hand` 等操作移动 B 的卡 |
+| 法术触发 Breach 上的附着 Relic | 施法者；`any ally` 相对施法者 | 附着物保留在该 Breach；被弃掉时按规则进入 Breach 所属玩家的弃牌堆 |
+| Nested `On Play` / `On Gain` / 卡牌触发块 | 为该触发帧设置明确行动者；完成后恢复外层帧 | `sourceCardId` 和 `sourceCardOwnerId` 指向触发卡，不能残留外层来源 |
+| 明确指定 `effectPlayerScope: 'owner'` | 该块以卡牌持有者为行动者 | 这是数据中明确写出的例外；不能从“卡属于谁”自动推断 |
+
+实现约束：
+
+- 新增或续接嵌套卡牌触发时，用 `contextualizeCardEffectBlock()` 保存触发卡、持有者和行动者，块结束后恢复外层上下文；不要只把 `block.effects` 裸追加到外层队列。
+- 选中盟友后，可以暂时更新 `effectPlayerId` 来操作该玩家的手牌、资源或牌堆；后续仍写 `target: 'ally'` 时必须以稳定的 `sourcePlayerId` 计算。
+- `self` 表示当前明确的效果对象；`source: 'self'` 涉及来源卡实体时，应通过 `sourceCardId` + `sourceCardOwnerId` 定位实体，而不是把来源玩家当成卡牌持有者。
+- 检查 Recall、施法、附着物、专属牌堆和嵌套获得卡牌时，分别验证效果目标和卡牌最终所在牌区。不能仅靠正常回合中“来源通常等于持有者”来判断正确。
+
+本次来源审查已补上跨玩家 Recall、跨玩家预备法术施放、附着 Relic 的盟友参照，以及嵌套 On Play/On Gain 的 `source:self` 回归覆盖。对应测试位于 `aeons-end-engine/src/tests/wave9-relics.test.ts`、`wave9-qu.test.ts` 和既有 Tressa/Spell 测试中。修改效果上下文时运行 `cd aeons-end-engine; npm test`，重点检查暂停决策后恢复上下文的路径。
 
 ## 文件地图：改功能去哪找
 
@@ -94,6 +127,20 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 `CardDecisionModal.vue` 按决策类型渲染，`CardSelectionPanel.vue` 负责通用卡牌选择；
 它们不应该出现 `if (cardId === 'new_card')`。同样，Ability 不维护一段仅供展示的
 规则文本，而是复用同一套 `CardEffect[]`。
+
+### Deck reveal refill rule
+
+Any effect that reveals the top *N* cards of a player's deck must call the shared
+`preparePlayerDeckForReveal` path before reading the top cards. If the deck is short,
+the whole player discard pile is turned over without shuffling, appended under the
+remaining deck cards, and cleared; the effect then reveals up to *N* cards. If the
+combined deck and discard still contain fewer than *N* cards, it reveals all cards
+that exist. Turn Order deck reveals use the same typed `ensureDeckForReveal` helper
+with the Turn Order rule: shuffle its discard pile into the deck, clear discard, and
+advance the round when recycling. Do not add card-specific refill logic or read a
+player deck top directly before preparing it. Mage-specific decks have their own
+rules and are not covered unless the effect explicitly says to reveal a player's
+draw deck.
 
 ### UI：大部分交互也已经抽象
 

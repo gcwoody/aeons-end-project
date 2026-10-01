@@ -33,6 +33,10 @@ import { WAVE9_GEM_CARDS, chromiaSphere } from './data/wave9/gems'
 import { WAVE9_SPELL_CARDS } from './data/wave9/spells'
 import { TRINKET_CARDS } from './data/wave9/trinkets'
 import {
+  WAVE9_RELIC_CARDS, chronoid, omenLoop, riftRing, tearstoneAmulet, thoughtTotem,
+  dreamersCrown, stormspinnerWand, pactPrism, bookOfBefore, visionaryStaff,
+} from './data/wave9/relics'
+import {
   NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
   BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
   BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER, PRINCE_OF_GLUTTONS_UNIQUE_CARDS, PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
@@ -50,6 +54,9 @@ export {
   wave9Crystal, wave9Spark,
   chromiaSphere, WAVE9_GEM_CARDS,
   WAVE9_SPELL_CARDS,
+  WAVE9_RELIC_CARDS,
+  chronoid, omenLoop, riftRing, tearstoneAmulet, thoughtTotem,
+  dreamersCrown, stormspinnerWand, pactPrism, bookOfBefore, visionaryStaff,
   NOOK_CARDS, NOOK_UNIQUE_CARDS,
   INDIRA_CARDS, INDIRA_UNIQUE_CARDS,
   DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS,
@@ -141,6 +148,7 @@ export const ALL_MARKET_CARDS: Record<string, CardDef> = {
   ...MARKET_GEM_CARDS,
   ...WAVE9_GEM_CARDS,
   ...MARKET_RELIC_CARDS,
+  ...WAVE9_RELIC_CARDS,
   ...MARKET_SPELL_CARDS,
   ...WAVE9_SPELL_CARDS,
 }

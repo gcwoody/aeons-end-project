@@ -2,6 +2,7 @@
 import { computed } from 'vue'
 import { cardImageUrl } from '../card-images'
 import { chunkCards } from '../game/pile-layout'
+import { usePointerReorder } from '../game/usePointerReorder'
 import CardHoverPreview from './CardHoverPreview.vue'
 
 export interface CardSelectionItem {
@@ -12,6 +13,7 @@ export interface CardSelectionItem {
   groupLabel: string
   disabled?: boolean
   disabledReason?: string
+  highlight?: 'red' | 'yellow'
 }
 
 const props = defineProps<{
@@ -23,10 +25,13 @@ const props = defineProps<{
   largeCards?: boolean
   /** Omit source labels when the decision prompt already describes the group. */
   groupLabels?: boolean
+  /** Allow revealed candidates to be reordered by dragging. */
+  reorderable?: boolean
 }>()
 
 const emit = defineEmits<{
   'update:selectedKeys': [keys: string[]]
+  reorder: [keys: string[]]
   confirm: []
   skip: []
 }>()
@@ -48,6 +53,12 @@ const groups = computed(() => {
   }))
 })
 
+const { draggingKey, onPointerDown, consumeDragged } = usePointerReorder({
+  getKeys: () => props.choices.map(choice => choice.key),
+  reorder: keys => emit('reorder', keys),
+  enabled: () => props.reorderable === true,
+})
+
 function isSelected(key: string): boolean {
   return props.selectedKeys.includes(key)
 }
@@ -66,42 +77,87 @@ function toggle(key: string): void {
   if (props.selectedKeys.length >= props.max) return
   emit('update:selectedKeys', [...props.selectedKeys, key])
 }
+
+function toggleAfterClick(key: string): void {
+  if (consumeDragged()) return
+  toggle(key)
+}
 </script>
 
 <template>
-  <div class="card-selection-panel" :class="{ 'large-cards': props.largeCards, 'no-group-labels': props.groupLabels === false }">
-    <div v-for="group in groups" :key="group.key" class="decision-card-zone">
-      <span v-if="props.groupLabels !== false && group.label" class="decision-card-zone-label">{{ group.label }}</span>
+  <div class="card-selection-panel" :class="{ 'large-cards': props.largeCards, 'no-group-labels': props.groupLabels === false, reorderable: props.reorderable }">
+    <div v-if="props.reorderable" class="decision-card-zone decision-card-sort-zone">
+      <span v-if="props.groupLabels !== false && groups[0]?.label" class="decision-card-zone-label">{{ groups[0].label }}</span>
       <div class="decision-card-rows">
-        <div
-          v-for="(row, index) in group.rows"
-          :key="`${group.key}:${index}`"
-          class="pile-row decision-card-row"
-          :style="{ '--choice-columns': row.length }"
+        <TransitionGroup
+          name="pointer-sort"
+          tag="div"
+          class="pointer-sort-row decision-card-sort-row"
+          :class="{ 'is-dragging': draggingKey !== null }"
+          aria-label="Reorder revealed cards"
         >
-          <CardHoverPreview
-            v-for="choice in row"
+          <button
+            v-for="(choice, index) in props.choices"
             :key="choice.key"
-            :card-id="choice.cardId"
-            :disabled="props.largeCards || choice.disabled"
+            class="decision-card-choice"
+            :class="{
+              selected: isSelected(choice.key),
+              unavailable: choice.disabled,
+              'pointer-sort-item': true,
+              'is-dragging': draggingKey === choice.key,
+            }"
+            type="button"
+            :aria-label="'Select ' + choice.cardName + '; position ' + (index + 1)"
+            :aria-pressed="isSelected(choice.key)"
+            :disabled="choice.disabled"
+            :data-sort-key="choice.key"
+            :title="choice.disabled ? choice.disabledReason : undefined"
+            @click="toggleAfterClick(choice.key)"
+            @pointerdown="onPointerDown($event, choice.key)"
           >
-            <button
-              class="decision-card-choice"
-              :class="{ selected: isSelected(choice.key), unavailable: choice.disabled }"
-              type="button"
-              :aria-label="`Select ${choice.cardName}`"
-              :aria-pressed="isSelected(choice.key)"
-              :disabled="choice.disabled"
-              :title="choice.disabled ? choice.disabledReason : undefined"
-              @click="toggle(choice.key)"
-            >
-              <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />
+            <CardHoverPreview :card-id="choice.cardId" :disabled="choice.disabled || draggingKey !== null">
+              <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" draggable="false" />
               <span v-else>{{ choice.cardName }}</span>
-            </button>
-          </CardHoverPreview>
-        </div>
+            </CardHoverPreview>
+          </button>
+        </TransitionGroup>
       </div>
     </div>
+
+    <template v-else>
+      <div v-for="group in groups" :key="group.key" class="decision-card-zone">
+        <span v-if="props.groupLabels !== false && group.label" class="decision-card-zone-label">{{ group.label }}</span>
+        <div class="decision-card-rows">
+          <div
+            v-for="(row, index) in group.rows"
+            :key="group.key + ':' + index"
+            class="pile-row decision-card-row"
+            :style="{ '--choice-columns': row.length }"
+          >
+            <CardHoverPreview
+              v-for="choice in row"
+              :key="choice.key"
+              :card-id="choice.cardId"
+              :disabled="props.largeCards || choice.disabled"
+            >
+              <button
+                class="decision-card-choice"
+                :class="{ selected: isSelected(choice.key), unavailable: choice.disabled, 'highlight-red': choice.highlight === 'red', 'highlight-yellow': choice.highlight === 'yellow' }"
+                type="button"
+                :aria-label="'Select ' + choice.cardName"
+                :aria-pressed="isSelected(choice.key)"
+                :disabled="choice.disabled"
+                :title="choice.disabled ? choice.disabledReason : undefined"
+                @click="toggle(choice.key)"
+              >
+                <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />
+                <span v-else>{{ choice.cardName }}</span>
+              </button>
+            </CardHoverPreview>
+          </div>
+        </div>
+      </div>
+    </template>
 
     <div class="decision-footer">
       <span v-if="props.max > 0" class="stat">Selected {{ selectedKeys.length }} / {{ max }}</span>
@@ -110,7 +166,6 @@ function toggle(key: string): void {
         <button
           v-if="props.max > 0 || props.min > 0"
           class="btn primary"
-          type="button"
           :disabled="selectedKeys.length < min || selectedKeys.length > max"
           @click="emit('confirm')"
         >

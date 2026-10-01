@@ -60,6 +60,7 @@ function visiblePlayerImageUrls(candidate: PlayerState): string[] {
     if (breach.present === false) continue
     addUrl(breachPresentation(breach).imageUrl)
     breach.installedUpgrades?.forEach(addCard)
+    if (breach.attachedRelic) addCard(breach.attachedRelic.cardId)
     breach.prepSpells.forEach((cardId, index) => {
       if (breach.preppedSpellFaceDown?.[index]) addUrl(playerCardBackUrl())
       else addCard(cardId)
@@ -482,7 +483,7 @@ function isDecisionBreachTarget(b: BreachState): boolean {
 
 function effectFocusChoice(b: BreachState) {
   const decision = state.game?.pendingDecision
-  if (decision?.kind !== 'select_breach' || b.opened || b.focusCount >= b.focusToOpen) return null
+  if (decision?.kind !== 'select_breach' || decision.action === 'attach' || b.opened || b.focusCount >= b.focusToOpen) return null
   return decision.candidates.find(choice =>
     choice.playerId === player.value.id && choice.breachIndex === b.index) ?? null
 }
@@ -1026,6 +1027,18 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
             :alt="`Breach ${toRoman(b.index)} ${b.opened ? 'open' : 'closed'}`"
             :disabled="draggedSpellId !== null"
           />
+          <CardHoverPreview
+            v-if="b.attachedRelic"
+            :card-id="b.attachedRelic.cardId"
+            @click.stop
+          >
+            <CardSurface
+              :card-id="b.attachedRelic.cardId"
+              size="hand"
+              class="breach-attached-relic"
+              :image-alt="getCard(b.attachedRelic.cardId).name"
+            />
+          </CardHoverPreview>
           <div
             v-if="b.installedUpgrades?.length"
             class="breach-upgrade-strip"

@@ -26,7 +26,7 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
 }
 
 function testWave1CatalogAndMarketSetup(): void {
-  assertEqual(Object.keys(ALL_MARKET_CARDS).length, 52, 'All Wave 1 and implemented Wave 9 market cards are registered')
+  assertEqual(Object.keys(ALL_MARKET_CARDS).length, 62, 'All Wave 1 and implemented Wave 9 market cards are registered')
   assert(Object.values(ALL_MARKET_CARDS).every(card => (card.effects?.length ?? 0) > 0), 'Every registered market card has a playable effect definition')
   assertEqual(DEFAULT_MARKET_SLOTS.length, 9, 'Default market has nine slots')
   const manual = resolveMarketCardIds({ mode: 'manual', slots: ['jade', 'searing_ruby', 'clouded_sapphire', 'flexing_dagger', 'blasting_staff', 'phoenix_flame', 'ignite', 'dark_fire', 'chaos_arc'] })
@@ -416,12 +416,15 @@ function testNewCardEffectPrimitives(): void {
   revealGame.currentTurn = revealPlayer.id
   revealGame.currentPhase = 'main'
   revealPlayer.hand = ['sifters_pearl']
-  revealPlayer.deck = ['jade']
-  otherRevealPlayer.deck = ['clouded_sapphire']
+  revealPlayer.deck = []
+  revealPlayer.discard = ['jade']
+  otherRevealPlayer.deck = []
+  otherRevealPlayer.discard = ['clouded_sapphire']
   playCard(revealGame, revealPlayer.id, 'sifters_pearl')
   const firstReveal = revealGame.pendingDecision
   assert(firstReveal?.kind === 'choose_one' && revealGame.pendingEffect?.revealedTopCard?.playerId === revealPlayer.id, 'Sifter records the first revealed card owner')
   assertEqual(revealGame.pendingEffect?.revealedTopCard?.cardId, 'jade', 'Sifter keeps the revealed card available for the image modal')
+  assertEqual(revealPlayer.discard.length, 0, 'A single-card reveal recycles the player discard pile without shuffling')
   if (!firstReveal || firstReveal.kind !== 'choose_one') return
   resolvePendingDecision(revealGame, firstReveal.id, { kind: 'choose_one', optionId: 'keep' })
   const secondReveal = revealGame.pendingDecision

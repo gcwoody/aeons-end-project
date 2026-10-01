@@ -1,7 +1,14 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
-import { cardImageUrl, playerCardBackUrl, pulseTokenImageUrl, specificDeckBackUrl } from '../card-images'
+import {
+  cardImageUrl,
+  nemesisTurnOrderTokenUrl,
+  playerCardBackUrl,
+  playerTurnOrderTokenUrl,
+  pulseTokenImageUrl,
+  specificDeckBackUrl,
+} from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
@@ -12,9 +19,11 @@ import MageAbilityChoice from './MageAbilityChoice.vue'
 import TwoButtonChoice from './TwoButtonChoice.vue'
 import TokenAmountChoicePanel from './TokenAmountChoicePanel.vue'
 import TokenBadge from './TokenBadge.vue'
+import TurnOrderToken from './TurnOrderToken.vue'
+import TurnOrderTokenRow, { type TurnOrderTokenItem } from './TurnOrderTokenRow.vue'
 import { mageImageUrls } from '../mage-images'
 
-type GalleryModal = 'pile' | 'decision' | 'reveal' | 'instant-choice' | 'two-button' | 'token-amount' | null
+type GalleryModal = 'pile' | 'decision' | 'reveal' | 'instant-choice' | 'two-button' | 'token-amount' | 'turn-order' | null
 
 const modal = ref<GalleryModal>(null)
 const galleryModalEl = ref<HTMLElement | null>(null)
@@ -27,6 +36,12 @@ const galleryCardChoices: CardSelectionItem[] = ['clouded_trinket', 'golden_trin
   groupKey: 'revealed-cards',
   groupLabel: '',
 }))
+const galleryCardOrderKeys = ref(galleryCardChoices.map(choice => choice.key))
+const galleryOrderedCardChoices = computed(() => {
+  const order = new Map(galleryCardOrderKeys.value.map((key, index) => [key, index]))
+  return [...galleryCardChoices].sort((a, b) =>
+    (order.get(a.key) ?? Number.MAX_SAFE_INTEGER) - (order.get(b.key) ?? Number.MAX_SAFE_INTEGER))
+})
 const galleryInstantCardChoices: LargeCardChoiceOption[] = galleryCardChoices.map(choice => ({
   id: choice.key,
   cardId: choice.cardId,
@@ -36,6 +51,7 @@ const galleryInstantChoiceConfirmed = ref('')
 const galleryTwoButtonChoiceConfirmed = ref('')
 const galleryPulseAmount = ref(0)
 const galleryPulseAmountConfirmed = ref<number | null>(null)
+const galleryTurnOrderKeys = ref(['p1-0', 'nemesis-0', 'p2-0', 'p1-1', 'nemesis-1'])
 const galleryPulseSummary = {
   template: 'Deal {amount} damage divided however you choose among enemies.',
   baseAmount: 2,
@@ -44,12 +60,23 @@ const galleryTwoButtonOptions = [
   { id: 'damage', label: 'Deal 2 damage and gain 1 Pulse token' },
   { id: 'spend', label: 'Lose 3 Pulse tokens to deal 7 damage', disabled: false },
 ]
+const galleryTurnOrderItems = computed<TurnOrderTokenItem[]>(() => {
+  const tokens: Record<string, TurnOrderTokenItem> = {
+    'p1-0': { key: 'p1-0', label: 'Player 1 turn', tokenUrl: playerTurnOrderTokenUrl(1) },
+    'nemesis-0': { key: 'nemesis-0', label: 'Nemesis turn', tokenUrl: nemesisTurnOrderTokenUrl() },
+    'p2-0': { key: 'p2-0', label: 'Player 2 turn', tokenUrl: playerTurnOrderTokenUrl(2) },
+    'p1-1': { key: 'p1-1', label: 'Player 1 turn', tokenUrl: playerTurnOrderTokenUrl(1) },
+    'nemesis-1': { key: 'nemesis-1', label: 'Nemesis turn', tokenUrl: nemesisTurnOrderTokenUrl() },
+  }
+  return galleryTurnOrderKeys.value.map(key => tokens[key]).filter((item): item is TurnOrderTokenItem => !!item)
+})
 
 watch(modal, (value) => {
   if (!value) return
   if (value === 'decision') {
     gallerySelectedCardKeys.value = []
     galleryConfirmedCardNames.value = []
+    galleryCardOrderKeys.value = galleryCardChoices.map(choice => choice.key)
   }
   if (value === 'instant-choice') galleryInstantChoiceConfirmed.value = ''
   if (value === 'two-button') galleryTwoButtonChoiceConfirmed.value = ''
@@ -57,6 +84,7 @@ watch(modal, (value) => {
     galleryPulseAmount.value = 0
     galleryPulseAmountConfirmed.value = null
   }
+  if (value === 'turn-order') galleryTurnOrderKeys.value = ['p1-0', 'nemesis-0', 'p2-0', 'p1-1', 'nemesis-1']
   nextTick(() => galleryModalEl.value?.focus({ preventScroll: true }))
 })
 
@@ -92,8 +120,12 @@ function cardName(cardId: string): string {
   return getCard(cardId).name
 }
 
+function reorderGalleryCards(keys: string[]) {
+  galleryCardOrderKeys.value = [...keys]
+}
+
 function confirmGalleryCardSelection() {
-  galleryConfirmedCardNames.value = galleryCardChoices
+  galleryConfirmedCardNames.value = galleryOrderedCardChoices.value
     .filter(choice => gallerySelectedCardKeys.value.includes(choice.key))
     .map(choice => choice.cardName)
 }
@@ -113,6 +145,10 @@ function confirmGalleryTwoButtonChoice(optionId: string) {
 function confirmGalleryPulseAmount() {
   galleryPulseAmountConfirmed.value = galleryPulseAmount.value
   modal.value = null
+}
+
+function reorderGalleryTurnOrder(keys: string[]) {
+  galleryTurnOrderKeys.value = keys
 }
 
 </script>
@@ -311,7 +347,16 @@ function confirmGalleryPulseAmount() {
         <button class="btn" data-gallery-open="instant-choice" @click="modal = 'instant-choice'">Open Instant Card Choice</button>
         <button class="btn" data-gallery-open="two-button" @click="modal = 'two-button'">Open Two Button Choice</button>
         <button class="btn" data-gallery-open="token-amount" @click="modal = 'token-amount'">Open Token Amount Choice</button>
+        <button class="btn" data-gallery-open="turn-order" @click="modal = 'turn-order'">Open Turn Order Tokens</button>
       </div>
+      <article class="ui-gallery-item" data-component="Interaction.PointerReorder">
+        <h3>Interaction.PointerReorder</h3>
+        <p class="ui-gallery-caption">Shared by revealed-card sorting, Debug deck editing and Turn Order tokens</p>
+        <div class="ui-gallery-code-example">
+          <code>Pointer capture → midpoint insertion → smooth reflow</code>
+          <span>Hover: grab · hold: grabbing · no native drag preview</span>
+        </div>
+      </article>
       <p v-if="galleryInstantChoiceConfirmed" class="ui-gallery-ability-choice-selection" role="status">
         Instant choice confirmed: {{ galleryInstantChoiceConfirmed }}
       </p>
@@ -375,17 +420,20 @@ function confirmGalleryPulseAmount() {
           <button class="btn" @click="modal = null">Close</button>
         </template>
         <template v-else-if="modal === 'decision'">
-          <p class="ui-gallery-index">Decision.CardSelection · large cards</p>
-          <h2>Choose one or more cards</h2>
-          <p class="ui-gallery-modal-hint">Select cards, then confirm the choice. The selection border follows each card edge.</p>
+          <p class="ui-gallery-index">Interaction.PointerReorder · Decision.CardSelection</p>
+          <h2>Choose cards to discard</h2>
+          <p class="ui-gallery-modal-hint">Grab and slide cards to set their order, select any to discard, then confirm.</p>
           <CardSelectionPanel
             v-model:selected-keys="gallerySelectedCardKeys"
-            :choices="galleryCardChoices"
-            :min="1"
-            :max="2"
-            :large-cards="true"
+            :choices="galleryOrderedCardChoices"
+            :min="0"
+            :max="3"
             :group-labels="false"
+            :reorderable="true"
+            :large-cards="true"
+            @reorder="reorderGalleryCards"
             @confirm="confirmGalleryCardSelection"
+            @skip="gallerySelectedCardKeys = []"
           />
           <p v-if="galleryConfirmedCardNames.length" class="ui-gallery-modal-hint" role="status">
             Confirmed: {{ galleryConfirmedCardNames.join(', ') }}
@@ -433,6 +481,25 @@ function confirmGalleryPulseAmount() {
             v-model="galleryPulseAmount"
             @confirm="confirmGalleryPulseAmount"
           />
+        </template>
+        <template v-else-if="modal === 'turn-order'">
+          <p class="ui-gallery-index">Interaction.PointerReorder · Decision.TurnOrderTokens</p>
+          <h2>Arrange the turn order deck</h2>
+          <p class="ui-gallery-modal-hint">Reveal the token faces, then grab and slide them from left to right to set the deck order.</p>
+          <TurnOrderTokenRow
+            :items="galleryTurnOrderItems"
+            :draggable-items="true"
+            aria-label="Gallery turn order tokens"
+            @reorder="reorderGalleryTurnOrder"
+          />
+          <div class="ui-gallery-turn-order-hidden">
+            <TurnOrderToken label="Turn order card hidden" :hidden="true" />
+            <span>Hidden turn order cards use the question-mark token.</span>
+          </div>
+          <div class="ui-gallery-modal-actions">
+            <button class="btn" @click="galleryTurnOrderKeys = ['p1-0', 'nemesis-0', 'p2-0', 'p1-1', 'nemesis-1']">Reset</button>
+            <button class="btn primary" @click="modal = null">Return Cards</button>
+          </div>
         </template>
     </ModalBase>
   </main>
@@ -643,6 +710,21 @@ function confirmGalleryPulseAmount() {
 .ui-gallery-modal-reveal { display: flex; justify-content: center; gap: 20px; margin: 16px 0 20px; }
 .gallery-modal-reveal-card { width: 220px; height: 330px; overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
 .ui-gallery-modal-actions { display: flex; justify-content: center; gap: 10px; }
+.ui-gallery-turn-order-hidden {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin: 4px auto 14px;
+  color: var(--muted);
+  font-size: 12px;
+}
+.ui-gallery-turn-order-hidden .turn-order-token-surface {
+  width: 52px;
+  height: 52px;
+  margin: 0;
+  font-size: 20px;
+}
 @media (max-width: 900px) {
   .ui-gallery-grid-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ui-gallery-grid-zones { grid-template-columns: repeat(2, minmax(0, 1fr)); }

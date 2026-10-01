@@ -27,6 +27,22 @@ const isUiGallery = new URLSearchParams(window.location.search).get('ui-gallery'
 
 function onKeydown(e: KeyboardEvent) {
   if (e.defaultPrevented) return
+  if (state.debugOpen && isDebugTextInputTarget(e.target)) {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      toggleDebug()
+      return
+    }
+    if (e.key === 'Tab') {
+      e.preventDefault()
+      if (!e.shiftKey) cycleDisplayedPlayer()
+      return
+    }
+    // Ctrl+D is also a browser bookmark shortcut. Keep it from stealing input
+    // while a Debug Tools text field is active; Ctrl+Z remains native text undo.
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') e.preventDefault()
+    return
+  }
   if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
     e.preventDefault()
     undo()
@@ -37,16 +53,26 @@ function onKeydown(e: KeyboardEvent) {
     toggleDebug()
     return
   }
-  if (!state.game || e.ctrlKey || e.metaKey || e.altKey || isEditableTarget(e.target)) return
+  if (!state.game || e.ctrlKey || e.metaKey || e.altKey) return
 
-  if (e.key === 'Tab' && !e.shiftKey) {
+  if (e.key === 'Tab') {
+    // Keep native Tab behavior available while editing a field, but do not
+    // let any board control become the keyboard-focused object.
+    if (isEditableTarget(e.target)) return
     e.preventDefault()
-    cycleDisplayedPlayer()
+    // Tab is the game's player-view shortcut rather than native focus
+    // navigation. Clear the element that was clicked before switching views,
+    // otherwise the browser keeps its white focus ring on the old card/button.
+    clearActiveElementFocus()
+    if (!e.shiftKey) cycleDisplayedPlayer()
     return
   }
 
   // Deliberately use the physical Digit keys, never the numeric keypad.
   if (e.code.startsWith('Digit')) {
+    // Number inputs in Debug Tools own digit keys while focused. Do not let
+    // the global player-view shortcuts consume those keystrokes.
+    if (isEditableTarget(e.target)) return
     const playerIndex = Number(e.code.slice('Digit'.length)) - 1
     const player = state.game.players[playerIndex]
     if (player) {
@@ -178,6 +204,16 @@ function canAdvancePhaseWithSpace(): boolean {
 function isEditableTarget(target: EventTarget | null): boolean {
   return target instanceof HTMLElement
     && !!target.closest('input, textarea, select, [contenteditable="true"]')
+}
+
+function isDebugTextInputTarget(target: EventTarget | null): boolean {
+  return target instanceof Element
+    && !!target.closest('.debug-panel input:not([type="checkbox"]):not([type="radio"]):not([type="button"]):not([type="submit"]), .debug-panel textarea, .debug-panel [contenteditable="true"]')
+}
+
+function clearActiveElementFocus() {
+  const activeElement = document.activeElement
+  if (activeElement instanceof HTMLElement) activeElement.blur()
 }
 
 function togglePlayerPile(pile: 'deck' | 'discard') {

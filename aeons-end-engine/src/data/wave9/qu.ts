@@ -26,10 +26,11 @@ export const QU_CARDS: Record<string, CardDef> = {
     effects: [
       {
         trigger: { kind: 'on_gain_from_supply_pile' },
+        effectPlayerScope: 'owner',
         condition: {
           kind: 'all_of',
           conditions: [
-            { kind: 'mage_form_is', form: 'giver', player: 'source' },
+            { kind: 'mage_form_is', form: 'giver', player: 'active' },
             { kind: 'player_relation_to_source', relation: 'same' },
           ],
         },
@@ -37,10 +38,11 @@ export const QU_CARDS: Record<string, CardDef> = {
       },
       {
         trigger: { kind: 'on_gain_from_supply_pile' },
+        effectPlayerScope: 'owner',
         condition: {
           kind: 'all_of',
           conditions: [
-            { kind: 'mage_form_is', form: 'taker', player: 'source' },
+            { kind: 'mage_form_is', form: 'taker', player: 'active' },
             { kind: 'player_relation_to_source', relation: 'ally' },
           ],
         },

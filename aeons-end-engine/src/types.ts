@@ -1,6 +1,9 @@
 // ===== Card Types =====
 export type CardType = 'gem' | 'relic' | 'spell' | 'treasure' | 'mage_form' | 'breach_upgrade' | 'attack' | 'minion' | 'power' | 'strike'
-export type CardMechanic = 'pulse_token' | 'recall' | 'develop' | 'trinket' | 'unlimited_conjure'
+export type CardMechanic = 'pulse_token' | 'recall' | 'develop' | 'trinket' | 'attach' | 'unlimited_conjure'
+
+/** Order used when a draw or reveal needs cards from a deck's discard pile. */
+export type DeckRecyclePolicy = 'reverse_discard' | 'shuffle_discard'
 
 export type TreasureLevel = 1 | 2 | 3
 
@@ -44,6 +47,7 @@ export type EffectAmount =
     }
   | { kind: 'last_chosen_token_amount' }
   | { kind: 'current_minion_life' }
+  | { kind: 'unspent_aether' }
 
 export type EffectComparison = 'equals' | 'at_least'
 
@@ -123,6 +127,7 @@ export type CardEffectCondition =
   | { kind: 'last_selection_nonempty' }
   /** True when the immediately preceding optional choice was accepted. */
   | { kind: 'last_optional_accepted' }
+  | { kind: 'has_recall_in_any_discard' }
 
 /** A conditional amount added to one existing damage instance. */
 export interface AdditionalDamage {
@@ -140,6 +145,7 @@ export type CardEffectTrigger =
   | { kind: 'on_put_into_play' }
   | { kind: 'on_breach_open' }
   | { kind: 'on_breach_upgrade_installed' }
+  | { kind: 'on_attached_breach_spell_cast' }
   | { kind: 'on_ability_resolved' }
   | { kind: 'while_set_next_to_supply' }
   | {
@@ -169,7 +175,7 @@ export type PlayerSelectionRule =
 export type PlayerTargetRef = { kind: 'player'; playerId: PlayerId }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
-export type CardSelectionSource = 'hand' | 'discard' | 'hand_or_discard' | 'deck_or_discard' | 'played_gem_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
+export type CardSelectionSource = 'hand' | 'discard' | 'deck' | 'hand_or_discard' | 'deck_or_discard' | 'played_gem_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardSelectionLayout = 'simple' | 'pile' | 'instant-card-choice'
 export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardGainDestination = 'discard_top' | 'deck_top'
@@ -191,6 +197,8 @@ export interface CardChoice {
   /** The card remains visible in a selection panel but cannot currently be chosen. */
   disabled?: boolean
   disabledReason?: string
+  /** Optional presentation hint for cards newly drawn by a compound effect. */
+  highlight?: 'red' | 'yellow'
 }
 
 export interface CollectiveCardChoice {
@@ -254,9 +262,14 @@ export interface PendingDecisionBase {
 
 /** Serializable continuation data used while an effect waits for a choice. */
 export interface PendingEffectResolution {
-  /** Mage whose card/effect created this resolution. Nemesis effects may omit it. */
+  /** Mage whose action is currently resolving the effect. Nemesis effects may omit it. */
   sourcePlayerId?: PlayerId
+  /** Owner of the physical source card; may differ from the Mage resolving its effect. */
+  sourceCardOwnerId?: PlayerId
   sourceCardId?: string
+  /** A card being played from hand remains there until an attach target is confirmed. */
+  sourceCardInHandPendingPlay?: boolean
+  sourceCardHandIndex?: number
   remainingEffects: CardEffect[]
   lastGainedCardId?: string
   awaiting?: CardEffect
@@ -298,6 +311,8 @@ export interface PendingEffectResolution {
   selectedCardId?: string
   /** Card revealed by Conjure while waiting for a Breach choice. */
   conjuredCard?: { playerId: PlayerId; cardId: string }
+  /** Selected recipient for a target-scoped Conjure, without changing its effect source. */
+  conjureTargetPlayerId?: PlayerId
   /** Ability owner whose resolution should fire on_ability_resolved hooks. */
   afterAbilityPlayerId?: PlayerId
   /** Remaining players for a Time Cortex all-player Breach focus. */
@@ -400,6 +415,8 @@ export type PendingDecision = PendingDecisionBase & (
       min: number
       max: number
       layout?: CardSelectionLayout
+      /** Allow the candidate cards to be reordered before confirming this decision. */
+      reorderable?: boolean
       /** Owner of a source-specific deck when it differs from the active effect player. */
       ownerId?: PlayerId
     }
@@ -416,7 +433,13 @@ export type PendingDecision = PendingDecisionBase & (
       /** This is an explicit confirmation of a repeated cast of the same spell. */
       repeat?: boolean
     }
-  | { kind: 'select_breach'; candidates: BreachChoice[] }
+  | {
+      kind: 'select_breach'
+      candidates: BreachChoice[]
+      /** Board interaction that opened this decision. Attach decisions must
+       * highlight the Breach itself without lighting its Focus button. */
+      action?: 'focus' | 'attach' | 'reset'
+    }
   | { kind: 'select_conjure_breach'; cardId: string; candidates: BreachChoice[] }
   | { kind: 'select_exhaust_breach'; candidates: BreachChoice[] }
   | {
@@ -499,7 +522,7 @@ export type PendingDecision = PendingDecisionBase & (
 export type PendingDecisionAnswer =
   | { kind: 'choose_one'; optionId: string }
   | { kind: 'choose_optional'; accepted: boolean }
-  | { kind: 'select_cards'; choices: CardChoice[] }
+  | { kind: 'select_cards'; choices: CardChoice[]; order?: CardChoice[] }
   | { kind: 'place_specific_deck_card'; cardId: string; placement: SpecificDeckPlacement }
   | { kind: 'select_prepped_spell'; choice: PreppedSpellChoice | null }
   | { kind: 'select_breach'; choice: BreachChoice }
@@ -555,6 +578,14 @@ export interface CardEffectOption {
   condition?: CardEffectCondition
 }
 
+/** Effects that trigger together, grouped by the card or mat that produced them. */
+export interface SimultaneousEffectGroup {
+  id: string
+  sourceLabel: string
+  effectLabel: string
+  effects: CardEffect[]
+}
+
 /** A small, serializable vocabulary for reusable card rules. */
 export type CardEffect =
   | { kind: 'gain_pulse_token'; amount?: number; target?: PlayerTargetScope }
@@ -589,6 +620,7 @@ export type CardEffect =
   | { kind: 'increase_breach_prep_limit'; amount: number; breachIndex: number }
   | { kind: 'increase_breach_damage_bonus'; amount: number; breachIndex: number }
   | { kind: 'gain_aether'; amount: number }
+  | { kind: 'lose_unspent_aether' }
   | { kind: 'gain_aether_token'; amount?: number; target?: PlayerTargetScope }
   | {
       /** Draw Trinkets from the shared deck into a player's discard or deck. */
@@ -603,7 +635,13 @@ export type CardEffect =
   | { kind: 'move_gained_trinket_to_hand'; cardId: string; source: 'discard' | 'deck' }
   /** Return the currently played Trinket to the shared deck's known bottom. */
   | { kind: 'return_trinket_to_deck' }
-  | { kind: 'conjure'; breachEligibility?: 'standard' | 'any_present' }
+  | {
+      kind: 'conjure'
+      breachEligibility?: 'standard' | 'any_present'
+      target?: PlayerTargetScope
+      /** Resolve player target scope relative to the effect's initiating Mage. */
+      relativeToSource?: boolean
+    }
   /** Reveal an ally's top card and put it in hand only if it is a spell. */
   | { kind: 'reveal_top_card_to_hand_if_spell'; target: PlayerTargetScope }
   /** Return the card that created this effect frame from discard to its owner's hand. */
@@ -622,6 +660,45 @@ export type CardEffect =
       condition?: CardEffectCondition
       /** Continue the following effects from the selected ally's perspective. */
       continueAsTarget?: boolean
+    }
+  | {
+      /** Grant one charge for each qualifying card in each affected hand. */
+      kind: 'gain_charge_per_hand_card'
+      minCost: number
+      target: 'self_and_each_ally'
+    }
+  | {
+      /** Attach the source relic to a Breach selected from the target scope. */
+      kind: 'attach_relic'
+      target: 'self' | 'ally' | 'any_player'
+    }
+  | {
+      /** Draw cards first, then choose exact cards from that draw to discard. */
+      kind: 'draw_and_discard_cards'
+      drawAmount: number
+      discardAmount: number
+      target?: PlayerTargetScope
+    }
+  | {
+      /** Resolve one selected Recall effect up to `maxTimes` times. */
+      kind: 'resolve_recall'
+      maxTimes: number
+      /** Permit the effect to resolve Recall copies already used this turn. */
+      ignoreOncePerTurn?: boolean
+    }
+  /** Internal continuation that restores the active source context between nested effects. */
+  | {
+      kind: 'restore_effect_context'
+      sourcePlayerId?: PlayerId
+      sourceCardOwnerId?: PlayerId
+      sourceCardId?: string
+      effectPlayerId?: PlayerId
+      pendingSpellCast?: PendingSpellCast
+      spellDamageBonus?: number
+      spellAdditionalDamageBonus?: number
+      spellDamageEffectSeen?: boolean
+      /** Restore identities but retain damage state changed while resolving a nested trigger. */
+      preserveSpellDamageState?: boolean
     }
   | { kind: 'flip_mage_form'; target?: 'source' | 'active' }
   | {
@@ -788,6 +865,7 @@ export type CardEffect =
       condition?: CardEffectCondition
     }
   | { kind: 'reveal_top_cards' }
+  | { kind: 'reveal_top_cards_for_discard'; amount: number; reorderRemaining?: boolean }
   | {
       kind: 'deal_damage_from_last_selection'
       target: DamageTargetScope
@@ -803,6 +881,11 @@ export type CardEffect =
   /** Remove a face-up Mage-specific card from the Player cards in play area. */
   | { kind: 'destroy_player_card_in_play'; cardId: string; playerId?: PlayerId }
   | { kind: 'lose_charge'; amount: number }
+  | {
+      /** Internal choice to order effects that triggered from distinct sources at once. */
+      kind: 'resolve_simultaneous_effects'
+      groups: SimultaneousEffectGroup[]
+    }
   | {
       kind: 'choose_one'
       prompt: string
@@ -1066,6 +1149,9 @@ export interface BreachState {
   damageBonus: number
   /** Breach upgrades attached to this Breach, in installation order. */
   installedUpgrades?: string[]
+  /** Relic attached beneath this Breach token. ownerId is the Breach owner,
+   * whose discard pile receives the relic if the attachment is removed. */
+  attachedRelic?: { cardId: string; ownerId: PlayerId }
   /** Permanent extra spell capacity from installed upgrades. */
   prepSpellLimitBonus?: number
   /** Breaches such as Stake's Prototype cannot be destroyed. */
@@ -1116,6 +1202,8 @@ export interface PlayerState {
   mageSetupComplete?: boolean
   /** Turn cleanup has moved played cards and is waiting for end-of-turn effects. */
   drawPhaseSetupComplete?: boolean
+  /** Snapshot of cards played before the UI's discard-order step moves them. */
+  pendingEndTurnCardIds?: string[]
   /** Number of spells this player has cast during their current turn. */
   spellsCastThisTurn?: number
   /** Mage-specific cards whose faces have been revealed to the player. */

@@ -1,8 +1,21 @@
 import { test, expect } from '@playwright/test'
+import type { Locator, Page } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 const screenshotRoot = resolve(process.cwd(), '..', 'ui', 'screenshots')
+
+async function pointerDrag(page: Page, source: Locator, target: Locator): Promise<void> {
+  const sourceBox = await source.boundingBox()
+  const targetBox = await target.boundingBox()
+  expect(sourceBox).not.toBeNull()
+  expect(targetBox).not.toBeNull()
+  await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2)
+  await page.mouse.down()
+  await expect(source).toHaveCSS('cursor', 'grabbing')
+  await page.mouse.move(targetBox!.x + targetBox!.width * .8, targetBox!.y + targetBox!.height / 2, { steps: 8 })
+  await page.mouse.up()
+}
 
 test.describe('UI Gallery', () => {
   test.beforeAll(async () => {
@@ -13,6 +26,7 @@ test.describe('UI Gallery', () => {
     await page.setViewportSize({ width: 1440, height: 900 })
     await page.goto('/?ui-gallery=1')
     await expect(page.locator('[data-ui-gallery]')).toBeVisible()
+    await expect(page.locator('[data-component="Interaction.PointerReorder"]')).toContainText('Pointer capture')
     await page.waitForFunction(() => Array.from(document.images).every(image => image.complete && image.naturalWidth > 0))
     const scrollMetrics = await page.locator('[data-ui-gallery]').evaluate(element => ({
       clientHeight: element.clientHeight,
@@ -87,15 +101,18 @@ test.describe('UI Gallery', () => {
     const cardChoices = page.locator('[data-gallery-modal] .decision-card-choice')
     await expect(cardChoices).toHaveCount(2)
     await expect(cardChoices.first()).toHaveCSS('width', '252px')
+    await expect(cardChoices.first()).not.toHaveAttribute('draggable', 'true')
     await page.locator('[data-gallery-modal]').screenshot({
       path: resolve(screenshotRoot, 'card-selection-modal-1440x900.png'),
     })
+    await pointerDrag(page, cardChoices.first(), cardChoices.nth(1))
+    await expect(cardChoices.first()).toHaveAttribute('aria-label', /Golden Trinket.*position 1/)
     await cardChoices.first().click()
     await cardChoices.nth(1).click()
     const galleryConfirm = page.locator('[data-gallery-modal]').getByRole('button', { name: 'Confirm', exact: true })
     await expect(galleryConfirm).toBeEnabled()
     await galleryConfirm.click()
-    await expect(page.getByRole('status')).toContainText('Confirmed: Clouded Trinket, Golden Trinket')
+    await expect(page.getByRole('status')).toContainText('Confirmed: Golden Trinket, Clouded Trinket')
     await page.keyboard.press('Escape')
     await expect(page.locator('[data-gallery-modal]')).toBeVisible()
     await page.getByRole('button', { name: 'Close gallery modal' }).click()
@@ -167,6 +184,29 @@ test.describe('UI Gallery', () => {
     await tokenAmountModal.screenshot({ path: resolve(screenshotRoot, 'decision-token-amount-modal-1440x900.png') })
     await tokenAmountModal.getByRole('button', { name: 'Confirm', exact: true }).click()
     await expect(page.getByText('Pulse amount confirmed: 3', { exact: true })).toBeVisible()
+
+    await page.getByRole('button', { name: 'Open Turn Order Tokens' }).click()
+    const turnOrderModal = page.locator('[data-gallery-modal]')
+    await expect(turnOrderModal.getByRole('heading', { name: 'Arrange the turn order deck' })).toBeVisible()
+    const turnOrderChoices = turnOrderModal.locator('.turn-order-token-choice')
+    await expect(turnOrderChoices).toHaveCount(5)
+    await expect(turnOrderChoices.first()).not.toHaveAttribute('draggable', 'true')
+    await expect(turnOrderModal.locator('.ui-gallery-turn-order-hidden .turn-order-token-surface')).toContainText('?')
+    await pointerDrag(page, turnOrderChoices.first(), turnOrderChoices.last())
+    await expect(turnOrderChoices.last()).toHaveAttribute('aria-label', 'Player 1 turn')
+    await page.waitForTimeout(250)
+    const tokenMoveTransition = await turnOrderChoices.last().evaluate((element) => {
+      element.classList.add('pointer-sort-move')
+      const style = getComputedStyle(element)
+      const transition = { property: style.transitionProperty, duration: style.transitionDuration }
+      element.classList.remove('pointer-sort-move')
+      return transition
+    })
+    expect(tokenMoveTransition.property.split(',').map(property => property.trim())).toContain('transform')
+    expect(tokenMoveTransition.duration.split(',').map(duration => duration.trim())).toContain('0.22s')
+    await turnOrderModal.screenshot({ path: resolve(screenshotRoot, 'decision-turn-order-tokens-modal-1440x900.png') })
+    await turnOrderModal.getByRole('button', { name: 'Return Cards' }).click()
+    await expect(page.locator('[data-gallery-modal]')).toHaveCount(0)
   })
 
   test('keeps the catalogue usable at a compact viewport', async ({ page }) => {

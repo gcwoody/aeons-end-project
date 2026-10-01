@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
-import { getPlayer, MAX_PULSE_TOKENS, toRoman } from '@engine/engine'
+import { drawCardsForPlayer, getPlayer, MAX_PULSE_TOKENS, toRoman } from '@engine/engine'
 import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
 import type { CardDef, GameState, PlayerState } from '@engine/types'
 import { useGame } from '../game/useGame'
@@ -153,7 +153,6 @@ const addZone = ref<'hand' | 'deck' | 'discard'>('hand')
 const addCard = ref('crystal')
 const addNemesisCard = ref(allNemesisCards.value[0] ?? '')
 
-const deckOrderEditingEnabled = ref(false)
 const deckOrderModalOpen = ref(false)
 const deckOrderPlayerId = ref('')
 const deckOrderPlayer = computed(() =>
@@ -172,13 +171,7 @@ watch(
   { immediate: true },
 )
 
-function setDeckOrderEditing(enabled: boolean) {
-  deckOrderEditingEnabled.value = enabled
-  if (!enabled) deckOrderModalOpen.value = false
-}
-
 function openDeckOrderModal() {
-  if (!deckOrderEditingEnabled.value) return
   deckOrderModalOpen.value = true
 }
 
@@ -193,6 +186,12 @@ function addCardToPlayer() {
   if (!isDebugAddableCard(card)) return
   const p = getPlayer(state.game!, playerId)
   p[addZone.value].push(addCard.value)
+}
+
+function drawOneCardForPlayer() {
+  const playerId = selectedAddPlayer.value
+  if (!playerId || !state.game) return
+  drawCardsForPlayer(state.game, playerId, 1)
 }
 
 function isDebugAddableCard(card: CardDef): boolean {
@@ -333,17 +332,9 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="debug-section">
-        <label class="debug-toggle-row">
-          <input
-            :checked="deckOrderEditingEnabled"
-            type="checkbox"
-            aria-label="Enable deck order editing"
-            @change="setDeckOrderEditing(($event.target as HTMLInputElement).checked)"
-          />
-          <span>Enable deck order editing</span>
-        </label>
-        <span class="debug-hint">Choose a player, then open a separate deck window to reorder cards. The first card is the next card drawn.</span>
-        <div v-if="deckOrderEditingEnabled" class="debug-deck-controls">
+        <span class="debug-label">Deck Order Editing</span>
+        <span class="debug-hint">Choose a player, then open their deck window and drag cards into draw order. The first card is drawn next.</span>
+        <div class="debug-deck-controls">
           <label>
             Player
             <select v-model="deckOrderPlayerId" aria-label="Deck order player">
@@ -437,6 +428,7 @@ onBeforeUnmount(() => {
               <option v-for="p in players" :key="p.id" :value="p.id">{{ displayMageName(p.mageType) }} ({{ displayPlayerId(p.id) }})</option>
             </select>
           </label>
+          <button class="btn small" :disabled="!selectedAddPlayer" @click="drawOneCardForPlayer()">Draw 1 Card</button>
           <label>
             Zone
             <select v-model="addZone" aria-label="Debug card zone">
