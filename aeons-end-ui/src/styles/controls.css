@@ -1,0 +1,158 @@
+.controls {
+  --control-bar-bottom-padding: 6px;
+  --control-player-token-size: 28px;
+  --control-aether-token-size: 28px;
+  --control-main-offset-x: 19px;
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: var(--control-gap);
+  align-items: center;
+  border-top: var(--pixel-border-width) solid var(--border);
+  background: var(--panel);
+  padding-top: var(--space-4);
+  padding-bottom: var(--control-bar-bottom-padding);
+  /* Stay above ordinary board content while hand hover cards remain above it;
+     modal dialogs and the full-size card preview still sit higher. */
+  z-index: var(--z-controls);
+}
+.controls-left {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  grid-column: 1;
+}
+.controls-main {
+  position: relative;
+  left: var(--control-main-offset-x);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: center;
+  grid-column: 2;
+  min-height: 32px;
+}
+.knowledge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #E4DBBC;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  text-shadow: none;
+}
+.controls .resource-icon {
+  display: block;
+  flex: 0 0 27px;
+  width: 27px;
+  height: 27px;
+  object-fit: contain;
+}
+.controls .controls-number {
+  font-size: 12px;
+  font-weight: 700;
+}
+.controls .aether-token-status,
+.controls .pulse-token-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.controls .aether-token-status img,
+.controls .pulse-token-status img { display: block; width: var(--control-aether-token-size); height: var(--control-aether-token-size); object-fit: contain; }
+.controls .aether-token-status strong,
+.controls .pulse-token-status strong { color: inherit; }
+.doom-token-track {
+  /* Wolf token tuning: size, spacing, and visual offset from the centered slot. */
+  --doom-token-size: 34px;
+  --doom-token-gap: 4px;
+  --doom-token-offset-x: 0px;
+  --doom-token-offset-y: 0px;
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--doom-token-gap);
+  height: var(--doom-token-size);
+  padding: 0;
+  white-space: nowrap;
+  transform: translate(var(--doom-token-offset-x), var(--doom-token-offset-y));
+}
+.doom-token-track img {
+  display: block;
+  flex: 0 0 var(--doom-token-size);
+  width: var(--doom-token-size);
+  height: var(--doom-token-size);
+  object-fit: contain;
+  filter: grayscale(1);
+  opacity: .38;
+}
+.doom-token-track img.is-active {
+  filter: none;
+  opacity: 1;
+}
+.end-turn-action {
+  position: relative;
+  display: inline-flex;
+}
+.end-turn-warning {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  z-index: 2;
+  width: max-content;
+  max-width: min(260px, 42vw);
+  padding: 8px 10px;
+  border: var(--pixel-border-width) solid var(--accent);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 8px 22px rgba(0, 0, 0, .28);
+  font-size: 12px;
+  line-height: 1.35;
+  text-align: left;
+  white-space: normal;
+}
+.end-turn-warning::after {
+  content: '';
+  position: absolute;
+  right: 18px;
+  bottom: -6px;
+  width: 10px;
+  height: 10px;
+  border-right: var(--pixel-border-width) solid var(--accent);
+  border-bottom: var(--pixel-border-width) solid var(--accent);
+  background: var(--panel);
+  transform: rotate(45deg);
+}
+.controls-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.controls-status .phase { color: var(--warn); }
+.controls > .btn,
+.controls .btn { height: var(--control-height); }
+.controls .aether { display: inline-flex; align-items: center; gap: 4px; color: #fff; font-size: 13px; white-space: nowrap; }
+.help-button {
+  grid-column: 3;
+  justify-self: end;
+  min-width: 32px;
+  padding-left: 8px;
+  padding-right: 8px;
+  color: var(--accent);
+  font-weight: 700;
+}
+@media (max-width: 1100px) {
+  .controls { display: flex; flex-wrap: wrap; padding-right: 42px; }
+  .controls-left, .controls-main, .help-button { grid-column: auto; }
+  .controls-main { gap: 6px; }
+  .controls-main { position: static; left: auto; margin-inline: auto; }
+  .help-button { position: absolute; top: var(--space-4); right: 0; }
+}
+

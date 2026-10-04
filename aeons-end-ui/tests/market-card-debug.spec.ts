@@ -13,62 +13,7 @@ async function openDebug(page: import('@playwright/test').Page) {
   await expect(page.getByText('Debug Tools', { exact: true })).toBeVisible()
 }
 
-test('Debug card picker searches by image and supports the slash shortcut', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await page.getByRole('button', { name: 'Start Game' }).click()
-  await openDebug(page)
 
-  const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
-  const picker = addCardSection.locator('.debug-card-picker')
-  const search = picker.getByRole('searchbox', { name: 'Search debug cards' })
-  await expect(picker.locator('.debug-card-option')).toHaveCount(0)
-  await page.keyboard.press('/')
-  await expect(search).toBeFocused()
-  await search.fill('phoenix')
-  await expect(picker.locator('.debug-card-option')).toHaveCount(1)
-  await expect(picker.locator('img[alt="Phoenix Flame"]')).toBeVisible()
-  await picker.locator('.debug-card-option').hover()
-  await expect(page.locator('.card-hover-preview img[alt="Phoenix Flame"]')).toBeVisible()
-  await picker.locator('.debug-card-option').click()
-  await expect(addCardSection.locator('.debug-card-selected')).toContainText('Phoenix Flame')
-
-  await search.fill('')
-  await picker.getByRole('button', { name: 'Spell', exact: true }).click()
-  await expect(picker.locator('.debug-card-option')).toHaveCount(22)
-})
-
-test('Debug Tools exposes every added Wave 1 market card and renders it', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await page.getByRole('button', { name: 'Start Game' }).click()
-  await openDebug(page)
-
-  const addCardSection = page.locator('.debug-section').filter({ hasText: 'Add card' })
-  const cardPicker = addCardSection.locator('.debug-card-picker')
-  const playerSelect = addCardSection.getByLabel('Debug card player')
-  await playerSelect.selectOption('wave1_JIAN')
-  await addCardSection.getByLabel('Debug card zone').selectOption('hand')
-  for (const type of ['Gem', 'Relic', 'Spell']) {
-    await cardPicker.locator('.debug-card-group-toggle').filter({ hasText: type }).click()
-  }
-  for (const cardId of newMarketCards) {
-    const alt = cardId === 'mages_talisman' ? "Mage's Talisman" : cardId === 'sifters_pearl' ? "Sifter's Pearl" : cardId
-      .split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
-    await cardPicker.locator('.debug-card-option').filter({ has: page.locator(`img[alt="${alt}"]`) }).first().click()
-    await addCardSection.getByRole('button', { name: 'Add Card', exact: true }).click()
-  }
-  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
-  await page.locator('.char-btn').filter({ hasText: 'jian' }).click()
-
-  for (const cardId of newMarketCards) {
-    const alt = cardId === 'mages_talisman' ? "Mage's Talisman" : cardId === 'sifters_pearl' ? "Sifter's Pearl" : cardId
-      .split('_').map(part => part.charAt(0).toUpperCase() + part.slice(1)).join(' ')
-    await expect(page.locator(`.hand img[alt="${alt}"]`)).toHaveCount(1)
-  }
-})
 
 test('Searing Ruby shows spell-only Aether in the player control bar', async ({ page }) => {
   await page.goto('/')

@@ -149,6 +149,71 @@ function testPersistentAndPowerEffects(): void {
     'The completed Power enters the Nemesis discard pile last')
 }
 
+function testCauterizerPersistentUsesItsCurrentLife(): void {
+  const game = nemesisGame()
+  const cauterizer = {
+    cardId: 'cauterizer', cardType: 'minion' as const, placedAt: 1,
+    instanceId: 'cauterizer:1', enteredOnNemesisTurn: 0, lifeTokens: 2,
+  }
+  game.nemesis.playArea = [cauterizer]
+
+  const messages = advanceNemesisMain(game)
+  assert(messages.some(message => message.includes('Persistent for Cauterizer')),
+    'Cauterizer resolves its Persistent effect during the Nemesis Main Phase')
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'select_player_target',
+    'Cauterizer lets the Nemesis choose which player suffers its damage')
+  assertEqual(decision.damageAmounts?.[game.players[0]!.id], cauterizer.lifeTokens,
+    'Cauterizer target choices preview damage equal to the Minion current life')
+  const target = game.players[0]!
+  const hpBefore = target.hp
+  const targetChoice = decision.targets.find(candidate => candidate.playerId === target.id)
+  assert(targetChoice, 'The selected Mage is a legal Cauterizer target')
+  resolvePendingDecision(game, decision.id, { kind: 'select_player_target', target: targetChoice })
+
+  assertEqual(target.hp, hpBefore - cauterizer.lifeTokens,
+    'Cauterizer damage equals the resolving Minion instance current life, not its printed life')
+}
+
+function testPlayerDiscardChoiceIncludesImmediateDraw(): void {
+  const game = nemesisGame()
+  const agonyField = getCard('agony_field') as NemesisCardDef
+  const resolvedBlock = agonyField.nemesisEffects?.find(block => block.trigger === 'power_resolved')
+  assert(resolvedBlock, 'Agony Field has its typed Power resolved effect block')
+
+  const target = game.players[0]!
+  target.hand = ['crystal', 'spark', 'crystal']
+  target.deck = ['spark']
+  const messages = resolveEffects(game, undefined, resolvedBlock.effects, 'agony_field')
+  const decision = game.pendingDecision
+  assert(messages.some(message => message.includes('Decision required')), 'Agony Field pauses for a player choice')
+  assert(decision?.kind === 'select_player_target', 'Agony Field asks which player will resolve its discard')
+  assertEqual(decision.prompt, 'Choose a player', 'Discard target dialog keeps a concise selection title')
+  assertEqual(decision.playerDiscardAction?.minAmount, 3, 'Action summary records the required discard count')
+  assertEqual(decision.playerDiscardAction?.maxAmount, 3, 'Action summary records the maximum discard count')
+  assertEqual(decision.playerDiscardAction?.drawAmount, 1, 'Action summary includes an immediate self-draw')
+
+  const targetChoice = decision.targets.find(choice => choice.playerId === target.id)
+  assert(targetChoice, 'The first Mage is a legal Agony Field target')
+  resolvePendingDecision(game, decision.id, { kind: 'select_player_target', target: targetChoice })
+  const discardDecision = game.pendingDecision
+  assert(discardDecision?.kind === 'select_cards', 'Agony Field next asks the selected player which cards to discard')
+  resolvePendingDecision(game, discardDecision.id, {
+    kind: 'select_cards', choices: discardDecision.candidates,
+  })
+  assertEqual(target.hand.length, 1, 'Selected player discards three cards and then draws one')
+  assertEqual(target.hand[0], 'spark', 'The follow-up draw goes to the selected player')
+
+  const discardOnlyGame = nemesisGame()
+  const discardOnly = resolveEffects(discardOnlyGame, undefined, [
+    { kind: 'discard_cards', source: 'hand', amount: 2, target: 'any_player' },
+  ])
+  const discardOnlyDecision = discardOnlyGame.pendingDecision
+  assert(discardOnly.some(message => message.includes('Decision required')), 'Discard-only target selection pauses')
+  assert(discardOnlyDecision?.kind === 'select_player_target', 'Discard-only effect uses player targeting')
+  assertEqual(discardOnlyDecision.playerDiscardAction?.drawAmount, 0, 'Discard-only action has no draw follow-up')
+}
+
 function testStrikeEffectsAndMinionDamageRule(): void {
   const game = nemesisGame()
   game.nemesis.strikeDeck = ['devastate']
@@ -461,6 +526,8 @@ function testCollectiveGemMitigation(): void {
 
 testAttackEffectAndUnleash()
 testPersistentAndPowerEffects()
+testCauterizerPersistentUsesItsCurrentLife()
+testPlayerDiscardChoiceIncludesImmediateDraw()
 testStrikeEffectsAndMinionDamageRule()
 testMostExpensivePreppedSpellSelection()
 testAdelheimPreResolutionResponse()

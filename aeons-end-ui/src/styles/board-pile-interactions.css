@@ -1,0 +1,18 @@
+/* ===== Breach bonus ===== */
+.breach-bonus {
+  color: var(--ok);
+  font-size: 10px;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+.breach-token-wrap.decision-breach-target {
+  border-radius: var(--breach-radius);
+  box-shadow: 0 0 0 2px #f3c64e;
+  cursor: pointer;
+}
+.breach-token-wrap.decision-breach-target:hover { box-shadow: 0 0 0 var(--pixel-border-width) #79e38b; }
+
+/* ===== Clickable piles ===== */
+.deck-pile.clickable, .discard-pile.clickable { cursor: pointer; }
+.deck-pile.clickable:hover, .discard-pile.clickable:hover { border-color: var(--accent); }
+

@@ -1,6 +1,6 @@
 import {
-  canPlayerAct, createGame, developCardFromSupply,
-  developCardFromZone, getDevelopActions, getDevelopZoneCards, getGameZoneVisibility,
+  buyCard, canPlayerAct, createGame, developCardFromSupply,
+  developCardFromZone, getBuyableCards, getDevelopActions, getDevelopZoneCards, getGameZoneVisibility,
   resolveCardEffects,
 } from '../engine'
 import { createTwoPlayerScenario, getCard } from '../data'
@@ -136,6 +136,78 @@ function testDevelopZoneCardCountConditionDrivesChromiaSphere(): void {
   assertEqual(player.bonusAether, 4, 'Two Chromia Spheres in Develop grant the additional Aether')
 }
 
+function testCoiledTrilliumDevelopsToTheZoneThenGainsWithoutAnImmediateEffect(): void {
+  const game = createGame(scenarioWithMarketCard('coiled_trillium'))
+  const player = game.players[0]!
+  setMainPhase(game, player.id)
+  player.bonusAether = 6
+  const pileIndex = game.market.piles.findIndex(pile => pile.cardId === 'coiled_trillium')
+  const pile = game.market.piles[pileIndex]!
+
+  assertEqual(getCard('coiled_trillium').developCost, 3, 'Coiled Trillium has a three-Aether Develop cost')
+  assert(getDevelopActions(game, player.id).some(action => action.source === 'supply' && action.cardId === 'coiled_trillium'),
+    'Coiled Trillium can be Developed from the Supply')
+  developCardFromSupply(game, player.id, pileIndex)
+  assertEqual(getDevelopZoneCards(game).join(','), 'coiled_trillium', 'The first Develop moves Coiled Trillium into the shared zone')
+  assertEqual(player.aetherTokens, 0, 'Developing Coiled Trillium does not grant its play effect')
+  assertEqual(player.charge, 0, 'Developing Coiled Trillium has no immediate effect')
+
+  const zoneAction = getDevelopActions(game, player.id).find(action =>
+    action.source === 'develop_zone' && action.cardId === 'coiled_trillium')
+  assert(zoneAction, 'A second Develop can gain Coiled Trillium from the zone')
+  developCardFromZone(game, player.id, zoneAction.index)
+  assertEqual(getDevelopZoneCards(game).length, 0, 'The second Develop removes it from the shared zone')
+  assertEqual(player.discard[0], 'coiled_trillium', 'The second Develop gains Coiled Trillium to discard')
+  assertEqual(pile.remaining, 6, 'Two Develops consume one supply copy total')
+  assertEqual(player.regularAetherSpent, 6, 'Each Develop independently spends three Aether')
+}
+
+function testMarketAffordabilityRejectsFourAetherWithTwoAndMigratesMissingSpendState(): void {
+  const game = createGame(scenarioWithMarketCard('coiled_trillium', ['tressa', 'brama']))
+  const player = game.players[0]!
+  game.pendingDecision = null
+  game.pendingEffect = null
+  setMainPhase(game, player.id)
+  player.playerCardsInPlay = []
+  player.playerCardSupplyTargets = []
+  player.playerCardPowerTokens = []
+  player.bonusAether = 1
+  player.aetherTokens = 1
+  Reflect.deleteProperty(player, 'regularAetherSpent')
+  const pileIndex = game.market.piles.findIndex(pile => pile.cardId === 'coiled_trillium')
+  const pile = game.market.piles[pileIndex]!
+
+  const result = buyCard(game, player.id, pileIndex)
+  assert(result?.includes('Need 4 Aether, have 2'), 'Buying a four-cost card with one Aether and one token is rejected')
+  assertEqual(player.regularAetherSpent, 0, 'Missing legacy spend state is normalized before affordability checks')
+  assertEqual(pile.remaining, 7, 'An unaffordable purchase leaves the pile unchanged')
+  assertEqual(getBuyableCards(game).find(card => card.cardId === 'coiled_trillium')?.affordable, false,
+    'The market reports the four-cost card as unaffordable with two total Aether')
+  assertEqual(getDevelopActions(game, player.id).some(action =>
+    action.source === 'supply' && action.cardId === 'coiled_trillium'), false,
+  'A three-Aether Develop action is unavailable with two total Aether')
+}
+
+function testTressaCreatorStanceDiscountsBuyingButNotDeveloping(): void {
+  const game = createGame(scenarioWithMarketCard('coiled_trillium', ['tressa', 'brama']))
+  const player = game.players[0]!
+  game.pendingDecision = null
+  game.pendingEffect = null
+  setMainPhase(game, player.id)
+  player.playerCardsInPlay = ['creator_stance']
+  player.playerCardSupplyTargets = [null]
+  player.playerCardPowerTokens = [0]
+  player.bonusAether = 1
+  player.aetherTokens = 1
+  const buyable = getBuyableCards(game).find(card => card.cardId === 'coiled_trillium')!
+
+  assertEqual(buyable.cost, 3, 'Creator Stance reduces the printed four-Aether Gem purchase cost to three')
+  assertEqual(buyable.affordable, false, 'Tressa cannot buy the discounted Gem with only two Aether')
+  assertEqual(getDevelopActions(game, player.id).some(action =>
+    action.source === 'supply' && action.cardId === 'coiled_trillium'), false,
+  'Creator Stance does not reduce Coiled Trillium\'s three-Aether Develop cost')
+}
+
 function testDevelopRemainsAValidMainPhaseActionAndMigratesOldZones(): void {
   const jade = getCard('jade')
   const originalDevelopCost = jade.developCost
@@ -188,6 +260,9 @@ testDevelopZoneVisibilityIsSetupWideAndSwapCardsStayPublic()
 testDevelopPaymentsAndBothTransitions()
 testDevelopAndGainTriggersResolveAtTheirCorrectSources()
 testDevelopZoneCardCountConditionDrivesChromiaSphere()
+testCoiledTrilliumDevelopsToTheZoneThenGainsWithoutAnImmediateEffect()
+testMarketAffordabilityRejectsFourAetherWithTwoAndMigratesMissingSpendState()
+testTressaCreatorStanceDiscountsBuyingButNotDeveloping()
 testDevelopRemainsAValidMainPhaseActionAndMigratesOldZones()
 testDevelopingTheLastSupplyCopyChecksDevouredPileVictory()
 

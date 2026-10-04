@@ -1,0 +1,475 @@
+.played-zones {
+  position: relative;
+  z-index: var(--z-played);
+  display: grid;
+  /* The row uses only the zones that actually exist. Played therefore moves
+     left when Develop is the only side zone and right when Swap is the only
+     side zone. */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 10px;
+  justify-content: center;
+  height: var(--played-row-height);
+  min-height: var(--played-row-height);
+  max-height: var(--played-row-height);
+  overflow: visible;
+}
+.played-zones.has-swap-zone.has-develop-zone {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.played-zones.has-swap-zone:not(.has-develop-zone) { grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); }
+.played-zones.has-develop-zone:not(.has-swap-zone) { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.played-zones:not(.has-swap-zone):not(.has-develop-zone) .played-zone-center,
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center {
+  grid-column: 1;
+}
+.played-zones.has-swap-zone.has-develop-zone .played-zone-swap,
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-swap {
+  grid-column: 1;
+}
+.played-zones.has-swap-zone.has-develop-zone .played-zone-center { grid-column: 2; }
+.played-zones.has-swap-zone.has-develop-zone .played-zone-develop { grid-column: 3; }
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center { grid-column: 2; }
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-develop { grid-column: 2; }
+/* A single side zone takes one third of the row. The Played card track is
+   anchored to the full-row centre inside its two-thirds frame: 75% from the
+   left edge when Develop is on the right, and 25% when Swap is on the left.
+   Absolute positioning keeps that anchor stable as more cards overflow. */
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .played-card-scroll,
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center .played-card-scroll {
+  position: relative;
+  scrollbar-gutter: auto;
+}
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .zone-card-track,
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center .zone-card-track {
+  position: absolute;
+  top: 6px;
+  bottom: 0;
+  width: max-content;
+  height: auto;
+  margin: 0;
+  transform: translateX(-50%);
+}
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .zone-card-track {
+  left: calc(75% + var(--pixel-border-width) + 7px);
+}
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center .zone-card-track {
+  left: calc(25% - var(--pixel-border-width) - 7px);
+}
+/* Once a centered track reaches the adjacent side-zone boundary, keep that
+   edge fixed. Cards then grow toward the open side; a scrollbar appears only
+   after the full Played viewport no longer contains the track. */
+.played-zones.has-swap-zone:not(.has-develop-zone) .played-zone-center .played-card-scroll.is-boundary-constrained .zone-card-track {
+  left: 0;
+  transform: none;
+}
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .played-card-scroll.is-boundary-constrained .zone-card-track {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .played-card-scroll.is-end-anchored {
+  direction: rtl;
+}
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .played-card-scroll.is-end-anchored .zone-card-track {
+  direction: ltr;
+}
+/* A right-anchored track overflows through the left edge, which browsers do
+   not count toward scrollWidth by itself. Add an invisible flow spacer so the
+   same wheel-scrolling contract remains available in Develop-only layouts.
+   ZoneScroller uses RTL scroll semantics for this track and snaps its first
+   visible card to the viewport edge, preventing a half-hidden card. */
+.played-zones.has-develop-zone:not(.has-swap-zone) .played-zone-center .played-card-scroll.is-overflowing::before {
+  content: '';
+  display: block;
+  flex: 0 0 calc(100% + var(--zone-overflow-distance));
+  width: calc(100% + var(--zone-overflow-distance));
+  height: 1px;
+  order: -1;
+  pointer-events: none;
+  opacity: 0;
+}
+/* Hovered cards are the highest board content, but remain below Controls. */
+.played-zones:has(.card:hover) { z-index: var(--z-card-hover); }
+/* A modal owns the top stacking layer. Keep board rows below it while the
+   pointer moves across the hand or played area; CardHoverPreview is teleported
+   to body, so individual card previews remain available. */
+.app:has(.overlay, .decision-overlay) .played-zones:has(.card:hover) {
+  z-index: var(--z-played);
+}
+.played-zone {
+  position: relative;
+  z-index: 0;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+  border: var(--pixel-border-width) dashed var(--border);
+  border-radius: var(--radius-card);
+  padding: 5px 7px;
+  overflow: visible;
+}
+.played-zone .label, .deck-pile .label, .discard-pile .label {
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.played-zone-develop .develop-action-available {
+  position: relative;
+  cursor: pointer;
+}
+.played-zone-develop .develop-action-available::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  border: 2px solid var(--ok);
+  border-radius: inherit;
+  pointer-events: none;
+}
+.played-zone-develop .develop-action-available:hover {
+  box-shadow: 0 0 10px rgba(93, 194, 131, .34);
+}
+.played-zone:has(.card:hover) { z-index: var(--z-local-hover); }
+.played-zone .empty { color: var(--muted); font-size: 12px; font-style: italic; }
+.zone-scroller { min-width: 0; }
+.played-zones .played-card-scroll { scrollbar-gutter: auto; }
+.zone-card-scroll, .played-card-scroll {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  gap: var(--zone-gap);
+  align-items: stretch;
+  /* The inner track handles centering and horizontal overflow. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  /* Horizontal scrolling clips vertically too, so reserve the full lift plus
+     the two-pixel card border above every mini card. */
+  padding: 6px 1px 0;
+}
+.zone-card-track {
+  display: flex;
+  flex: 0 0 auto;
+  width: max-content;
+  min-width: 0;
+  height: 100%;
+  align-items: center;
+  justify-content: flex-start;
+  gap: var(--zone-gap);
+  /* Auto margins center short rows and collapse to zero when the row overflows. */
+  margin-inline: auto;
+}
+.swap-zone-owner-label {
+  align-self: center;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.zone-card-scroll .card, .played-card-scroll .card { flex: 0 0 auto; }
+.zone-card-scroll::-webkit-scrollbar, .played-card-scroll::-webkit-scrollbar { height: var(--scrollbar-compact-size); }
+
+.hand-row {
+  position: relative;
+  /* Keep lifted hand cards above the played row and bottom controls. */
+  z-index: var(--z-hand-row);
+  display: grid;
+  --hand-column: 3;
+  --discard-column: 4;
+  grid-template-columns: 270px var(--hand-card-width) 1fr var(--hand-card-width);
+  grid-template-rows: var(--hand-row-height);
+  height: var(--hand-row-height);
+  gap: var(--zone-gap);
+  align-items: stretch;
+  min-height: 0;
+  max-height: var(--hand-row-height);
+}
+.hand-row.has-specific-deck:not(.has-player-cards-in-play) {
+  --hand-column: 4;
+  --discard-column: 5;
+  grid-template-columns: 270px var(--hand-card-width) var(--hand-card-width) 1fr var(--hand-card-width);
+}
+.hand-row.has-player-cards-in-play:not(.has-specific-deck) {
+  --hand-column: 4;
+  --discard-column: 5;
+  grid-template-columns: 270px var(--hand-card-width) var(--hand-card-width) 1fr var(--hand-card-width);
+}
+.hand-row.has-specific-deck.has-player-cards-in-play {
+  --hand-column: 5;
+  --discard-column: 6;
+  grid-template-columns: 270px var(--hand-card-width) var(--hand-card-width) var(--hand-card-width) 1fr var(--hand-card-width);
+}
+.hand-row:has(.card:hover) { z-index: var(--z-card-hover); }
+.app:has(.overlay, .decision-overlay) .hand-row:has(.card:hover) {
+  z-index: var(--z-hand-row);
+}
+.mage-area {
+  height: 100%;
+  min-width: 0;
+  position: relative;
+  z-index: var(--z-board-interaction);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.mage-area:has(.mage-overlay) { z-index: var(--z-mage-modal); }
+.mage-image-wrap {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  cursor: pointer;
+  overflow: hidden;
+}
+.mage-image {
+  display: block;
+  width: auto;
+  height: 100%;
+  max-width: 100%;
+  object-fit: contain;
+  border-radius: var(--mage-radius);
+}
+.mage-unavailable {
+  color: var(--muted);
+  font-size: 11px;
+  text-align: center;
+}
+.deck-pile, .discard-pile {
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 9px;
+  background: #151a29;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  z-index: var(--z-board-interaction);
+}
+.deck-pile .count, .discard-pile .count { font-size: 26px; font-weight: 700; }
+.deck-pile .pile-count { color: var(--muted); font-size: 10px; }
+.discard-pile .top { color: var(--spell); font-size: 11px; text-align: center; }
+.discard-pile { grid-column: var(--discard-column); }
+.player-discard-pile { padding: 5px; gap: 2px; overflow: visible; }
+.player-discard-pile.recall-action-available {
+  outline: none;
+}
+.player-discard-pile.recall-action-available .player-discard-top-card {
+  border-color: var(--recall-highlight);
+}
+.specific-deck-back {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+  object-fit: cover;
+}
+.player-specific-deck-pile {
+  position: relative;
+  min-width: 0;
+  height: var(--hand-card-height);
+  align-self: center;
+  padding: 0;
+  overflow: hidden;
+}
+.player-specific-deck-face-up {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--card-radius);
+}
+.player-specific-deck-preview {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.player-specific-deck-face-up.is-primary-action { cursor: pointer; }
+.player-pile-count {
+  position: absolute;
+  top: 4px;
+  left: 6px;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(11, 16, 32, .7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.player-deck-pile,
+.player-discard-pile {
+  height: var(--hand-card-height);
+  align-self: center;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+.player-specific-deck-pile.has-cards,
+.player-deck-pile.has-cards,
+.player-discard-pile.has-cards,
+.player-cards-in-play-pile {
+  /* Non-empty piles use the card itself as the visual boundary, just like
+     cards in hand. The surrounding grid cell must not add a second frame. */
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  overflow: visible;
+}
+.player-empty-pile-label {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.player-pile-card {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+}
+.player-discard-top-card img {
+  object-fit: cover;
+}
+.player-discard-top-card {
+  background: #151a29;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+}
+.player-discard-top-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
+}
+.player-discard-top-card .cname {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 8px;
+  color: var(--text);
+  text-align: center;
+}
+.player-cards-in-play-pile {
+  position: relative;
+  /* Keep the card's own border above neighboring hand-row cells. The parent
+     row still remains below Controls through the global stacking order. */
+  z-index: var(--z-card-hover);
+  min-width: 0;
+  height: var(--hand-card-height);
+  align-self: center;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+  /* The card itself owns the rounded border; the grid cell is not a second
+     frame around it. The preview is teleported to body. */
+  overflow: visible;
+}
+.player-card-stack {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+.player-card-stack .card-hover-wrap {
+  position: absolute;
+  inset: 0;
+  display: block;
+  /* Every card fills the pile; later cards are placed above earlier cards. */
+  transform: none;
+  z-index: calc(var(--stack-index, 0) + 1);
+}
+.player-in-play-card {
+  /* Establish the containing block before hover so absolutely positioned
+     badges never jump when the generic .card:hover rule runs. */
+  position: relative;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+}
+.player-in-play-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.player-in-play-card.in-play-action {
+  border-color: var(--ok);
+  cursor: pointer;
+}
+.player-in-play-card.in-play-action:hover { border-color: var(--ok); }
+.token-badge {
+  --token-badge-color: #fff;
+  color: var(--token-badge-color);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.token-badge--power { --token-badge-color: #fff; }
+.token-badge--aether { --token-badge-color: #f3cf35; }
+.token-badge--card {
+  position: absolute;
+  left: 3px;
+  bottom: 3px;
+  z-index: 3;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(18, 21, 29, .9);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-shadow: none;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.hand {
+  grid-column: var(--hand-column);
+  grid-row: 1;
+  position: relative;
+  z-index: calc(var(--z-hand-row) + 1);
+  display: flex;
+  gap: var(--zone-gap);
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* Reserve the horizontal scrollbar gutter before overflow begins. On
+     Chromium/Windows the scrollbar otherwise reduces the card viewport and
+     clips the hover lift at the top edge. */
+  scrollbar-gutter: stable;
+  min-height: 0;
+  min-width: 0;
+  max-width: 100%;
+  /* Reserve a few pixels above the cards so their hover lift is not clipped. */
+  padding: var(--space-2) var(--space-2) 0 var(--hand-offset, 0px);
+}
+.hand:has(.card:hover) { z-index: var(--z-card-hover); }
+.app:has(.overlay, .decision-overlay) .hand:has(.card:hover) {
+  z-index: calc(var(--z-hand-row) + 1);
+}
+.hand .card { flex: 0 0 auto; }
+.hand::-webkit-scrollbar { height: var(--scrollbar-compact-size); }
+

@@ -1,4 +1,4 @@
-import { reactive, computed, watch } from 'vue'
+import { reactive, computed, nextTick, watch } from 'vue'
 import {
   createGame, startTurn, getPlayer,
   resolveMageSetups as engineResolveMageSetups,
@@ -36,45 +36,48 @@ import type {
   PendingDecision, PlayerId, PlayerState, PreppedSpellChoice, MarketSetupConfig,
 } from '@engine/types'
 import { displayMageName, formatMageNamesInText } from './display-name'
-
-export type UiPhase = 'setup' | 'casting' | 'main' | 'discard_order' | 'nemesis_main' | 'nemesis_draw' | 'gameover'
+import { cardImageUrl } from '../card-images'
+import { animateCardFlight, animateCardRevealFlight, captureCardFlight, discardCardFlight } from './card-flight'
+import type { CardFlightSnapshot } from './card-flight'
+import {
+  clearGameSaves, cloneGameState, cloneUndoSnapshot, createUndoSnapshot, readGameSaves,
+  summarizeGameSave, undoSnapshotsEqual, writeGameSaves,
+} from './game-persistence'
+import type { SaveSummary, StoredSave, UndoSnapshot, UiPhase } from './game-persistence'
 
 export interface LogEntry { id: number; text: string; kind: 'info' | 'ok' | 'warn' }
-
-interface Snapshot {
-  game: GameState
-  phase: UiPhase
-  prepTarget: number | null
-  selectedPlayer: PlayerId
-  discardRemaining: string[]
-}
-
-export interface SaveSummary {
-  id: string
-  players: string[]
-  nemesisType: string
-  round: number
-  turn: number
-  currentTurn: string
-  updatedAt: number
-}
-
-interface StoredSave extends SaveSummary {
-  createdAt: number
-  game: GameState
-  phase: UiPhase
-  selectedPlayer: PlayerId
-  discardRemaining: string[]
-  /** The most recent undo snapshots, persisted so resume keeps Ctrl+Z history. */
-  undoStack: Snapshot[]
-}
 
 interface BoardCardSelection {
   playerId: PlayerId
   choice: CardChoice
 }
 
+interface DamageImpact {
+  id: number
+  targetId: string
+  amount: number
+  left: number
+  top: number
+  width: number
+  height: number
+  stackIndex: number
+}
+
+interface DamageTargetRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
 let logId = 0
+let damageImpactId = 0
+let pendingAttachCardFlight: { ownerId: PlayerId; cardId: string; flight: CardFlightSnapshot } | null = null
+let pendingNemesisDrawFlight: { cardId: string; flight: CardFlightSnapshot } | null = null
+const damageTargetRects = new WeakMap<UndoSnapshot, Map<string, DamageTargetRect>>()
+const damageImpactTimers = new Map<number, ReturnType<typeof setTimeout>>()
+const DAMAGE_IMPACT_DURATION_MS = 920
+let turnTransitionSequence = 0
 
 const state = reactive({
   game: null as GameState | null,
@@ -83,7 +86,13 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
+  discardTopDisplayOverride: null as { playerId: PlayerId; cardId: string | null } | null,
   drawPhaseHandGainTotals: {} as Record<PlayerId, number>, // UI-only counts excluded from Mage draw feedback
+  damageImpacts: [] as DamageImpact[], // UI-only combat feedback; never saved with the game
+  cardMotionBatchActive: false,
+  turnTransitionActive: false,
+  turnTransitionId: 0,
+  nemesisDrawRevealAnimating: false,
   viewPile: null as 'deck' | 'discard' | 'specific_deck' | 'trinket_deck' | 'nemesis_deck' | 'nemesis_discard' | 'nemesis_specific' | 'nemesis_specific_discard' | 'player_cards_in_play' | null,
   // Lets component-local, dismissible overlays close before a pile viewer opens.
   dismissibleOverlayVersion: 0,
@@ -94,6 +103,7 @@ const state = reactive({
   saves: [] as SaveSummary[],
   activeSaveId: null as string | null,
   deleteSaveId: null as string | null,
+  deleteSaveIds: [] as string[],
   pendingPreppedSpells: [] as PreppedSpellChoice[],
   pendingBoardCards: [] as BoardCardSelection[],
   exitPrompt: false,
@@ -106,31 +116,17 @@ const state = reactive({
   marketSlots: resolveMarketCardIds({ mode: 'template1', slots: [] }),
 })
 
-const SAVE_KEY = 'aeons-end-saves-v3'
 let storedSaves: StoredSave[] = []
 // A newly started game must not become a save record until the player chooses
 // Save & Exit. Resumed games keep the existing auto-save behavior.
 let autoSaveEnabled = false
 
-const undoStack: Snapshot[] = []
+const undoStack: UndoSnapshot[] = []
 const MAX_UNDO = 10
-
-function saveSummary(save: StoredSave): SaveSummary {
-  const currentPlayer = save.game.players.find(player => player.id === save.currentTurn)
-  return {
-    id: save.id,
-    players: save.players.map(displayMageName),
-    nemesisType: displayMageName(save.nemesisType),
-    round: save.round,
-    turn: save.turn,
-    currentTurn: currentPlayer ? displayMageName(currentPlayer.mageType) : 'Nemesis',
-    updatedAt: save.updatedAt,
-  }
-}
 
 function syncSaveList() {
   storedSaves.sort((a, b) => b.updatedAt - a.updatedAt)
-  state.saves = storedSaves.map(saveSummary)
+  state.saves = storedSaves.map(summarizeGameSave)
   state.hasSave = storedSaves.length > 0
 }
 
@@ -310,33 +306,27 @@ export function togglePendingPreppedSpell(choice: PreppedSpellChoice): void {
   if (state.pendingPreppedSpells.length >= decision.max) return
   const next = [...state.pendingPreppedSpells, candidate]
   state.pendingPreppedSpells = next
-  if (decision.max === 1) resolveDecision({ kind: 'select_prepped_spells', choices: next })
+  if (decision.max === 1 && !decision.confirmSelection) {
+    resolveDecision({ kind: 'select_prepped_spells', choices: next })
+  }
 }
 
 export function confirmPendingPreppedSpells(): void {
   const decision = state.game?.pendingDecision
   if (decision?.kind !== 'select_prepped_spells') return
   if (state.pendingPreppedSpells.length < decision.min || state.pendingPreppedSpells.length > decision.max) return
+  if (decision.min === 0 && decision.confirmSelection && state.pendingPreppedSpells.length === 0) return
   resolveDecision({ kind: 'select_prepped_spells', choices: [...state.pendingPreppedSpells] })
 }
 
-function readStoredSaves(): StoredSave[] {
-  try {
-    const current = JSON.parse(localStorage.getItem(SAVE_KEY) ?? 'null')
-    if (!Array.isArray(current)) return []
-    return current.filter(save => {
-      const game = save?.game
-      return save?.id
-        && game?.scenario?.id === 'two_player'
-        && game.players?.every((player: PlayerState) => /^wave\d+_[A-Z0-9_-]+$/.test(player.id))
-    })
-  } catch {
-    return []
-  }
+export function skipPendingPreppedSpells(): void {
+  const decision = state.game?.pendingDecision
+  if (decision?.kind !== 'select_prepped_spells' || decision.min !== 0) return
+  resolveDecision({ kind: 'select_prepped_spells', choices: [] })
 }
 
 function persistStoredSaves() {
-  localStorage.setItem(SAVE_KEY, JSON.stringify(storedSaves))
+  writeGameSaves(localStorage, storedSaves)
   syncSaveList()
 }
 
@@ -370,15 +360,15 @@ function saveCurrentGame(force = false) {
   save.round = state.game.round
   save.turn = state.game.turnOrderDiscard.length
   save.currentTurn = state.game.currentTurn
-  save.game = JSON.parse(JSON.stringify(state.game)) as GameState
+  save.game = cloneGameState(state.game)
   save.phase = state.phase
   save.selectedPlayer = state.selectedPlayer
   save.discardRemaining = [...state.discardRemaining]
-  save.undoStack = undoStack.map(cloneSnapshot)
+  save.undoStack = undoStack.map(cloneUndoSnapshot)
   persistStoredSaves()
 }
 
-storedSaves = readStoredSaves()
+storedSaves = readGameSaves(localStorage)
 syncSaveList()
 
 // Persist resumed games (and UI context) to localStorage on any change.
@@ -451,24 +441,14 @@ function aetherInfo(p: PlayerState) {
 
 // ===== Undo (Ctrl+Z, max 10 steps) =====
 
-function snapshot(): Snapshot {
-  return {
-    game: JSON.parse(JSON.stringify(state.game)) as GameState,
+function snapshot(): UndoSnapshot {
+  return createUndoSnapshot({
+    game: state.game!,
     phase: state.phase,
     prepTarget: state.prepTarget,
     selectedPlayer: state.selectedPlayer,
-    discardRemaining: [...state.discardRemaining],
-  }
-}
-
-function cloneSnapshot(source: Snapshot): Snapshot {
-  return {
-    game: JSON.parse(JSON.stringify(source.game)) as GameState,
-    phase: source.phase,
-    prepTarget: source.prepTarget,
-    selectedPlayer: source.selectedPlayer,
-    discardRemaining: Array.isArray(source.discardRemaining) ? [...source.discardRemaining] : [],
-  }
+    discardRemaining: state.discardRemaining,
+  })
 }
 
 /** Normalize legacy Remnant Rift setup and focus progress in saves/undo snapshots. */
@@ -506,29 +486,41 @@ function normalizeRemnantRiftBreaches(game: GameState) {
   }
 }
 
-function beforeAction(): Snapshot | null {
+function beforeAction(): UndoSnapshot | null {
   if (!state.game) return null
   const previous = snapshot()
-  undoStack.push(previous)
-  if (undoStack.length > MAX_UNDO) undoStack.shift()
+  damageTargetRects.set(previous, captureDamageTargetRects())
+  pushUndoSnapshot(previous)
   return previous
 }
 
-function finishAction(previous: Snapshot | null) {
+function pushUndoSnapshot(value: UndoSnapshot) {
+  undoStack.push(value)
+  if (undoStack.length > MAX_UNDO) undoStack.shift()
+}
+
+function recordUndoBoundary() {
+  if (state.game) pushUndoSnapshot(snapshot())
+}
+
+function finishAction(previous: UndoSnapshot | null) {
   if (!previous || !state.game) return
+  queueDamageImpacts(previous)
   if (state.game.gameOver) state.phase = 'gameover'
   const current = snapshot()
-  const unchanged = JSON.stringify(previous.game) === JSON.stringify(current.game)
-    && previous.phase === current.phase
-    && previous.prepTarget === current.prepTarget
-    && previous.selectedPlayer === current.selectedPlayer
-    && JSON.stringify(previous.discardRemaining) === JSON.stringify(current.discardRemaining)
-  if (unchanged) undoStack.pop()
+  if (undoSnapshotsEqual(previous, current)) undoStack.pop()
 }
 
 export function undo() {
   const s = undoStack.pop()
   if (!s || !state.game) { pushLog('Nothing to undo', 'warn'); return }
+  turnTransitionSequence++
+  state.turnTransitionActive = false
+  state.nemesisDrawRevealAnimating = false
+  clearPendingAttachCardFlight()
+  clearPendingNemesisDrawFlight()
+  state.cardMotionBatchActive = false
+  clearDamageImpacts()
   normalizeRemnantRiftBreaches(s.game)
   state.game = reactive(s.game) as GameState
   state.phase = s.phase
@@ -537,6 +529,7 @@ export function undo() {
   state.prepTarget = s.prepTarget
   state.selectedPlayer = s.selectedPlayer
   state.discardRemaining = [...s.discardRemaining]
+  state.discardTopDisplayOverride = null
   state.helpOpen = false
   state.viewPile = null
   state.endTurnWarningVisible = false
@@ -587,7 +580,7 @@ function enterMainPhase() {
 
 // ===== Flow =====
 
-function beginTurn() {
+function beginTurnImmediately() {
   const g = state.game!
   if (g.gameOver) { state.phase = 'gameover'; return }
   const turnNum = g.turnOrderDiscard.length
@@ -604,6 +597,34 @@ function beginTurn() {
   }
 }
 
+function readCssDuration(variable: string, fallbackMs: number): number {
+  if (typeof document === 'undefined') return fallbackMs
+  const raw = getComputedStyle(document.documentElement).getPropertyValue(variable).trim()
+  const value = Number.parseFloat(raw)
+  if (!Number.isFinite(value)) return fallbackMs
+  return raw.endsWith('ms') ? value : raw.endsWith('s') ? value * 1000 : fallbackMs
+}
+
+function beginTurn(animateTransition = false) {
+  if (!state.game) return
+  if (!animateTransition) {
+    turnTransitionSequence++
+    state.turnTransitionActive = false
+    beginTurnImmediately()
+    return
+  }
+
+  const gameAtStart = state.game
+  const sequence = ++turnTransitionSequence
+  state.turnTransitionId++
+  state.turnTransitionActive = true
+  window.setTimeout(() => {
+    if (sequence !== turnTransitionSequence || state.game !== gameAtStart) return
+    state.turnTransitionActive = false
+    beginTurnImmediately()
+  }, readCssDuration('--turn-order-arrival-duration', 240))
+}
+
 export function newGame(
   m1: string,
   m2: string,
@@ -611,6 +632,13 @@ export function newGame(
   nemesisDifficulty = state.nemesisDifficulty,
   marketSetup: MarketSetupConfig = { mode: state.marketMode, slots: [...state.marketSlots] },
 ) {
+  turnTransitionSequence++
+  state.turnTransitionActive = false
+  state.nemesisDrawRevealAnimating = false
+  clearPendingAttachCardFlight()
+  clearPendingNemesisDrawFlight()
+  state.cardMotionBatchActive = false
+  clearDamageImpacts()
   state.activeSaveId = null
   autoSaveEnabled = false
   state.exitPrompt = false
@@ -629,6 +657,7 @@ export function newGame(
   state.prepTarget = null
   state.selectedPlayer = g.players[0]!.id
   state.discardRemaining = []
+  state.discardTopDisplayOverride = null
   state.marketMode = scenario.marketSetup?.mode ?? defaultMarketSetup().mode
   state.marketSlots = [...(scenario.marketSetup?.slots ?? DEFAULT_MARKET_SLOTS)]
   state.helpOpen = false
@@ -641,7 +670,9 @@ export function newGame(
     return
   }
   startTurn(g)
-  beginTurn()
+  // When Nemesis starts the game, let the turn token arrive first so its deck
+  // is mounted before we capture the draw animation's origin.
+  beginTurn(g.currentTurn === 'nemesis')
 }
 
 /** Reroll the nine slots for the Setup screen's semi-random market template. */
@@ -656,7 +687,14 @@ export function resumeGame(saveId?: string): boolean {
     ?? storedSaves[0]
   if (!save) return false
   try {
-    const resumedGame = JSON.parse(JSON.stringify(save.game)) as GameState
+    turnTransitionSequence++
+    state.turnTransitionActive = false
+    state.nemesisDrawRevealAnimating = false
+    clearPendingAttachCardFlight()
+    clearPendingNemesisDrawFlight()
+    state.cardMotionBatchActive = false
+    clearDamageImpacts()
+    const resumedGame = cloneGameState(save.game)
     normalizeRemnantRiftBreaches(resumedGame)
     state.game = reactive(resumedGame) as GameState
     state.activeSaveId = save.id
@@ -667,6 +705,7 @@ export function resumeGame(saveId?: string): boolean {
     state.pendingPreppedSpells = []
     state.pendingBoardCards = []
     state.discardRemaining = [...save.discardRemaining]
+    state.discardTopDisplayOverride = null
     state.marketMode = save.game.scenario.marketSetup?.mode ?? 'manual'
     state.marketSlots = [...(save.game.scenario.marketSetup?.slots ?? DEFAULT_MARKET_SLOTS)]
     state.prepTarget = null
@@ -675,7 +714,7 @@ export function resumeGame(saveId?: string): boolean {
     state.log = []
     undoStack.length = 0
     for (const savedSnapshot of save.undoStack) {
-      const snapshot = cloneSnapshot(savedSnapshot)
+      const snapshot = cloneUndoSnapshot(savedSnapshot)
       normalizeRemnantRiftBreaches(snapshot.game)
       undoStack.push(snapshot)
     }
@@ -697,9 +736,10 @@ export function resumeGame(saveId?: string): boolean {
 
 export function clearSaves() {
   storedSaves = []
-  localStorage.removeItem(SAVE_KEY)
+  clearGameSaves(localStorage)
   state.activeSaveId = null
   state.deleteSaveId = null
+  state.deleteSaveIds = []
   syncSaveList()
 }
 
@@ -709,23 +749,40 @@ export function clearSave() {
 }
 
 export function requestDeleteSave(saveId: string) {
-  if (storedSaves.some(save => save.id === saveId)) state.deleteSaveId = saveId
+  requestDeleteSaves([saveId])
+}
+
+export function requestDeleteSaves(saveIds: string[]) {
+  const available = new Set(storedSaves.map(save => save.id))
+  const pendingIds = [...new Set(saveIds)].filter(saveId => available.has(saveId))
+  if (pendingIds.length === 0) return
+  state.deleteSaveIds = pendingIds
+  state.deleteSaveId = pendingIds.length === 1 ? pendingIds[0]! : null
 }
 
 export function cancelDeleteSave() {
   state.deleteSaveId = null
+  state.deleteSaveIds = []
 }
 
 export function deleteSave(saveId: string) {
-  if (state.deleteSaveId !== saveId) return
-  storedSaves = storedSaves.filter(save => save.id !== saveId)
+  if (state.deleteSaveIds.length !== 1 || state.deleteSaveIds[0] !== saveId) return
+  deleteSaves([saveId])
+}
+
+export function deleteSaves(saveIds: string[]) {
+  const approved = new Set(state.deleteSaveIds)
+  const toDelete = new Set([...new Set(saveIds)].filter(saveId => approved.has(saveId)))
+  if (toDelete.size === 0) return
+  storedSaves = storedSaves.filter(save => !toDelete.has(save.id))
   if (storedSaves.length === 0) {
-    localStorage.removeItem(SAVE_KEY)
+    clearGameSaves(localStorage)
   } else {
     persistStoredSaves()
   }
   syncSaveList()
   state.deleteSaveId = null
+  state.deleteSaveIds = []
 }
 
 export function requestExit() {
@@ -740,17 +797,26 @@ export function cancelExit() {
 }
 
 function resetToSetup() {
+  turnTransitionSequence++
+  state.turnTransitionActive = false
+  state.nemesisDrawRevealAnimating = false
+  clearPendingAttachCardFlight()
+  clearPendingNemesisDrawFlight()
+  state.cardMotionBatchActive = false
+  clearDamageImpacts()
   state.game = null
   state.phase = 'setup'
   state.activeSaveId = null
   autoSaveEnabled = false
   state.deleteSaveId = null
+  state.deleteSaveIds = []
   state.exitPrompt = false
   state.endTurnWarningVisible = false
   state.pendingPreppedSpells = []
   state.pendingBoardCards = []
   state.prepTarget = null
   state.discardRemaining = []
+  state.discardTopDisplayOverride = null
   state.helpOpen = false
   state.viewPile = null
   state.debugOpen = false
@@ -813,13 +879,134 @@ export function castSpell(breachIndex: number, spellIndex = 0) {
 }
 
 export function toMainPhase() {
+  if (!state.game || state.phase !== 'casting') return
   const must = getCastableSpells(state.game!, cp().id).filter(s => s.mustCast)
   if (must.length > 0) { pushLog('You must cast the [MUST] spell(s) first', 'warn'); return }
+  const previous = beforeAction()
   enterMainPhase()
+  finishAction(previous)
+}
+
+function findDataElement(attribute: string, value: string, scope: ParentNode = document): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  const escapedAttribute = attribute.startsWith('data-') ? attribute : `data-${attribute}`
+  return [...scope.querySelectorAll<HTMLElement>(`[${escapedAttribute}]`)]
+    .find(element => element.getAttribute(escapedAttribute) === value) ?? null
+}
+
+function findLastDataElement(attribute: string, value: string, scope: ParentNode = document): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  const escapedAttribute = attribute.startsWith('data-') ? attribute : `data-${attribute}`
+  const matches = [...scope.querySelectorAll<HTMLElement>(`[${escapedAttribute}]`)]
+    .filter(element => element.getAttribute(escapedAttribute) === value)
+  return matches[matches.length - 1] ?? null
+}
+
+function clearPendingAttachCardFlight() {
+  discardCardFlight(pendingAttachCardFlight?.flight ?? null)
+  pendingAttachCardFlight = null
+}
+
+function clearPendingNemesisDrawFlight() {
+  discardCardFlight(pendingNemesisDrawFlight?.flight ?? null)
+  pendingNemesisDrawFlight = null
+}
+
+/** Hold the deck origin through Nemesis decisions that happen before its draw. */
+function capturePendingNemesisDrawFlight(game: GameState) {
+  if (game.nemesisResolution?.drawnCardId) return
+  const cardId = game.nemesis.deck[0]
+  if (!cardId) {
+    clearPendingNemesisDrawFlight()
+    return
+  }
+  if (pendingNemesisDrawFlight?.cardId === cardId) return
+  clearPendingNemesisDrawFlight()
+  const flight = captureCardFlight(findDataElement('data-nemesis-deck-pile', 'true'))
+  if (flight) pendingNemesisDrawFlight = { cardId, flight }
+}
+
+function startNemesisDrawRevealAnimation(decision: Extract<PendingDecision, { kind: 'confirm_nemesis_draw' }>) {
+  const pendingFlight = pendingNemesisDrawFlight
+  pendingNemesisDrawFlight = null
+  if (!pendingFlight || pendingFlight.cardId !== decision.cardId) {
+    discardCardFlight(pendingFlight?.flight ?? null)
+    return
+  }
+
+  state.cardMotionBatchActive = true
+  state.nemesisDrawRevealAnimating = true
+  void nextTick()
+    .then(() => animateCardRevealFlight(
+      pendingFlight.flight,
+      document.querySelector<HTMLElement>('.nemesis-reveal-card'),
+      cardImageUrl(decision.cardId),
+    ))
+    .finally(() => {
+      state.cardMotionBatchActive = false
+      state.nemesisDrawRevealAnimating = false
+    })
+}
+
+function captureDamageTargetRects(): Map<string, DamageTargetRect> {
+  const targets = new Map<string, DamageTargetRect>()
+  if (typeof document === 'undefined') return targets
+  for (const element of document.querySelectorAll<HTMLElement>('[data-damage-target]')) {
+    const targetId = element.dataset.damageTarget
+    if (!targetId) continue
+    const rect = element.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) continue
+    targets.set(targetId, { left: rect.left, top: rect.top, width: rect.width, height: rect.height })
+  }
+  return targets
+}
+
+function queueDamageImpacts(previous: UndoSnapshot) {
+  const before = previous.game
+  const after = state.game!
+  const rects = damageTargetRects.get(previous) ?? new Map<string, DamageTargetRect>()
+
+  const addImpact = (targetId: string, amount: number) => {
+    if (amount <= 0) return
+    const rect = rects.get(targetId)
+    if (!rect) return
+    const stackIndex = state.damageImpacts.filter(impact => impact.targetId === targetId).length
+    const impact: DamageImpact = { id: ++damageImpactId, targetId, amount, ...rect, stackIndex }
+    state.damageImpacts.push(impact)
+    damageImpactTimers.set(impact.id, setTimeout(() => {
+      state.damageImpacts = state.damageImpacts.filter(candidate => candidate.id !== impact.id)
+      damageImpactTimers.delete(impact.id)
+    }, DAMAGE_IMPACT_DURATION_MS))
+  }
+
+  const playersAfter = new Map(after.players.map(player => [player.id, player]))
+  for (const playerBefore of before.players) {
+    const playerAfter = playersAfter.get(playerBefore.id)
+    if (playerAfter) addImpact(`player:${playerBefore.id}`, playerBefore.hp - playerAfter.hp)
+  }
+  addImpact('nemesis', before.nemesis.hp - after.nemesis.hp)
+  addImpact('gravehold', before.gravehold.hp - after.gravehold.hp)
+
+  const minionsAfter = new Map(after.nemesis.playArea
+    .filter(card => card.cardType === 'minion')
+    .map(card => [card.placedAt, card]))
+  for (const minionBefore of before.nemesis.playArea.filter(card => card.cardType === 'minion')) {
+    const minionAfter = minionsAfter.get(minionBefore.placedAt)
+    const lifeBefore = Math.max(0, minionBefore.lifeTokens ?? 0)
+    const lifeAfter = Math.max(0, minionAfter?.lifeTokens ?? 0)
+    addImpact(`minion:${minionBefore.placedAt}`, lifeBefore - lifeAfter)
+  }
+}
+
+function clearDamageImpacts() {
+  for (const timer of damageImpactTimers.values()) clearTimeout(timer)
+  damageImpactTimers.clear()
+  state.damageImpacts = []
 }
 
 export function resolveDecision(answer: PendingDecisionAnswer) {
   if (!state.game?.pendingDecision) return
+  if (state.game.pendingDecision.kind === 'confirm_nemesis_draw') state.nemesisDrawRevealAnimating = false
   const wasCasting = state.phase === 'casting'
   const wasInitialSetup = !state.game.currentTurn
   const wasCastingPhaseEnd = state.game.pendingEffect?.preppedPhase === 'casting_phase_end'
@@ -830,6 +1017,10 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
     pendingDecision.action === 'attach' &&
     pendingEffect?.awaiting?.kind === 'attach_relic' &&
     pendingEffect.sourceCardInHandPendingPlay === true
+  const attachFlight = completingAttachPlay && pendingAttachCardFlight?.cardId === pendingEffect?.sourceCardId
+    ? pendingAttachCardFlight
+    : null
+  if (attachFlight) state.cardMotionBatchActive = true
   // The card click and its Breach confirmation are one action. The click has
   // already recorded the pre-play snapshot, so do not add an intermediate undo point.
   const previous = completingAttachPlay ? null : beforeAction()
@@ -841,12 +1032,18 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
   if (state.game.gameOver) {
     pushLog(checkGameOver(state.game) ?? 'Game over', 'warn')
     state.phase = 'gameover'
+  } else if (wasNemesisTurnWaiting && state.game.pendingDecision?.kind === 'confirm_nemesis_draw' &&
+    state.game.pendingDecision.source !== 'specific_deck') {
+    // Resolving one Nemesis decision can queue the next draw directly. That
+    // transition must consume the deck-origin snapshot kept by the prior step.
+    state.phase = 'nemesis_draw'
+    startNemesisDrawRevealAnimation(state.game.pendingDecision)
   } else if (!state.game.pendingDecision && wasInitialSetup) {
     for (const message of engineResolveMageSetups(state.game)) pushLog(message, 'info')
     if (!state.game.pendingDecision && !state.game.pendingEffect) {
       pushLog('Setup complete — first turn begins', 'ok')
       startTurn(state.game)
-      beginTurn()
+      beginTurn(state.game.currentTurn === 'nemesis')
     }
   } else if (!state.game.pendingDecision && wasNemesisTurnWaiting) {
     continueNemesisTurn()
@@ -859,17 +1056,61 @@ export function resolveDecision(answer: PendingDecisionAnswer) {
     resolveMainPhasePreppedEffects()
     maybeAutoEnd()
   }
+  if (attachFlight) {
+    const attached = state.game.players.some(player =>
+      player.breaches.some(breach => breach.attachedRelic?.cardId === attachFlight.cardId))
+    if (attached) {
+      pendingAttachCardFlight = null
+      void nextTick()
+        .then(() => animateCardFlight(
+          attachFlight.flight,
+          findLastDataElement('data-attached-relic-id', attachFlight.cardId, document),
+        ))
+        .finally(() => { state.cardMotionBatchActive = false })
+    } else {
+      state.cardMotionBatchActive = false
+      if (!state.game.pendingEffect?.sourceCardInHandPendingPlay) clearPendingAttachCardFlight()
+    }
+  }
   finishAction(previous)
 }
 
 export function playCard(cardIdx: number) {
+  return playCardWithMotion(cardIdx)
+}
+
+async function playCardWithMotion(cardIdx: number) {
   const p = cp()
+  const cardId = p.hand[cardIdx]
+  if (!cardId || !state.game) return
+
+  const cardType = getCard(cardId).type
+  const flight = cardType === 'gem' || cardType === 'relic'
+    ? captureCardFlight(findDataElement('data-hand-card-index', String(cardIdx)))
+    : null
   const previous = beforeAction()
-  const cardId = p.hand[cardIdx]!
-  const msg = enginePlayCard(state.game!, p.id, cardId)
-  if (msg) pushLog(msg)
-  maybeAutoEnd()
-  finishAction(previous)
+  const playedCount = p.playedThisTurn.length
+  if (flight) state.cardMotionBatchActive = true
+
+  try {
+    const msg = enginePlayCard(state.game, p.id, cardId)
+    if (msg) pushLog(msg)
+
+    if (p.playedThisTurn.length > playedCount && flight) {
+      await nextTick()
+      await animateCardFlight(flight, findLastDataElement('data-played-card-id', cardId, document.querySelector('.played-zone-center') ?? document))
+    } else if (flight && cardType === 'relic' && state.game.pendingEffect?.sourceCardInHandPendingPlay) {
+      discardCardFlight(pendingAttachCardFlight?.flight ?? null)
+      pendingAttachCardFlight = { ownerId: p.id, cardId, flight }
+    } else {
+      discardCardFlight(flight)
+    }
+
+    maybeAutoEnd()
+    finishAction(previous)
+  } finally {
+    state.cardMotionBatchActive = false
+  }
 }
 
 export function openPile(pile: 'deck' | 'discard') {
@@ -931,19 +1172,40 @@ function closeDismissibleOverlays() {
   state.dismissibleOverlayVersion += 1
 }
 
-export function playAllGems() {
+export async function playAllGems() {
+  if (!state.game || state.game.pendingDecision || state.game.pendingEffect || !canActMain.value) return
   const g = state.game!
   const p = cp()
+  if (!p.hand.some(id => getCard(id).type === 'gem')) return
   const previous = beforeAction()
-  for (const id of [...p.hand]) {
-    if (getCard(id).type === 'gem') {
-      const msg = enginePlayCard(g, p.id, id)
+  state.cardMotionBatchActive = true
+  try {
+    while (!g.pendingDecision && !g.pendingEffect) {
+      const handIndex = p.hand.findIndex(id => getCard(id).type === 'gem')
+      if (handIndex < 0) break
+      const cardId = p.hand[handIndex]!
+      const flight = captureCardFlight(findDataElement('data-hand-card-index', String(handIndex)))
+      const playedCount = p.playedThisTurn.length
+      const msg = enginePlayCard(g, p.id, cardId)
       if (msg) pushLog(msg)
-      if (g.pendingDecision) break
+
+      if (p.playedThisTurn.length > playedCount && flight) {
+        await nextTick()
+        const target = findLastDataElement('data-played-card-id', cardId, document.querySelector('.played-zone-center') ?? document)
+        await animateCardFlight(flight, target)
+      } else {
+        discardCardFlight(flight)
+      }
+
+      // An engine decision pauses the play-all action. Show it only after the
+      // card that caused it has finished moving; remaining Gems stay in hand.
+      if (g.pendingDecision || g.pendingEffect) break
     }
+    maybeAutoEnd()
+    finishAction(previous)
+  } finally {
+    state.cardMotionBatchActive = false
   }
-  maybeAutoEnd()
-  finishAction(previous)
 }
 
 export function prepSpell(cardIdx: number, breachIndex: number) {
@@ -1008,17 +1270,39 @@ export function activatePlayerCardInPlayAction(cardIndex: number, ownerId: Playe
   finishAction(previous)
 }
 
-export function buyCard(pileIdx: number) {
+export async function buyCard(pileIdx: number) {
+  if (!state.game) return
+  const game = state.game
+  const player = cp()
+  const cardId = game.market.piles[pileIdx]?.cardId
+  const flight = cardId
+    ? captureCardFlight(findDataElement('data-supply-card-id', cardId))
+    : null
   const previous = beforeAction()
-  const msg = engineBuyCard(state.game!, cp().id, pileIdx)
-  if (msg) pushLog(msg, 'ok')
-  if (state.game!.gameOver) {
-    state.phase = 'gameover'
+  const discardCount = player.discard.length
+  if (flight) state.cardMotionBatchActive = true
+
+  try {
+    const msg = engineBuyCard(game, player.id, pileIdx)
+    if (msg) pushLog(msg, 'ok')
+    const gained = !!cardId && player.discard.length > discardCount && player.discard[0] === cardId
+    if (gained && flight) {
+      await nextTick()
+      await animateCardFlight(flight, findLastDataElement('data-discard-top-card', cardId, document))
+    } else {
+      discardCardFlight(flight)
+    }
+
+    if (game.gameOver) {
+      state.phase = 'gameover'
+      finishAction(previous)
+      return
+    }
+    maybeAutoEnd()
     finishAction(previous)
-    return
+  } finally {
+    state.cardMotionBatchActive = false
   }
-  maybeAutoEnd()
-  finishAction(previous)
 }
 
 export function focusBreach(breachIndex: number) {
@@ -1082,21 +1366,40 @@ function finalizeDraw() {
   const over = checkGameOver(g)
   if (over) { pushLog(over, 'warn'); state.phase = 'gameover'; return }
   startTurn(g)
-  beginTurn()
+  beginTurn(true)
 }
 
-/** Discard every remaining played card (they are all identical). */
-function autoDiscardRemaining() {
-  const p = cp()
-  const cards = [...state.discardRemaining]
-  state.discardRemaining = []
-  for (const cardId of cards) {
-    const i = p.playedThisTurn.indexOf(cardId)
-    if (i !== -1) p.playedThisTurn.splice(i, 1)
-    p.discard.unshift(cardId)
+/** Discard identical remaining cards one at a time so each card visibly lands. */
+async function autoDiscardRemaining() {
+  while (state.discardRemaining.length > 0) {
+    await moveDiscardPhaseCard(0)
   }
   pushLog('Remaining played cards are identical — discarded automatically', 'info')
   finalizeDraw()
+}
+
+async function moveDiscardPhaseCard(index: number) {
+  const p = cp()
+  const cardId = state.discardRemaining[index]
+  if (!cardId) return
+  const previousDiscardTop = p.discard[0] ?? null
+  const flight = captureCardFlight(findDataElement(
+    'data-discard-phase-card-index', String(index),
+    document.querySelector('.played-zone-center') ?? document,
+  ))
+  state.discardTopDisplayOverride = { playerId: p.id, cardId: previousDiscardTop }
+  state.discardRemaining.splice(index, 1)
+  moveToDiscard(index)
+  try {
+    await nextTick()
+    const destination = previousDiscardTop
+      ? findLastDataElement('data-discard-top-card', previousDiscardTop, document)
+      : document.querySelector<HTMLElement>('.player-discard-pile')
+    await animateCardFlight(flight, destination, { hideDestination: false })
+  } finally {
+    state.discardTopDisplayOverride = null
+    await nextTick()
+  }
 }
 
 /** Core end-of-turn. Called by user action AND auto-end. */
@@ -1122,6 +1425,9 @@ function doEndTurn() {
   }
   state.discardRemaining = [...p.playedThisTurn]
   state.phase = 'discard_order'
+  // Discard order is its own undo point. Once the next Mage starts their turn,
+  // undo should restore this phase instead of jumping back before Main.
+  recordUndoBoundary()
   pushLog('Click played cards in the order they enter the discard pile', 'info')
 }
 
@@ -1147,18 +1453,22 @@ export function requestEndTurn() {
   endTurn()
 }
 
-export function clickDiscardCard(index: number) {
+export async function clickDiscardCard(index: number) {
   if (state.phase !== 'discard_order' || state.selectedPlayer !== state.game?.currentTurn) return
   if (index < 0 || index >= state.discardRemaining.length) return
-  state.discardRemaining.splice(index, 1)
-  moveToDiscard(index)
-  if (state.discardRemaining.length === 0) {
-    finalizeDraw()
-    return
-  }
-  // If the remaining played cards are all identical, discard them automatically.
-  if (new Set(state.discardRemaining).size === 1) {
-    autoDiscardRemaining()
+  state.cardMotionBatchActive = true
+  try {
+    await moveDiscardPhaseCard(index)
+    if (state.discardRemaining.length === 0) {
+      finalizeDraw()
+      return
+    }
+    // If the remaining played cards are all identical, discard them automatically.
+    if (new Set(state.discardRemaining).size === 1) {
+      await autoDiscardRemaining()
+    }
+  } finally {
+    state.cardMotionBatchActive = false
   }
 }
 
@@ -1166,26 +1476,34 @@ export function clickDiscardCard(index: number) {
 function continueNemesisTurn() {
   const g = state.game
   if (!g || g.currentTurn !== 'nemesis' || g.pendingDecision || g.pendingEffect) return
+  state.nemesisDrawRevealAnimating = false
   // A completed effect frame may have already finished this Nemesis turn.
   // startTurn() owns creation of the next serializable Nemesis resolution.
   if (!g.nemesisResolution) {
+    clearPendingNemesisDrawFlight()
     startTurn(g)
-    beginTurn()
+    beginTurn(true)
     return
   }
+  capturePendingNemesisDrawFlight(g)
   const messages = advanceNemesisTurn(g)
+  const pendingDecision = (g as GameState).pendingDecision as PendingDecision | null
   for (const message of messages) pushLog(message, 'warn')
-  if (g.pendingDecision || g.pendingEffect) {
+  if (pendingDecision || g.pendingEffect) {
     state.phase = g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
+    if (pendingDecision?.kind === 'confirm_nemesis_draw' &&
+      pendingDecision.source !== 'specific_deck') startNemesisDrawRevealAnimation(pendingDecision)
     return
   }
   if (g.gameOver) {
+    clearPendingNemesisDrawFlight()
     state.phase = 'gameover'
     return
   }
   if (!g.nemesisResolution) {
+    clearPendingNemesisDrawFlight()
     startTurn(g)
-    beginTurn()
+    beginTurn(true)
   } else {
     state.phase = g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
   }
@@ -1352,7 +1670,7 @@ export function useGame() {
     state,
     rerollMarketTemplate,
     newGame, resumeGame, clearSave, clearSaves,
-    requestDeleteSave, cancelDeleteSave, deleteSave,
+    requestDeleteSave, requestDeleteSaves, cancelDeleteSave, deleteSave, deleteSaves,
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
     returnToMainMenu,
     toggleDebug, setDebugFreeSpellCastEnabled, debugCastAnyPreppedSpell,
@@ -1366,7 +1684,7 @@ export function useGame() {
     movePreppedSpell, returnPreppedSpellToHand,
     endTurn, requestEndTurn, discardNemesisCard, undo, aetherInfo, toRoman,
     selectPlayer, clickDiscardCard, openPile, openSpecificDeckPile, openTrinketDeckPile, openPlayerCardsInPlayPile, openNemesisDeckPile, openNemesisDiscardPile, openNemesisSpecificPile, openNemesisSpecificDiscardPile, closePile,
-    isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells,
+    isPendingPreppedSpellSelected, togglePendingPreppedSpell, confirmPendingPreppedSpells, skipPendingPreppedSpells,
     isBoardCardSelectionActive, getBoardCardSelection, isPendingBoardCardSelected,
     togglePendingBoardCard, confirmPendingBoardCards, skipPendingBoardCards,
     castableSpells, buyables, playerCanAct,

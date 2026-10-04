@@ -94,7 +94,7 @@ const { draggingKey, onPointerDown } = usePointerReorder({
         :card-id="entry.cardId"
         :disabled="draggingKey !== null"
         :preview-width="210"
-        :preview-height="315"
+        :preview-height="291.02"
         @pointerdown="onPointerDown($event, entry.key)"
       >
         <CardSurface

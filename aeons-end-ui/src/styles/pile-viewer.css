@@ -1,0 +1,142 @@
+/* ===== Pile viewer modal ===== */
+.pile-modal .muted { color: var(--muted); font-weight: 400; font-size: 12px; }
+.pile-modal .empty { color: var(--muted); font-style: italic; padding: 10px 0; }
+.pile-modal {
+  width: min(calc(var(--pile-columns, 5) * 92px + 188px), calc(100vw - 32px));
+  min-width: min(280px, calc(100vw - 32px));
+  max-height: min(88vh, 720px);
+  overflow-y: auto;
+}
+.pile-modal:not(.pile-modal-with-labels) {
+  width: min(calc(var(--pile-columns, 5) * 92px + 64px), calc(100vw - 32px));
+  min-width: min(440px, calc(100vw - 32px));
+}
+.pile-modal.qu-form-pile-modal {
+  width: min(calc(var(--large-card-width) + 64px), calc(100vw - 32px));
+  min-width: min(calc(var(--large-card-width) + 64px), calc(100vw - 32px));
+}
+.pile-viewer-overlay { z-index: var(--z-pile-viewer); }
+.pile-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+  margin: 12px 0;
+}
+.pile-row {
+  display: grid;
+  grid-template-columns: repeat(var(--pile-columns, 5), minmax(0, 82px));
+  justify-content: center;
+  gap: 10px;
+}
+.pile-row-labeled {
+  width: 100%;
+  grid-template-columns: 92px repeat(var(--pile-columns, 5), minmax(0, 82px));
+  justify-content: start;
+}
+.pile-modal.qu-form-pile-modal .qu-form-pile-row {
+  display: flex;
+  width: max-content;
+  max-width: 100%;
+  justify-content: center;
+}
+.pile-row-label {
+  align-self: center;
+  justify-self: start;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  line-height: 1.2;
+  text-align: left;
+  white-space: nowrap;
+}
+.pile-card {
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  background: #151a29;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.pile-card.pile-card-image {
+  width: 82px;
+  height: auto;
+  aspect-ratio: var(--card-aspect-ratio);
+  padding: 0;
+  overflow: hidden;
+}
+.pile-card.pile-card-image.card-surface--large {
+  width: var(--large-card-width);
+  height: var(--large-card-height);
+  padding: 0;
+  border-radius: var(--radius-card);
+}
+.pile-card-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.pile-card.player-card-in-play-choice {
+  cursor: pointer;
+}
+.pile-card.player-card-in-play-choice.player-card-in-play-action {
+  border-color: var(--ok);
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(158, 206, 106, .28) inset;
+}
+.pile-card.player-card-in-play-choice.player-card-in-play-disabled {
+  cursor: not-allowed;
+  opacity: .62;
+}
+.pile-card.player-card-in-play-choice.player-card-in-play-action:hover {
+  border-color: var(--ok);
+}
+.pile-card.recall-card-action {
+  border-color: var(--recall-highlight);
+  box-shadow: 0 0 0 2px rgba(101, 184, 255, .28) inset;
+  cursor: pointer;
+}
+.pile-card.recall-card-action:hover { border-color: var(--recall-highlight); }
+.recall-pile-hint { margin: 0 0 8px; color: var(--recall-highlight); font-size: var(--font-size-small); }
+
+@media (max-width: 520px) {
+  .pile-row {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 5px;
+  }
+  .pile-row-labeled {
+    grid-template-columns: 78px repeat(var(--pile-columns, 5), minmax(0, 1fr));
+  }
+  .pile-card.pile-card-image {
+    width: 100%;
+    height: auto;
+    aspect-ratio: var(--card-aspect-ratio);
+  }
+  .pile-modal.qu-form-pile-modal .pile-card.pile-card-image.card-surface--large {
+    width: min(var(--large-card-width), calc(100vw - 64px));
+    height: auto;
+    aspect-ratio: var(--card-aspect-ratio);
+  }
+  .decision-card-zone .decision-card-row {
+    width: max-content;
+    grid-template-columns: repeat(var(--choice-columns), 82px);
+  }
+}
+
+.card.small.selected { border: 2px solid var(--ok); box-shadow: 0 0 0 var(--pixel-border-width) var(--ok) inset; }
+.card.pending-board-card {
+  border: 2px solid #e6c84f;
+  cursor: pointer;
+}
+.hand .card.pending-conjure-card,
+.hand .card.pending-conjure-card:hover,
+.hand .card.pending-conjure-card.dragging { border: 2px solid #e6c84f; }
+.card.pending-board-card-selected {
+  /* Selected board cards stay in the same top board layer as hovered cards. */
+  z-index: var(--z-card-hover);
+  border-color: var(--ok);
+  box-shadow: 0 0 0 2px rgba(158, 206, 106, .35);
+  transform: translateY(-3px);
+}
+

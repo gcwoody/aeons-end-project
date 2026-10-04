@@ -1,101 +1,29 @@
 import type {
   CardDef, BreachState, Direction, NemesisDifficulty, ScenarioConfig, MarketSetupConfig,
 } from './types'
-import {
-  INITIAL_GEM_CARDS, MARKET_GEM_CARDS,
-  crystal, moonstoneShard, amethystShard, emeraldShard, quartzShard, garnetShard, tourmalineShard,
-  vriswoodAmber, diamondCluster, burningOpal, cloudedSapphire, jade, searingRuby, siftersPearl,
-} from './data/wave1/gems'
-import {
-  MARKET_RELIC_CARDS,
-  flexingDagger, bottledVortex, blastingStaff, focusingOrb, magesTalisman, unstablePrism,
-} from './data/wave1/relics'
-import {
-  INITIAL_SPELL_CARDS, MARKET_SPELL_CARDS,
-  spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
-  amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
-  phoenixFlame, spectralEcho, wildfireWhip,
-} from './data/wave1/spells'
-import { createMages, MAGE_UNIQUE_CARDS as WAVE1_MAGE_UNIQUE_CARDS } from './data/wave1/mage'
-import type { MageDef } from './data/wave1/mage'
-import { createNook, NOOK_CARDS, NOOK_UNIQUE_CARDS } from './data/wave9/nook'
-import { createIndira, INDIRA_CARDS, INDIRA_UNIQUE_CARDS } from './data/wave9/indira'
-import { createDezmodia, DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS } from './data/wave9/dezmodia'
-import { createRemnant, REMNANT_CARDS, REMNANT_UNIQUE_CARDS } from './data/wave9/remnant'
-import { createStake, STAKE_CARDS, STAKE_UNIQUE_CARDS } from './data/wave9/stake'
-import { createWolf, WOLF_CARDS, WOLF_UNIQUE_CARDS } from './data/wave9/wolf'
-import { createInco, INCO_CARDS, INCO_UNIQUE_CARDS } from './data/wave9/inco'
-import { createQu, QU_CARDS, QU_UNIQUE_CARDS } from './data/wave9/qu'
-import { createTressa, TRESSA_CARDS, TRESSA_UNIQUE_CARDS } from './data/wave9/tressa'
-import { createYanMagda, YAN_MAGDA_CARDS, YAN_MAGDA_UNIQUE_CARDS } from './data/wave9/yanmagda'
-import { wave9Crystal, wave9Spark } from './data/wave9/basic'
-import { WAVE9_GEM_CARDS, chromiaSphere } from './data/wave9/gems'
-import { WAVE9_SPELL_CARDS } from './data/wave9/spells'
-import { TRINKET_CARDS } from './data/wave9/trinkets'
-import {
-  WAVE9_RELIC_CARDS, chronoid, omenLoop, riftRing, tearstoneAmulet, thoughtTotem,
-  dreamersCrown, stormspinnerWand, pactPrism, bookOfBefore, visionaryStaff,
-} from './data/wave9/relics'
-import {
-  NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
-  BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
-  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER, PRINCE_OF_GLUTTONS_UNIQUE_CARDS, PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
-  buildRageborneDeck, buildRageborneStrikeDeck, buildPrinceOfGluttonsDeck,
-} from './data/wave1/nemesis'
+import type { MageDef } from './data/wave1'
+import { mergeCatalogs } from './data/catalog'
+import * as Wave1 from './data/wave1'
+import * as Wave9 from './data/wave9'
 
-// Re-export the Wave 1 catalog so existing engine and UI imports stay stable.
-export {
-  crystal, moonstoneShard, amethystShard, emeraldShard, quartzShard, garnetShard, tourmalineShard,
-  vriswoodAmber, diamondCluster, burningOpal, cloudedSapphire, jade, searingRuby, siftersPearl,
-  flexingDagger, bottledVortex, blastingStaff, focusingOrb, magesTalisman, unstablePrism,
-  spark, buriedLight, flare, lavaTendril, essenceTheft, planarInsight, arcaneNexus,
-  amplifyVision, chaosArc, consumingVoid, darkFire, feralLightning, ignite, oblivionSwell,
-  phoenixFlame, spectralEcho, wildfireWhip,
-  wave9Crystal, wave9Spark,
-  chromiaSphere, WAVE9_GEM_CARDS,
-  WAVE9_SPELL_CARDS,
-  WAVE9_RELIC_CARDS,
-  chronoid, omenLoop, riftRing, tearstoneAmulet, thoughtTotem,
-  dreamersCrown, stormspinnerWand, pactPrism, bookOfBefore, visionaryStaff,
-  NOOK_CARDS, NOOK_UNIQUE_CARDS,
-  INDIRA_CARDS, INDIRA_UNIQUE_CARDS,
-  DEZMODIA_CARDS, DEZMODIA_UNIQUE_CARDS,
-  REMNANT_CARDS, REMNANT_UNIQUE_CARDS,
-  STAKE_CARDS, STAKE_UNIQUE_CARDS,
-  WOLF_CARDS, WOLF_UNIQUE_CARDS,
-  INCO_CARDS, INCO_UNIQUE_CARDS,
-  QU_CARDS, QU_UNIQUE_CARDS,
-  TRESSA_CARDS, TRESSA_UNIQUE_CARDS,
-  YAN_MAGDA_CARDS, YAN_MAGDA_UNIQUE_CARDS,
-  NEMESIS_CARDS, rageborne, princeOfGluttons, NEMESES,
-  BASIC_NEMESIS_CARDS, RAGEBORNE_UNIQUE_CARDS, RAGEBORNE_STRIKE_CARDS,
-  BASIC_NEMESIS_CARDS_BY_TIER, RAGEBORNE_UNIQUE_CARDS_BY_TIER, PRINCE_OF_GLUTTONS_UNIQUE_CARDS, PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
-  buildRageborneDeck, buildRageborneStrikeDeck, buildPrinceOfGluttonsDeck,
-}
-export type { MageDef } from './data/wave1/mage'
+// Keep the historical public data entry point while each Wave owns its catalog.
+export * from './data/wave1'
+export * from './data/wave9'
+export type { MageDef } from './data/wave1'
 
 export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
-  ...WAVE1_MAGE_UNIQUE_CARDS,
-  nook: NOOK_UNIQUE_CARDS,
-  indira: INDIRA_UNIQUE_CARDS,
-  dezmodia: DEZMODIA_UNIQUE_CARDS,
-  remnant: REMNANT_UNIQUE_CARDS,
-  stake: STAKE_UNIQUE_CARDS,
-  wolf: WOLF_UNIQUE_CARDS,
-  inco: INCO_UNIQUE_CARDS,
-  qu: QU_UNIQUE_CARDS,
-  tressa: TRESSA_UNIQUE_CARDS,
-  yan_magda: YAN_MAGDA_UNIQUE_CARDS,
+  ...Wave1.WAVE1_MAGE_UNIQUE_CARDS,
+  ...Wave9.WAVE9_MAGE_UNIQUE_CARDS,
 }
 
 export function getNemesisDefinition(type: string) {
-  return NEMESES[type]
+  return Wave1.WAVE1_NEMESES[type]
 }
 
 /** Create the only currently supported scenario: two players versus one Nemesis. */
 export function createTwoPlayerScenario(
   mageTypes: [string, string],
-  nemesisType = rageborne.type,
+  nemesisType = Wave1.rageborne.type,
   nemesisDifficulty: NemesisDifficulty = 'standard',
   marketSetup?: MarketSetupConfig,
 ): ScenarioConfig {
@@ -106,7 +34,7 @@ export function createTwoPlayerScenario(
   if (firstMage === secondMage) {
     throw new Error('This Mage has already been selected by another player')
   }
-  if (!NEMESES[nemesisType]) {
+  if (!Wave1.WAVE1_NEMESES[nemesisType]) {
     throw new Error(`Unknown Nemesis: ${nemesisType}`)
   }
   return {
@@ -126,32 +54,15 @@ export function createTwoPlayerScenario(
 }
 
 // Unified card lookups used by the engine.
-export const INITIAL_CARDS: Record<string, CardDef> = {
-  ...INITIAL_GEM_CARDS,
-  ...INITIAL_SPELL_CARDS,
-  wave9_crystal: wave9Crystal,
-  wave9_spark: wave9Spark,
-  ...NOOK_CARDS,
-  ...INDIRA_CARDS,
-  ...DEZMODIA_CARDS,
-  ...REMNANT_CARDS,
-  ...STAKE_CARDS,
-  ...WOLF_CARDS,
-  ...INCO_CARDS,
-  ...QU_CARDS,
-  ...TRESSA_CARDS,
-  ...YAN_MAGDA_CARDS,
-  ...TRINKET_CARDS,
-}
+export const INITIAL_CARDS: Record<string, CardDef> = mergeCatalogs(
+  Wave1.WAVE1_INITIAL_CARDS,
+  Wave9.WAVE9_INITIAL_CARDS,
+)
 
-export const ALL_MARKET_CARDS: Record<string, CardDef> = {
-  ...MARKET_GEM_CARDS,
-  ...WAVE9_GEM_CARDS,
-  ...MARKET_RELIC_CARDS,
-  ...WAVE9_RELIC_CARDS,
-  ...MARKET_SPELL_CARDS,
-  ...WAVE9_SPELL_CARDS,
-}
+export const ALL_MARKET_CARDS: Record<string, CardDef> = mergeCatalogs(
+  Wave1.WAVE1_MARKET_CARDS,
+  Wave9.WAVE9_MARKET_CARDS,
+)
 
 /** The original nine-card market remains the default preset for backwards-compatible saves. */
 export const DEFAULT_MARKET_SLOTS = [
@@ -231,7 +142,7 @@ export function resolveMarketCardIds(config?: MarketSetupConfig, random: RandomS
 }
 
 export function getCard(id: string): CardDef {
-  return INITIAL_CARDS[id] ?? ALL_MARKET_CARDS[id] ?? NEMESIS_CARDS[id]
+  return INITIAL_CARDS[id] ?? ALL_MARKET_CARDS[id] ?? Wave1.WAVE1_NEMESIS_CARDS[id]
 }
 
 /** Resolve wave-specific artwork for the shared Crystal and Spark starters. */
@@ -249,17 +160,12 @@ export const COMMON_BREACH_FOCUS_COSTS: Record<number, number> = {
   4: 4,
 }
 
+/** Common open prices by current facing, including Breaches with special artwork/effects. */
 export const COMMON_BREACH_OPEN_COSTS: Record<number, Record<Direction, number>> = {
   1: { east: 0, south: 0, west: 0, north: 0 },
   2: { east: 5, south: 4, west: 3, north: 2 },
   3: { east: 9, south: 7, west: 5, north: 3 },
   4: { east: 13, south: 10, west: 7, north: 4 },
-}
-
-/** Printed open costs on Remnant's two custom Rift Breaches. */
-const RIFT_BREACH_OPEN_COSTS: Record<number, Record<Direction, number>> = {
-  3: { east: 6, south: 8, west: 5, north: 7 },
-  4: { east: 10, south: 13, west: 10, north: 7 },
 }
 
 const rotateCW = (d: Direction): Direction =>
@@ -307,9 +213,9 @@ export function makeBreach(
   const dir = startDir!
   const resolvedFocusCost = COMMON_BREACH_FOCUS_COSTS[index] ?? 0
   const commonOpenCosts = COMMON_BREACH_OPEN_COSTS[index]
-  const startingOpenCost = special === 'rift'
-    ? RIFT_BREACH_OPEN_COSTS[index] ?? commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost)
-    : commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost)
+  // Special Breach artwork/effects do not change the common printed costs.
+  // The current facing direction selects the applicable cost at runtime.
+  const startingOpenCost = commonOpenCosts ?? calcOpenCosts(dir, resolvedFocusCost)
   return {
     index, present: true, opened: false, prepSpells: [], preppedThisTurn: [], preppedSpellFaceDown: [],
     focusDirection: dir, focusCost: resolvedFocusCost, focusCount: 0,
@@ -324,12 +230,13 @@ export function makeBreach(
   }
 }
 
-const wave1Mages = createMages(makeBreach)
-export const nook = createNook(makeBreach)
-export const indira = createIndira(makeBreach)
-export const dezmodia = createDezmodia(makeBreach)
-export const remnant = createRemnant(makeBreach)
-export const stake = createStake(makeBreach)
+const wave1Mages = Wave1.createWave1Mages(makeBreach)
+const wave9Mages = Wave9.createWave9Mages(makeBreach)
+export const nook = wave9Mages.nook!
+export const indira = wave9Mages.indira!
+export const dezmodia = wave9Mages.dezmodia!
+export const remnant = wave9Mages.remnant!
+export const stake = wave9Mages.stake!
 export const jian = wave1Mages.jian
 export const brama = wave1Mages.brama
 export const xaxos = wave1Mages.xaxos
@@ -338,9 +245,50 @@ export const kadir = wave1Mages.kadir
 export const lash = wave1Mages.lash
 export const mist = wave1Mages.mist
 export const phaedraxa = wave1Mages.phaedraxa
-export const wolf = createWolf(makeBreach)
-export const inco = createInco(makeBreach)
-export const qu = createQu(makeBreach)
-export const tressa = createTressa(makeBreach)
-export const yanMagda = createYanMagda(makeBreach)
-export const MAGES: Record<string, MageDef> = { ...wave1Mages, nook, indira, dezmodia, remnant, stake, wolf, inco, qu, tressa, yan_magda: yanMagda }
+export const wolf = wave9Mages.wolf!
+export const inco = wave9Mages.inco!
+export const qu = wave9Mages.qu!
+export const tressa = wave9Mages.tressa!
+export const yanMagda = wave9Mages.yan_magda!
+export const MAGES: Record<string, MageDef> = { ...wave1Mages, ...wave9Mages }
+
+function validateContentReferences(): void {
+  for (const cardId of Object.keys(INITIAL_CARDS)) {
+    if (Object.prototype.hasOwnProperty.call(ALL_MARKET_CARDS, cardId)) {
+      throw new Error(`Card ID "${cardId}" is registered as both an initial card and a market card`)
+    }
+  }
+
+  const playerCardIds = new Set([...Object.keys(INITIAL_CARDS), ...Object.keys(ALL_MARKET_CARDS)])
+  for (const mage of Object.values(MAGES)) {
+    const referencedIds = [
+      ...mage.startDeck,
+      ...mage.startHand,
+      ...(mage.swapZone ?? []),
+      ...(mage.specificDeck ?? []),
+      ...mage.breaches.flatMap(breach => breach.prepSpells),
+    ]
+    for (const cardId of referencedIds) {
+      if (!playerCardIds.has(cardId)) {
+        throw new Error(`Mage "${mage.type}" references missing player card "${cardId}"`)
+      }
+    }
+  }
+
+  for (const nemesis of Object.values(Wave1.WAVE1_NEMESES)) {
+    const referencedIds = [
+      ...Object.values(nemesis.uniqueCardIdsByTier).flat(),
+      ...nemesis.strikeCardIds,
+    ]
+    for (const cardId of referencedIds) {
+      if (!Object.prototype.hasOwnProperty.call(Wave1.WAVE1_NEMESIS_CARDS, cardId)) {
+        throw new Error(`Nemesis "${nemesis.type}" references missing Nemesis card "${cardId}"`)
+      }
+    }
+  }
+
+  const marketError = validateMarketSetup(defaultMarketSetup())
+  if (marketError) throw new Error(`Default market setup is invalid: ${marketError}`)
+}
+
+validateContentReferences()

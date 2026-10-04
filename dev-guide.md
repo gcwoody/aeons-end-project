@@ -3,7 +3,7 @@
 > 这是给独立开发者和 Codex 使用的主开发指南。项目不再依赖临时 `handoff.md`；新对话先阅读
 > [`README.md`](README.md)、本指南和统一的 [`ui/ui-guide.md`](ui/ui-guide.md)。
 
-更新时间：2026-10-01
+更新时间：2026-10-02
 
 ## 先记住三条
 
@@ -18,9 +18,10 @@
 `aeons-end-ui` 是 Vue 3 展示层，通过 `@engine` 直接引用引擎源码。
 
 ```text
-data/*.ts → CardEffect / MageDef / NemesisCardDef
+data/wave*/<content> → CardEffect / MageDef / NemesisCardDef
                     ↓
-engine.ts → 规则、资源、目标、阶段、中断和胜负
+engine/*.ts → 牌库、玩家状态、资源、Breach、目标、初始化、Nemesis 回合、效果执行与决策恢复等职责模块
+engine.ts → 对外兼容入口及回合/玩家操作 API
                     ↓
 useGame.ts → 响应式状态、UI 阶段、存档、撤销、操作入口
                     ↓
@@ -81,21 +82,43 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 
 | 需求 | 首要位置 |
 | --- | --- |
-| Gem / Relic / Spell 数据 | `aeons-end-engine/src/data/wave1/gems.ts`、`relics.ts`、`spells.ts` |
-| Mage 数据和 Ability 组合 | `aeons-end-engine/src/data/wave1/mage.ts` |
-| Nemesis 卡牌和定义 | `aeons-end-engine/src/data/wave1/nemesis.ts` |
+| Wave 内容总表和 Mage 注册 | `aeons-end-engine/src/data/wave1/index.ts`、`wave9/index.ts` |
+| Gem / Relic / Spell 数据 | `aeons-end-engine/src/data/wave*/cards/` |
+| Mage 数据和 Ability 组合 | `aeons-end-engine/src/data/wave1/mages/`、`wave9/mages/` |
+| Nemesis 卡牌和定义 | `aeons-end-engine/src/data/wave1/nemeses/cards.ts` |
+| Wave 9 特殊牌堆 | `aeons-end-engine/src/data/wave9/special-decks/` |
+| 卡表合并时的重复 ID 检查 | `aeons-end-engine/src/data/catalog.ts`；跨卡表引用检查位于 `data.ts` |
 | Nemesis 专属规则模块和注册表 | `aeons-end-engine/src/nemesis/*.ts` |
-| 统一出口、初始/市场卡表、商店设置和 Common Breach 费用 | `aeons-end-engine/src/data.ts` |
+| 兼容出口、初始/市场卡表、商店设置和 Common Breach 费用 | `aeons-end-engine/src/data.ts` |
 | 状态、效果、触发器、决策类型 | `aeons-end-engine/src/types.ts` |
-| 回合流程、效果解释器、规则判定 | `aeons-end-engine/src/engine.ts` |
+| 资源计算 | `aeons-end-engine/src/engine/aether.ts` |
+| 玩家牌区和回合状态维护 | `aeons-end-engine/src/engine/player-state.ts` |
+| 牌库抽取、洗牌和 reveal 补牌 | `aeons-end-engine/src/engine/decks.ts` |
+| Breach 朝向与 focus | `aeons-end-engine/src/engine/breaches.ts` |
+| 玩家/区域/Nemesis 目标规则 | `aeons-end-engine/src/engine/targets.ts` |
+| Swap、Develop、Trinket 等区域状态 | `aeons-end-engine/src/engine/zones.ts` |
+| 对局初始化 | `aeons-end-engine/src/engine/game-setup.ts` |
+| Nemesis 回合、Power 牌 To Discard 与 Strike 牌堆 | `aeons-end-engine/src/engine/nemesis-turn.ts` |
+| 效果条件判断与触发块匹配 | `aeons-end-engine/src/engine/effect-conditions.ts` |
+| 法术伤害范围预览 | `aeons-end-engine/src/engine/spell-damage-preview.ts` |
+| 伤害、耗竭与胜负判定 | `aeons-end-engine/src/engine/combat.ts` |
+| CardEffect 顺序执行与暂停 | `aeons-end-engine/src/engine/effect-resolution.ts`；运行时依赖由 `engine.ts` 组合传入 |
+| 恢复待处理的玩家决策 | `aeons-end-engine/src/engine/decision-resolution.ts` |
+| 对外兼容入口、玩家行动与回合阶段 API | `aeons-end-engine/src/engine.ts` |
 | 引擎回归 | `aeons-end-engine/src/tests/stage*.test.ts` |
-| UI 状态、阶段流转、存档、撤销 | `aeons-end-ui/src/game/useGame.ts` |
+| UI 状态、阶段流转与操作协调 | `aeons-end-ui/src/game/useGame.ts` |
+| localStorage 存档、摘要与撤销快照辅助函数 | `aeons-end-ui/src/game/game-persistence.ts` |
 | 卡牌选择弹窗 | `aeons-end-ui/src/components/CardDecisionModal.vue` + `CardSelectionPanel.vue` |
 | 全局布局、悬停、层级、滚动条 | `aeons-end-ui/src/style.css` |
-| 玩家区域、裂隙、手牌、施法拖拽 | `aeons-end-ui/src/components/PlayerArea.vue` |
+| 玩家区域状态与规则协调、法术拖拽 | `aeons-end-ui/src/components/PlayerArea.vue` |
+| 玩家区域展示 | `PlayerBreachArea.vue`、`PlayerHandArea.vue`、`PlayerZoneArea.vue`、`PlayerControls.vue` |
 | Nemesis 区域和专属牌堆显示 | `aeons-end-ui/src/components/NemesisArea.vue` + `NemesisSpecificPile.vue` + `game/nemesis-presentation.ts` |
 | 卡图、Mage 图、Mage token 图、Breach 图路径 | `scripts/generate-image-imports.mjs` → `aeons-end-ui/src/generated-image-imports.ts`；图片模块只提供查询 API |
 | 浏览器流程测试 | `aeons-end-ui/tests/` |
+
+Breach 的 Focus 费用按编号固定，Open 费用按 Breach 编号和当前 `focusDirection` 查询。
+这套通用费用也适用于 Rift 等特殊美术或效果的 Breach；只有明确的卡面规则例外才能覆盖它。
+UI 显示与直接 Open 共用当前方向的费用计算，不能依赖存档中缓存的旧费用表。
 
 ## 当前哪些是真正可复用的
 
@@ -124,6 +147,10 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 | Develop | `CardDef.developCost`、`on_develop`；Develop Zone 存在 `GameState` 中并由所有 Mage 共享，支付只使用普通 Aether |
 | Nemesis 基础动作 | 通用 `unleash` 关键词、Nemesis counter、`resolve_strike`、`devour_market_cards`、`set_source_minion_life` |
 
+Nemesis Power 的 `TO DISCARD` 费用默认由启动该行动的当前 Mage 自己支付，包括其资源、手牌和预备法术；
+只有卡面明确允许跨玩家支付时，才在费用类型中声明 `playerScope: 'any_player'`。`getTotalAether()` 已包含
+Aether tokens，计算可支付资源时要先从普通 Aether 中扣出 tokens，再单独计入，避免重复计算。
+
 `CardDecisionModal.vue` 按决策类型渲染，`CardSelectionPanel.vue` 负责通用卡牌选择；
 它们不应该出现 `if (cardId === 'new_card')`。同样，Ability 不维护一段仅供展示的
 规则文本，而是复用同一套 `CardEffect[]`。
@@ -131,7 +158,7 @@ UI 只有在候选项明确指向唯一角色时才自动切换显示角色；�
 ### Deck reveal refill rule
 
 Any effect that reveals the top *N* cards of a player's deck must call the shared
-`preparePlayerDeckForReveal` path before reading the top cards. If the deck is short,
+`preparePlayerDeckForReveal` helper in `aeons-end-engine/src/engine/decks.ts` before reading the top cards. If the deck is short,
 the whole player discard pile is turned over without shuffling, appended under the
 remaining deck cards, and cleared; the effect then reveals up to *N* cards. If the
 combined deck and discard still contain fewer than *N* cards, it reveals all cards
@@ -249,7 +276,7 @@ Nemesis 抽到的 Attack 在确认后会临时加入 `nemesis.playArea`，因此
 
 | 位置 | 当前情况 | 什么时候重构 |
 | --- | --- | --- |
-| `engine.ts:buildScenarioTurnOrder()` | 只接受双玩家配置，但牌数和玩家 ID 都来自 `ScenarioConfig`/`players` | 开始实现 1、3、4 人规则时扩展 Scenario 类型 |
+| `engine/game-setup.ts:buildScenarioTurnOrder()` | 只接受双玩家配置，但牌数和玩家 ID 都来自 `ScenarioConfig`/`players` | 开始实现 1、3、4 人规则时扩展 Scenario 类型 |
 | Nemesis 规则模块 | 每个 Nemesis 可以拥有独立的 setup、Unleash 和回合 Hook；主引擎只保留公共执行流程 | 新 Nemesis 证明某个 Hook 具有相同语义时，再提升到公共模块 |
 | 图片映射 | 由 `scripts/generate-image-imports.mjs` 扫描图片目录，并根据已注册的卡牌、Mage、Nemesis 数据生成映射；只导入实际使用的资源 | 新增或重命名数据/图片后运行 `cd aeons-end-ui; npm run generate:images`；不要手改生成文件 |
 

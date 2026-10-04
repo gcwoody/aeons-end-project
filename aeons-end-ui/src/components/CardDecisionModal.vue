@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import type { CardChoice, CollectiveCardChoice, PendingDecision, PendingDecisionAnswer, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
+import type { CardChoice, CollectiveCardChoice, LifeTargetRef, PendingDecision, PendingDecisionAnswer, PlayerTargetRef, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
 import {
   cardImageUrl,
   nemesisTurnOrderTokenUrl,
@@ -23,9 +23,13 @@ import TwoButtonChoice from './TwoButtonChoice.vue'
 import TokenAmountChoicePanel from './TokenAmountChoicePanel.vue'
 import TurnOrderToken from './TurnOrderToken.vue'
 import TurnOrderTokenRow, { type TurnOrderTokenItem } from './TurnOrderTokenRow.vue'
+import PlayerDamageChoice, { type PlayerDamageChoiceItem } from './PlayerDamageChoice.vue'
+import PlayerDiscardChoice, { type PlayerDiscardActionSummary, type PlayerDiscardChoiceItem } from './PlayerDiscardChoice.vue'
+import PlayerLifeChoice, { type PlayerLifeChoiceItem } from './PlayerLifeChoice.vue'
+import PreppedSpellChoicePanel from './PreppedSpellChoicePanel.vue'
 
 const {
-  state, resolveDecision, confirmPendingPreppedSpells,
+  state, resolveDecision, confirmPendingPreppedSpells, skipPendingPreppedSpells,
   isBoardCardSelectionActive, confirmPendingBoardCards, skipPendingBoardCards,
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag, resetModalPosition } = useModalDrag()
@@ -114,6 +118,68 @@ const showsPlayerLife = computed(() => {
   const awaiting = state.game?.pendingEffect?.awaiting
   return (current?.kind === 'select_player_target' && awaiting?.kind === 'deal_player_damage')
     || (current?.kind === 'select_life_target' && awaiting?.kind === 'gain_life')
+})
+const isPlayerDamageChoice = computed(() =>
+  decision.value?.kind === 'select_player_target'
+    && state.game?.pendingEffect?.awaiting?.kind === 'deal_player_damage',
+)
+const playerDamageChoices = computed<PlayerDamageChoiceItem[]>(() => {
+  const current = decision.value
+  if (current?.kind !== 'select_player_target' || !isPlayerDamageChoice.value) return []
+  return current.targets.map(target => {
+    const player = state.game?.players.find(candidate => candidate.id === target.playerId)
+    return {
+      target,
+      mageName: playerName(target.playerId),
+      hp: player?.hp ?? null,
+      tokenUrl: turnOrderTokenUrl(target.playerId),
+      damage: playerDamageAmount(target.playerId),
+    }
+  })
+})
+const isPlayerLifeChoice = computed(() => {
+  const current = decision.value
+  return current?.kind === 'select_life_target'
+    && state.game?.pendingEffect?.awaiting?.kind === 'gain_life'
+    && current.targets.length > 1
+    && current.targets.every(target => target.kind === 'player')
+})
+const playerLifeChoices = computed<PlayerLifeChoiceItem[]>(() => {
+  const current = decision.value
+  const effect = state.game?.pendingEffect?.awaiting
+  if (current?.kind !== 'select_life_target' || effect?.kind !== 'gain_life' || !isPlayerLifeChoice.value) return []
+  return current.targets.flatMap(target => {
+    if (target.kind !== 'player') return []
+    const player = state.game?.players.find(candidate => candidate.id === target.playerId)
+    return [{
+      target,
+      mageName: playerName(target.playerId),
+      hp: player?.hp ?? null,
+      tokenUrl: turnOrderTokenUrl(target.playerId),
+      amount: effect.amount,
+    }]
+  })
+})
+const isPlayerDiscardChoice = computed(() =>
+  decision.value?.kind === 'select_player_target'
+    && decision.value.playerDiscardAction !== undefined,
+)
+const playerDiscardAction = computed<PlayerDiscardActionSummary | null>(() => {
+  const current = decision.value
+  return current?.kind === 'select_player_target' ? current.playerDiscardAction ?? null : null
+})
+const playerDiscardChoices = computed<PlayerDiscardChoiceItem[]>(() => {
+  const current = decision.value
+  if (current?.kind !== 'select_player_target' || !isPlayerDiscardChoice.value) return []
+  return current.targets.map(target => {
+    const player = state.game?.players.find(candidate => candidate.id === target.playerId)
+    return {
+      target,
+      mageName: playerName(target.playerId),
+      handCount: player?.hand.length ?? 0,
+      tokenUrl: turnOrderTokenUrl(target.playerId),
+    }
+  })
 })
 
 watch(() => decision.value?.id, () => {
@@ -361,6 +427,19 @@ function playerName(playerId: string): string {
   return displayMageName(player?.mageType ?? playerId.replace(/^wave\d+_/i, ''))
 }
 
+function playerDamageAmount(playerId: string): number | null {
+  const current = decision.value
+  if (current?.kind !== 'select_player_target') return null
+  const savedAmount = current.damageAmounts?.[playerId]
+  if (typeof savedAmount === 'number' && Number.isFinite(savedAmount)) return savedAmount
+  const awaiting = state.game?.pendingEffect?.awaiting
+  // Older saves can contain a pending damage decision without the newer
+  // per-player amounts. Literal effects can still be previewed exactly.
+  return awaiting?.kind === 'deal_player_damage' && typeof awaiting.amount === 'number'
+    ? awaiting.amount
+    : null
+}
+
 function playerTargetLabel(playerId: string): string {
   if (decision.value?.kind === 'select_player_target' && decision.value.prompt === 'Choose a player to suffer damage') {
     return `Attack ${playerName(playerId)}`
@@ -382,6 +461,18 @@ function answer(kind: PendingDecisionAnswer) {
   resolveDecision(kind)
 }
 
+function choosePlayerDamageTarget(target: PlayerTargetRef) {
+  answer({ kind: 'select_player_target', target })
+}
+
+function choosePlayerLifeTarget(target: LifeTargetRef) {
+  answer({ kind: 'select_life_target', target })
+}
+
+function choosePlayerDiscardTarget(target: PlayerTargetRef) {
+  answer({ kind: 'select_player_target', target })
+}
+
 function skipPreppedSpell() {
   if (decision.value?.kind !== 'select_prepped_spell' || !decision.value.allowSkip) return
   answer({ kind: 'select_prepped_spell', choice: null })
@@ -389,6 +480,7 @@ function skipPreppedSpell() {
 
 function confirmNemesisDraw() {
   if (!decision.value || decision.value.kind !== 'confirm_nemesis_draw') return
+  if (decision.value.source !== 'specific_deck' && state.nemesisDrawRevealAnimating) return
   answer({ kind: 'confirm_nemesis_draw', accepted: true })
 }
 
@@ -414,7 +506,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
 
 <template>
   <ModalBase
-    v-if="decision?.kind === 'confirm_nemesis_draw'"
+    v-if="decision?.kind === 'confirm_nemesis_draw' && decision.source === 'specific_deck'"
     overlay-class="decision-overlay nemesis-reveal-overlay"
     :blocking="true"
     v-model:panel-ref="modalEl"
@@ -439,6 +531,20 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         </button>
       </div>
   </ModalBase>
+
+  <div
+    v-else-if="decision?.kind === 'confirm_nemesis_draw'"
+    class="decision-overlay nemesis-reveal-overlay nemesis-draw-reveal-screen"
+    role="dialog"
+    aria-modal="true"
+    :aria-label="`${getCard(decision.cardId).name} revealed. Click anywhere or press Space to continue.`"
+    @click="confirmNemesisDraw"
+  >
+    <div class="nemesis-reveal-card">
+      <img v-if="cardImageUrl(decision.cardId)" :src="cardImageUrl(decision.cardId)" :alt="getCard(decision.cardId).name" draggable="false" />
+      <span v-else>{{ getCard(decision.cardId).name }}</span>
+    </div>
+  </div>
 
   <ModalBase
     v-if="isDirectMarketDecision"
@@ -465,17 +571,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     @panel-pointerdown="startDrag"
   >
       <h2>{{ decisionPrompt(decision.prompt) }}</h2>
-      <p class="decision-hint">Select prepped spells directly on the player boards. You can switch players while this panel remains open.</p>
-      <div class="decision-footer">
-        <span class="stat">{{ state.pendingPreppedSpells.length }}/{{ decision.max }} chosen prepped spells</span>
-        <button
-          class="btn primary"
-          :disabled="state.pendingPreppedSpells.length < decision.min || state.pendingPreppedSpells.length > decision.max"
-          @click="confirmPendingPreppedSpells"
-        >
-          Confirm
-        </button>
-      </div>
+      <p class="decision-hint">Select a highlighted prepped spell directly on any player board. You can switch players while this panel remains open.</p>
+      <PreppedSpellChoicePanel
+        :selected-count="state.pendingPreppedSpells.length"
+        :min="decision.min"
+        :max="decision.max"
+        :allow-skip="decision.min === 0"
+        @skip="skipPendingPreppedSpells"
+        @confirm="confirmPendingPreppedSpells"
+      />
   </ModalBase>
 
   <ModalBase
@@ -790,7 +894,23 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         </div>
       </template>
 
-      <div v-else-if="decision.kind === 'select_player_target'" class="decision-options">
+      <template v-else-if="decision.kind === 'select_player_target' && isPlayerDamageChoice">
+        <PlayerDamageChoice :choices="playerDamageChoices" @select="choosePlayerDamageTarget" />
+      </template>
+
+      <template v-else-if="decision.kind === 'select_life_target' && isPlayerLifeChoice">
+        <PlayerLifeChoice :choices="playerLifeChoices" @select="choosePlayerLifeTarget" />
+      </template>
+
+      <template v-else-if="decision.kind === 'select_player_target' && isPlayerDiscardChoice && playerDiscardAction">
+        <PlayerDiscardChoice
+          :choices="playerDiscardChoices"
+          :action="playerDiscardAction"
+          @select="choosePlayerDiscardTarget"
+        />
+      </template>
+
+      <div v-else-if="decision.kind === 'select_player_target' && !isPlayerDiscardChoice" class="decision-options">
         <button
           v-for="target in decision.targets"
           :key="target.playerId"
@@ -802,7 +922,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         </button>
       </div>
 
-      <div v-else-if="decision.kind === 'select_life_target'" class="decision-options">
+      <div v-else-if="decision.kind === 'select_life_target' && !isPlayerLifeChoice" class="decision-options">
         <button
           v-for="target in decision.targets"
           :key="target.kind === 'player' ? target.playerId : target.kind"

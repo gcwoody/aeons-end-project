@@ -233,11 +233,12 @@ The card's wording allows Conjure to an opened or closed Breach; preserve this t
 **Template fields**
 
 - Cost: 3
+- Develop Cost: 3
 - Type: Gem
 - Rules: Gain 2 Aether. Any ally may discard a Coiled Trillium in hand. If they do, they gain 2 Aether tokens and 1 charge.
 - Box 1: The Returned
 - ID 1: TR-009 – TR-015
-- Mechanics: Aether Token
+- Mechanics: Develop; Aether Token
 
 **Effect**
 

@@ -1,0 +1,184 @@
+import type {
+  GameState, NemesisDifficulty, PendingDecision, Phase, PlayerId, PlayerState, ScenarioConfig,
+} from '../types'
+import {
+  MAGES, createTwoPlayerScenario, getCard, getNemesisDefinition,
+  resolveMarketCardIds, resolveMageStartingCardId,
+} from '../data'
+import { getNemesisRules } from '../nemesis/registry'
+import { marketPileChoices } from '../nemesis/market'
+import { buildTrinketDeck } from '../data/wave9/special-decks/trinkets'
+import { shuffle } from './decks'
+import { clone } from './utilities'
+
+export interface GameSetupServices {
+  createDecision(
+    game: GameState,
+    prompt: string,
+    kind: PendingDecision['kind'],
+    details: Record<string, unknown>,
+  ): PendingDecision
+  resolveMageSetups(game: GameState): string[]
+}
+
+export function playerIdForMage(mageType: string): PlayerId {
+  const mage = MAGES[mageType]
+  if (!mage) throw new Error(`Unknown Mage: ${mageType}`)
+  return `wave${mage.wave}_${mage.type.toUpperCase()}`
+}
+
+export function buildScenarioTurnOrder(scenario: ScenarioConfig, playerIds: PlayerId[]): string[] {
+  if (
+    scenario.id !== 'two_player'
+    || scenario.playerCount !== 2
+    || scenario.turnOrderDeckSize !== 6
+    || scenario.playerTurnOrderCardsPerPlayer !== 2
+    || scenario.nemesisTurnOrderCards !== 2
+    || playerIds.length !== 2
+  ) {
+    throw new Error('Only the two-player scenario is currently supported')
+  }
+  const cards = [
+    ...playerIds.flatMap(playerId => Array.from(
+      { length: scenario.playerTurnOrderCardsPerPlayer }, () => playerId,
+    )),
+    ...Array.from({ length: scenario.nemesisTurnOrderCards }, () => 'nemesis' as const),
+  ]
+  if (cards.length !== scenario.turnOrderDeckSize) {
+    throw new Error(`Scenario turn-order configuration must produce ${scenario.turnOrderDeckSize} cards`)
+  }
+  return shuffle(cards)
+}
+
+export function createInitialGameState(
+  scenarioOrMage1: ScenarioConfig | string,
+  mage2Type: string | undefined,
+  nemesisDifficulty: NemesisDifficulty,
+  nemesisType: string,
+  services: GameSetupServices,
+): GameState {
+  const scenario = typeof scenarioOrMage1 === 'string'
+    ? createTwoPlayerScenario([scenarioOrMage1, mage2Type!], nemesisType, nemesisDifficulty)
+    : scenarioOrMage1
+  const mage1Def = MAGES[scenario.mageTypes[0]]
+  const mage2Def = MAGES[scenario.mageTypes[1]]
+  const nemesisDef = getNemesisDefinition(scenario.nemesisType)
+  if (!mage1Def || !mage2Def) throw new Error('Scenario contains an unknown Mage')
+  if (scenario.mageTypes[0] === scenario.mageTypes[1]) {
+    throw new Error('This Mage has already been selected by another player')
+  }
+  if (!nemesisDef) throw new Error(`Unknown Nemesis: ${scenario.nemesisType}`)
+
+  function createPlayer(id: string, definition: typeof mage1Def): PlayerState {
+    return {
+      id, mageType: definition.type,
+      hp: definition.hp, maxHp: definition.hp,
+      deck: definition.startDeck.map(cardId => resolveMageStartingCardId(definition.wave, cardId)),
+      hand: definition.startHand.map(cardId => resolveMageStartingCardId(definition.wave, cardId)),
+      discard: [],
+      playedThisTurn: [],
+      swapZone: [...(definition.swapZone ?? [])],
+      specificDeck: definition.specificDeckShuffled
+        ? shuffle(definition.specificDeck ?? [])
+        : [...(definition.specificDeck ?? [])],
+      knownSpecificDeckCards: [],
+      mageFormSide: definition.initialFormSide,
+      mageSetupComplete: !(definition.setupEffects?.length),
+      drawPhaseSetupComplete: false,
+      spellsCastThisTurn: 0,
+      playerCardsInPlay: [],
+      playerCardSupplyTargets: [],
+      playerCardPowerTokens: [],
+      aetherTokens: 0,
+      pulseTokens: 0,
+      knowledge: 0,
+      doomTokens: definition.tracksDoom ? 0 : undefined,
+      cardPlayCountsThisTurn: {},
+      conditionalAetherEarned: {},
+      regularAetherSpent: 0,
+      condAetherSpent: {},
+      bonusAether: 0,
+      breaches: clone(definition.breaches),
+      charge: 0,
+      chargeThreshold: definition.chargeThreshold,
+      exhausted: false,
+      destroyedCards: [],
+      turnEffects: {
+        nextBreachCostReductions: [],
+        usedPreppedEffects: [],
+        usedPlayerCardEffects: [],
+        usedRecallEffects: {},
+        usedBreachUpgradeEffects: [],
+        prepSpellLimit: 1,
+        prepSpellLimitByBreach: {},
+      },
+    }
+  }
+
+  const player1 = createPlayer(playerIdForMage(mage1Def.type), mage1Def)
+  const player2 = createPlayer(playerIdForMage(mage2Def.type), mage2Def)
+  const marketPiles = resolveMarketCardIds(scenario.marketSetup).map(cardId => {
+    const card = getCard(cardId)
+    const remaining = card.type === 'gem' ? 7 : 5
+    return { cardId, remaining }
+  })
+  const supplyMechanics = [...new Set(marketPiles.flatMap(pile => {
+    const card = getCard(pile.cardId)
+    return [...(card.mechanics ?? []), ...(card.developCost === undefined ? [] : ['develop' as const])]
+  }))]
+  const hasSwapZone = [mage1Def, mage2Def].some(definition =>
+    definition.hasSwapZone === true || (definition.swapZone?.length ?? 0) > 0,
+  )
+  const hasDevelopZone = supplyMechanics.includes('develop') || [mage1Def, mage2Def].some(definition =>
+    definition.hasDevelopZone === true,
+  )
+
+  const nemesisDeck = nemesisDef.deckBuilder?.() ?? []
+  const strikeDeck = nemesisDef.specificDeckBuilder?.() ?? []
+  const trinketDeck = buildTrinketDeck()
+  const turnOrder = buildScenarioTurnOrder(scenario, [player1.id, player2.id])
+
+  const game: GameState = {
+    scenario: clone(scenario),
+    players: [player1, player2],
+    nemesis: {
+      definitionId: nemesisDef.type,
+      name: nemesisDef.name,
+      type: nemesisDef.type,
+      hp: nemesisDef.hp, maxHp: nemesisDef.hp,
+      difficultyLevel: nemesisDef.difficultyLevel,
+      difficulty: scenario.nemesisDifficulty,
+      deck: nemesisDeck, discard: [],
+      strikeDeck, strikeDiscard: [],
+      counters: { ...nemesisDef.startingCounters },
+      playArea: [],
+      tierAnnounced: [false, false, false],
+    },
+    gravehold: { hp: 30, maxHp: 30 },
+    market: { piles: marketPiles },
+    developZone: [],
+    trinketDeck,
+    trinketDeckRevealed: trinketDeck.map(() => false),
+    hasSwapZone,
+    hasDevelopZone,
+    supplyMechanics,
+    turnOrderDeck: turnOrder, turnOrderDiscard: [],
+    currentTurn: '', currentPhase: 'casting' as Phase,
+    round: 1, gameOver: false, winner: null, timestamp: 0,
+    pendingDecision: null,
+    pendingEffect: null,
+    pendingNemesisDiscard: null,
+    nemesisResolution: null,
+    decisionCounter: 0,
+    damagePrevention: false,
+  }
+
+  getNemesisRules(nemesisDef.rulesModuleId ?? nemesisDef.type)?.setup?.({
+    game,
+    definition: nemesisDef,
+    marketPileChoices,
+    createDecision: (prompt, kind, details) => services.createDecision(game, prompt, kind, details),
+  })
+  if (!game.pendingDecision && !game.pendingEffect) services.resolveMageSetups(game)
+  return game
+}

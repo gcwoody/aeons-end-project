@@ -5,20 +5,13 @@ before making changes; do not duplicate their detailed rules here.
 
 ## Required reading
 
-1. `README.md` — project scope, commands, structure, and user-facing shortcuts.
-2. `dev-guide.md` — engine/UI boundary, file map, typed effects, data workflow,
-   debugging, and test expectations.
-3. `ui/ui-guide.md` — the single UI source of truth for components, states,
-   dimensions, responsive layout, z-index, interactions, Gallery, and visual
-   regression.
-4. `design/wave9-plan.md` — current Wave9 scope and development order.
-5. `documents/wave9/collection-summary.md` and the relevant Wave9 subfolder —
-   collected card, Mage, Nemesis, and errata data before implementing content.
-6. `documents/current-development-handoff.md` — current implementation baseline,
-   recent Played Zone fixes, validation commands, and handoff notes for continuing work.
-
-For a specific Wave or card, read the matching document under `documents/` and
-the corresponding engine data/test files before editing code.
+1. `README.md` — what the game currently includes and the common commands.
+2. `dev-guide.md` — engine rules, typed effects, data workflow, and tests.
+3. `ui/ui-guide.md` — the UI components, layout, interactions, and Gallery.
+4. For a card or Mage change, read only its source entry under `documents/` and
+   the matching engine data/tests. Read `documents/wave9/collection-summary.md`
+   only when checking the full Wave 9 collection.
+5. Read `design/wave9-plan.md` only for Wave 9 status.
 
 ## Non-negotiable project rules
 

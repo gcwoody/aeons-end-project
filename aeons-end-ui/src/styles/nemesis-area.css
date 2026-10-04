@@ -1,0 +1,328 @@
+/* ===== Nemesis area ===== */
+.top-section {
+  /* Market sizing follows the actual height available to its three card rows,
+     so its columns stay snug when browser chrome reduces the viewport. */
+  container-type: size;
+  --market-width: calc(71.4286cqh - 3px);
+  display: flex;
+  /* Let the top board consume exactly the space left after the player area.
+     The previous fixed viewport formula could leave a few pixels of overflow
+     on fullscreen desktop viewports, producing a nearly empty scrollbar. */
+  flex: 1 1 0;
+  flex-shrink: 0;
+  height: auto;
+  min-height: var(--top-section-min-height);
+  border-bottom: var(--pixel-border-width) solid var(--border);
+}
+.top-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+.game-top-area { display: flex; flex: 1; flex-direction: column; min-width: 0; min-height: 0; }
+.nemesis-area {
+  --nemesis-pile-gap: 12px;
+  --nemesis-info-height: 64px;
+  /* The pile column is split into two equal card slots. Doubling the target
+     card ratio here keeps both Nemesis deck images at 63.5:88. */
+  --nemesis-pile-width-ratio: .3607954545;
+  /* Adjust these three shares to resize the Info Bar regions. */
+  --info-nemesis-share: 3fr;
+  --info-turn-order-share: 4fr;
+  --info-gravehold-share: 2.3fr;
+  /* Each HP track can be shortened independently without changing its region. */
+  --info-nemesis-hp-width: 100%;
+  --info-gravehold-hp-width: 100%;
+  --info-nemesis-token-size: 34px;
+  --info-hp-label-font-size: 13px;
+  --info-hp-value-font-size: 13px;
+  --info-turn-token-size: 36px;
+  --info-turn-token-gap: 4px;
+  --info-turn-round-gap: 6px;
+  --info-turn-round-font-size: 13px;
+  display: flex;
+  gap: 14px;
+  padding: 10px 14px;
+  background: var(--panel);
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  container-type: size;
+}
+.nemesis-mat-column {
+  flex: 0 0 calc(100cqh * var(--nemesis-mat-ratio));
+  display: flex;
+  min-height: 0;
+}
+.nemesis-mat-column > .card-hover-wrap { display: block; width: 100%; height: 100%; }
+.nemesis-board {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) var(--nemesis-info-height);
+  gap: 10px;
+}
+.nemesis-board-upper {
+  display: flex;
+  gap: 14px;
+  min-width: 0;
+  min-height: 0;
+  container-type: size;
+}
+.nemesis-pile-column {
+  flex: 0 0 calc((100cqh - var(--nemesis-pile-gap)) * var(--nemesis-pile-width-ratio));
+  display: grid;
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: var(--nemesis-pile-gap);
+  min-width: 0;
+  min-height: 0;
+}
+.nemesis-pile-slot {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.nemesis-pile-slot > .card-hover-wrap { display: block; width: 100%; height: 100%; }
+.nemesis-pile-inspect {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.nemesis-pile-card,
+.nemesis-specific-pile {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+  background: #151a29;
+  overflow: hidden;
+}
+.nemesis-pile-placeholder {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 6px;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+  background: #151a29;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.25;
+  text-align: center;
+}
+.nemesis-pile-slot.is-unavailable .nemesis-pile-placeholder { background: rgba(21, 26, 41, .45); }
+.nemesis-pile-count {
+  position: absolute;
+  top: 4px;
+  left: 5px;
+  min-width: 20px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: rgba(11, 16, 32, .76);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.nemesis-discard-button { cursor: pointer; }
+.nemesis-discard-button:hover .nemesis-pile-placeholder { border-color: var(--accent); }
+.nemesis-discard-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nemesis-pile-inspect:hover .nemesis-pile-placeholder { border-color: var(--accent); }
+.nemesis-pile-inspect:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nemesis-section-title {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.nemesis-mat-wrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 9px;
+  background: #151a29;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.nemesis-mat-wrap::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  box-sizing: border-box;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.nemesis-mat-wrap.damage-target::after {
+  border: var(--damage-target-mat-border-width) solid var(--damage-target-border-color);
+  box-shadow: 0 0 0 var(--pixel-border-width) var(--damage-target-border-glow);
+}
+.damage-allocation-badge { position: absolute; top: 7px; right: 7px; z-index: 3; display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 6px; border: 2px solid #fff; border-radius: 999px; background: #c9363e; color: #fff; box-shadow: 0 2px 7px rgba(0, 0, 0, .65); font-size: 15px; font-weight: 900; line-height: 1; pointer-events: none; }
+.nemesis-mat-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.nemesis-mat-fallback, .nemesis-card-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: var(--muted);
+  text-align: center;
+}
+.nemesis-sub-board {
+  flex: 0 0 calc(100cqh * var(--sub-board-ratio));
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+}
+.nemesis-sub-board img { width: 100%; height: 100%; object-fit: contain; }
+.nemesis-info-bar {
+  min-width: 0;
+  min-height: 0;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 8px;
+  background: #151a29;
+  padding: 4px 8px;
+  display: grid;
+  grid-template-columns: minmax(0, var(--info-nemesis-share)) minmax(0, var(--info-turn-order-share)) minmax(0, var(--info-gravehold-share));
+}
+.nemesis-info-region { min-width: 0; min-height: 0; padding: 3px 8px; }
+.nemesis-info-nemesis {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.nemesis-info-gravehold { display: flex; align-items: center; }
+.nemesis-info-region .hp-block { flex: 1 1 auto; min-width: 0; gap: 6px; }
+.nemesis-info-region .hp-name,
+.nemesis-info-region .hp-num { white-space: nowrap; }
+.nemesis-info-region .hp-name { font-size: var(--info-hp-label-font-size); }
+.nemesis-info-region .hp-num { font-size: var(--info-hp-value-font-size); }
+.nemesis-info-region .hpbar { min-width: 20px; }
+.nemesis-info-nemesis .hpbar { flex: 0 1 var(--info-nemesis-hp-width); }
+.nemesis-info-gravehold .hpbar { flex: 0 1 var(--info-gravehold-hp-width); }
+.nemesis-info-counters { display: flex; flex: 0 0 auto; align-items: center; gap: 6px; }
+.nemesis-info-token {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--warn);
+  font-size: 12px;
+  text-transform: capitalize;
+  white-space: nowrap;
+}
+.nemesis-info-token img {
+  display: block;
+  width: var(--info-nemesis-token-size);
+  height: var(--info-nemesis-token-size);
+  border-radius: 8px;
+  object-fit: cover;
+}
+.nemesis-info-token strong { color: var(--text); }
+.nemesis-specific-buy { position: absolute; right: 4px; bottom: 4px; z-index: 2; padding: 2px 5px; height: 22px; font-size: 10px; }
+.face-up-pile-card {
+  padding: 0;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 5px;
+  background: #151a29;
+  overflow: hidden;
+  cursor: default;
+}
+.face-up-pile-card.is-primary-action { cursor: pointer; }
+.face-up-pile-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.face-up-pile-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.asset-subtext { color: var(--muted); font-size: 11px; }
+.pile-box {
+  flex: 1;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 8px;
+  background: #151a29;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.pile-label { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+.pile-count { font-size: 22px; font-weight: 700; }
+.pile-top { color: var(--spell); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+.nemesis-play { flex: 1 1 auto; min-width: 0; min-height: 0; border: 0; border-radius: 8px; padding: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--nemesis-pile-gap); background: #20283a; overflow: visible; }
+.nemesis-play-top { display: flex; min-width: 0; min-height: 0; align-items: center; justify-content: center; }
+.divided-damage-instructions {
+  display: grid;
+  gap: .2em;
+  max-width: 100%;
+  padding: .4em .9em;
+  border: .1em solid rgba(201, 54, 62, .7);
+  border-radius: .7em;
+  background: rgba(21, 26, 41, .88);
+  color: var(--text);
+  font-size: calc(10px * var(--damage-assigned-size));
+  line-height: 1.2;
+  text-align: center;
+}
+.divided-damage-instructions strong { color: #fff; font-size: 1.1em; }
+.divided-damage-instructions span { color: var(--muted); }
+.nemesis-play-row { min-width: 0; min-height: 0; }
+.nemesis-play-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
+.nemesis-play-order { color: var(--muted); font-size: 10px; }
+.nemesis-card-scroll { display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; scrollbar-gutter: stable; padding: 0; }
+.nemesis-card-track { min-width: 100%; width: max-content; height: 100%; min-height: 0; display: flex; align-items: stretch; justify-content: flex-start; gap: 10px; }
+.nemesis-play-card { position: relative; flex: 0 0 auto; width: auto; height: 100%; aspect-ratio: var(--card-aspect-ratio); min-height: 0; max-height: 100%; border: var(--pixel-border-width) solid var(--border); border-radius: 7px; background: #151a29; overflow: visible; transition: border-color var(--transition-border); z-index: 1; cursor: pointer; }
+.nemesis-play-card::after { content: ''; position: absolute; inset: 0; z-index: 2; box-sizing: border-box; border-radius: inherit; pointer-events: none; }
+.nemesis-play-card.discardable { border: 2px solid var(--warn); box-shadow: 0 0 0 var(--pixel-border-width) rgba(224, 175, 104, .35) inset; }
+.nemesis-play-card.damage-target {
+  border-color: transparent;
+}
+.nemesis-play-card.damage-target::after { border: var(--damage-target-card-border-width) solid var(--damage-target-border-color); box-shadow: 0 0 0 var(--pixel-border-width) var(--damage-target-border-glow); }
+.nemesis-play-card.effect-target { border: 2px solid var(--must-cast); box-shadow: 0 0 0 var(--pixel-border-width) rgba(255, 48, 48, .35); }
+.nemesis-play-card > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
+.nemesis-card-meta { position: absolute; right: 3px; bottom: 3px; left: 3px; display: flex; justify-content: space-between; align-items: center; gap: 3px; pointer-events: none; }
+.nemesis-card-counter {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 4px;
+  border-radius: 4px;
+  background: rgba(18, 21, 29, .9);
+  color: var(--text);
+  font-size: 10px;
+  line-height: 1;
+}
+

@@ -21,6 +21,10 @@ import TokenAmountChoicePanel from './TokenAmountChoicePanel.vue'
 import TokenBadge from './TokenBadge.vue'
 import TurnOrderToken from './TurnOrderToken.vue'
 import TurnOrderTokenRow, { type TurnOrderTokenItem } from './TurnOrderTokenRow.vue'
+import PlayerDamageChoice, { type PlayerDamageChoiceItem } from './PlayerDamageChoice.vue'
+import PlayerDiscardChoice, { type PlayerDiscardActionSummary, type PlayerDiscardChoiceItem } from './PlayerDiscardChoice.vue'
+import PlayerLifeChoice, { type PlayerLifeChoiceItem } from './PlayerLifeChoice.vue'
+import PreppedSpellChoicePanel from './PreppedSpellChoicePanel.vue'
 import { mageImageUrls } from '../mage-images'
 
 type GalleryModal = 'pile' | 'decision' | 'reveal' | 'instant-choice' | 'two-button' | 'token-amount' | 'turn-order' | null
@@ -60,6 +64,25 @@ const galleryTwoButtonOptions = [
   { id: 'damage', label: 'Deal 2 damage and gain 1 Pulse token' },
   { id: 'spend', label: 'Lose 3 Pulse tokens to deal 7 damage', disabled: false },
 ]
+const galleryDamageChoices: PlayerDamageChoiceItem[] = [
+  { target: { kind: 'player', playerId: 'gallery-jian' }, mageName: 'Jian', hp: 7, tokenUrl: playerTurnOrderTokenUrl(1), damage: 2 },
+  { target: { kind: 'player', playerId: 'gallery-brama' }, mageName: 'Brama', hp: 9, tokenUrl: playerTurnOrderTokenUrl(2), damage: 3 },
+]
+const galleryLifeChoices: PlayerLifeChoiceItem[] = [
+  { target: { kind: 'player', playerId: 'gallery-jian' }, mageName: 'Jian', hp: 7, tokenUrl: playerTurnOrderTokenUrl(1), amount: 2 },
+  { target: { kind: 'player', playerId: 'gallery-brama' }, mageName: 'Brama', hp: 9, tokenUrl: playerTurnOrderTokenUrl(2), amount: 2 },
+]
+const galleryDamageTarget = ref('')
+const galleryLifeTarget = ref('')
+const galleryDiscardTarget = ref('')
+const galleryPreppedSpellSelected = ref(0)
+const galleryPreppedSpellResult = ref('')
+const galleryDiscardChoices: PlayerDiscardChoiceItem[] = [
+  { target: { kind: 'player', playerId: 'gallery-jian' }, mageName: 'Jian', handCount: 5, tokenUrl: playerTurnOrderTokenUrl(1) },
+  { target: { kind: 'player', playerId: 'gallery-brama' }, mageName: 'Brama', handCount: 4, tokenUrl: playerTurnOrderTokenUrl(2) },
+]
+const galleryDiscardAction: PlayerDiscardActionSummary = { minAmount: 3, maxAmount: 3, drawAmount: 1 }
+const galleryDiscardOnlyAction: PlayerDiscardActionSummary = { minAmount: 2, maxAmount: 2, drawAmount: 0 }
 const galleryTurnOrderItems = computed<TurnOrderTokenItem[]>(() => {
   const tokens: Record<string, TurnOrderTokenItem> = {
     'p1-0': { key: 'p1-0', label: 'Player 1 turn', tokenUrl: playerTurnOrderTokenUrl(1) },
@@ -145,6 +168,21 @@ function confirmGalleryTwoButtonChoice(optionId: string) {
 function confirmGalleryPulseAmount() {
   galleryPulseAmountConfirmed.value = galleryPulseAmount.value
   modal.value = null
+}
+
+function toggleGalleryPreppedSpell() {
+  galleryPreppedSpellSelected.value = galleryPreppedSpellSelected.value ? 0 : 1
+  galleryPreppedSpellResult.value = ''
+}
+
+function confirmGalleryPreppedSpell() {
+  if (!galleryPreppedSpellSelected.value) return
+  galleryPreppedSpellResult.value = 'Spark cast confirmed.'
+}
+
+function skipGalleryPreppedSpell() {
+  galleryPreppedSpellSelected.value = 0
+  galleryPreppedSpellResult.value = 'Skipped.'
 }
 
 function reorderGalleryTurnOrder(keys: string[]) {
@@ -357,6 +395,70 @@ function reorderGalleryTurnOrder(keys: string[]) {
           <span>Hover: grab · hold: grabbing · no native drag preview</span>
         </div>
       </article>
+      <article class="ui-gallery-item" data-component="Decision.PlayerDamageChoice">
+        <h3>Decision.PlayerDamageChoice</h3>
+        <p class="ui-gallery-caption">A shared target picker for effects that ask a Mage to suffer damage</p>
+        <div class="ui-gallery-surface gallery-damage-choice-surface">
+          <PlayerDamageChoice :choices="galleryDamageChoices" @select="galleryDamageTarget = $event.playerId" />
+        </div>
+        <p v-if="galleryDamageTarget" class="ui-gallery-ability-choice-selection" role="status">
+          {{ galleryDamageChoices.find(choice => choice.target.playerId === galleryDamageTarget)?.mageName }} selected
+        </p>
+      </article>
+      <article class="ui-gallery-item" data-component="Decision.PlayerLifeChoice">
+        <h3>Decision.PlayerLifeChoice</h3>
+        <p class="ui-gallery-caption">A shared Mage picker for effects that let players gain life</p>
+        <div class="ui-gallery-surface gallery-life-choice-surface">
+          <PlayerLifeChoice :choices="galleryLifeChoices" @select="galleryLifeTarget = $event.playerId" />
+        </div>
+        <p v-if="galleryLifeTarget" class="ui-gallery-ability-choice-selection">
+          {{ galleryLifeChoices.find(choice => choice.target.playerId === galleryLifeTarget)?.mageName }} selected
+        </p>
+      </article>
+      <article class="ui-gallery-item" data-component="Decision.PlayerDiscardChoice">
+        <h3>Decision.PlayerDiscardChoice</h3>
+        <p class="ui-gallery-caption">A shared Mage picker that states the discard and immediate draw before a target is chosen</p>
+        <div class="ui-gallery-surface gallery-player-discard-surface">
+          <PlayerDiscardChoice
+            :choices="galleryDiscardChoices"
+            :action="galleryDiscardAction"
+            @select="galleryDiscardTarget = $event.playerId"
+          />
+        </div>
+        <p class="ui-gallery-caption gallery-discard-only-example">Discard-only state:</p>
+        <div class="ui-gallery-surface gallery-player-discard-surface">
+          <PlayerDiscardChoice :choices="galleryDiscardChoices" :action="galleryDiscardOnlyAction" />
+        </div>
+        <p v-if="galleryDiscardTarget" class="ui-gallery-ability-choice-selection" role="status">
+          {{ galleryDiscardChoices.find(choice => choice.target.playerId === galleryDiscardTarget)?.mageName }} selected
+        </p>
+      </article>
+      <article class="ui-gallery-item" data-component="Decision.PreppedSpellChoicePanel">
+        <h3>Decision.PreppedSpellChoicePanel</h3>
+        <p class="ui-gallery-caption">Choose an optional prepped spell on the board, then confirm or skip</p>
+        <div class="ui-gallery-surface gallery-prepped-choice-surface">
+          <button
+            class="gallery-prepped-choice-card"
+            :class="{ selected: galleryPreppedSpellSelected === 1 }"
+            type="button"
+            :aria-pressed="galleryPreppedSpellSelected === 1"
+            @click="toggleGalleryPreppedSpell"
+          >
+            <CardSurface card-id="spark" size="mini" />
+          </button>
+          <PreppedSpellChoicePanel
+            :selected-count="galleryPreppedSpellSelected"
+            :min="0"
+            :max="1"
+            :allow-skip="true"
+            @skip="skipGalleryPreppedSpell"
+            @confirm="confirmGalleryPreppedSpell"
+          />
+        </div>
+        <p class="ui-gallery-ability-choice-selection">
+          {{ galleryPreppedSpellResult || 'Click the card to select it; Confirm casts it.' }}
+        </p>
+      </article>
       <p v-if="galleryInstantChoiceConfirmed" class="ui-gallery-ability-choice-selection" role="status">
         Instant choice confirmed: {{ galleryInstantChoiceConfirmed }}
       </p>
@@ -568,6 +670,8 @@ function reorderGalleryTurnOrder(keys: string[]) {
   --mage-ability-choice-font-size: 13px;
   --mage-ability-choice-button-min-height: 58px;
 }
+.gallery-player-discard-surface { min-height: 120px; }
+.gallery-discard-only-example { min-height: 0; margin-top: 14px; }
 .ui-gallery-ability-choice-selection { min-height: 18px; margin: 8px 0 0; color: var(--muted); font-size: 12px; }
 .ui-gallery-item {
   min-width: 0;
@@ -591,11 +695,12 @@ function reorderGalleryTurnOrder(keys: string[]) {
 }
 .hand-surface { min-height: 270px; }
 .mini-surface { min-height: 150px; }
-.gallery-hand-card { width: 148px; height: 220px; padding: 0; }
+.gallery-hand-card { width: 148px; height: auto; aspect-ratio: var(--card-aspect-ratio); padding: 0; }
 .card.gallery-mini-card {
   width: 78px;
   min-width: 78px;
-  height: 118px;
+  height: auto;
+  aspect-ratio: var(--card-aspect-ratio);
   padding: 0;
 }
 .gallery-hand-card img,
@@ -649,7 +754,8 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .gallery-attached-supply {
   position: relative;
   width: 144px;
-  height: 216px;
+  height: auto;
+  aspect-ratio: var(--card-aspect-ratio);
   overflow: hidden;
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--card-radius);
@@ -665,11 +771,16 @@ function reorderGalleryTurnOrder(keys: string[]) {
   border-radius: var(--card-radius);
 }
 .reveal-surface { min-height: 270px; }
-.gallery-reveal-card { width: 96px; height: 144px; overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-reveal-card { width: 96px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
 .gallery-damage-allocation { display: flex; min-height: 174px; align-items: center; justify-content: center; gap: 18px; }
-.gallery-damage-unit { position: relative; width: 74px; height: 110px; overflow: visible; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-damage-unit { position: relative; width: 74px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: visible; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
 .gallery-damage-unit > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .gallery-damage-unit .damage-allocation-badge { top: -10px; right: -10px; }
+.gallery-prepped-choice-surface { display: flex; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
+.gallery-prepped-choice-card { width: 62px; padding: 0; border: 2px solid transparent; border-radius: var(--card-radius); background: transparent; cursor: pointer; }
+.gallery-prepped-choice-card.selected { border-color: var(--accent); }
+.gallery-prepped-choice-card .card-surface { width: 100%; aspect-ratio: var(--card-aspect-ratio); }
+.gallery-life-choice-surface { min-height: 164px; }
 .ui-gallery-state-row {
   display: flex;
   align-items: center;
@@ -681,7 +792,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
   border-radius: 8px;
 }
 .ui-gallery-state-label { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
-.gallery-state-card { position: relative; width: 74px; height: 110px; padding: 0; overflow: hidden; }
+.gallery-state-card { position: relative; width: 74px; height: auto; aspect-ratio: var(--card-aspect-ratio); padding: 0; overflow: hidden; }
 .gallery-state-card img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .actionable-card { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(158, 206, 106, .24) inset; }
 .selected-card { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(122, 162, 255, .28) inset; }
@@ -706,9 +817,9 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .ui-gallery-modal-close { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 26px; line-height: 1; }
 .ui-gallery-modal-hint { margin: 0 0 14px; color: var(--muted); }
 .ui-gallery-modal-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
-.gallery-modal-card { width: 100%; aspect-ratio: 2 / 3; overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-modal-card { width: 100%; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
 .ui-gallery-modal-reveal { display: flex; justify-content: center; gap: 20px; margin: 16px 0 20px; }
-.gallery-modal-reveal-card { width: 220px; height: 330px; overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-modal-reveal-card { width: 220px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
 .ui-gallery-modal-actions { display: flex; justify-content: center; gap: 10px; }
 .ui-gallery-turn-order-hidden {
   display: flex;
@@ -738,7 +849,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
   .ui-gallery-grid-zones { grid-template-columns: 1fr; }
   .ui-gallery-section { padding: 12px; }
   .ui-gallery-modal-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .gallery-modal-reveal-card { width: min(42vw, 220px); height: auto; aspect-ratio: 2 / 3; }
+  .gallery-modal-reveal-card { width: min(42vw, 220px); height: auto; aspect-ratio: var(--card-aspect-ratio); }
 }
 </style>
 
@@ -756,6 +867,6 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .ui-gallery-modal-reveal { display: flex; justify-content: center; gap: 20px; margin: 16px 0 20px; }
 @media (max-width: 560px) {
   .ui-gallery-modal-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .gallery-modal-reveal-card { width: min(42vw, 220px); height: auto; aspect-ratio: 2 / 3; }
+  .gallery-modal-reveal-card { width: min(42vw, 220px); height: auto; aspect-ratio: var(--card-aspect-ratio); }
 }
 </style>

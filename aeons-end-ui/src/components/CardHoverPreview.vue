@@ -18,10 +18,20 @@ const props = defineProps<{
 
 const visible = ref(false)
 const position = ref({ left: 0, top: 0 })
-const previewSize = ref({
-  width: props.previewWidth ?? 210,
-  height: props.previewHeight ?? 315,
-})
+const cardPreviewHeightRatio = 88 / 63.5
+function getPreviewSize() {
+  const width = props.previewWidth ?? 210
+  return {
+    width,
+    // Card previews always use the physical card ratio even if a legacy call
+    // site still passes its former 2:3 height. Non-card art previews have no
+    // cardId and keep their explicit dimensions.
+    height: props.cardId
+      ? width * cardPreviewHeightRatio
+      : props.previewHeight ?? width * cardPreviewHeightRatio,
+  }
+}
+const previewSize = ref(getPreviewSize())
 const anchor = ref({ x: 0, y: 0 })
 let showTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -47,10 +57,7 @@ function startPreview(event: MouseEvent) {
   // the pointer can own the preview, even while moving between nested cards.
   window.dispatchEvent(new Event('card-preview-dismiss'))
   clearTimeout(showTimer)
-  previewSize.value = {
-    width: props.previewWidth ?? 210,
-    height: props.previewHeight ?? 315,
-  }
+  previewSize.value = getPreviewSize()
   anchor.value = { x: event.clientX, y: event.clientY }
   updatePosition(event.clientX, event.clientY)
   showTimer = setTimeout(() => {
@@ -96,7 +103,8 @@ function resizePreview(event: WheelEvent) {
   event.stopPropagation()
   const scale = event.deltaY < 0 ? 1.1 : 0.9
   const width = previewSize.value.width * scale
-  const ratio = (props.previewHeight ?? 315) / (props.previewWidth ?? 210)
+  const defaultSize = getPreviewSize()
+  const ratio = defaultSize.height / defaultSize.width
   const height = width * ratio
   previewSize.value = { width, height }
   updatePosition(anchor.value.x, anchor.value.y)

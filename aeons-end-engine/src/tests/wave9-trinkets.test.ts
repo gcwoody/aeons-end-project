@@ -1,9 +1,9 @@
 import { ALL_MARKET_CARDS, createTwoPlayerScenario, getCard } from '../data'
 import {
-  buyCard, createGame, gainCharge, getTrinketDeckCards, isTrinketDeckCardRevealed,
+  buyCard, canGainCharge, createGame, gainCharge, getTrinketDeckCards, isTrinketDeckCardRevealed,
   playCard, resolveEffects, resolvePendingDecision,
 } from '../engine'
-import { buildTrinketDeck, TRINKET_DECK_CARD_IDS } from '../data/wave9/trinkets'
+import { buildTrinketDeck, TRINKET_DECK_CARD_IDS } from '../data/wave9/special-decks/trinkets'
 import type { GameState } from '../types'
 
 declare const console: { log(message?: unknown): void }
@@ -123,9 +123,10 @@ function testCloudedTrinketCanSkipCasting(): void {
 
   playCard(game, player.id, 'clouded_trinket')
   const decision = game.pendingDecision
-  assert(decision?.kind === 'select_prepped_spell', 'Clouded Trinket offers a prepared spell')
-  assertEqual(decision.allowSkip, true, 'The optional spell selection includes Skip')
-  resolvePendingDecision(game, decision.id, { kind: 'select_prepped_spell', choice: null })
+  assert(decision?.kind === 'select_prepped_spells', 'Clouded Trinket offers a prepared spell')
+  assertEqual(decision.min, 0, 'The optional spell selection allows skipping')
+  assertEqual(decision.confirmSelection, true, 'The optional selection waits for Confirm')
+  resolvePendingDecision(game, decision.id, { kind: 'select_prepped_spells', choices: [] })
   assertEqual(game.pendingDecision, null, 'Skipping completes the optional cast')
   assertEqual(player.playedThisTurn.includes('clouded_trinket'), false, 'Skipping still returns the Trinket to its deck')
   assertEqual(game.trinketDeckRevealed?.[game.trinketDeckRevealed.length - 1], true, 'Clouded Trinket returns as a known card')
@@ -135,10 +136,17 @@ function testGoldenTrinketAetherIsOnlySpendableToGainCards(): void {
   const game = createGame(createTwoPlayerScenario(['jian', 'brama']))
   const player = game.players[0]!
   setMainPhase(game, player.id)
+  player.bonusAether = 2
+  assertEqual(canGainCharge(game, player.id), true, 'Two general Aether enables the Charge button')
+  player.charge = player.chargeThreshold
+  assertEqual(canGainCharge(game, player.id), false, 'A full charge track disables the Charge button')
+  player.charge = 0
+  player.bonusAether = 0
   player.conditionalAetherEarned = { gain: 3 }
   player.condAetherSpent = {}
   player.regularAetherSpent = 0
 
+  assertEqual(canGainCharge(game, player.id), false, 'Gain-only Aether cannot enable the Charge button')
   const chargeMessage = gainCharge(game, player.id, 1)
   assert(chargeMessage?.includes('Need 2 Aether'), 'Gain-only Aether cannot pay for charge')
   const pileIndex = game.market.piles.findIndex(pile => pile.cardId === 'vriswood_amber')

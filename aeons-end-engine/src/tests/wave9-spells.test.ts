@@ -1,7 +1,7 @@
 import { ALL_MARKET_CARDS, createTwoPlayerScenario, getCard } from '../data'
 import {
   activatePreppedSpellAction, activateRecall, castSpell, createGame,
-  getPreppedCardActions, getRecallActions, resolveCardEffects, resolveDrawPhase,
+  getPreppedCardActions, getRecallActions, getSpellDamagePreview, getSpellDamagePreviewRange, resolveCardEffects, resolveDrawPhase,
   movePreppedSpell, playCard, prepSpell, resolveEffects, resolvePendingDecision, returnPreppedSpellToHand,
 } from '../engine'
 import type { GameState, PreppedSpellChoice } from '../types'
@@ -97,11 +97,11 @@ function testInfernalCascadeCastsTheChosenSpellOnceWithoutDiscardingThenNormally
 
   castSpell(game, caster.id, cascade.breachIndex, cascade.spellIndex)
   const choice = game.pendingDecision
-  assert(choice?.kind === 'select_prepped_spell', 'Infernal Cascade offers a prepped spell')
+  assert(choice?.kind === 'select_prepped_spells', 'Infernal Cascade offers a prepped spell')
   assert(choice.candidates.some(candidate => candidate.cardId === 'spark' && candidate.playerId === ally.id),
     'Infernal Cascade can cast an ally spell')
   resolvePendingDecision(game, choice.id, {
-    kind: 'select_prepped_spell', choice: choice.candidates.find(candidate => candidate.cardId === 'spark')!,
+    kind: 'select_prepped_spells', choices: [choice.candidates.find(candidate => candidate.cardId === 'spark')!],
   })
 
   const repeatChoice = game.pendingDecision
@@ -148,10 +148,10 @@ function testGenericPreppedSpellCastKeepsNestedInfernalChoicesIndependent(): voi
   })
 
   const nested = game.pendingDecision
-  assert(nested?.kind === 'select_prepped_spell', 'Infernal Cascade keeps its nested cast choice')
+  assert(nested?.kind === 'select_prepped_spells', 'Infernal Cascade keeps its nested cast choice')
   assertEqual(nested.candidates.length, 1, 'Infernal filters the nested choice to the face-down two-cost spell')
   assertEqual(nested.candidates[0]!.cardId, 'spark', 'The nested choice is the face-down Spark')
-  resolvePendingDecision(game, nested.id, { kind: 'select_prepped_spell', choice: nested.candidates[0]! })
+  resolvePendingDecision(game, nested.id, { kind: 'select_prepped_spells', choices: [nested.candidates[0]!] })
   const repeat = game.pendingDecision
   assert(repeat?.kind === 'select_prepped_spell' && repeat.repeat === true,
     'The nested Infernal cast still asks for its explicit repeat confirmation')
@@ -261,6 +261,11 @@ function testDescentBonusAppliesToLaterLowCostSpellsAndExpires(): void {
   assertEqual(player.turnEffects.spellDamageBonuses?.length, 1, 'Descent records a turn-long low-cost spell bonus')
 
   const spark = prepareSpell(game, player.id, 'spark')
+  assertEqual(getSpellDamagePreview(game, player.id, player.id, spark.breachIndex, spark.spellIndex), 3,
+    'Descent’s +2 turn bonus appears in the qualifying Spell damage preview')
+  const expensive = prepareSpell(game, player.id, 'boundless_fire')
+  assertEqual(getSpellDamagePreview(game, player.id, player.id, expensive.breachIndex, expensive.spellIndex), 2,
+    'Descent’s preview bonus does not apply to Spells costing more than 2')
   castSpell(game, player.id, spark.breachIndex, spark.spellIndex)
   assertEqual(game.nemesis.hp, before - 7, 'The next zero-cost spell deals two additional damage')
   resolveDrawPhase(game, player.id)
@@ -315,9 +320,9 @@ function testEternitysEchoRecallCastsThenConjuresInOrder(): void {
   const before = game.nemesis.hp
   activateRecall(game, player.id, 0)
   const spellChoice = game.pendingDecision
-  assert(spellChoice?.kind === 'select_prepped_spell', "Eternity's Echo offers one of its prepped spells")
+  assert(spellChoice?.kind === 'select_prepped_spells', "Eternity's Echo offers one of its prepped spells")
   const selected = spellChoice.candidates.find(candidate => candidate.cardId === 'spark')!
-  resolvePendingDecision(game, spellChoice.id, { kind: 'select_prepped_spell', choice: selected })
+  resolvePendingDecision(game, spellChoice.id, { kind: 'select_prepped_spells', choices: [selected] })
   assertEqual(game.nemesis.hp, before - 1, "Eternity's Echo casts the selected spell first")
   assert(player.discard.includes('spark'), 'The selected spell goes to its owner discard after casting')
 
@@ -756,6 +761,41 @@ function testWorldshiftFocusesOnlyAnAllyBreach(): void {
   assertEqual(targetBreach.focusCount, beforeFocus + 1, 'Worldshift focuses an ally Breach')
 }
 
+function testArcingFirethornOptionalCastUsesConfirmSkipAndShowsBonusDamage(): void {
+  const game = createGame(scenarioWithSpell('inundate'))
+  const [caster, spellOwner] = game.players
+  assert(caster && spellOwner, 'The scenario has two players')
+  setMainPhase(game, caster.id)
+  const spark = prepareSpell(game, spellOwner.id, 'spark')
+  const before = game.nemesis.hp
+
+  resolveCardEffects(game, caster.id, 'arcing_firethorn', { kind: 'on_cast' })
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'select_prepped_spells', 'Arcing Firethorn opens its optional prepped-spell picker')
+  assertEqual(decision.min, 0, 'Arcing Firethorn allows skipping the optional cast')
+  assertEqual(decision.max, 1, 'Arcing Firethorn allows choosing one prepped spell')
+  assertEqual(decision.confirmSelection, true, 'The selected spell waits for explicit confirmation')
+  const preview = getSpellDamagePreviewRange(game, caster.id, spellOwner.id, spark.breachIndex, spark.spellIndex)
+  assertEqual(preview?.max, 2, 'The selected spell damage badge includes Arcing Firethorn’s additional damage')
+
+  resolvePendingDecision(game, decision.id, { kind: 'select_prepped_spells', choices: [spark] })
+  assertEqual(game.nemesis.hp, before - 5,
+    'Arcing Firethorn deals three damage, then the selected Spark deals its damage plus one')
+  assertEqual(game.pendingDecision, null, 'The confirmed optional cast completes without an extra selection')
+
+  const skipGame = createGame(scenarioWithSpell('inundate'))
+  const skipCaster = skipGame.players[0]!
+  setMainPhase(skipGame, skipCaster.id)
+  prepareSpell(skipGame, skipCaster.id, 'spark')
+  const skipBefore = skipGame.nemesis.hp
+  resolveCardEffects(skipGame, skipCaster.id, 'arcing_firethorn', { kind: 'on_cast' })
+  const skipDecision = skipGame.pendingDecision
+  assert(skipDecision?.kind === 'select_prepped_spells', 'The optional prompt also appears when the player may skip')
+  resolvePendingDecision(skipGame, skipDecision.id, { kind: 'select_prepped_spells', choices: [] })
+  assertEqual(skipGame.nemesis.hp, skipBefore - 3, 'Skipping leaves only Arcing Firethorn’s printed damage')
+  assertEqual(skipGame.pendingDecision, null, 'Skipping completes the optional effect')
+}
+
 testWave9SupplySpellCatalogAndMechanics()
 testInfernalCascadeCastsTheChosenSpellOnceWithoutDiscardingThenNormally()
 testGenericPreppedSpellCastKeepsNestedInfernalChoicesIndependent()
@@ -783,5 +823,6 @@ testObliteratingArcDestroysSupplyAndPunishesAnEmptyPile()
 testGenericPreppedSpellCastResolvesObliteratingArcSupplyEffect()
 testGarnetShardCastUsesTheActiveSpellAsSource()
 testWorldshiftFocusesOnlyAnAllyBreach()
+testArcingFirethornOptionalCastUsesConfirmSkipAndShowsBonusDamage()
 
 console.log('Wave 9 Spell tests passed')

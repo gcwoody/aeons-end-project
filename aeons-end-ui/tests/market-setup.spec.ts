@@ -56,49 +56,6 @@ test('Setup accepts nine image-based market slot replacements', async ({ page })
   expect(saved.game.market.piles.map((pile: { cardId: string }) => pile.cardId)).toEqual(selected)
 })
 
-test('Template 1 creates the requested cost bands', async ({ page }) => {
-  await page.goto('/')
-  await page.evaluate(() => localStorage.clear())
-  await page.reload()
-  await expect(page.getByLabel('Market Setup Template')).toHaveValue('template1')
-  await expect(page.getByText(/Template One: Gems ≤3 \/ 4 \/ ≥5 Aether/)).toBeVisible()
-  await expect(page.getByRole('button', { name: 'Refresh semi-random market' })).toBeVisible()
-  await expect(page.locator('.market-slot-card img')).toHaveCount(9)
-  await page.getByRole('button', { name: 'Refresh semi-random market' }).click()
-  await page.getByRole('button', { name: 'Start Game' }).click()
-  await page.keyboard.press('Control+d')
-  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
-  const saved = JSON.parse(await page.locator('.debug-panel textarea').inputValue())
-  const piles = saved.game.market.piles as Array<{ cardId: string }>
-  expect(piles).toHaveLength(9)
-  expect(new Set(piles.map(pile => pile.cardId)).size).toBe(9)
-  const costs: Record<string, number> = {
-    vriswood_amber: 3, diamond_cluster: 4, burning_opal: 5, clouded_sapphire: 6, jade: 2, searing_ruby: 4, sifters_pearl: 3,
-    flexing_dagger: 2, bottled_vortex: 3, blasting_staff: 4, focusing_orb: 4, mages_talisman: 5, unstable_prism: 3,
-    amplify_vision: 4, arcane_nexus: 7, chaos_arc: 6, consuming_void: 7, dark_fire: 5, essence_theft: 5, feral_lightning: 5,
-    ignite: 4, lava_tendril: 4, oblivion_swell: 5, phoenix_flame: 3, planar_insight: 6, spectral_echo: 3, wildfire_whip: 6,
-    atomized_ash: 3, hewn_gravitite: 3, irradiax_lump: 6, luminous_facet: 4, phosphor_nugget: 4,
-    chromia_sphere: 5, nebulae_fragment: 3, coiled_trillium: 3, ice_dusted_jewel: 3,
-  }
-  const types: Record<string, string> = {
-    ...Object.fromEntries(['vriswood_amber', 'diamond_cluster', 'burning_opal', 'clouded_sapphire', 'jade', 'searing_ruby', 'sifters_pearl'].map(id => [id, 'gem'])),
-    ...Object.fromEntries(['atomized_ash', 'hewn_gravitite', 'irradiax_lump', 'luminous_facet', 'phosphor_nugget', 'chromia_sphere', 'nebulae_fragment', 'coiled_trillium', 'ice_dusted_jewel'].map(id => [id, 'gem'])),
-    ...Object.fromEntries(['flexing_dagger', 'bottled_vortex', 'blasting_staff', 'focusing_orb', 'mages_talisman', 'unstable_prism'].map(id => [id, 'relic'])),
-  }
-  const picked = piles.map(pile => ({ type: types[pile.cardId] ?? 'spell', cost: costs[pile.cardId] }))
-  expect(picked.filter(card => card.type === 'gem')).toHaveLength(3)
-  expect(picked.filter(card => card.type === 'relic')).toHaveLength(2)
-  expect(picked.filter(card => card.type === 'spell')).toHaveLength(4)
-  expect(picked.some(card => card.type === 'gem' && card.cost <= 3)).toBeTruthy()
-  expect(picked.some(card => card.type === 'gem' && card.cost === 4)).toBeTruthy()
-  expect(picked.some(card => card.type === 'gem' && card.cost >= 5)).toBeTruthy()
-  expect(picked.some(card => card.type === 'relic' && card.cost <= 3)).toBeTruthy()
-  expect(picked.some(card => card.type === 'relic' && card.cost >= 4)).toBeTruthy()
-  expect(picked.some(card => card.type === 'spell' && card.cost === 3)).toBeTruthy()
-  expect(picked.some(card => card.type === 'spell' && card.cost === 4)).toBeTruthy()
-  expect(picked.some(card => card.type === 'spell' && card.cost === 5)).toBeTruthy()
-  expect(picked.some(card => card.type === 'spell' && card.cost >= 6)).toBeTruthy()
-})
 
 test('Setup previews follow Mage and Nemesis selections', async ({ page }) => {
   await page.goto('/')

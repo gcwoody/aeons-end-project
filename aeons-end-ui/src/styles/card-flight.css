@@ -1,0 +1,67 @@
+.card-flight-clone {
+  box-sizing: border-box;
+  overflow: hidden;
+  pointer-events: none !important;
+  transform-origin: top left;
+  transition: none !important;
+  animation: none !important;
+  will-change: transform;
+  z-index: var(--z-card-flight);
+}
+
+.card-flight-clone img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.card-motion-shield {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-card-flight-shield);
+  background: transparent;
+  cursor: default;
+}
+
+.turn-transition-shield {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-card-flight-shield);
+  background: transparent;
+  pointer-events: auto;
+}
+
+.nemesis-draw-flight-scene {
+  box-sizing: border-box;
+  overflow: visible;
+  pointer-events: none;
+  transform-origin: top left;
+  will-change: transform;
+  z-index: var(--z-card-flight);
+}
+
+.nemesis-draw-flight-card {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+  background: #151a29;
+  will-change: transform;
+  transform-origin: center;
+}
+
+.nemesis-draw-flight-face {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.nemesis-draw-flight-front { opacity: 0; }
+
+/* Keep the Nemesis reveal backdrop visible so its opacity can animate with the flight. */
+.app.card-motion-batch-active .decision-overlay:not(.nemesis-draw-reveal-screen) { visibility: hidden; }

@@ -292,31 +292,6 @@ async function main() {
   }
   const manifestPath = resolve(imageRoot, 'mini-expansion-image-manifest.json')
   await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
-  const lines = [
-    '# Wave 9 Mini Expansions — Wiki Image Collection',
-    '',
-    `- Sources: [The Surface](${manifest.source[0]}), [The Returned](${manifest.source[1]})`,
-    `- Collected at (UTC): ${manifest.generatedAt}`,
-    `- Proxy: ${proxyUrl}`,
-    `- Unique images: ${destinations.size}`,
-    `- Manifest: \`${localPath(manifestPath)}\``,
-    '',
-    '## Images by expansion and category',
-    '',
-    '| Expansion | Category | Images |',
-    '| --- | --- | ---: |',
-  ]
-  for (const expansion of boxTitles) {
-    const groups = new Map()
-    for (const entry of destinations.values()) {
-      if (entry.expansion !== expansion) continue
-      groups.set(entry.group, (groups.get(entry.group) || 0) + 1)
-    }
-    for (const [group, count] of groups) lines.push(`| ${expansion} | ${group} | ${count} |`)
-  }
-  lines.push('', 'The manifest records the Wiki source URL and local path for every image.', '')
-  const summaryPath = resolve(repositoryRoot, 'documents', 'wave9', 'mini-expansion-image-collection.md')
-  await writeFile(summaryPath, lines.join('\n'), 'utf8')
   console.log(`Completed: ${destinations.size} images (${downloaded} new, ${existing} existing).`)
 }
 

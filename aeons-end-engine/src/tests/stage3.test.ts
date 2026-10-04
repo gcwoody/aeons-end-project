@@ -114,6 +114,39 @@ function testToDiscardSupportsPreppedSpellCosts(): void {
   assertEqual(player.destroyedCards.length, 2, 'Prepped spells are permanently destroyed')
 }
 
+function testPowerToDiscardPreppedSpellCostsUseOnlyThePayerByDefault(): void {
+  const game = mainPhaseGame()
+  const payer = game.players[0]!
+  const ally = game.players[1]!
+  ally.breaches[0]!.prepSpells = ['vriswood_amber', 'diamond_cluster']
+  game.nemesis.playArea = [{
+    cardId: 'reality_rupture', cardType: 'power', placedAt: 1,
+    instanceId: 'reality-rupture:1', powerTokens: 1,
+  }]
+
+  assertEqual(getNemesisDiscardActions(game, payer.id).length, 0,
+    'An ally prepped spells do not satisfy Reality Rupture when the active player has none')
+  assert(discardNemesisPower(game, payer.id, 'reality-rupture:1').some(message => message.includes('cannot be discarded')),
+    'The player cannot start To Discard by using only ally resources')
+  assertEqual(ally.breaches[0]!.prepSpells.length, 2, 'Rejected To Discard does not change the ally\'s Breach')
+
+  payer.breaches[0]!.prepSpells = ['vriswood_amber', 'diamond_cluster']
+  payer.breaches[1]!.prepSpells = ['diamond_cluster']
+  const action = getNemesisDiscardActions(game, payer.id)[0]
+  assert(action, 'The active player can pay with their own eligible prepped spells')
+  discardNemesisPower(game, payer.id, action.instanceId)
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'select_prepped_spells', 'Player chooses which of their eligible spells to destroy')
+  assertEqual(decision.candidates.length, 3, 'Only the payer\'s three eligible spells are offered')
+  assert(decision.candidates.every(choice => choice.playerId === payer.id),
+    'Ally spells are omitted from the payment decision')
+  resolvePendingDecision(game, decision.id, {
+    kind: 'select_prepped_spells', choices: decision.candidates.slice(0, 2),
+  })
+  assertEqual(payer.destroyedCards.length, 2, 'Two spells belonging to the payer are destroyed')
+  assertEqual(ally.breaches[0]!.prepSpells.length, 2, 'The ally\'s prepped spells remain untouched')
+}
+
 function testPlayerExcessDamage(): void {
   const game = mainPhaseGame()
   const player = game.players[0]!
@@ -184,6 +217,7 @@ testStrikeDeckRecycleAndReturn()
 testToDiscardPausesBeforePayment()
 testToDiscardRejectsInsufficientPayment()
 testToDiscardSupportsPreppedSpellCosts()
+testPowerToDiscardPreppedSpellCostsUseOnlyThePayerByDefault()
 testPlayerExcessDamage()
 testExhaustionSequenceAndBreachChoice()
 testExhaustedDamageAndHealingRules()

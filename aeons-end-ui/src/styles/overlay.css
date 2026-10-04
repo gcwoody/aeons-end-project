@@ -1,0 +1,36 @@
+/* ===== Overlay ===== */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--overlay-backdrop);
+  display: flex;
+  align-items: safe center;
+  justify-content: center;
+  overflow: auto;
+  padding: 12px;
+  z-index: var(--z-overlay);
+  animation: overlay-fade-in var(--overlay-in-duration) ease-out both;
+}
+.overlay-card {
+  background: var(--panel);
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--radius-modal);
+  padding: var(--modal-padding);
+  text-align: center;
+  transform-origin: center center;
+  will-change: opacity, transform, filter;
+  animation: modal-pop-in var(--modal-in-duration) cubic-bezier(.2, .8, .2, 1) both;
+}
+.overlay-card h2 { margin: 0 0 8px; }
+.draggable-modal { position: relative; cursor: default; }
+.draggable-modal.dragging { cursor: default; user-select: none; }
+.overlay-actions { display: flex; gap: 10px; justify-content: center; margin-top: 14px; }
+.exit-copy { color: var(--muted); margin: 0; }
+.exit-overlay { z-index: var(--z-exit); }
+.gameover-title {
+  margin-bottom: 20px !important;
+  font-size: clamp(32px, 5vw, 54px);
+  letter-spacing: 3px;
+  color: var(--accent);
+}
+

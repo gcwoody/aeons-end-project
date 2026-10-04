@@ -96,16 +96,6 @@ async function focusUniqueBreach(
   }
 }
 
-test('unique breaches rotate on focus or open directly when fully focused', async ({ page }) => {
-  for (const setup of [
-    { mage: 'remnant', breachIndex: 3, focusCost: 3 },
-    { mage: 'remnant', breachIndex: 4, focusCost: 4, focusesToOpen: 2, initialRotation: 0 },
-    { mage: 'indira', breachIndex: 3, focusCost: 3 },
-    { mage: 'stake', breachIndex: 4, focusCost: 4, focusesToOpen: 1 },
-  ]) {
-    await focusUniqueBreach(page, setup.mage, setup.breachIndex, setup.focusCost, setup.focusesToOpen, setup.initialRotation)
-  }
-})
 
 test('Breach artwork follows focus direction instead of the focus counter', async ({ page }) => {
   await resetSetup(page)
@@ -135,6 +125,103 @@ test('Breach artwork follows focus direction instead of the focus counter', asyn
   const image = page.locator('.breach[data-breach-index="3"] img.breach-token')
   await expect(image).toHaveAttribute('alt', 'Breach III closed')
   await expect(image).toHaveAttribute('style', /rotate\(90deg\)/)
+})
+
+test('switching Mage views does not animate Breaches as if they changed state', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1 Mage').selectOption('qu')
+  await page.getByLabel('Player 2 Mage').selectOption('jian')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  const [firstPlayer, secondPlayer] = debugState.game.players
+  const firstRotationBreach = firstPlayer.breaches.find((breach: any) => breach.index === 3)
+  const secondRotationBreach = secondPlayer.breaches.find((breach: any) => breach.index === 3)
+  firstRotationBreach.focusDirection = 'east'
+  firstRotationBreach.focusCount = 1
+  firstRotationBreach.opened = false
+  secondRotationBreach.focusDirection = 'south'
+  secondRotationBreach.focusCount = 1
+  secondRotationBreach.opened = false
+
+  const firstOpeningBreach = firstPlayer.breaches.find((breach: any) => breach.index === 2)
+  const secondOpeningBreach = secondPlayer.breaches.find((breach: any) => breach.index === 2)
+  firstOpeningBreach.focusDirection = 'north'
+  firstOpeningBreach.focusCount = 0
+  firstOpeningBreach.opened = false
+  secondOpeningBreach.focusDirection = 'north'
+  secondOpeningBreach.focusCount = 2
+  secondOpeningBreach.opened = true
+  debugState.selectedPlayer = firstPlayer.id
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.addStyleTag({ content: ':root { --breach-focus-duration: 3000ms; --breach-open-duration: 3000ms; }' })
+  await page.locator('.char-select .char-btn').nth(1).click()
+
+  const openingBreach = page.locator('.breach[data-breach-index="2"]')
+  const openingImage = openingBreach.locator('img.breach-token')
+  await expect(openingImage).toHaveAttribute('alt', 'Breach II open')
+  await expect(openingBreach.locator('.breach-flip-scene')).toHaveCount(0)
+  expect(await openingImage.evaluate(element => element.getAnimations().length)).toBe(0)
+
+  const rotatingImage = page.locator('.breach[data-breach-index="3"] img.breach-token')
+  await expect(rotatingImage).toHaveAttribute('style', /rotate\(180deg\)/)
+  expect(await rotatingImage.evaluate(element => element.getAnimations().length)).toBe(0)
+})
+
+test('Breach focus rotates clockwise and opening flips around its facing axis', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1 Mage').selectOption('remnant')
+  await page.getByLabel('Player 2 Mage').selectOption('jian')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await expect(stateField).toBeVisible()
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  const breach = player.breaches.find((candidate: any) => candidate.index === 4)
+  breach.focusCount = 0
+  breach.focusToOpen = 2
+  breach.focusDirection = 'west'
+  breach.opened = false
+  debugState.selectedPlayer = player.id
+  debugState.phase = 'main'
+  debugState.game.currentTurn = player.id
+  debugState.game.currentPhase = 'main'
+  player.conditionalAetherEarned.breach = 8
+  player.condAetherSpent = {}
+  player.regularAetherSpent = 0
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+  await page.addStyleTag({ content: ':root { --breach-focus-duration: 900ms; --breach-open-duration: 1000ms; }' })
+
+  const breachArea = page.locator('.breach[data-breach-index="4"]')
+  const image = breachArea.locator('img.breach-token')
+  await breachArea.getByRole('button', { name: 'Focus Breach IV for 4 Aether', exact: true }).click()
+  await expect.poll(() => image.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
+  const focusKeyframes = await image.evaluate(element => element.getAnimations()[0]!.effect!.getKeyframes()
+    .map(frame => frame.transform))
+  expect(focusKeyframes).toEqual(['rotate(0deg)', 'rotate(90deg)'])
+  await image.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
+
+  await breachArea.getByRole('button', { name: 'Focus Breach IV for 4 Aether', exact: true }).click()
+  const flipBack = breachArea.locator('.breach-flip-back')
+  await expect(flipBack).toBeVisible()
+  await expect(flipBack).toHaveAttribute('style', /rotate3d\(0, -1, 0, 180deg\)/)
+  await expect.poll(() => breachArea.locator('.breach-flip-card').evaluate(element => element.getAnimations().length))
+    .toBeGreaterThan(0)
+  await expect(breachArea.locator('.breach-flip-card')).toHaveCount(0)
+  await expect(image).toHaveAttribute('alt', 'Breach IV open')
 })
 
 test('resuming a one-focus Rift IV save repairs it to the two-focus opening rule', async ({ page }) => {

@@ -5,6 +5,7 @@ import {
   createGame,
   focusBreach,
   getBreachActionCosts,
+  openBreachDirect,
   getPreppedCardActions,
   activatePreppedCardAction,
   activatePreppedSpellAction,
@@ -14,6 +15,7 @@ import {
   resolvePreppedEffects,
   getPreppedSpellChoices,
   getCastableSpells,
+  getSpellBreachTargets,
   movePreppedSpell,
   returnPreppedSpellToHand,
   getSpellDamagePreview,
@@ -153,27 +155,56 @@ function testUniqueBreachDirectionsAndFocus(): void {
   const riftIII = remnant.breaches.find(breach => breach.index === 3)!
   assertEqual(riftIII.focusDirection, 'south', 'Remnant Rift III starts facing south')
   assertEqual(riftIII.focusCost, 3, 'Remnant Rift III focus cost')
+  assertEqual(getBreachActionCosts(remnantGame, remnant.id, 3)?.open, 7,
+    'Remnant Rift III uses the common south-facing open cost')
   remnant.conditionalAetherEarned.breach = 3
   const focusMessage = focusBreach(remnantGame, remnant.id, 3)
   assert(focusMessage?.includes('facing ←'), 'Remnant Rift III focus points west after one focus')
   assertEqual(riftIII.focusDirection, 'west', 'Remnant Rift III turns clockwise from south to west')
   assertEqual(riftIII.focusCount, 1, 'Remnant Rift III records one focus')
+  assertEqual(getBreachActionCosts(remnantGame, remnant.id, 3)?.open, 5,
+    'Remnant Rift III open cost follows its new west-facing direction')
 
   const riftIV = remnant.breaches.find(breach => breach.index === 4)!
   assertEqual(riftIV.focusDirection, 'west', 'Remnant Rift IV starts facing west')
   assertEqual(riftIV.focusToOpen, 2, 'Remnant Rift IV opens after two focuses')
-  assertEqual(getBreachActionCosts(remnantGame, remnant.id, 4)?.open, 10,
-    'Remnant Rift IV uses its west-facing printed open cost')
+  assertEqual(getBreachActionCosts(remnantGame, remnant.id, 4)?.open, 7,
+    'Remnant Rift IV uses the common west-facing open cost')
   remnant.conditionalAetherEarned.breach = 8
   remnant.condAetherSpent = {}
   const firstFocusMessage = focusBreach(remnantGame, remnant.id, 4)
   assert(firstFocusMessage?.includes('facing ↑'), 'Remnant Rift IV faces north after its first focus')
   assertEqual(riftIV.focusDirection, 'north', 'Remnant Rift IV turns from west to north after one focus')
   assertEqual(riftIV.opened, false, 'Remnant Rift IV remains closed after one focus')
+  assertEqual(getBreachActionCosts(remnantGame, remnant.id, 4)?.open, 4,
+    'Remnant Rift IV open cost follows its new north-facing direction')
   const openMessage = focusBreach(remnantGame, remnant.id, 4)
   assert(openMessage?.includes('Breach IV OPENED!'), 'Remnant Rift IV opens on its second focus')
   assertEqual(riftIV.opened, true, 'Remnant Rift IV is open after two focuses')
   assertEqual(riftIV.focusCount, 2, 'Remnant Rift IV records two focuses when it opens')
+
+  const legacySave = createGame('remnant', 'jian')
+  const legacyPlayer = legacySave.players[0]!
+  const legacyRiftIV = legacyPlayer.breaches.find(breach => breach.index === 4)!
+  legacyRiftIV.focusDirection = 'north'
+  legacyRiftIV.focusCount = legacyRiftIV.focusToOpen
+  legacyRiftIV.openCost = { east: 10, south: 13, west: 10, north: 7 }
+  legacyPlayer.bonusAether = 4
+  legacyPlayer.hand = []
+  legacyPlayer.charge = 0
+  legacyPlayer.chargeThreshold = 0
+  legacyPlayer.playerCardsInPlay = []
+  for (const breach of legacyPlayer.breaches) {
+    if (breach.index !== 4) breach.opened = true
+  }
+  legacySave.market.piles.forEach(pile => { pile.remaining = 0 })
+  assert(canPlayerAct(legacySave, legacyPlayer.id),
+    'End-of-phase action detection sees a legal direct open despite the old cached map')
+  assertEqual(getBreachActionCosts(legacySave, legacyPlayer.id, 4)?.open, 4,
+    'The displayed Breach cost ignores the obsolete cached Rift IV map in old saves')
+  assert(openBreachDirect(legacySave, legacyPlayer.id, 4)?.includes('(4a direct)'),
+    'Directly opening the Breach spends the same corrected cost as the UI displays')
+  assertEqual(legacyPlayer.regularAetherSpent, 4, 'Direct open spends the corrected four-Aether cost')
 
   const indira = createGame('indira', 'jian').players[0]!
   assertEqual(indira.breaches.find(breach => breach.index === 3)?.focusDirection, 'east',
@@ -201,14 +232,18 @@ function testCommonBreachCosts(): void {
     const player = game.players[0]!
     for (const breach of player.breaches) {
       if (breach.present === false || breach.opened) continue
-      if (breach.special === 'rift') continue
       const costs = expected[breach.index]
       assert(costs, `${mageType} has a supported common breach index`)
       assertEqual(breach.focusCost, costs.focus, `${mageType} Breach ${breach.index} focus cost`)
+      const startingDirection = breach.focusDirection
       for (const [direction, amount] of Object.entries(costs.open)) {
-        assertEqual(breach.openCost[direction as keyof typeof breach.openCost], amount,
-          `${mageType} Breach ${breach.index} ${direction} open cost`)
+        const facing = direction as keyof typeof breach.openCost
+        assertEqual(breach.openCost[facing], amount, `${mageType} Breach ${breach.index} ${direction} configured cost`)
+        breach.focusDirection = facing
+        assertEqual(getBreachActionCosts(game, player.id, breach.index)?.open, amount,
+          `${mageType} Breach ${breach.index} ${direction} displayed cost`)
       }
+      breach.focusDirection = startingDirection
     }
   }
 }
@@ -576,6 +611,68 @@ function testMovePreppedSpell(): void {
   assert(movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Swapped'), 'Moving onto a prepared Breach swaps spells')
   assertEqual(player.breaches[0]!.prepSpells.join(','), 'spark', 'The target spell moves to the source Breach')
   assertEqual(player.breaches[1]!.prepSpells.join(','), 'flare', 'The dragged spell moves to the target Breach')
+}
+
+function testSpellBreachTargetQueries(): void {
+  const prepGame = freshGame()
+  const prepPlayer = prepGame.players[0]!
+  prepPlayer.hand = ['spark', 'feral_lightning', 'crystal']
+  for (const breach of prepPlayer.breaches) {
+    breach.opened = false
+    breach.focusedThisTurn = false
+    breach.prepSpells = []
+  }
+  prepPlayer.breaches[0]!.opened = true
+  prepPlayer.breaches[1]!.focusedThisTurn = true
+  prepPlayer.breaches[2]!.opened = true
+  prepPlayer.breaches[2]!.prepSpells = ['flare']
+
+  assertEqual(
+    getSpellBreachTargets(prepGame, prepPlayer.id, { kind: 'hand', cardId: 'spark' }).join(','),
+    '1,2',
+    'Regular hand spells target open or currently focused Breaches with room',
+  )
+  assertEqual(
+    getSpellBreachTargets(prepGame, prepPlayer.id, { kind: 'hand', cardId: 'feral_lightning' }).join(','),
+    '1,2,4',
+    'Special hand spells may also target a closed Breach',
+  )
+  assertEqual(
+    getSpellBreachTargets(prepGame, prepPlayer.id, { kind: 'hand', cardId: 'crystal' }).length,
+    0,
+    'Non-spells do not receive prep targets',
+  )
+
+  const moveGame = freshGame()
+  const movePlayer = moveGame.players[0]!
+  for (const breach of movePlayer.breaches) {
+    breach.opened = false
+    breach.focusedThisTurn = false
+    breach.prepSpells = []
+  }
+  movePlayer.breaches[0]!.opened = true
+  movePlayer.breaches[0]!.prepSpells = ['spark']
+  movePlayer.breaches[1]!.focusedThisTurn = true
+  movePlayer.breaches[2]!.opened = true
+  movePlayer.breaches[2]!.prepSpells = ['flare']
+  assertEqual(
+    getSpellBreachTargets(moveGame, movePlayer.id, { kind: 'prepped', breachIndex: 1, spellIndex: 0 }).join(','),
+    '2,3',
+    'Move targets include a focused Breach and an occupied Breach that can be swapped with',
+  )
+  movePlayer.breaches[0]!.prepSpells = ['feral_lightning']
+  assertEqual(
+    getSpellBreachTargets(moveGame, movePlayer.id, { kind: 'prepped', breachIndex: 1, spellIndex: 0 }).join(','),
+    '2,3,4',
+    'Moving a special spell preserves its permission to target a closed Breach',
+  )
+
+  moveGame.currentPhase = 'casting'
+  assertEqual(
+    getSpellBreachTargets(moveGame, movePlayer.id, { kind: 'prepped', breachIndex: 1, spellIndex: 0 }).length,
+    0,
+    'Spell movement targets are hidden outside the Main Phase',
+  )
 }
 
 function testHandAndBreachSpellTransfers(): void {
@@ -1067,6 +1164,7 @@ function run(): void {
   testSpellEffects()
   testSpellDamagePreview()
   testMovePreppedSpell()
+  testSpellBreachTargetQueries()
   testHandAndBreachSpellTransfers()
   testPreppedSpellRepositionDoesNotKeepMainPhaseOpen()
   testClosedBreachRepositionForSpecialSpell()

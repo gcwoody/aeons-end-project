@@ -13,10 +13,14 @@ import ModalBase from './ModalBase.vue'
 const {
   state, newGame, resumeGame,
   rerollMarketTemplate,
-  requestDeleteSave, cancelDeleteSave, deleteSave,
+  requestDeleteSave, requestDeleteSaves, cancelDeleteSave, deleteSaves,
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 const selectionError = ref('')
+const selectedSaveIds = ref<string[]>([])
+const allSavesSelected = computed(() => state.saves.length > 0
+  && state.saves.every(save => selectedSaveIds.value.includes(save.id)))
+const pendingDeleteSaveCount = computed(() => state.deleteSaveIds.length)
 const mageOptions = computed(() => Object.values(MAGES))
 const mageWaves = computed(() => [...new Set(mageOptions.value.map(mage => mage.wave))].sort((a, b) => a - b))
 const mage1Wave = ref(MAGES[state.mage1]?.wave ?? mageWaves.value[0] ?? 1)
@@ -217,6 +221,28 @@ function saveTime(timestamp: number): string {
 function turnLabel(turn: string): string {
   return turn === 'nemesis' ? 'Nemesis' : turn.toUpperCase()
 }
+
+function setSaveSelected(saveId: string, event: Event) {
+  const checked = (event.target as HTMLInputElement).checked
+  selectedSaveIds.value = checked
+    ? [...new Set([...selectedSaveIds.value, saveId])]
+    : selectedSaveIds.value.filter(id => id !== saveId)
+}
+
+function setAllSavesSelected(event: Event) {
+  selectedSaveIds.value = (event.target as HTMLInputElement).checked
+    ? state.saves.map(save => save.id)
+    : []
+}
+
+function requestDeleteSelectedSaves() {
+  if (selectedSaveIds.value.length > 0) requestDeleteSaves([...selectedSaveIds.value])
+}
+
+function confirmDeleteSaves() {
+  deleteSaves([...state.deleteSaveIds])
+  selectedSaveIds.value = []
+}
 </script>
 
 <template>
@@ -329,7 +355,7 @@ function turnLabel(turn: string): string {
             :key="label"
             :card-id="state.marketSlots[index]"
             :preview-width="280"
-            :preview-height="394"
+            :preview-height="388.03"
             :preview-delay="200"
           >
             <button
@@ -356,10 +382,34 @@ function turnLabel(turn: string): string {
       </button>
     </div>
     <section class="save-list" aria-label="Saved Games">
-      <h2>Saved Games ({{ state.saves.length }})</h2>
+      <div class="save-list-heading">
+        <h2>Saved Games ({{ state.saves.length }})</h2>
+        <div v-if="state.hasSave" class="save-bulk-actions">
+          <label class="save-select-all">
+            <input type="checkbox" aria-label="Select all saved games" :checked="allSavesSelected" @change="setAllSavesSelected" />
+            <span>Select all</span>
+          </label>
+          <button class="btn danger" :disabled="selectedSaveIds.length === 0" @click="requestDeleteSelectedSaves">
+            Delete selected ({{ selectedSaveIds.length }})
+          </button>
+        </div>
+      </div>
       <p v-if="!state.hasSave" class="muted">No saved games found.</p>
-      <article v-for="save in state.saves" :key="save.id" class="save-entry">
-        <div>
+      <article
+        v-for="save in state.saves"
+        :key="save.id"
+        class="save-entry"
+        :class="{ selected: selectedSaveIds.includes(save.id) }"
+      >
+        <label class="save-entry-select">
+          <input
+            type="checkbox"
+            :aria-label="`Select ${save.players.join(' + ')} vs ${save.nemesisType} save`"
+            :checked="selectedSaveIds.includes(save.id)"
+            @change="setSaveSelected(save.id, $event)"
+          />
+        </label>
+        <div class="save-entry-info">
           <strong>{{ save.players.join(' + ') }} vs {{ save.nemesisType }}</strong>
           <span class="save-details">
             Round {{ save.round }} · Turn {{ save.turn }} · Current: {{ turnLabel(save.currentTurn) }} · {{ saveTime(save.updatedAt) }}
@@ -373,7 +423,7 @@ function turnLabel(turn: string): string {
     </section>
 
     <ModalBase
-      v-if="state.deleteSaveId"
+      v-if="pendingDeleteSaveCount > 0"
       overlay-class="save-delete-overlay"
       v-model:panel-ref="modalEl"
       panel-class="draggable-modal"
@@ -382,10 +432,16 @@ function turnLabel(turn: string): string {
       @overlay-click="cancelDeleteSave"
       @panel-pointerdown="startDrag"
     >
-        <h2>Delete Saved Game?</h2>
-        <p class="exit-copy">Are you sure you want to delete this saved game?</p>
+        <h2>{{ pendingDeleteSaveCount === 1 ? 'Delete Saved Game?' : `Delete ${pendingDeleteSaveCount} Saved Games?` }}</h2>
+        <p class="exit-copy">
+          {{ pendingDeleteSaveCount === 1
+            ? 'Are you sure you want to delete this saved game?'
+            : 'Are you sure you want to delete all selected saved games?' }}
+        </p>
         <div class="overlay-actions">
-          <button class="btn danger" @click="deleteSave(state.deleteSaveId!)">Delete</button>
+          <button class="btn danger" @click="confirmDeleteSaves">
+            {{ pendingDeleteSaveCount === 1 ? 'Delete' : `Delete ${pendingDeleteSaveCount} Saves` }}
+          </button>
           <button class="btn" @click="cancelDeleteSave">Cancel</button>
         </div>
     </ModalBase>
@@ -420,7 +476,7 @@ function turnLabel(turn: string): string {
             :key="card.id"
             :card-id="card.id"
             :preview-width="280"
-            :preview-height="394"
+            :preview-height="388.03"
             :preview-delay="200"
             preview-class="setup-market-picker-preview"
           >

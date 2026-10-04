@@ -47,6 +47,37 @@ function testThoughtTotemRefillsARevealFromTheUnshuffledDiscardPile(): void {
   assertEqual(game.pendingDecision, null, 'The reveal and discard decision completes')
 }
 
+function testOmenLoopRefillsAndReordersTheTurnOrderDeckAtRoundEnd(): void {
+  const game: GameState = createGame(createTwoPlayerScenario(['jian', 'brama']))
+  const [player, ally] = game.players
+  assert(player && ally, 'The scenario creates both players')
+  game.currentTurn = player.id
+  game.currentPhase = 'main'
+  game.round = 1
+  game.turnOrderDeck = []
+  game.turnOrderDiscard = [player.id, ally.id, 'nemesis', player.id, ally.id, 'nemesis']
+  player.hand = ['omen_loop']
+
+  playCard(game, player.id, 'omen_loop')
+
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'reorder_turn_order',
+    'Omen Loop opens its reorder decision after recycling an exhausted Turn Order deck')
+  assertEqual(decision.cards.length, 6, 'The next round’s full set of six tokens is available to arrange')
+  assertEqual(game.turnOrderDiscard.length, 0, 'The previous round’s Turn Order discard is cleared into the deck')
+  assertEqual(game.round, 2, 'Recycling the Turn Order discard advances the round')
+
+  const order = decision.cards.map(card => card.index).reverse()
+  resolvePendingDecision(game, decision.id, { kind: 'reorder_turn_order', order })
+
+  assertEqual(game.turnOrderDeck.join(','), [...decision.cards].reverse().map(card => card.cardId).join(','),
+    'Omen Loop applies the player’s requested order to the recycled next-round tokens')
+  assert(game.pendingDecision?.kind === 'choose_optional',
+    'Omen Loop continues to its optional Pulse token effect after reordering')
+  resolvePendingDecision(game, game.pendingDecision.id, { kind: 'choose_optional', accepted: false })
+  assertEqual(game.pendingDecision, null, 'Omen Loop continues after the deck is reordered')
+}
+
 function testVisionaryStaffRepeatsOneSelectedRecallFromTheDiscardPile(): void {
   const crystal = getCard('crystal')
   const jade = getCard('jade')
@@ -255,6 +286,7 @@ function testCrossPlayerSpellUsesCasterForAttachedRelicAllyScope(): void {
 }
 
 testThoughtTotemRefillsARevealFromTheUnshuffledDiscardPile()
+testOmenLoopRefillsAndReordersTheTurnOrderDeckAtRoundEnd()
 testVisionaryStaffRepeatsOneSelectedRecallFromTheDiscardPile()
 testNestedCrossPlayerCastRestoresTheOuterSourceCard()
 testNestedGainTriggerUsesItsOwnCardAndRestoresOuterContext()

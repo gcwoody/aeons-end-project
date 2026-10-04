@@ -165,7 +165,7 @@ onBeforeUnmount(() => {
           <span class="debug-card-group-chevron" aria-hidden="true">{{ isGroupOpen(type) ? '−' : '+' }}</span>
         </button>
         <div v-if="isGroupOpen(type)" class="debug-card-grid">
-          <CardHoverPreview v-for="card in group" :key="card.id" :card-id="card.id" :preview-width="210" :preview-height="315">
+          <CardHoverPreview v-for="card in group" :key="card.id" :card-id="card.id" :preview-width="210" :preview-height="291.02">
             <button
               class="debug-card-option"
               :class="{ selected: modelValue === card.id }"

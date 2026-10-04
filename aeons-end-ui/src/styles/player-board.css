@@ -1,0 +1,396 @@
+/* ===== Player area ===== */
+.player-area {
+  --player-area-bottom-padding: 6px;
+  position: relative;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-rows: auto auto auto var(--hand-row-height) auto;
+  gap: 10px;
+  padding: 12px 14px var(--player-area-bottom-padding);
+  min-height: 0;
+  background: var(--panel);
+}
+.player-area.turn-arrival > :not(.controls):not(.spell-drag-preview):not(.trinket-deck-pile) {
+  animation: player-area-turn-arrival var(--transition-player-turn) cubic-bezier(.22, .61, .36, 1) both;
+}
+@keyframes player-area-turn-arrival {
+  from { opacity: .68; }
+  to { opacity: 1; }
+}
+.char-row { display: flex; align-items: center; gap: 14px; justify-content: center; min-height: 34px; }
+.char-select { display: flex; gap: 24px; }
+.char-btn {
+  position: relative;
+  display: grid;
+  grid-template-columns: var(--control-player-token-size) max-content max-content;
+  column-gap: 8px;
+  row-gap: 2px;
+  align-items: center;
+  background: var(--panel-2);
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 8px;
+  padding: 4px 8px;
+  cursor: pointer;
+  color: var(--text);
+  white-space: nowrap;
+}
+.char-btn.sel { border: 2px solid var(--accent); }
+.char-btn.cur { outline: 2px solid var(--ok); outline-offset: 1px; }
+.char-btn.cur.turn-marker-arrival { animation: turn-marker-arrival var(--transition-player-turn) ease-out; }
+@keyframes turn-marker-arrival {
+  0%, 100% { background-color: var(--panel-2); }
+  45% { background-color: rgba(112, 214, 156, .2); }
+}
+.char-btn .char-turn-token { grid-area: 1 / 1 / 3 / 2; display: block; width: var(--control-player-token-size); height: var(--control-player-token-size); border-radius: 6px; object-fit: cover; }
+.char-btn .cn { grid-area: 1 / 2; font-weight: 700; text-transform: capitalize; }
+.char-btn .chp { grid-area: 1 / 3; color: var(--danger); font-size: 12px; font-weight: 700; }
+.char-btn .cch { grid-area: 2 / 2; color: var(--accent); font-size: 12px; }
+.char-btn .chand { grid-area: 2 / 3; color: var(--muted); font-size: 12px; }
+.char-btn .chand strong { color: var(--text); }
+.char-btn.has-hand-gain .chand, .char-btn.has-hand-gain .chand strong { color: var(--ok); }
+.char-btn .chand-gain {
+  position: absolute;
+  bottom: 0;
+  right: -20px;
+  min-width: 25px;
+  padding: 0 4px;
+  border: var(--pixel-border-width) solid var(--ok);
+  border-radius: var(--radius-pill);
+  background: var(--panel);
+  color: var(--ok);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  pointer-events: none;
+}
+.char-btn .cex { grid-column: 2 / -1; color: var(--danger); font-size: 11px; font-weight: 700; }
+.phase-line { display: flex; gap: 10px; align-items: center; }
+.phase-line .turn { font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
+.phase-line .phase { color: var(--warn); }
+
+.breaches {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  justify-content: center;
+  min-height: calc(var(--breach-size) + var(--breach-action-space));
+}
+.trinket-deck-pile {
+  position: absolute;
+  /* Prepped spells are anchored to the Breach artwork, not the taller row
+     that also includes focus/open buttons. Keep the shared 30% artwork anchor. */
+  top: calc(56px + var(--breach-size) * .3);
+  /* Keep the Trinket centered on the third Supply column as both card sizes
+     track the same responsive Market card width. */
+  right: 10px;
+  z-index: var(--z-board-interaction);
+  display: block;
+  width: var(--market-card-width);
+  height: auto;
+  aspect-ratio: var(--card-aspect-ratio);
+  margin: 0;
+  padding: 0;
+  transform: translateY(-50%);
+  border: 0;
+  border-radius: var(--card-radius);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.trinket-deck-pile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.trinket-deck-pile .player-pile-card { width: 100%; height: 100%; }
+.breach {
+  flex: 0 1 var(--breach-size);
+  width: var(--breach-size);
+  height: auto;
+  min-width: 0;
+  min-height: calc(var(--breach-size) + var(--breach-action-space));
+  text-align: center;
+  position: relative;
+  overflow: visible;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.breach.absent { visibility: hidden; pointer-events: none; }
+.breach-token-wrap {
+  width: 100%;
+  height: var(--breach-size);
+  position: relative;
+  isolation: isolate;
+  border-radius: var(--breach-radius);
+}
+.breach-artwork {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-board-token);
+  border-radius: var(--breach-radius);
+}
+.breach-hover-target {
+  position: absolute;
+  inset: 0;
+  z-index: var(--z-board-interaction);
+  display: block;
+  border-radius: var(--breach-radius);
+}
+.breach-token {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  border-radius: var(--breach-radius);
+  pointer-events: none;
+}
+.breach-token-hidden { opacity: 0; }
+.breach-flip-scene {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: hidden;
+  border-radius: var(--breach-radius);
+  transform-style: preserve-3d;
+}
+.breach-flip-card {
+  position: absolute;
+  inset: 0;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.breach-flip-face {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  border-radius: var(--breach-radius);
+  backface-visibility: hidden;
+  pointer-events: none;
+}
+.breach-upgrade-strip {
+  position: absolute;
+  right: calc(100% + var(--space-2));
+  top: calc(50% + var(--breach-spell-offset-y));
+  z-index: var(--z-board-spell);
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: var(--space-2);
+  width: max-content;
+  height: var(--hand-card-height);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.breach-upgrade-strip .card-hover-wrap { display: contents; }
+.breach-upgrade-card.card.card-image {
+  flex: 0 0 var(--hand-card-width);
+  width: var(--hand-card-width);
+  min-width: var(--hand-card-width);
+  height: var(--hand-card-height);
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+  pointer-events: auto;
+}
+.breach-upgrade-strip .breach-upgrade-card:hover { transform: none; }
+.breach-attached-relic.card-surface.card.card-image {
+  position: absolute;
+  /* Keep this card behind the Breach artwork so its upper section is covered
+     and its lower section remains visible. A positive offset moves it down. */
+  top: 50%;
+  left: 50%;
+  z-index: calc(var(--z-board-token) - 1);
+  width: var(--breach-spell-width);
+  min-width: 0;
+  aspect-ratio: var(--card-aspect-ratio);
+  height: auto;
+  transform: translate(
+    calc(-50% + var(--breach-spell-offset-x)),
+    calc(-50% + var(--breach-attached-relic-offset-y))
+  );
+  pointer-events: auto;
+  cursor: default;
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--card-radius);
+}
+.breach.open .breach-token-wrap { border-color: var(--gem); }
+.breach.castable { cursor: pointer; }
+.breach.castable:hover { background: transparent; }
+.breach.castable.must-cast:hover { background: transparent; }
+.breach.prep-ok { cursor: pointer; }
+.breach.prep-ok .breach-token-wrap { outline: 2px solid var(--accent); }
+.breach.prep-ok:hover { background: transparent; }
+.breach.drag-target .breach-token-wrap { outline: 2px solid var(--accent); }
+.breach.move-drag-target .breach-token-wrap { outline: 2px solid var(--accent); }
+.breach.drag-target:hover { background: transparent; }
+.breach .spell { color: var(--spell); font-size: 12px; }
+.breach .spell img {
+  display: block;
+  margin-inline: auto;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.breach-spell-card-frame {
+  position: relative;
+  width: var(--breach-spell-width);
+  aspect-ratio: var(--card-aspect-ratio);
+  margin-inline: auto;
+  overflow: hidden;
+  border-radius: 9px;
+}
+.breach-spell-card-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  pointer-events: none;
+}
+.breach-spell-card-frame.divided-damage-confirm-spell {
+  z-index: var(--z-board-spell);
+  display: block;
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.breach-spell-card-frame.divided-damage-confirm-spell::after { border: 2px solid var(--accent); }
+.breach-spell-card-frame.divided-damage-confirm-spell:hover::after {
+  border-color: #9abaff;
+}
+.breach-spell-card-frame.divided-damage-confirm-spell:hover {
+  box-shadow: 0 0 0 2px rgba(122, 162, 255, .38);
+}
+.breach-spell-card-frame.face-down-spell {
+  aspect-ratio: var(--pile-card-aspect-ratio);
+}
+.breach-spell-card-frame .spell-damage-badge {
+  position: absolute;
+  top: 36%;
+  left: 50%;
+  display: grid;
+  width: clamp(28px, 34%, 44px);
+  height: auto;
+  aspect-ratio: 1;
+  box-sizing: border-box;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(72, 77, 88, .78);
+  color: #fff;
+  /* Leave room for conditional previews such as "1/3" inside the badge. */
+  font-size: clamp(11px, 3.2vw, 17px);
+  font-weight: 700;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .12s ease, visibility 0s linear .12s;
+}
+.breach-spell-card-frame:hover .spell-damage-badge-hover,
+.breach-spell-card-frame .spell-damage-badge-active {
+  opacity: 1;
+  visibility: visible;
+  transition-delay: 0s;
+}
+.breach-spell-card-frame.castable-spell::after { border: 2px solid #e6c84f; }
+.breach-spell-card-frame.face-down-spell.castable-spell:not(.must-cast-spell)::after { border-color: var(--face-down-cast-border); }
+.breach-spell-card-frame.manual-prepped-action {
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(97, 218, 151, .35) inset;
+  cursor: pointer;
+}
+.breach-spell-card-frame.manual-prepped-action::after { border: 2px solid var(--ok); }
+.breach-spell-card-frame.manual-prepped-action:hover::after { border-color: var(--ok); }
+.breach-spell-card-frame.ability-prepped-spell,
+.breach-spell-card-frame.pending-prepped-spell { cursor: pointer; }
+.breach-spell-card-frame.ability-prepped-spell::after,
+.breach-spell-card-frame.pending-prepped-spell::after { border: 2px solid #e6c84f; }
+.breach-spell-card-frame.repeat-cast-confirmation::after {
+  border: 2px solid var(--must-cast);
+  box-shadow: 0 0 0 1px rgba(224, 82, 82, .28);
+}
+.breach-spell-card-frame.repeat-cast-confirmation { cursor: pointer; }
+.breach-spell-card-frame.repeatable-prepped-action {
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(122, 162, 255, .38) inset;
+  cursor: pointer;
+}
+.breach-spell-card-frame.repeatable-prepped-action::after { border: 2px solid var(--accent); }
+.breach-spell-card-frame.repeatable-prepped-action:hover::after { border-color: #9abaff; }
+.breach-spell-card-frame.pending-prepped-spell-selected {
+  box-shadow: 0 0 0 2px rgba(104, 214, 151, .35);
+  transform: translateY(-3px);
+}
+.breach-spell-card-frame.pending-prepped-spell-selected::after { border: 2px solid var(--ok); }
+.breach-spell-card-frame.pending-cast-spell {
+  box-shadow: 0 0 0 2px rgba(158, 206, 106, .35);
+}
+.breach-spell-card-frame.pending-cast-spell::after { border: 2px solid var(--ok); }
+.breach-spell-card-frame.repositionable-spell { cursor: grab; }
+.breach-spell-card-frame.repositionable-spell:active { cursor: grabbing; }
+.breach-spell-card-frame.dragging-prepped-spell {
+  visibility: hidden;
+  pointer-events: none;
+}
+.breach-spell-card-frame.must-cast-spell::after { border: 2px solid var(--must-cast); }
+.breach.mandatory-prepped-effect { cursor: default; }
+.breach-spell-card-frame.mandatory-prepped-effect {
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(255, 48, 48, .35) inset;
+  cursor: pointer;
+}
+.breach-spell-card-frame.mandatory-prepped-effect::after { border: 2px solid var(--must-cast); }
+.breach-spell-card-frame span {
+  display: grid;
+  width: 100%;
+  height: 100%;
+  place-items: center;
+  padding: 8px;
+  text-align: center;
+}
+.breach-spell-card-frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: inherit;
+}
+.breach .spell:has(img) {
+  position: absolute;
+  top: calc(50% + var(--breach-spell-offset-y) - (var(--spell-stack-index, 0) * var(--breach-spell-stack-step)));
+  left: 50%;
+  z-index: var(--z-board-spell);
+  transform: translate(calc(-50% + var(--breach-spell-offset-x)), -50%);
+  width: 100%;
+}
+.breach .btns {
+  position: relative;
+  z-index: var(--z-board-interaction);
+  display: flex;
+  gap: 4px;
+  width: 100%;
+  justify-content: center;
+}
+.breach .btns .btn.small {
+  min-height: 30px;
+  padding: 5px 10px;
+  font-size: 12px;
+}
+.breach .btns .btn.small.effect-focus-target {
+  border-color: var(--decision-focus-target);
+  color: #ffd2a1;
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(242, 153, 74, .28);
+}
+.breach .btns .btn.small.effect-focus-target:hover:not(:disabled) {
+  border-color: var(--decision-focus-target);
+  background: rgba(242, 153, 74, .14);
+}
+

@@ -412,7 +412,7 @@ onBeforeUnmount(() => {
       <div class="debug-section">
         <DebugCardPicker v-model="addCard" :cards="allCards" title="Add card" />
         <div class="debug-card-selected" aria-live="polite">
-          <CardHoverPreview v-if="cardImageUrl(addCard)" :card-id="addCard" :preview-width="210" :preview-height="315">
+          <CardHoverPreview v-if="cardImageUrl(addCard)" :card-id="addCard" :preview-width="210" :preview-height="291.02">
             <img :src="cardImageUrl(addCard)" :alt="getCard(addCard).name" draggable="false" />
           </CardHoverPreview>
           <div>
@@ -451,7 +451,7 @@ onBeforeUnmount(() => {
           :global-shortcut="false"
         />
         <div class="debug-card-selected" aria-live="polite">
-          <CardHoverPreview v-if="cardImageUrl(addNemesisCard)" :card-id="addNemesisCard" :preview-width="210" :preview-height="315">
+          <CardHoverPreview v-if="cardImageUrl(addNemesisCard)" :card-id="addNemesisCard" :preview-width="210" :preview-height="291.02">
             <img :src="cardImageUrl(addNemesisCard)" :alt="getCard(addNemesisCard).name" draggable="false" />
           </CardHoverPreview>
           <div>

@@ -162,6 +162,7 @@ function specificCardImage(cardId: string): string | undefined {
     :panel-class="['pile-modal', 'draggable-modal', {
       'pile-modal-with-labels': usesRowLabels,
       'qu-form-pile-modal': isQuFormDeck,
+      'pile-modal-trinket': isTrinketDeck,
     }]"
     :panel-style="{ ...modalStyle, '--pile-columns': columns }"
     :dragging="dragging"

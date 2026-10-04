@@ -1,0 +1,6 @@
+/* ===== Log ===== */
+.log { flex: 1; overflow-y: auto; font-size: 12px; line-height: 1.7; }
+.log .info { color: var(--muted); }
+.log .ok { color: var(--ok); }
+.log .warn { color: var(--warn); }
+

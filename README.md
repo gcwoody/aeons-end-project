@@ -7,16 +7,20 @@
 ## 当前范围
 
 - 固定的双人场景：两名不同的 Mage，对抗一名 Nemesis。
-- 已注册 8 个 Wave 1 Mage：Jian、Brama、Xaxos、Adelheim、Kadir、Lash、Mist、Phaedraxa。
+- 已注册 8 个 Wave 1 Mage，以及 10 个 Wave 9 Mage：Indira、Nook、Stake、Wolf、Dezmodia、Remnant、Inco、Qu、Tressa、Yan Magda。
 - 已注册 Nemesis：Rageborne、Prince of Gluttons。
-- Wave 1 的 27 张市场候选牌：Gems、Relics 和 Spells。
+- Wave 1 与 Wave 9 的 Gems、Relics、Spells 市场牌，以及 Wave 9 Trinket deck。
 - Setup 支持 Mage/Nemesis 图片选择、随机选择、Nemesis 难度，以及 Template 1 市场九宫格和逐槽位替换。
 - 支持卡牌效果、目标决策、Breach、Nemesis 的 Attack/Power/Minion、Unleash 和当前已接入的 Nemesis 专属规则。
 - 支持 Save & Exit、Resume、浏览器刷新恢复，以及最多 10 步的 Ctrl+Z 撤销；撤销历史会随存档保留。
 - 支持 Ctrl+D 调试面板，用于调整生命、Aether、充能、Knowledge、卡牌、Breach 和 JSON 存档。
-- Wave 9 已接入 Nook、Indira、Dezmodia、Remnant、Stake、Wolf 及其对应的 Swap、Conjure、Specific Deck、Treasure、Rift/Prototype Breach、Breach-only Aether、Knowledge、Breach Upgrade 和 Doom 等机制。
+- Wave 9 的 10 位 Mage、供应牌和 Trinket deck 已接入。Friends、Foes、Banners、Wave 9 Nemeses 与 Basic Nemesis Cards 目前只有资料，尚未接入运行时。
 
 当前不是联机游戏：没有账号、服务器、数据库或多人同步。存档只保存在当前浏览器的 `localStorage` 中，清除网站数据会删除存档。
+
+## 推荐游玩配置
+
+本游戏面向桌面浏览器，建议最大化窗口或按 `F11` 全屏，以 16:9 横屏游玩；推荐 1920×1080 或更高分辨率。前端的最低设计目标是浏览器内容区 1440×900 CSS 像素；更小的窗口不保证布局和操作体验。
 
 ## 快速开始
 
@@ -75,8 +79,7 @@ ui/                UI 统一开发指南和截图
 
 - 新增卡牌、Mage、Nemesis 或场景：先阅读 [dev-guide.md](dev-guide.md)。
 - 处理 UI 组件、状态、布局、弹窗、悬停、拖拽和 `z-index`：阅读 [ui/ui-guide.md](ui/ui-guide.md)。
-- 进行发布前准备：阅读 [design/release-readiness-plan.md](design/release-readiness-plan.md)。
-- 配置或排查 Vercel：阅读 [design/deployment-guide.md](design/deployment-guide.md)。
+- 配置托管时，以当前托管平台的项目设置和构建输出为准；本仓库不维护单独的发布或部署计划文档。
 
 ## 浏览器快捷键
 
@@ -93,6 +96,6 @@ ui/                UI 统一开发指南和截图
 
 ## 发布说明
 
-当前版本适合通过 Vercel Preview 分享给朋友试玩。Vercel 只负责托管静态前端，不会自动提供联机、账号或云端存档。由于 UI 构建需要读取 `aeons-end-engine/` 和 `scripts/`，部署时必须按照 [design/deployment-guide.md](design/deployment-guide.md) 配置 Monorepo Root Directory 和构建权限。
+当前版本适合通过 Vercel Preview 分享给朋友试玩。Vercel 只负责托管静态前端，不会自动提供联机、账号或云端存档。部署时需确认托管平台允许 UI 构建读取 `aeons-end-engine/` 和 `scripts/`。
 
 分享时应提供网站地址，而不是部署 Token 或项目管理权限。建议保留上一版 Preview/Deployment，以便出现阻塞问题时回滚。

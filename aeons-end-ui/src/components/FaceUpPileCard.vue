@@ -22,7 +22,7 @@ function inspect(event: MouseEvent) {
 </script>
 
 <template>
-  <CardHoverPreview :card-id="cardId" :preview-width="210" :preview-height="315">
+  <CardHoverPreview :card-id="cardId" :preview-width="210" :preview-height="291.02">
     <button
       type="button"
       class="face-up-pile-card"

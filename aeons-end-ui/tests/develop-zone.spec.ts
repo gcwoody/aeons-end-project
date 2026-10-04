@@ -138,3 +138,45 @@ test('Develop uses right-click from supply, both clicks from the shared zone, an
   await expect(page.locator('.played-zone-swap .card')).toHaveCount(swapCardCount)
   await expect(page.locator('.swap-zone-owner-label').first()).toHaveText(ownerName ?? '')
 })
+
+test('market purchase and Develop affordances respect two available Aether', async ({ page }) => {
+  await startTestGame(page)
+  await resolveStartupInterrupts(page)
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  const game = debugState.game
+  const player = game.players[0]
+  game.currentTurn = player.id
+  game.currentPhase = 'main'
+  game.pendingDecision = null
+  game.pendingEffect = null
+  game.hasDevelopZone = true
+  game.supplyMechanics = ['develop']
+  debugState.phase = 'main'
+  debugState.selectedPlayer = player.id
+  player.playerCardsInPlay = []
+  player.playerCardSupplyTargets = []
+  player.playerCardPowerTokens = []
+  player.bonusAether = 1
+  player.aetherTokens = 1
+  player.regularAetherSpent = 0
+  player.conditionalAetherEarned = {}
+  let coiledPileIndex = game.market.piles.findIndex((pile: { cardId: string }) => pile.cardId === 'coiled_trillium')
+  if (coiledPileIndex < 0) coiledPileIndex = 0
+  game.market.piles[coiledPileIndex] = { cardId: 'coiled_trillium', remaining: 7 }
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const coiledPile = page.locator('.market-grid .pile').filter({
+    has: page.locator('img[alt="Coiled Trillium"]'),
+  }).first()
+  await expect(coiledPile).not.toHaveClass(/can-buy/)
+  await expect(coiledPile).toHaveAttribute('aria-disabled', 'true')
+  await expect(coiledPile.locator('.develop-cost-badge')).toHaveText('D 3')
+  await expect(coiledPile.locator('.develop-cost-badge')).not.toHaveClass(/available/)
+  await expect(coiledPile.locator('.remaining')).toHaveText('7')
+  await expect(page.locator('.played-zone-develop .card')).toHaveCount(0)
+})

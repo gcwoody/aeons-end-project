@@ -1,0 +1,217 @@
+.card {
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--card-radius);
+  padding: var(--space-4) var(--space-5);
+  min-width: calc(var(--pile-card-width) - var(--space-1));
+  cursor: pointer;
+  background: #171c2c;
+  transition: transform var(--transition-card), border-color var(--transition-border);
+  user-select: none;
+  text-align: center;
+}
+.card:hover {
+  position: relative;
+  z-index: var(--z-card-hover);
+  transform: translateY(calc(-1 * var(--card-hover-lift)));
+  border-color: var(--border);
+}
+.hand .card.spell-draggable { cursor: grab; }
+.hand .card.spell-draggable.dragging,
+.hand .card.spell-draggable:active { cursor: grabbing; }
+.hand .card.spell-draggable.dragging { opacity: .35; }
+.hand .card.dragging { border-color: var(--border); box-shadow: none; }
+.card.selected { border-color: var(--border); box-shadow: none; }
+.card .cname { font-weight: 600; font-size: var(--font-size-control); }
+.card.gem, .card.spell, .card.relic { border-top: var(--pixel-border-width) solid var(--border); }
+.card.small { min-width: 0; padding: 6px 10px; cursor: pointer; }
+.card.small.clickable:hover { border-color: var(--border); }
+.played-zone-center .card.prepped-action {
+  border: 2px solid var(--ok);
+  box-shadow: 0 0 0 var(--pixel-border-width) rgba(97, 218, 151, .35) inset;
+}
+.played-zone-center .card.prepped-action:hover { border-color: var(--ok); }
+.card-hover-wrap { display: contents; }
+.card.card-image {
+  width: var(--hand-card-width);
+  min-width: var(--hand-card-width);
+  height: var(--hand-card-height);
+  padding: 0;
+  overflow: hidden;
+}
+.played-zone .card.card-image {
+  width: auto;
+  min-width: 0;
+  height: var(--played-card-height);
+  aspect-ratio: var(--card-aspect-ratio);
+}
+.card.card-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
+}
+
+/* Shared card shell image contract used by CardSurface across game zones. */
+.card-surface {
+  position: relative;
+}
+.card-surface--large {
+  width: var(--large-card-width);
+  height: var(--large-card-height);
+  aspect-ratio: var(--card-aspect-ratio);
+  flex: 0 0 auto;
+}
+.card-surface > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
+}
+/* Keep player-in-play cards full-size even when they also carry the generic
+   image-card class. The card image must fill its entire pile. */
+.player-in-play-card.card.card-image,
+.player-in-play-card.card {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  height: 100%;
+}
+.player-cards-in-play-pile .player-in-play-card:hover {
+  transform: none;
+}
+
+.spell-drag-preview {
+  position: fixed;
+  z-index: var(--z-drag-preview);
+  width: var(--pile-card-width);
+  height: var(--pile-card-height);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  border: 2px solid var(--accent);
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  box-shadow: 0 12px 24px rgba(0, 0, 0, .35);
+  background: #171c2c;
+}
+
+/* A spell drag owns the pointer. Other card surfaces must not react to
+   hover/click while the card is travelling across the board. */
+body.spell-dragging .card-hover-wrap,
+body.spell-dragging .card-hover-wrap > * {
+  pointer-events: none !important;
+}
+body.spell-dragging .card-hover-preview {
+  visibility: hidden;
+}
+.spell-drag-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.spell-drag-preview span {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  padding: 10px;
+  text-align: center;
+  font-weight: 600;
+}
+
+.card-hover-preview {
+  position: fixed;
+  z-index: var(--z-card-preview);
+  overflow: hidden;
+  border-radius: var(--radius-card);
+  background: #171c2c;
+  box-shadow: 0 16px 34px rgba(0, 0, 0, .5);
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  animation: card-preview-in .12s ease-out;
+}
+.card-hover-preview.breach-preview {
+  border-radius: var(--breach-radius);
+}
+.card-hover-preview.mage-preview {
+  border-radius: 6%;
+}
+.card-hover-preview.setup-market-picker-preview { z-index: calc(var(--z-supply-decision) + 1); }
+.card-hover-preview img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.card-hover-fallback {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  padding: 20px;
+  text-align: center;
+}
+.mage-modal { padding: 18px; }
+.mage-modal-frame {
+  width: min(80vw, 900px);
+  height: min(62vw, 650px);
+  overflow: hidden;
+  border-radius: var(--mage-modal-radius);
+  background: var(--panel);
+}
+.mage-modal-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--mage-modal-radius);
+}
+.overlay.mage-overlay { z-index: var(--z-mage-modal); }
+.nemesis-mat-preview { border-radius: 8px; }
+.nemesis-mat-modal-frame {
+  height: min(74vh, 800px);
+  width: auto;
+  max-width: 84vw;
+  aspect-ratio: var(--nemesis-mat-ratio);
+  border-radius: 9px;
+}
+.nemesis-mat-modal-frame .mage-modal-image { object-fit: contain; border-radius: 9px; }
+.nemesis-reveal-overlay { z-index: var(--z-decision); }
+.decision-overlay.nemesis-draw-reveal-screen {
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--overlay-backdrop);
+  opacity: 1;
+  pointer-events: auto;
+  cursor: pointer;
+}
+.nemesis-draw-reveal-screen .nemesis-reveal-card {
+  width: min(320px, calc(100vw - 48px));
+  max-height: calc(var(--viewport-height) - 48px);
+  margin: 0;
+  box-shadow: 0 18px 64px rgba(0, 0, 0, .5);
+}
+.nemesis-reveal-modal { min-width: min(360px, calc(100vw - 24px)); max-height: calc(var(--viewport-height) - 24px); overflow: auto; }
+.nemesis-reveal-card {
+  width: min(252px, 58vw);
+  height: auto;
+  max-height: 68vh;
+  aspect-ratio: var(--card-aspect-ratio);
+  margin: 14px auto;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #151a29;
+}
+.nemesis-reveal-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.nemesis-reveal-modal .confirm-button {
+  min-height: 46px;
+  padding-block: 12px;
+  font-size: 15px;
+}
+@keyframes card-preview-in {
+  from { opacity: 0; transform: translate(-50%, -50%) scale(.96); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+

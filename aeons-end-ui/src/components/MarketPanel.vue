@@ -32,7 +32,7 @@ function onPileClick(pileIndex: number) {
   }
   if (!canBuy.value) return
   const pile = buyables.value.find(candidate => candidate.pileIndex === pileIndex)
-  if (!pile || pile.remaining <= 0) return
+  if (!pile || pile.remaining <= 0 || !pile.affordable) return
   buyCard(pileIndex)
 }
 
@@ -95,17 +95,19 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
           v-if="b.remaining > 0"
           :card-id="b.cardId"
           :preview-width="280"
-          :preview-height="394"
+          :preview-height="388.03"
           :preview-delay="200"
         >
           <button
             type="button"
             class="pile"
+            :data-supply-card-id="b.cardId"
             :class="{
-              'can-buy': canBuy && !marketDecision,
+              'can-buy': canBuy && !marketDecision && b.affordable,
               'decision-market-choice': !!marketChoice(b.pileIndex),
               'develop-action-available': canDevelopSupplyPile(b.pileIndex),
             }"
+            :aria-disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy || !b.affordable"
             :title="developHint(b.pileIndex, b.developCost)"
             :disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy"
             @click="onPileClick(b.pileIndex)"
@@ -125,7 +127,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
               :key="`set-${setCardId.ownerId}-${setCardId.cardId}-${setCardId.cardIndex}`"
               :card-id="setCardId.cardId"
               :preview-width="280"
-              :preview-height="394"
+              :preview-height="388.03"
               :preview-delay="180"
             >
               <span
@@ -160,7 +162,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             :key="`set-empty-${setCard.ownerId}-${setCard.cardId}-${setCard.cardIndex}`"
             :card-id="setCard.cardId"
             :preview-width="280"
-            :preview-height="394"
+            :preview-height="388.03"
             :preview-delay="180"
           >
             <span

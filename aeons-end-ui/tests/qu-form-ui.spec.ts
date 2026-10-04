@@ -79,6 +79,14 @@ test('Qu Form card supports hover preview and opens at large size', async ({ pag
 
   await page.locator('.market-grid .pile.can-buy').first().click()
   const decisionCard = page.locator('.decision-form-card')
+  // Some randomly selected supply cards have their own on-gain decision. Resolve
+  // those first so this assertion reaches Qu's queued Form decision.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    if (await decisionCard.isVisible().catch(() => false)) break
+    const noButton = page.getByRole('button', { name: 'No', exact: true })
+    if (!await noButton.isVisible().catch(() => false)) break
+    await noButton.click()
+  }
   await expect(decisionCard).toBeVisible()
   await expect(decisionCard.locator('img')).toHaveAttribute('alt', /Qu's Form Card — Giver Form/)
   await expect.poll(async () =>

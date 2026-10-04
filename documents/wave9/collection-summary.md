@@ -11,7 +11,12 @@
 - Local image references not retained after manual review: 30
 - Unresolved image names: 0
 
+The Surface and The Returned mini-expansion image collection is tracked separately:
+[`mini-expansion-image-manifest.json`](../../image-database/cards/wave9/mini-expansion-image-manifest.json)
+contains 134 image records with source URLs and local paths. It is separate from the
+277 manually reviewed Beyond the Breach images above.
+
 ## Scope
 
 - Included: six Mages, 21 Supply card sets, Trinkets, Friends, Foes, Banners, five Nemeses, and Basic Nemesis Cards.
-- Excluded: Treasures, Upgraded Basic Nemesis Cards, Expedition/Battle 5 material, and mini expansions.
+- Excluded from this Beyond the Breach collection: Treasures, Upgraded Basic Nemesis Cards, and Expedition/Battle 5 material. The Surface and The Returned have separate card data and image records.

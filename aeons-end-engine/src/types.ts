@@ -46,7 +46,10 @@ export type EffectAmount =
       kind: 'last_selection_cost'
     }
   | { kind: 'last_chosen_token_amount' }
-  | { kind: 'current_minion_life' }
+  | {
+      /** Current life of the Nemesis Minion whose effect is resolving. */
+      kind: 'current_minion_life'
+    }
   | { kind: 'unspent_aether' }
 
 export type EffectComparison = 'equals' | 'at_least'
@@ -447,6 +450,8 @@ export type PendingDecision = PendingDecisionBase & (
       candidates: PreppedSpellChoice[]
       min: number
       max: number
+      /** Keep single-choice selections pending until Confirm is pressed. */
+      confirmSelection?: boolean
       /** Choices that are required but remain on the board until confirmation. */
       requiredChoices?: PreppedSpellChoice[]
     }
@@ -463,6 +468,14 @@ export type PendingDecision = PendingDecisionBase & (
   | {
       kind: 'select_player_target'
       targets: PlayerTargetRef[]
+      /** Exact damage each player would suffer if selected for this effect. */
+      damageAmounts?: Record<PlayerId, number>
+      /** Action summary for a player-targeted discard, including an immediate self-draw follow-up. */
+      playerDiscardAction?: {
+        minAmount: number
+        maxAmount: number
+        drawAmount: number
+      }
     }
   | {
       kind: 'select_damage_target'
@@ -1048,7 +1061,13 @@ export type NemesisDiscardCost =
       minCost?: number
     }
   | { kind: 'discard_cards'; source: 'hand'; amount: number }
-  | { kind: 'destroy_prepped_spells'; amount: number; minCost?: number }
+  | {
+      kind: 'destroy_prepped_spells'
+      amount: number
+      minCost?: number
+      /** Defaults to the Mage paying this To Discard cost. */
+      playerScope?: 'payer' | 'any_player'
+    }
 
 export interface NemesisToDiscard {
   costs: NemesisDiscardCost[]

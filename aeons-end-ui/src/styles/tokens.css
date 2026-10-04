@@ -1,0 +1,151 @@
+:root {
+  --viewport-height: 100vh;
+  /* ===== Design tokens: geometry, rhythm, type and interaction ===== */
+  --font-family-ui: "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  --font-size-body: 14px;
+  --font-size-control: 13px;
+  --font-size-small: 12px;
+  --font-size-label: 11px;
+  --font-size-badge: 10px;
+  --line-height-tight: 1.2;
+  --line-height-body: 1.35;
+  --space-1: 4px;
+  --space-2: 6px;
+  --space-3: 8px;
+  --space-4: 10px;
+  --space-5: 12px;
+  --space-6: 14px;
+  --space-7: 16px;
+  --space-8: 20px;
+  --radius-pill: 999px;
+  --radius-control: 7px;
+  --radius-card: 9px;
+  --radius-panel: 10px;
+  --radius-modal: 12px;
+  /* Single source of truth for every rendered game card. */
+  --card-aspect-ratio: 63.5 / 88;
+  --mini-card-width: 55px;
+  --mini-card-height: 76.22px;
+  --pile-card-width: 122px;
+  --pile-card-height: 169.07px;
+  --pile-card-aspect-ratio: var(--card-aspect-ratio);
+  --large-card-width: 252px;
+  --large-card-height: 349.1px;
+  --card-hover-lift: 3px;
+  --control-height: 32px;
+  --control-gap: 10px;
+  --zone-gap: 10px;
+  --scrollbar-size: 10px;
+  --scrollbar-compact-size: 8px;
+  --transition-card: .1s;
+  --transition-border: .12s;
+  --transition-overlay: .12s;
+  --transition-modal: .22s;
+  --transition-player-turn: 600ms;
+  --turn-order-arrival-duration: 600ms;
+  --turn-order-arrival-scale: 7;
+  --turn-order-arrival-opacity: .50;
+  --card-flight-duration: 240ms;
+  --card-flight-easing: cubic-bezier(.22, .78, .24, 1);
+  --nemesis-draw-flight-duration: 500ms;
+  --nemesis-draw-flip-duration: 150ms;
+  --breach-focus-duration: 280ms;
+  --breach-open-duration: 560ms;
+  --breach-open-perspective: 620px;
+  --modal-padding: 26px 32px;
+  --breach-radius: 24%;
+  --breach-size: clamp(96px, 10vw, 132px);
+  --breach-spell-width: 88%;
+  --breach-spell-offset-x: 0%;
+  --breach-spell-offset-y: -20%;
+  --breach-attached-relic-offset-y: 18px; /* Positive values move it down. */
+  --hand-card-height: var(--pile-card-height);
+  --hand-card-width: var(--pile-card-width);
+  --hand-row-height: 190px;
+  --top-section-min-height: clamp(230px, 34vh, 360px);
+  --played-card-height: var(--mini-card-height);
+  --played-row-height: 130px;
+  --breach-spell-height: var(--mini-card-height);
+  --breach-spell-stack-step: 41px;
+  --breach-action-space: 36px;
+  /* Tracks the Market's card sizing as the top board grows with viewport
+     height. The Market panel applies a more exact container-height value. */
+  --market-width: max(160px, calc((var(--viewport-height) - 495px) * .528));
+  --market-card-width: calc((var(--market-width) - 32px) / 3);
+  --market-card-radius: 8px;
+  --market-card-ratio: var(--card-aspect-ratio);
+  --card-radius: var(--radius-card);
+  --mage-mat-ratio: 840 / 604;
+  --nemesis-mat-ratio: .75;
+  --mage-radius: 12px;
+  --mage-modal-radius: 40px;
+  --bg: #12151d;
+  --panel: #1b2030;
+  --panel-2: #232a3d;
+  --border: #2f3850;
+  --pixel-border-width: 2px;
+  --text: #dfe4f0;
+  --muted: #8b93a7;
+  --accent: #7aa2ff;
+  --recall-highlight: #65b8ff;
+  --gem: #5ad1c5;
+  --spell: #c678dd;
+  --must-cast: #ff3030;
+  --face-down-cast-border: #e6c84f;
+  --relic: #e0af68;
+  --nemesis: #f7768e;
+  --danger: #f7768e;
+  --player-hp: #8f0e1f;
+  --ok: #9ece6a;
+  --warn: #e0af68;
+  --decision-focus-target: #f2994a;
+  --two-button-choice-width: 420px;
+  --two-button-choice-gap: 10px;
+  --two-button-choice-button-height: 56px;
+  --two-button-choice-font-size: 14px;
+  --debug-number-width: 58px;
+  --damage-assigned-size: 1.35;
+  --damage-target-mat-border-width: 3px;
+  --damage-target-card-border-width: 2px;
+  --damage-target-border-color: #e6c84f;
+  --damage-target-border-glow: rgba(230, 200, 79, .35);
+  /* Global backdrop used by every modal overlay. Lower alpha shows more of the board. */
+  --overlay-backdrop: rgba(8, 10, 16, .38);
+  --overlay-in-duration: var(--transition-overlay);
+  --modal-in-duration: var(--transition-modal);
+  --modal-start-scale: .88;
+  --modal-start-offset-y: 16px;
+  --modal-start-blur: 6px;
+  /* Global stacking order. Local card layers (0-20) stay below board-level
+     controls; modal layers are intentionally separated for easy tuning. */
+  --z-board-token: 0;
+  --z-board-interaction: 2;
+  --z-board-spell: 3;
+  --z-played: 6;
+  --z-local-hover: 10;
+  --z-card-hover: 490;
+  --z-controls: 500;
+  --z-hand-row: 40;
+  --z-overlay: 50;
+  --z-drag-preview: 550;
+  --z-card-flight-shield: 630;
+  --z-card-flight: 640;
+  --z-turn-token-arrival: 645;
+  --z-damage-feedback: 1100;
+  --z-help: 110;
+  --z-decision: 120;
+  --z-pile-viewer: 130;
+  --z-save-confirm: 140;
+  --z-card-preview: 610;
+  --z-supply-decision: 620;
+  /* Debug tools must sit above board cards and controls so every control is
+     reachable, while remaining below supply decisions and exit confirmation. */
+  --z-debug: 600;
+  --z-mage-modal: 300;
+  --z-exit: 1000;
+}
+
+@supports (height: 100dvh) {
+  :root { --viewport-height: 100dvh; }
+}
+

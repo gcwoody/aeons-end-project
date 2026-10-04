@@ -162,7 +162,24 @@ test('Tressa Treasure action glow follows eligibility and the owning Mage turn',
   await editState(saved => {
     const tressa = saved.game.players.find((player: { mageType: string }) => player.mageType === 'tressa')
     saved.game.currentTurn = tressa.id
+    tressa.hand = []
   })
-  await expect(page.locator('.player-in-play-card')).toHaveClass(/in-play-action/)
+  const breachStance = page.locator('.player-in-play-card')
+  await expect(breachStance).not.toHaveClass(/in-play-action/)
+  await breachStance.click()
+  await expect(page.locator('.decision-modal')).toHaveCount(0)
+
+  await editState(saved => {
+    const tressa = saved.game.players.find((player: { mageType: string }) => player.mageType === 'tressa')
+    tressa.hand = ['crystal']
+  })
+  await expect(breachStance).toHaveClass(/in-play-action/)
+
+  await editState(saved => {
+    const tressa = saved.game.players.find((player: { mageType: string }) => player.mageType === 'tressa')
+    tressa.breaches.filter((breach: { present?: boolean }) => breach.present !== false)
+      .forEach((breach: { opened: boolean }) => { breach.opened = true })
+  })
+  await expect(breachStance).not.toHaveClass(/in-play-action/)
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 })

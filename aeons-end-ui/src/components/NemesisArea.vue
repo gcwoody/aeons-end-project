@@ -129,6 +129,25 @@ function confirmMainEffect(card: NemesisCardInPlay) {
   resolveDecision({ kind: 'confirm_nemesis_effect', accepted: true })
 }
 
+function nemesisCardInstanceId(card: NemesisCardInPlay): string {
+  return card.instanceId ?? `${card.cardId}:${card.placedAt}`
+}
+
+function activateNemesisCard(card: NemesisCardInPlay) {
+  const targetId = minionTargetId(card.placedAt)
+  if (isDamageTarget(targetId)) {
+    chooseDamageTarget(targetId)
+    return
+  }
+  if (isMainEffectTarget(card.instanceId ?? `${card.cardId}:${card.placedAt}`)) {
+    confirmMainEffect(card)
+    return
+  }
+  if (nemesisDiscardActions.value.some(action => action.instanceId === nemesisCardInstanceId(card))) {
+    discardAction(card)
+  }
+}
+
 function closeMat() { matModalOpen.value = false }
 
 watch(() => state.dismissibleOverlayVersion, closeMat)
@@ -143,7 +162,7 @@ const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
 onBeforeUnmount(unregisterDismissibleOverlay)
 
 function discardAction(card: NemesisCardInPlay) {
-  const action = nemesisDiscardActions.value.find(item => item.instanceId === card.instanceId)
+  const action = nemesisDiscardActions.value.find(item => item.instanceId === nemesisCardInstanceId(card))
   if (action) discardNemesisCard(action.instanceId)
 }
 
@@ -193,34 +212,7 @@ onBeforeUnmount(() => {
     </section>
 
     <div class="nemesis-board">
-      <div class="nemesis-info-bar" role="region" aria-label="Nemesis Info Bar">
-        <div class="nemesis-info-region nemesis-info-nemesis" aria-label="Nemesis Info">
-          <div v-if="Object.keys(nemesis.counters).length > 0" class="nemesis-info-counters" aria-label="Token Info">
-            <span v-for="(value, name) in nemesis.counters" :key="name" class="nemesis-info-token" :title="`${name} tokens`">
-              <img v-if="nemesisTokenImageUrl(nemesis.type, String(name))" :src="nemesisTokenImageUrl(nemesis.type, String(name))" :alt="`${name} token`" draggable="false" />
-              <span v-else>{{ name }}</span>
-              <strong>{{ value }}</strong>
-            </span>
-          </div>
-          <div class="hp-block">
-            <span class="hp-name">Nemesis</span>
-            <div class="hpbar nemesis"><i :style="{ width: pct(nemesis.hp / nemesis.maxHp) }" /></div>
-            <span class="hp-num"><b>{{ nemesis.hp }}</b>/{{ nemesis.maxHp }}</span>
-          </div>
-        </div>
-        <div class="nemesis-info-region nemesis-info-turn-order" aria-label="Turn Order Cards">
-          <TurnOrderBar />
-        </div>
-        <div class="nemesis-info-region nemesis-info-gravehold" aria-label="Gravehold Info">
-          <div class="hp-block">
-            <span class="hp-name">Gravehold</span>
-            <div class="hpbar grave"><i :style="{ width: pct(state.game!.gravehold.hp / state.game!.gravehold.maxHp) }" /></div>
-            <span class="hp-num"><b>{{ state.game!.gravehold.hp }}</b>/{{ state.game!.gravehold.maxHp }}</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="nemesis-board-lower">
+      <div class="nemesis-board-upper">
         <div class="nemesis-pile-column" aria-label="Nemesis discard piles">
           <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled }" :aria-label="`Open ${presentation.specificDiscard.label}`" :title="presentation.specificDiscard.label" @click="openNemesisSpecificDiscardPile">
             <CardHoverPreview v-if="presentation.specificDiscard.enabled && nemesis.strikeDiscard[0]" :card-id="nemesis.strikeDiscard[0]">
@@ -252,7 +244,7 @@ onBeforeUnmount(() => {
             @inspect="openNemesisSpecificPile"
           />
           <button type="button" class="nemesis-pile-slot nemesis-discard-button" aria-label="Open Nemesis Deck" title="Nemesis Deck" @click="openNemesisDeckPile">
-            <CardSurface v-if="nemesis.deck.length > 0" base-class="nemesis-pile-card" size="pile" :image-url="nemesisCardBackUrl()" image-alt="Nemesis Deck card back" />
+            <CardSurface v-if="nemesis.deck.length > 0" data-nemesis-deck-pile="true" base-class="nemesis-pile-card" size="pile" :image-url="nemesisCardBackUrl()" image-alt="Nemesis Deck card back" />
             <span v-else class="nemesis-pile-placeholder">Nemesis Deck 0</span>
             <span v-if="nemesis.deck.length > 0" class="nemesis-pile-count">{{ nemesis.deck.length }}</span>
           </button>
@@ -272,18 +264,46 @@ onBeforeUnmount(() => {
           </div>
           <div v-if="playCards.length > 0" ref="playScroll" class="nemesis-play-row nemesis-card-scroll">
             <div class="nemesis-card-track">
-              <CardHoverPreview v-for="card in playCards" :key="card.instanceId ?? `${card.cardId}:${card.placedAt}`" :card-id="card.cardId" :preview-width="210" :preview-height="315">
-                <div class="nemesis-play-card" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === card.instanceId), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(card.instanceId ?? `${card.cardId}:${card.placedAt}`) }]" @click="isDamageTarget(minionTargetId(card.placedAt)) ? chooseDamageTarget(minionTargetId(card.placedAt)) : confirmMainEffect(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
+              <CardHoverPreview v-for="card in playCards" :key="nemesisCardInstanceId(card)" :card-id="card.cardId" :preview-width="210" :preview-height="291.02">
+                <div class="nemesis-play-card" :data-damage-target="card.cardType === 'minion' ? minionTargetId(card.placedAt) : undefined" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(nemesisCardInstanceId(card)) }]" @click="activateNemesisCard(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
                   <img v-if="cardImageUrl(card.cardId)" :src="cardImageUrl(card.cardId)" :alt="getCard(card.cardId).name" draggable="false" />
                   <div v-else class="nemesis-card-fallback">{{ getCard(card.cardId).name }}</div>
                   <span v-if="dividedDamageAssigned(minionTargetId(card.placedAt)) > 0" class="damage-allocation-badge" :aria-label="`${dividedDamageAssigned(minionTargetId(card.placedAt))} damage assigned`">−{{ dividedDamageAssigned(minionTargetId(card.placedAt)) }}</span>
-                  <div class="nemesis-card-meta"><span>{{ cardCounter(card) }}</span><button v-if="nemesisDiscardActions.some(action => action.instanceId === card.instanceId)" class="btn small" data-card-preview-disabled @click.stop="discardAction(card)">To Discard</button></div>
+                  <div class="nemesis-card-meta"><span v-if="cardCounter(card)" class="nemesis-card-counter">{{ cardCounter(card) }}</span></div>
                 </div>
               </CardHoverPreview>
             </div>
           </div>
         </section>
       </div>
+
+      <div class="nemesis-info-bar" role="region" aria-label="Nemesis Info Bar">
+        <div class="nemesis-info-region nemesis-info-nemesis" aria-label="Nemesis Info">
+          <div v-if="Object.keys(nemesis.counters).length > 0" class="nemesis-info-counters" aria-label="Token Info">
+            <span v-for="(value, name) in nemesis.counters" :key="name" class="nemesis-info-token" :title="`${name} tokens`">
+              <img v-if="nemesisTokenImageUrl(nemesis.type, String(name))" :src="nemesisTokenImageUrl(nemesis.type, String(name))" :alt="`${name} token`" draggable="false" />
+              <span v-else>{{ name }}</span>
+              <strong>{{ value }}</strong>
+            </span>
+          </div>
+          <div class="hp-block" data-damage-target="nemesis">
+            <span class="hp-name">Nemesis</span>
+            <div class="hpbar nemesis"><i :style="{ width: pct(nemesis.hp / nemesis.maxHp) }" /></div>
+            <span class="hp-num"><b>{{ nemesis.hp }}</b>/{{ nemesis.maxHp }}</span>
+          </div>
+        </div>
+        <div class="nemesis-info-region nemesis-info-turn-order" aria-label="Turn Order Cards">
+          <TurnOrderBar />
+        </div>
+        <div class="nemesis-info-region nemesis-info-gravehold" aria-label="Gravehold Info">
+          <div class="hp-block" data-damage-target="gravehold">
+            <span class="hp-name">Gravehold</span>
+            <div class="hpbar grave"><i :style="{ width: pct(state.game!.gravehold.hp / state.game!.gravehold.maxHp) }" /></div>
+            <span class="hp-num"><b>{{ state.game!.gravehold.hp }}</b>/{{ state.game!.gravehold.maxHp }}</span>
+          </div>
+        </div>
+      </div>
+
     </div>
 
     <ModalBase

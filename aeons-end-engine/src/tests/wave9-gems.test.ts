@@ -50,7 +50,7 @@ function testAllNineWave9GemsAreRegisteredWithTheirCostsAndMechanics(): void {
   const expected: Array<[string, number]> = [
     ['atomized_ash', 3], ['hewn_gravitite', 3], ['irradiax_lump', 6],
     ['luminous_facet', 4], ['phosphor_nugget', 4], ['chromia_sphere', 5],
-    ['nebulae_fragment', 3], ['coiled_trillium', 3], ['ice_dusted_jewel', 3],
+    ['nebulae_fragment', 3], ['coiled_trillium', 4], ['ice_dusted_jewel', 3],
   ]
   for (const [cardId, cost] of expected) {
     assert(ALL_MARKET_CARDS[cardId], `${cardId} is in the Supply catalog`)

@@ -6,6 +6,7 @@ import GameTopArea from './components/GameTopArea.vue'
 import MarketPanel from './components/MarketPanel.vue'
 import PlayerArea from './components/PlayerArea.vue'
 import LogPanel from './components/LogPanel.vue'
+import DamageFeedbackLayer from './components/DamageFeedbackLayer.vue'
 import PileModal from './components/PileModal.vue'
 import CardDecisionModal from './components/CardDecisionModal.vue'
 import DebugPanel from './components/DebugPanel.vue'
@@ -91,9 +92,9 @@ function onKeydown(e: KeyboardEvent) {
     togglePlayerPile('discard')
     return
   }
-  if (e.code === 'Space' && !e.shiftKey && canConfirmNemesisDrawWithSpace()) {
+  if (e.code === 'Space' && !e.shiftKey && state.game?.pendingDecision?.kind === 'confirm_nemesis_draw') {
     e.preventDefault()
-    if (e.repeat) return
+    if (e.repeat || !canConfirmNemesisDrawWithSpace()) return
     resolveDecision({ kind: 'confirm_nemesis_draw', accepted: true })
     return
   }
@@ -134,8 +135,10 @@ function onKeydown(e: KeyboardEvent) {
       toggleDebug()
       return
     }
-    // Decision modals represent an in-progress game effect and cannot be dismissed.
-    if (state.game.pendingDecision || state.game.pendingEffect) {
+    // Nemesis Main's red-highlighted card is an inline confirmation rather
+    // than a dialog, so it is safe to save and resume at that point. Keep all
+    // actual decisions and suspended effects modal until the player answers.
+    if ((state.game.pendingDecision || state.game.pendingEffect) && !canConfirmNemesisEffectWithSpace()) {
       return
     }
     if (dismissTopmostOverlay()) {
@@ -148,8 +151,10 @@ function onKeydown(e: KeyboardEvent) {
 /** Match the visible Confirm button for a revealed Nemesis card. */
 function canConfirmNemesisDrawWithSpace(): boolean {
   const game = state.game
+  const decision = game?.pendingDecision
   return !!game
-    && game.pendingDecision?.kind === 'confirm_nemesis_draw'
+    && decision?.kind === 'confirm_nemesis_draw'
+    && (decision.source === 'specific_deck' || !state.nemesisDrawRevealAnimating)
     && !state.viewPile
     && !state.helpOpen
     && !state.exitPrompt
@@ -236,7 +241,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <UiGallery v-if="isUiGallery" />
   <SetupScreen v-else-if="!state.game" />
-  <div v-else class="app">
+  <div v-else class="app" :class="{ 'card-motion-batch-active': state.cardMotionBatchActive }">
     <div class="main-col">
       <div class="top-section">
         <GameTopArea class="top-main" />
@@ -245,6 +250,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       <PlayerArea />
     </div>
     <LogPanel class="log-col" />
+    <DamageFeedbackLayer />
+    <div v-if="state.cardMotionBatchActive" class="card-motion-shield" aria-hidden="true" />
+    <div v-if="state.turnTransitionActive" class="turn-transition-shield" aria-hidden="true" />
 
     <PileModal />
     <CardDecisionModal />

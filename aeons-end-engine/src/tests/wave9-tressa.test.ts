@@ -159,6 +159,38 @@ function testBreachStanceCannotBeActivatedDuringAnAllysMainPhase(): void {
   assertEqual(game.pendingDecision, null, 'Breach Stance creates no decision during the ally\'s turn')
 }
 
+function testBreachStanceIsUnavailableWithoutDiscardAndFocusTargets(): void {
+  const game = freshGame('breach_stance')
+  const tressa = game.players[0]!
+  game.currentTurn = tressa.id
+
+  tressa.hand = []
+  assert(!getPlayerCardInPlayActions(game, tressa.id).some(action => action.cardId === 'breach_stance'),
+    'Breach Stance is not highlighted when Tressa has no card to discard')
+  const noCardResult = activatePlayerCardInPlayAction(game, tressa.id, 0)
+  assert(noCardResult.some(message => message.includes('no available Main Phase action')),
+    'Breach Stance cannot be clicked when Tressa has no card to discard')
+  assertEqual(game.pendingDecision, null, 'Breach Stance opens no prompt without a discardable card')
+
+  tressa.hand = ['crystal']
+  for (const breach of tressa.breaches) {
+    if (breach.present === false) continue
+    breach.opened = true
+  }
+  assert(!getPlayerCardInPlayActions(game, tressa.id).some(action => action.cardId === 'breach_stance'),
+    'Breach Stance is not highlighted when Tressa has no closed Breach to focus')
+  const noBreachResult = activatePlayerCardInPlayAction(game, tressa.id, 0)
+  assert(noBreachResult.some(message => message.includes('no available Main Phase action')),
+    'Breach Stance cannot be clicked when Tressa has no closed Breach to focus')
+  assertEqual(game.pendingDecision, null, 'Breach Stance opens no prompt without a legal focus target')
+
+  const closedBreach = tressa.breaches.find(breach => breach.present !== false)
+  assert(closedBreach, 'Tressa has a present Breach for the eligible-state check')
+  closedBreach.opened = false
+  assert(getPlayerCardInPlayActions(game, tressa.id).some(action => action.cardId === 'breach_stance'),
+    'Breach Stance becomes actionable when both a discard and a closed Breach are available')
+}
+
 function testReconnectTissueChecksTressasTreasureAfterAllyChoice(): void {
   const game = createGame('tressa', 'brama')
   const tressa = game.players[0]!
@@ -457,6 +489,7 @@ testArtifactStanceUsesTressaAsYou()
 testArtifactStanceIsNotActionableWithoutAnEligibleHandCard()
 testBreachStanceUsesTressaAsYou()
 testBreachStanceCannotBeActivatedDuringAnAllysMainPhase()
+testBreachStanceIsUnavailableWithoutDiscardAndFocusTargets()
 testReconnectTissueChecksTressasTreasureAfterAllyChoice()
 testReconnectTissueCanSkipAllyDestruction()
 testOverloadStanceCountsOnlySpellsThatWereCast()

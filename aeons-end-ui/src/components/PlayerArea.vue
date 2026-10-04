@@ -1,28 +1,25 @@
-﻿<script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+<script setup lang="ts">
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
-  getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getPrepSpellLimit,
-  getSpellDamagePreviewRange, getSupplyMechanics, getGameZoneVisibility,
-  getDevelopZoneCards, getDevelopActions, getTrinketDeckCards, isTrinketDeckCardRevealed, toRoman,
+  getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellBreachTargets,
+  getSpellDamagePreviewRange, getSupplyMechanics, getGameZoneVisibility, canGainCharge,
+  getDevelopZoneCards, getDevelopActions, getTrinketDeckCards, isTrinketDeckCardRevealed,
 } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
-import { aetherTokenImageUrl, cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerTurnOrderTokenUrl, pulseTokenImageUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
+import { cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerTurnOrderTokenUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
 import type { BreachState, CardChoice, PlayerState } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
-import BreachArtwork from './BreachArtwork.vue'
 import CardSurface from './CardSurface.vue'
 import { displayMageName } from '../game/display-name'
-import ZoneScroller from './ZoneScroller.vue'
 import PileCountBadge from './PileCountBadge.vue'
-import FaceUpPileCard from './FaceUpPileCard.vue'
-import TokenBadge from './TokenBadge.vue'
-import MageBoard from './MageBoard.vue'
+import PlayerControls from './PlayerControls.vue'
+import PlayerBreachArea from './PlayerBreachArea.vue'
+import PlayerZoneArea from './PlayerZoneArea.vue'
+import PlayerHandArea from './PlayerHandArea.vue'
 import { breachPresentation } from '../breach-images'
 import { mageImageUrls } from '../mage-images'
 import { preloadImages } from '../image-preloader'
-import aetherIconUrl from '../../../image-database/common images/Aether.png'
-import knowledgeIconUrl from '../../../image-database/common images/Knowledge.png'
 
 const {
   state, displayPlayer, isCurrentSelected, canActMain, canRepositionPrepped, canCast,
@@ -159,6 +156,7 @@ watch(
 )
 const aether = computed(() => aetherInfo(player.value))
 const ready = computed(() => player.value.charge >= player.value.chargeThreshold)
+const canAffordCharge = computed(() => !!state.game && canGainCharge(state.game, player.value.id))
 const hasPreppedSpell = computed(() => !!state.game && getPreppedSpellChoices(state.game).length > 0)
 const abilityNeedsPreppedSpell = computed(() =>
   MAGES[player.value?.mageType ?? '']?.abilityEffects.some(effect => effect.kind === 'cast_prepped_spell') ?? false,
@@ -166,7 +164,12 @@ const abilityNeedsPreppedSpell = computed(() =>
 const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order' && state.selectedPlayer === state.game?.currentTurn)
-const discardTopCard = computed(() => player.value.discard[0] ?? null)
+const discardTopCard = computed(() => {
+  const override = state.discardTopDisplayOverride
+  return override?.playerId === player.value.id
+    ? override.cardId
+    : player.value.discard[0] ?? null
+})
 const eligibleRecallActions = computed(() => getRecallActionsForPlayer(player.value.id))
 const hasRecallAction = computed(() => eligibleRecallActions.value.length > 0)
 const showPulseTokens = computed(() => !!state.game && getSupplyMechanics(state.game).includes('pulse_token'))
@@ -183,6 +186,20 @@ const hasSpecialZoneRow = computed(() => gameZoneVisibility.value.swap || gameZo
 const hasSwapZone = computed(() => hasSpecialZoneRow.value)
 const hasDevelopZone = computed(() => hasSpecialZoneRow.value)
 const developActions = computed(() => state.game ? getDevelopActions(state.game, state.selectedPlayer) : [])
+const controlPlayers = computed(() => players.value.map((candidate, playerIndex) => ({
+  id: candidate.id,
+  mageName: displayMageName(candidate.mageType),
+  turnOrderTokenUrl: playerTurnOrderTokenUrl(playerIndex + 1),
+  hp: candidate.hp,
+  charge: candidate.charge,
+  chargeThreshold: candidate.chargeThreshold,
+  handCount: visibleHandCount(candidate),
+  handGain: handIncrease.value[candidate.id] ?? 0,
+  exhausted: candidate.exhausted,
+  selected: state.selectedPlayer === candidate.id,
+  currentTurn: state.game?.currentTurn === candidate.id,
+  turnMarkerArrival: turnMarkerArrivalPlayerId.value === candidate.id,
+})))
 const hasSpecificDeck = computed(() => mageDefinition.value?.hasSpecificDeck === true)
 const specificDeckName = computed(() => mageDefinition.value?.specificDeckName ?? 'Specific Deck')
 const specificDeckFaceUp = computed(() => mageDefinition.value?.specificDeckDisplay === 'face_up')
@@ -196,13 +213,18 @@ const canBuyFirethorn = computed(() => player.value.mageType === 'inco' &&
   specificDeckCards.value.length > 0 && canActMain.value)
 const doomTokenImage = computed(() => mageTokenImageUrl('doom_token_transparent'))
 const doomTokenLabel = computed(() => `Doom tokens: ${Math.min(player.value.doomTokens ?? 0, 5)} of 5`)
+const doomTokenTrack = computed(() => mageDefinition.value?.tracksDoom && doomTokenImage.value
+  ? { imageUrl: doomTokenImage.value, label: doomTokenLabel.value, count: player.value.doomTokens ?? 0 }
+  : null)
+const knowledgeCount = computed(() => mageDefinition.value?.tracksKnowledge
+  ? player.value.knowledge ?? 0
+  : null)
 const playerCardPlacementsInPlay = computed(() =>
   (player.value.playerCardsInPlay ?? [])
     .map((cardId, cardIndex) => ({ cardId, cardIndex }))
     .filter(({ cardIndex }) => player.value.playerCardSupplyTargets?.[cardIndex] == null),
 )
 const playerCardsInPlay = computed(() => playerCardPlacementsInPlay.value.map(({ cardId }) => cardId))
-const hasPlayerCardsInPlay = computed(() => playerCardsInPlay.value.length > 0)
 const specificDeckBackImage = computed(() =>
   mageDefinition.value?.specificDeckBack
     ? specificDeckBackUrl(mageDefinition.value.specificDeckBack)
@@ -216,13 +238,10 @@ function onSpecificDeckClick() {
   openSpecificDeckPile()
 }
 const draggingSpell = ref(false)
-const handElement = ref<HTMLElement | null>(null)
-const handOffset = ref(0)
 const draggedSpellId = ref<string | null>(null)
 const draggedSpellIndex = ref<number | null>(null)
 const draggedPreppedSpell = ref<{ breachIndex: number; spellIndex: number } | null>(null)
 const draggedConjuredCard = ref(false)
-const endTurnActionElement = ref<HTMLElement | null>(null)
 // A real drag should not also trigger the click handler when the pointer is
 // released. A short click still activates a while-prepped spell normally.
 const suppressSpellClick = ref(false)
@@ -269,20 +288,21 @@ function visibleHandCount(candidate: PlayerState): number {
     && revealed?.playerId === candidate.id ? 1 : 0)
 }
 
-const canPrep = (b: BreachState, cardId = draggedSpellId.value ?? '') =>
-  b.present !== false && canActMain.value
-    && b.prepSpells.length < getPrepSpellLimit(player.value, b.index)
-    && (b.opened || b.focusedThisTurn || !!cardId && getCard(cardId).prepToClosedBreach)
+const canPrep = (b: BreachState, cardId = draggedSpellId.value ?? '') => {
+  const game = state.game
+  return !!game && !!cardId && canActMain.value
+    && getSpellBreachTargets(game, player.value.id, { kind: 'hand', cardId }).includes(b.index)
+}
 
 const canMovePreppedSpellTo = (
   b: BreachState,
   source = draggedPreppedSpell.value,
 ) => {
-  if (b.present === false || !canRepositionPrepped.value || !source) return false
-  if (source.breachIndex === b.index) return false
-  const sourceBreach = player.value.breaches.find(item => item.index === source?.breachIndex)
-  const sourceCardId = sourceBreach?.prepSpells[source.spellIndex]
-  return b.opened || b.focusedThisTurn || !!sourceCardId && getCard(sourceCardId).prepToClosedBreach
+  const game = state.game
+  return !!game && canRepositionPrepped.value && !!source
+    && getSpellBreachTargets(game, player.value.id, {
+      kind: 'prepped', breachIndex: source.breachIndex, spellIndex: source.spellIndex,
+    }).includes(b.index)
 }
 
 const canMovePreppedTo = (b: BreachState) => canMovePreppedSpellTo(b)
@@ -385,11 +405,14 @@ const spellDamagePreview = (b: BreachState, spellIndex = 0) => {
   // caster for this preview, while the displayed player's breach is the owner
   // of the prepped spell.
   const castChoice = preppedSpellCastChoice(b, spellIndex)
+  const pendingChoice = pendingPreppedSpellChoice(b, spellIndex)
   const decision = state.game.pendingDecision
-  if (castChoice && decision?.kind === 'select_prepped_spell') {
+  if ((castChoice && decision?.kind === 'select_prepped_spell')
+    || (pendingChoice && decision?.kind === 'select_prepped_spells')) {
+    const choice = castChoice ?? pendingChoice!
     const casterId = state.game.pendingEffect?.effectPlayerId
       ?? state.game.pendingEffect?.sourcePlayerId
-      ?? castChoice.playerId
+      ?? choice.playerId
     return getSpellDamagePreviewRange(state.game, casterId, player.value.id, b.index, spellIndex)
   }
 
@@ -410,6 +433,27 @@ const typeClass = (cid: string) => {
   if (type === 'gem' || type === 'relic' || type === 'treasure') return type
   return 'spell'
 }
+
+const handCardDisplay = computed(() => player.value.hand.map((cardId, index) => {
+  const selection = boardCardChoice('hand', index, cardId)
+  return {
+    cardId,
+    typeClass: typeClass(cardId),
+    isSpell: getCard(cardId).type === 'spell',
+    pending: !!selection,
+    selected: !!selection && isPendingBoardCardSelected(selection),
+  }
+}))
+const conjuredCardDisplay = computed(() => conjuredCard.value
+  ? { cardId: conjuredCard.value.cardId, typeClass: typeClass(conjuredCard.value.cardId) }
+  : null)
+const playerCardsInPlayDisplay = computed(() => playerCardPlacementsInPlay.value.map((placement, index) => ({
+  cardId: placement.cardId,
+  cardIndex: placement.cardIndex,
+  typeClass: typeClass(placement.cardId),
+  actionAvailable: isPlayerCardInPlayAction(index, placement.cardId),
+  powerTokens: player.value.playerCardPowerTokens?.[placement.cardIndex] ?? 0,
+})))
 
 const isFaceDownPreppedSpell = (b: BreachState, spellIndex: number) =>
   b.preppedSpellFaceDown?.[spellIndex] === true
@@ -471,7 +515,7 @@ function handleEndTurn() {
 function dismissEndTurnWarning(event: PointerEvent) {
   if (!state.endTurnWarningVisible) return
   const target = event.target
-  if (target instanceof Node && endTurnActionElement.value?.contains(target)) return
+  if (target instanceof Element && target.closest('.end-turn-action')) return
   state.endTurnWarningVisible = false
 }
 
@@ -521,11 +565,6 @@ function isPlayerCardInPlayAction(index: number, cardId: string): boolean {
   )
 }
 
-function playerCardPowerTokens(index: number): number {
-  const placement = playerCardPlacementsInPlay.value[index]
-  return placement ? player.value.playerCardPowerTokens?.[placement.cardIndex] ?? 0 : 0
-}
-
 function clickPlayerCardInPlay(index: number) {
   if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis' || state.game.pendingDecision || state.game.pendingEffect) return
   if (playerCardsInPlay.value.length > 1) {
@@ -552,64 +591,6 @@ function clickHand(i: number) {
   if (!canActMain.value) return
   // Spells are prepared exclusively by dragging them onto a breach.
   if (getCard(cid).type !== 'spell') playCard(i)
-}
-
-let handScrollTarget = 0
-let handScrollFrame: number | null = null
-
-function animateHandScroll() {
-  const hand = handElement.value
-  if (!hand) {
-    handScrollFrame = null
-    return
-  }
-  const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
-  handScrollTarget = Math.min(Math.max(0, handScrollTarget), maxScroll)
-  const distance = handScrollTarget - hand.scrollLeft
-  if (Math.abs(distance) < 0.5) {
-    hand.scrollLeft = handScrollTarget
-    handScrollFrame = null
-    return
-  }
-  // Ease toward the latest wheel target so consecutive wheel events feel like
-  // one continuous horizontal movement instead of a series of hard jumps.
-  hand.scrollLeft += distance * 0.2
-  handScrollFrame = requestAnimationFrame(animateHandScroll)
-}
-
-function handleHandWheel(event: WheelEvent) {
-  const target = event.target
-  const hand = target instanceof Element ? target.closest<HTMLElement>('.hand') : null
-  if (!hand || hand !== handElement.value || hand.scrollWidth <= hand.clientWidth || event.deltaY === 0) return
-  event.preventDefault()
-  event.stopPropagation()
-  // The hand intentionally maps vertical mouse-wheel movement to horizontal
-  // scrolling: wheel up moves toward the left, wheel down toward the right.
-  if (handScrollFrame === null) handScrollTarget = hand.scrollLeft
-  const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
-  handScrollTarget = Math.min(Math.max(0, handScrollTarget + event.deltaY * 1.1), maxScroll)
-  if (handScrollFrame === null) handScrollFrame = requestAnimationFrame(animateHandScroll)
-}
-
-let handAlignmentFrame: number | null = null
-let handResizeObserver: ResizeObserver | null = null
-
-function updateHandAlignment() {
-  if (handAlignmentFrame !== null) cancelAnimationFrame(handAlignmentFrame)
-  handAlignmentFrame = requestAnimationFrame(() => {
-    handAlignmentFrame = null
-    const hand = handElement.value
-    if (!hand || typeof window === 'undefined') return
-    const cards = [...hand.querySelectorAll<HTMLElement>('.card')]
-    const gap = Number.parseFloat(getComputedStyle(hand).gap) || 0
-    const cardWidth = cards.reduce((total, card) => total + card.getBoundingClientRect().width, 0)
-    const contentWidth = cardWidth + Math.max(0, cards.length - 1) * gap
-    const rightPadding = Number.parseFloat(getComputedStyle(hand).paddingRight) || 0
-    const handRect = hand.getBoundingClientRect()
-    const desiredOffset = window.innerWidth / 2 - handRect.left - contentWidth / 2
-    const maxOffset = Math.max(0, hand.clientWidth - rightPadding - contentWidth)
-    handOffset.value = Math.round(Math.min(Math.max(0, desiredOffset), maxOffset))
-  })
 }
 
 function startSpellPointerDrag(i: number, event: PointerEvent) {
@@ -642,6 +623,51 @@ function clickDevelopZoneCard(index: number) {
   if (!developZoneActionAvailable(index)) return
   developCard('develop_zone', index)
 }
+
+const swapZoneDisplay = computed(() => swapZoneOwners.value.map(owner => ({
+  id: owner.id,
+  mageName: displayMageName(owner.mageType),
+  cards: (owner.swapZone ?? []).map((cardId, index) => {
+    const selection = getBoardCardSelection(owner.id, 'swap_zone', index, cardId)
+    return {
+      key: `swap-${owner.id}-${cardId}-${index}`,
+      cardId,
+      index,
+      typeClass: typeClass(cardId),
+      pending: !!selection,
+      selected: !!selection && isPendingBoardCardSelected(selection),
+    }
+  }),
+})))
+const playedZoneDisplay = computed(() => player.value.playedThisTurn.map((cardId, index) => {
+  const selection = boardCardChoice('played_this_turn', index, cardId)
+  return {
+    key: `${cardId}${index}`,
+    cardId,
+    index,
+    typeClass: typeClass(cardId),
+    preppedAction: isPreppedActionCard(index, cardId),
+    pending: !!selection,
+    selected: !!selection && isPendingBoardCardSelected(selection),
+  }
+}))
+const discardZoneDisplay = computed(() => state.discardRemaining.map((cardId, index) => ({
+  key: `discard-slot-${index}`,
+  cardId,
+  index,
+  typeClass: typeClass(cardId),
+})))
+const developZoneDisplay = computed(() => developZoneCards.value.map((cardId, index) => {
+  const actionAvailable = developZoneActionAvailable(index)
+  return {
+    key: `develop-${cardId}-${index}`,
+    cardId,
+    index,
+    typeClass: typeClass(cardId),
+    actionAvailable,
+    title: actionAvailable ? `Develop for ${getCard(cardId).developCost ?? 0} Aether to gain this card` : undefined,
+  }
+}))
 
 function startConjuredCardDrag(event: PointerEvent) {
   if (event.button !== 0 || !conjuredCard.value) return
@@ -780,7 +806,7 @@ function finishSpellPointerDrag(event: PointerEvent) {
     : null
   const canDropPreppedTarget = !!preppedTargetBreach
     && canMovePreppedSpellTo(preppedTargetBreach, preppedSource)
-  const handRect = handElement.value?.getBoundingClientRect()
+  const handRect = document.querySelector<HTMLElement>('.player-area .hand')?.getBoundingClientRect()
   const handOverlap = handRect ? overlapArea(draggedRect, handRect) : 0
   // Face-down Conjured spells may move between legal Breaches, but must remain
   // in play. This guard protects against a release over the hand creating an
@@ -855,17 +881,8 @@ function removeSpellPointerListeners() {
 onBeforeUnmount(removeSpellPointerListeners)
 onMounted(() => {
   window.addEventListener('pointerdown', dismissEndTurnWarning)
-  window.addEventListener('resize', updateHandAlignment)
-  if (handElement.value && typeof ResizeObserver !== 'undefined') {
-    handResizeObserver = new ResizeObserver(updateHandAlignment)
-    handResizeObserver.observe(handElement.value)
-  }
-  nextTick(updateHandAlignment)
 })
-watch(() => player.value?.hand.length, () => nextTick(updateHandAlignment))
-watch(() => state.game?.pendingDecision?.id, () => nextTick(updateHandAlignment))
 watch(() => state.selectedPlayer, (selectedPlayer, previousSelectedPlayer) => {
-  nextTick(updateHandAlignment)
   if (!previousSelectedPlayer || selectedPlayer === previousSelectedPlayer) return
 
   playerAreaTurnArrival.value = false
@@ -896,10 +913,6 @@ onBeforeUnmount(() => {
   window.removeEventListener('click', blockSpellDragClick, true)
   if (typeof document !== 'undefined') document.body.classList.remove('spell-dragging')
   window.removeEventListener('pointerdown', dismissEndTurnWarning)
-  window.removeEventListener('resize', updateHandAlignment)
-  handResizeObserver?.disconnect()
-  if (handAlignmentFrame !== null) cancelAnimationFrame(handAlignmentFrame)
-  if (handScrollFrame !== null) cancelAnimationFrame(handScrollFrame)
 })
 
 function clickBreach(b: BreachState) {
@@ -975,6 +988,31 @@ function clickSpellFrame(b: BreachState, spellIndex: number) {
   if (isCastableBreach(b)) castSpell(b.index, spellIndex)
 }
 
+const breachDisplayBindings = {
+  canMovePreppedTo,
+  canPrep,
+  conjureBreachChoice,
+  isCastableBreach,
+  isMustCastBreach,
+  isMandatoryPreppedEffect,
+  preppedSpellCastChoice,
+  isRepeatCastConfirmation,
+  pendingPreppedSpellChoice,
+  pendingCastSpell,
+  isPreppedSpellAction,
+  isRepeatablePreppedSpell,
+  isAwaitingDividedDamageConfirmation,
+  dividedDamageConfirmationSpell,
+  displayedSpellStackIndex,
+  isDecisionBreachTarget,
+  effectFocusChoice,
+  breachCosts,
+  isFaceDownPreppedSpell,
+  isDraggedPreppedSpell,
+  isPendingPreppedSpellSelected,
+  spellDamagePreviewLabel,
+}
+
 function finishPlayerTurnArrival(event: AnimationEvent) {
   if (event.animationName !== 'player-area-turn-arrival') return
   playerAreaTurnArrival.value = false
@@ -1003,157 +1041,24 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
     </div>
     <div class="char-row"></div>
 
-    <div class="breaches">
-      <div
-        v-for="b in player.breaches" :key="b.index"
-        class="breach"
-        :class="{
-          absent: b.present === false,
-          open: b.opened,
-          castable: isCastableBreach(b),
-          'must-cast': isMustCastBreach(b),
-          'drag-target': draggingSpell && (draggedPreppedSpell ? canMovePreppedTo(b) : draggedConjuredCard ? !!conjureBreachChoice(b) : canPrep(b)),
-          'move-drag-target': draggingSpell && !!draggedPreppedSpell && canMovePreppedTo(b),
-          'mandatory-prepped-effect': isMandatoryPreppedEffect(b),
-        }"
-        :aria-hidden="b.present === false ? 'true' : undefined"
-        @click="clickBreach(b)"
-        :data-breach-index="b.index"
-      >
-        <template v-if="b.present !== false">
-        <div class="breach-token-wrap" :class="{ 'decision-breach-target': isDecisionBreachTarget(b) }">
-          <BreachArtwork
-            :breach="b"
-            :alt="`Breach ${toRoman(b.index)} ${b.opened ? 'open' : 'closed'}`"
-            :disabled="draggedSpellId !== null"
-          />
-          <CardHoverPreview
-            v-if="b.attachedRelic"
-            :card-id="b.attachedRelic.cardId"
-            @click.stop
-          >
-            <CardSurface
-              :card-id="b.attachedRelic.cardId"
-              size="hand"
-              class="breach-attached-relic"
-              :image-alt="getCard(b.attachedRelic.cardId).name"
-            />
-          </CardHoverPreview>
-          <div
-            v-if="b.installedUpgrades?.length"
-            class="breach-upgrade-strip"
-            :aria-label="`Upgrades on Breach ${toRoman(b.index)}`"
-          >
-            <CardHoverPreview
-              v-for="(upgradeId, upgradeIndex) in b.installedUpgrades"
-              :key="`${upgradeId}:${upgradeIndex}`"
-              :card-id="upgradeId"
-            >
-              <CardSurface
-                :card-id="upgradeId"
-                size="hand"
-                class="breach-upgrade-card"
-                :image-alt="getCard(upgradeId).name"
-              />
-            </CardHoverPreview>
-          </div>
-          <div
-            v-for="(spellId, spellIndex) in b.prepSpells"
-            :key="`${spellId}:${spellIndex}`"
-            class="spell"
-            :style="{ '--spell-stack-index': displayedSpellStackIndex(b, spellIndex), zIndex: displayedSpellStackIndex(b, spellIndex) + 3 }"
-            :class="{
-              'castable-spell': isCastableBreach(b),
-              'must-cast-spell': isMustCastBreach(b),
-              'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
-              'ability-prepped-spell': !!preppedSpellCastChoice(b, spellIndex),
-              'repeat-cast-confirmation': isRepeatCastConfirmation(b, spellIndex),
-              'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
-                  'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
-                  'pending-cast-spell': pendingCastSpell(b, spellIndex),
-                  'manual-prepped-action': isPreppedSpellAction(b, spellIndex),
-                  'repeatable-prepped-action': isRepeatablePreppedSpell(b, spellIndex),
-                }"
-          >
-            <CardHoverPreview :card-id="spellId" :image-url="isFaceDownPreppedSpell(b, spellIndex) ? cardImageUrl(spellId) : undefined">
-              <div
-                class="breach-spell-card-frame"
-                @click.stop="clickSpellFrame(b, spellIndex)"
-                @pointerdown="startPreppedSpellDrag(b, spellIndex, $event)"
-                :data-spell-index="spellIndex"
-                :class="{
-                  'face-down-spell': isFaceDownPreppedSpell(b, spellIndex),
-                  'dragging-prepped-spell': isDraggedPreppedSpell(b, spellIndex),
-                  'castable-spell': isCastableBreach(b),
-                  'must-cast-spell': isMustCastBreach(b),
-                  'mandatory-prepped-effect': isMandatoryPreppedEffect(b, spellIndex),
-                  'ability-prepped-spell': !!preppedSpellCastChoice(b, spellIndex),
-                  'repeat-cast-confirmation': isRepeatCastConfirmation(b, spellIndex),
-                  'pending-prepped-spell': !!pendingPreppedSpellChoice(b, spellIndex),
-                  'pending-prepped-spell-selected': !!pendingPreppedSpellChoice(b, spellIndex) && isPendingPreppedSpellSelected(pendingPreppedSpellChoice(b, spellIndex)!),
-                  'pending-cast-spell': pendingCastSpell(b, spellIndex),
-                  'manual-prepped-action': isPreppedSpellAction(b, spellIndex),
-                  'repeatable-prepped-action': isRepeatablePreppedSpell(b, spellIndex),
-                  'repositionable-spell': canRepositionPrepped && !state.game?.pendingDecision,
-                }"
-              >
-                <img v-if="isFaceDownPreppedSpell(b, spellIndex)" :src="playerCardBackUrl()" alt="Face-down conjured spell" />
-                <img v-else-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />
-                <span v-else>[{{ getCard(spellId).name }}]</span>
-                <span
-                  v-if="spellDamagePreviewLabel(b, spellIndex) !== null"
-                  class="spell-damage-badge"
-                  :class="{ 'spell-damage-badge-hover': !pendingCastSpell(b, spellIndex), 'spell-damage-badge-active': pendingCastSpell(b, spellIndex) }"
-                  :aria-label="`Upcoming damage: ${spellDamagePreviewLabel(b, spellIndex)}`"
-                >
-                  {{ spellDamagePreviewLabel(b, spellIndex) }}
-                </span>
-              </div>
-            </CardHoverPreview>
-          </div>
-          <template v-for="pendingSpell in [dividedDamageConfirmationSpell(b)]" :key="pendingSpell?.cardId">
-            <div
-              v-if="pendingSpell"
-              class="spell"
-              :style="{ '--spell-stack-index': pendingSpell.spellIndex, zIndex: pendingSpell.spellIndex + 3 }"
-            >
-              <button
-                type="button"
-                class="breach-spell-card-frame divided-damage-confirm-spell"
-                :aria-label="`Confirm ${getCard(pendingSpell.cardId).name} damage allocation`"
-                :title="`Click to confirm ${getCard(pendingSpell.cardId).name}`"
-                @click.stop="confirmDividedDamageAllocation"
-              >
-                <img
-                  v-if="cardImageUrl(pendingSpell.cardId)"
-                  :src="cardImageUrl(pendingSpell.cardId)"
-                  :alt="getCard(pendingSpell.cardId).name"
-                  draggable="false"
-                />
-                <span v-else>{{ getCard(pendingSpell.cardId).name }}</span>
-              </button>
-            </div>
-          </template>
-        </div>
-        <div
-          v-if="!b.opened && (effectFocusChoice(b) || (canActMain && !state.game?.pendingDecision))"
-          class="btns"
-          @click.stop
-        >
-          <button
-            class="btn small"
-            :class="{ 'effect-focus-target': !!effectFocusChoice(b) }"
-            :aria-label="effectFocusChoice(b)
-              ? `Focus Breach ${toRoman(b.index)} with effect`
-              : `Focus Breach ${toRoman(b.index)} for ${breachCosts(b).focus} Aether`"
-            @click.stop="clickFocusButton(b)"
-          >{{ effectFocusChoice(b) ? 'Focus' : `Focus ${breachCosts(b).focus}` }}</button>
-          <button v-if="canActMain && !state.game?.pendingDecision" class="btn small" @click="openBreach(b.index)">Open {{ breachCosts(b).open }}</button>
-        </div>
-        </template>
-      </div>
-    </div>
-
+    <PlayerBreachArea
+      :owner-id="player.id"
+      :breaches="player.breaches"
+      :can-act-main="canActMain"
+      :can-reposition-prepped="canRepositionPrepped"
+      :has-pending-decision="!!state.game?.pendingDecision"
+      :dragging-spell="draggingSpell"
+      :dragged-spell-id="draggedSpellId"
+      :dragged-prepped-spell="draggedPreppedSpell"
+      :dragged-conjured-card="draggedConjuredCard"
+      :ui="breachDisplayBindings"
+      @click-breach="clickBreach"
+      @click-focus="clickFocusButton"
+      @open-breach="openBreach"
+      @click-spell="clickSpellFrame"
+      @start-spell-drag="startPreppedSpellDrag"
+      @confirm-divided-damage="confirmDividedDamageAllocation"
+    />
     <button
       class="trinket-deck-pile"
       type="button"
@@ -1183,338 +1088,74 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       <PileCountBadge :count="trinketDeckCards.length" label="Trinkets" />
     </button>
 
-    <div class="played-zones" :class="{ 'has-swap-zone': hasSwapZone, 'has-develop-zone': hasDevelopZone }">
-      <section v-if="hasSwapZone" class="played-zone played-zone-swap">
-        <span class="label">Swap Zone</span>
-        <ZoneScroller class="zone-card-scroll">
-          <div class="zone-card-track">
-            <template v-for="owner in swapZoneOwners" :key="`swap-owner-${owner.id}`">
-              <span class="swap-zone-owner-label">{{ displayMageName(owner.mageType) }}</span>
-              <CardHoverPreview
-                v-for="(cid, i) in owner.swapZone ?? []" :key="`swap-${owner.id}-${cid}-${i}`"
-                :card-id="cid"
-              >
-                <CardSurface
-                  :card-id="cid"
-                  size="mini"
-                  :class="[typeClass(cid), {
-                    'pending-board-card': !!getBoardCardSelection(owner.id, 'swap_zone', i, cid),
-                    'pending-board-card-selected': !!getBoardCardSelection(owner.id, 'swap_zone', i, cid) && isPendingBoardCardSelected(getBoardCardSelection(owner.id, 'swap_zone', i, cid)!),
-                  }]"
-                  :title="`${displayMageName(owner.mageType)}'s Swap Zone`"
-                  @click="clickSwapZoneCard(owner.id, i, cid)"
-                />
-              </CardHoverPreview>
-            </template>
-          </div>
-        </ZoneScroller>
-      </section>
+    <PlayerZoneArea
+      :has-swap-zone="hasSwapZone"
+      :has-develop-zone="hasDevelopZone"
+      :is-discard="isDiscard"
+      :swap-zone-owners="swapZoneDisplay"
+      :played-cards="playedZoneDisplay"
+      :discard-cards="discardZoneDisplay"
+      :develop-cards="developZoneDisplay"
+      @click-swap-card="clickSwapZoneCard"
+      @click-played-card="clickPlayedCard"
+      @click-discard-card="clickDiscardCard"
+      @click-develop-card="clickDevelopZoneCard"
+    />
+    <PlayerHandArea
+      :mage-type="player.mageType"
+      :mage-form-side="player.mageFormSide"
+      :has-specific-deck="hasSpecificDeck"
+      :specific-deck-name="specificDeckName"
+      :specific-deck-cards="specificDeckCards"
+      :specific-deck-top-image="specificDeckTopImage"
+      :specific-deck-back-image="specificDeckBackImage"
+      :specific-deck-top-is-visible="specificDeckTopIsVisible"
+      :can-buy-firethorn="canBuyFirethorn"
+      :player-cards-in-play="playerCardsInPlayDisplay"
+      :deck-count="player.deck.length"
+      :discard-count="player.discard.length"
+      :discard-top-card="discardTopCard"
+      :recall-available="hasRecallAction"
+      :hand-cards="handCardDisplay"
+      :conjured-card="conjuredCardDisplay"
+      :can-act-main="canActMain"
+      :dragging-spell="draggingSpell"
+      :dragged-spell-index="draggedSpellIndex"
+      :dragging-conjured-card="draggedConjuredCard"
+      @click-specific-deck="onSpecificDeckClick"
+      @open-specific-deck="openSpecificDeckPile"
+      @click-player-card="clickPlayerCardInPlay"
+      @click-hand-card="clickHand"
+      @start-hand-spell-drag="startSpellPointerDrag"
+      @start-conjured-spell-drag="startConjuredCardDrag"
+      @open-deck="openPile('deck')"
+      @open-discard="openPile('discard')"
+    />
 
-      <section class="played-zone played-zone-center">
-        <span class="label">Played</span>
-        <ZoneScroller
-          class="played-card-scroll"
-          :overflow-anchor="hasDevelopZone && !hasSwapZone ? 'end' : 'start'"
-          :center-boundary="hasSwapZone && !hasDevelopZone ? 'start' : hasDevelopZone && !hasSwapZone ? 'end' : undefined"
-        >
-          <div class="zone-card-track">
-            <template v-if="isDiscard">
-              <CardHoverPreview
-                v-for="(cid, i) in state.discardRemaining" :key="`discard-slot-${i}`"
-                :card-id="cid"
-              >
-                <CardSurface
-                  :card-id="cid"
-                  size="mini"
-                  class="clickable"
-                  :class="typeClass(cid)"
-                  @click="clickDiscardCard(i)"
-                />
-              </CardHoverPreview>
-              <span v-if="state.discardRemaining.length === 0" class="empty">— done —</span>
-            </template>
-            <template v-else>
-              <CardHoverPreview
-                v-for="(cid, i) in player.playedThisTurn" :key="cid + i"
-                :card-id="cid"
-              >
-                <CardSurface
-                  :card-id="cid"
-                  size="mini"
-                  :class="[typeClass(cid), {
-                    'prepped-action': isPreppedActionCard(i, cid),
-                    'pending-board-card': !!boardCardChoice('played_this_turn', i, cid),
-                    'pending-board-card-selected': !!boardCardChoice('played_this_turn', i, cid) && isPendingBoardCardSelected(boardCardChoice('played_this_turn', i, cid)!),
-                  }]"
-                  @click="clickPlayedCard(i)"
-                />
-              </CardHoverPreview>
-            </template>
-          </div>
-        </ZoneScroller>
-      </section>
-
-      <section v-if="hasDevelopZone" class="played-zone played-zone-develop">
-        <span class="label">Develop Zone</span>
-        <ZoneScroller class="zone-card-scroll">
-          <div class="zone-card-track">
-            <CardHoverPreview
-              v-for="(cid, i) in developZoneCards" :key="`develop-${cid}-${i}`"
-              :card-id="cid"
-            >
-              <CardSurface
-                :card-id="cid"
-                size="mini"
-                :title="developZoneActionAvailable(i) ? `Develop for ${getCard(cid).developCost ?? 0} Aether to gain this card` : undefined"
-                :class="[typeClass(cid), { 'develop-action-available': developZoneActionAvailable(i) }]"
-                @click="clickDevelopZoneCard(i)"
-                @contextmenu.prevent="clickDevelopZoneCard(i)"
-              />
-            </CardHoverPreview>
-          </div>
-        </ZoneScroller>
-      </section>
-    </div>
-
-    <div
-      class="hand-row"
-      :class="{
-        'has-specific-deck': hasSpecificDeck,
-        'has-player-cards-in-play': hasPlayerCardsInPlay,
-      }"
-    >
-      <MageBoard :mage-type="player.mageType" />
-      <div
-        v-if="hasSpecificDeck"
-        class="deck-pile clickable player-specific-deck-pile"
-        :class="{ 'has-cards': specificDeckCards.length > 0 }"
-        :aria-label="canBuyFirethorn ? 'Buy the top Firethorn for 5 Aether' : `Open ${specificDeckName}`"
-        @click="onSpecificDeckClick"
-      >
-        <CardHoverPreview
-          v-if="player.mageType === 'qu' && specificDeckCards.length > 0"
-          class="player-specific-deck-preview"
-          :card-id="specificDeckCards[0]"
-          :image-url="specificDeckTopImage"
-          :image-alt="`Qu's Form Card — ${player.mageFormSide === 'taker' ? 'Taker' : 'Giver'} Form`"
-        >
-          <CardSurface
-            base-class="player-pile-card"
-            size="pile"
-            class="player-specific-deck-face-up"
-            :image-url="specificDeckTopImage"
-            :image-alt="`Qu's Form Card — ${player.mageFormSide === 'taker' ? 'Taker' : 'Giver'} Form`"
-          />
-        </CardHoverPreview>
-        <FaceUpPileCard
-          v-else-if="specificDeckTopIsVisible && specificDeckCards.length > 0"
-          :card-id="specificDeckCards[0]!"
-          :ariaLabel="`Open ${specificDeckName}`"
-          :primaryEnabled="true"
-          display-class="player-specific-deck-face-up"
-          @inspect="openSpecificDeckPile"
-        />
-        <CardSurface
-          v-else-if="!specificDeckTopIsVisible && specificDeckCards.length > 0 && specificDeckBackImage"
-          base-class="player-pile-card"
-          size="pile"
-          class="specific-deck-back"
-          :image-url="specificDeckBackImage"
-          :image-alt="specificDeckName"
-        />
-        <PileCountBadge :count="specificDeckCards.length" label="Specific" />
-      </div>
-      <div
-        v-if="hasPlayerCardsInPlay"
-        class="player-cards-in-play-pile"
-        aria-label="Player cards in play"
-      >
-        <div class="player-card-stack">
-          <CardHoverPreview
-            v-for="(placement, i) in playerCardPlacementsInPlay"
-            :key="`player-in-play-${placement.cardId}-${placement.cardIndex}`"
-            :card-id="placement.cardId"
-          >
-            <CardSurface
-              :card-id="placement.cardId"
-              size="mini"
-              class="player-in-play-card"
-              :class="[typeClass(placement.cardId), {
-                'in-play-action': playerCardsInPlay.length === 1 && isPlayerCardInPlayAction(i, placement.cardId),
-              }]"
-              :style="{ '--stack-index': i }"
-              @click="clickPlayerCardInPlay(i)"
-            >
-              <template #overlay>
-                <TokenBadge
-                  v-if="playerCardPowerTokens(i) > 0"
-                  label="Power"
-                  :count="playerCardPowerTokens(i)"
-                  tone="power"
-                  placement="card"
-                />
-              </template>
-            </CardSurface>
-          </CardHoverPreview>
-        </div>
-      </div>
-      <div
-        class="deck-pile clickable player-deck-pile"
-        :class="{ 'has-cards': player.deck.length > 0 }"
-        @click="openPile('deck')"
-      >
-        <CardSurface
-          v-if="player.deck.length > 0"
-          base-class="player-pile-card"
-          size="pile"
-          :image-url="playerCardBackUrl()"
-          image-alt="Player deck"
-        />
-        <PileCountBadge :count="player.deck.length" label="Deck" />
-      </div>
-      <div ref="handElement" class="hand" :style="{ '--hand-offset': `${handOffset}px` }" @wheel="handleHandWheel">
-        <CardHoverPreview
-          v-for="(cid, i) in player.hand" :key="cid + i"
-          :card-id="cid"
-        >
-          <CardSurface
-            :card-id="cid"
-            size="hand"
-            :class="[typeClass(cid), {
-              dragging: draggingSpell && draggedSpellIndex === i,
-              'spell-draggable': canActMain && getCard(cid).type === 'spell',
-              'pending-board-card': !!boardCardChoice('hand', i, cid),
-              'pending-board-card-selected': !!boardCardChoice('hand', i, cid) && isPendingBoardCardSelected(boardCardChoice('hand', i, cid)!),
-            }]"
-            @click="clickHand(i)"
-            draggable="false"
-            @pointerdown="startSpellPointerDrag(i, $event)"
-          />
-        </CardHoverPreview>
-        <CardHoverPreview v-if="conjuredCard" :card-id="conjuredCard.cardId">
-          <CardSurface
-            :card-id="conjuredCard.cardId"
-            size="hand"
-            :class="[typeClass(conjuredCard.cardId), 'pending-board-card', 'pending-conjure-card', 'spell-draggable', {
-              dragging: draggingSpell && draggedConjuredCard,
-            }]"
-            draggable="false"
-            @pointerdown="startConjuredCardDrag"
-          />
-        </CardHoverPreview>
-      </div>
-      <div
-        class="discard-pile clickable player-discard-pile"
-        :class="{ 'has-cards': player.discard.length > 0, 'recall-action-available': hasRecallAction }"
-        :title="hasRecallAction ? 'Recall is available from this Discard' : undefined"
-        @click="openPile('discard')"
-        @contextmenu.prevent="openPile('discard')"
-      >
-        <CardHoverPreview v-if="discardTopCard" :card-id="discardTopCard">
-          <CardSurface
-            base-class="player-pile-card"
-            size="pile"
-            class="player-discard-top-card"
-            :card-id="discardTopCard"
-            :image-alt="getCard(discardTopCard).name"
-          />
-        </CardHoverPreview>
-        <PileCountBadge :count="player.discard.length" label="Discard" />
-      </div>
-    </div>
-
-    <div class="controls">
-      <div class="controls-left">
-        <div class="char-select">
-          <button
-            v-for="(candidate, playerIndex) in players"
-            :key="candidate.id"
-            class="char-btn"
-            :class="{ sel: state.selectedPlayer === candidate.id, cur: state.game!.currentTurn === candidate.id, 'turn-marker-arrival': turnMarkerArrivalPlayerId === candidate.id, 'has-hand-gain': !!handIncrease[candidate.id] }"
-            @click="selectPlayer(candidate.id)"
-          >
-            <img class="char-turn-token" :src="playerTurnOrderTokenUrl(playerIndex + 1) ?? ''" alt="" aria-hidden="true" draggable="false" />
-            <span class="cn">{{ displayMageName(candidate.mageType) }}</span>
-            <span class="chp">HP <strong class="controls-number">{{ candidate.hp }}</strong></span>
-            <span class="cch">Charge <strong class="controls-number">{{ candidate.charge }}</strong>/<strong class="controls-number">{{ candidate.chargeThreshold }}</strong></span>
-            <span class="chand">Hand <strong class="controls-number">{{ visibleHandCount(candidate) }}</strong></span>
-            <span v-if="handIncrease[candidate.id]" class="chand-gain" role="status" :aria-label="`${displayMageName(candidate.mageType)} hand gained ${handIncrease[candidate.id]} cards`">+{{ handIncrease[candidate.id] }}</span>
-            <span v-if="candidate.exhausted" class="cex">EXHAUSTED</span>
-          </button>
-        </div>
-        <div class="controls-status">
-          <span class="phase">{{ phaseLabel }}</span>
-        </div>
-      </div>
-      <div class="controls-main">
-        <span class="aether">
-          <img class="resource-icon" :src="aetherIconUrl" alt="Aether" />
-          <span><strong class="controls-number">{{ aether.regularAvail }}</strong><template v-if="aether.gemAether > 0"> · <strong class="controls-number">{{ aether.gemAether }}</strong> gem aether</template><template v-if="aether.spellAether > 0"> · <strong class="controls-number">{{ aether.spellAether }}</strong> spell aether</template><template v-if="aether.breachAether > 0"> · <strong class="controls-number">{{ aether.breachAether }}</strong> breach aether</template></span>
-        </span>
-        <span
-          v-if="aether.aetherTokens > 0"
-          class="aether-token-status"
-          :aria-label="`${aether.aetherTokens} Aether Tokens`"
-          :title="`${aether.aetherTokens} Aether Tokens`"
-        >
-          <img :src="aetherTokenImageUrl()" alt="Aether Token" draggable="false" />
-          <strong class="controls-number">{{ aether.aetherTokens }}</strong>
-        </span>
-        <span
-          v-if="showPulseTokens"
-          class="pulse-token-status"
-          :aria-label="`${player.pulseTokens ?? 0} Pulse Tokens`"
-          :title="`${player.pulseTokens ?? 0} Pulse Tokens`"
-        >
-          <img :src="pulseTokenImageUrl()" alt="Pulse Token" draggable="false" />
-          <strong class="controls-number">{{ player.pulseTokens ?? 0 }}</strong>
-        </span>
-        <template v-if="isCurrentSelected">
-          <button v-if="isCasting" class="btn" @click="toMainPhase">Start Main Phase →</button>
-          <template v-if="isMain">
-            <button class="btn small" :disabled="player.charge >= player.chargeThreshold" @click="gainCharge(1)">Charge</button>
-            <button class="btn small" @click="playAllGems">Play All Gems</button>
-            <span ref="endTurnActionElement" class="end-turn-action">
-              <button class="btn primary" @click="handleEndTurn">End Turn</button>
-              <span v-if="state.endTurnWarningVisible" class="end-turn-warning" role="status">
-                Actions remain. End turn anyway?
-              </span>
-            </span>
-          </template>
-        </template>
-        <button
-          v-if="state.debugFreeSpellCastEnabled && isMain && isCurrentSelected"
-          class="btn small"
-          :disabled="!hasPreppedSpell || !!state.game?.pendingDecision || !!state.game?.pendingEffect"
-          @click="debugCastAnyPreppedSpell()"
-        >Cast Prepped Spell</button>
-        <button
-          v-if="isMain && canActivateAbilityInMain"
-          class="btn small"
-          :disabled="!ready || (abilityNeedsPreppedSpell && !hasPreppedSpell)"
-          @click="activateAbility()"
-        >Activate Ability</button>
-        <div
-          v-if="mageDefinition?.tracksDoom && doomTokenImage"
-          class="doom-token-track"
-          role="img"
-          :aria-label="doomTokenLabel"
-          :title="doomTokenLabel"
-        >
-          <img
-            v-for="tokenIndex in 5"
-            :key="tokenIndex"
-            :src="doomTokenImage"
-            alt=""
-            :class="{ 'is-active': (player.doomTokens ?? 0) >= tokenIndex }"
-          >
-        </div>
-        <span v-if="mageDefinition?.tracksKnowledge" class="knowledge-status">
-          <img class="resource-icon" :src="knowledgeIconUrl" alt="Knowledge" />
-          <strong class="controls-number">{{ player.knowledge ?? 0 }}</strong>
-        </span>
-      </div>
-      <button class="btn help-button" aria-label="Open game help" title="Game Help" @click="toggleHelp">?</button>
-    </div>
+    <PlayerControls
+      :players="controlPlayers"
+      :phase-label="phaseLabel"
+      :aether="aether"
+      :pulse-token-count="showPulseTokens ? player.pulseTokens ?? 0 : null"
+      :current-player-selected="isCurrentSelected"
+      :casting-phase="isCasting"
+      :main-phase="isMain"
+      :can-afford-charge="canAffordCharge"
+      :show-free-spell-cast="state.debugFreeSpellCastEnabled && isMain && isCurrentSelected"
+      :can-free-spell-cast="hasPreppedSpell && !state.game?.pendingDecision && !state.game?.pendingEffect"
+      :show-ability="isMain && canActivateAbilityInMain"
+      :can-activate-ability="ready && !(abilityNeedsPreppedSpell && !hasPreppedSpell)"
+      :doom-token-track="doomTokenTrack"
+      :knowledge-count="knowledgeCount"
+      :end-turn-warning-visible="state.endTurnWarningVisible"
+      @select-player="selectPlayer"
+      @gain-charge="gainCharge"
+      @play-all-gems="playAllGems"
+      @end-turn="handleEndTurn"
+      @to-main-phase="toMainPhase"
+      @debug-cast="debugCastAnyPreppedSpell"
+      @activate-ability="activateAbility"
+      @toggle-help="toggleHelp"
+    />
   </div>
 </template>
