@@ -1,5 +1,11 @@
 import { test, expect, type Page } from '@playwright/test'
 
+async function revealedCardSrc(page: Page): Promise<string> {
+  const src = await page.locator('.nemesis-reveal-card img').getAttribute('src')
+  if (src === null) throw new Error('The revealed Nemesis card has no image source')
+  return src
+}
+
 async function startGame(page: Page) {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.goto('/')
@@ -76,7 +82,7 @@ test('first-turn Nemesis draw waits for the board and flies from its deck', asyn
   expect(flightOrigin.top).toBeCloseTo(sourceRect.top, 2)
   await expect(page.locator('.nemesis-draw-flight-front')).toHaveAttribute(
     'src',
-    await page.locator('.nemesis-reveal-card img').getAttribute('src')!,
+    await revealedCardSrc(page),
   )
   await expect(page.locator('.nemesis-reveal-overlay')).toBeVisible()
 })
@@ -132,7 +138,7 @@ test('a Nemesis draw after resolving a Power decision still flies from the deck'
   await expect(page.locator('.nemesis-draw-flight-scene')).toBeVisible()
   await expect(page.locator('.nemesis-draw-flight-front')).toHaveAttribute(
     'src',
-    await page.locator('.nemesis-reveal-card img').getAttribute('src')!,
+    await revealedCardSrc(page),
   )
   await expect(page.locator('.nemesis-reveal-overlay')).toBeVisible()
 })
@@ -174,29 +180,29 @@ test('turn changes animate the token first, then reveal a Nemesis draw from its 
   await expect(arrivalToken).toBeVisible()
   expect(await arrivalToken.evaluate(element => getComputedStyle(element).position)).toBe('fixed')
   expect(await arrivalToken.evaluate(element => Number(getComputedStyle(element).zIndex))).toBe(645)
-  const arrivalTransforms = await arrivalToken.evaluate(element => element.getAnimations()[0]!.effect!.getKeyframes()
+  const arrivalTransforms = await arrivalToken.evaluate(element => (element.getAnimations()[0]!.effect as KeyframeEffect).getKeyframes()
     .map(frame => frame.transform))
-  expect(arrivalTransforms.every(transform => !transform?.includes('translateY'))).toBe(true)
+  expect(arrivalTransforms.every(transform => typeof transform !== 'string' || !transform.includes('translateY'))).toBe(true)
   expect(arrivalTransforms.at(-1)).toBe('scale(7)')
   await expect(page.locator('.turn-transition-shield')).toBeVisible()
   await expect(page.locator('.nemesis-reveal-overlay')).toHaveCount(0)
 
   await expect(page.locator('.nemesis-draw-flight-scene')).toBeVisible({ timeout: 4000 })
   await expect(page.locator('.nemesis-reveal-overlay')).toBeVisible()
-  const faceUrl = await page.locator('.nemesis-reveal-card img').getAttribute('src')
-  await expect(page.locator('.nemesis-draw-flight-front')).toHaveAttribute('src', faceUrl!)
+  const faceUrl = await revealedCardSrc(page)
+  await expect(page.locator('.nemesis-draw-flight-front')).toHaveAttribute('src', faceUrl)
   expect(await page.locator('.nemesis-draw-flight-scene').evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
   const flipTimings = await page.locator('.nemesis-draw-flight-card').evaluate(element => element.getAnimations()
     .map(animation => animation.effect?.getComputedTiming()))
   expect(flipTimings[0]?.delay).toBe(540)
   expect(flipTimings[0]?.duration).toBe(420)
-  const flipTransforms = await page.locator('.nemesis-draw-flight-card').evaluate(element => element.getAnimations()[0]!.effect!.getKeyframes()
+  const flipTransforms = await page.locator('.nemesis-draw-flight-card').evaluate(element => (element.getAnimations()[0]!.effect as KeyframeEffect).getKeyframes()
     .map(frame => frame.transform))
   expect(flipTransforms).toEqual(['scaleX(1)', 'scaleX(0.015)', 'scaleX(1)'])
-  const faceOpacity = await page.locator('.nemesis-draw-flight-back').evaluate(element => element.getAnimations()[0]!.effect!.getKeyframes()
+  const faceOpacity = await page.locator('.nemesis-draw-flight-back').evaluate(element => (element.getAnimations()[0]!.effect as KeyframeEffect).getKeyframes()
     .map(frame => Number(frame.opacity)))
   expect(faceOpacity).toEqual([1, 1, 0, 0])
-  expect(await page.locator('.nemesis-draw-flight-front').evaluate(element => element.getAnimations()[0]!.effect!.getKeyframes()
+  expect(await page.locator('.nemesis-draw-flight-front').evaluate(element => (element.getAnimations()[0]!.effect as KeyframeEffect).getKeyframes()
     .map(frame => Number(frame.opacity)))).toEqual([0, 0, 1, 1])
   await expect.poll(() => page.locator('.nemesis-reveal-overlay').evaluate(element => Number(getComputedStyle(element).opacity)))
     .toBeGreaterThan(0)
@@ -248,8 +254,7 @@ test('the first token of a new round gets its arrival animation after the slots 
   await expect(page.locator('.turn-order-cards .slot.current img')).toBeVisible()
   const arrivalToken = page.locator('body > .turn-order-token-arrival')
   await expect(arrivalToken).toBeVisible()
-  await expect(arrivalToken).toHaveAttribute(
-    'src',
-    await page.locator('.turn-order-cards .slot.current img').getAttribute('src')!,
-  )
+  const currentTokenSrc = await page.locator('.turn-order-cards .slot.current img').getAttribute('src')
+  if (currentTokenSrc === null) throw new Error('The current turn token has no image source')
+  await expect(arrivalToken).toHaveAttribute('src', currentTokenSrc)
 })
