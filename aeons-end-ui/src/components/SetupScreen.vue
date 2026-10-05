@@ -14,10 +14,13 @@ const {
   state, newGame, resumeGame,
   rerollMarketTemplate,
   requestDeleteSave, requestDeleteSaves, cancelDeleteSave, deleteSaves,
+  duplicateSave, renameSave,
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 const selectionError = ref('')
 const selectedSaveIds = ref<string[]>([])
+const editingSaveId = ref<string | null>(null)
+const saveNameDraft = ref('')
 const allSavesSelected = computed(() => state.saves.length > 0
   && state.saves.every(save => selectedSaveIds.value.includes(save.id)))
 const pendingDeleteSaveCount = computed(() => state.deleteSaveIds.length)
@@ -243,6 +246,24 @@ function confirmDeleteSaves() {
   deleteSaves([...state.deleteSaveIds])
   selectedSaveIds.value = []
 }
+
+function beginSaveRename(save: (typeof state.saves)[number]) {
+  editingSaveId.value = save.id
+  saveNameDraft.value = save.name
+}
+
+function confirmSaveRename() {
+  const saveId = editingSaveId.value
+  if (!saveId || !saveNameDraft.value.trim()) return
+  renameSave(saveId, saveNameDraft.value)
+  editingSaveId.value = null
+  saveNameDraft.value = ''
+}
+
+function cancelSaveRename() {
+  editingSaveId.value = null
+  saveNameDraft.value = ''
+}
 </script>
 
 <template>
@@ -410,14 +431,27 @@ function confirmDeleteSaves() {
           />
         </label>
         <div class="save-entry-info">
-          <strong>{{ save.players.join(' + ') }} vs {{ save.nemesisType }}</strong>
+          <form v-if="editingSaveId === save.id" class="save-name-edit" @submit.prevent="confirmSaveRename">
+            <input
+              v-model="saveNameDraft"
+              type="text"
+              maxlength="60"
+              aria-label="Saved game name"
+              autofocus
+            />
+            <button class="btn small primary" type="submit" :disabled="!saveNameDraft.trim()">Save name</button>
+            <button class="btn small" type="button" @click="cancelSaveRename">Cancel</button>
+          </form>
+          <strong v-else>{{ save.name }}</strong>
           <span class="save-details">
             Round {{ save.round }} · Turn {{ save.turn }} · Current: {{ turnLabel(save.currentTurn) }} · {{ saveTime(save.updatedAt) }}
           </span>
         </div>
         <div class="save-actions">
-          <button class="btn" @click="resumeGame(save.id)">Resume Game</button>
-          <button class="btn danger" @click="requestDeleteSave(save.id)">Delete</button>
+          <button class="btn small" @click="resumeGame(save.id)">Resume Game</button>
+          <button class="btn small" @click="duplicateSave(save.id)">Copy Save</button>
+          <button class="btn small" @click="beginSaveRename(save)">Rename</button>
+          <button class="btn danger small" @click="requestDeleteSave(save.id)">Delete</button>
         </div>
       </article>
     </section>

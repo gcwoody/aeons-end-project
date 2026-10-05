@@ -13,6 +13,7 @@ export interface UndoSnapshot {
 
 export interface SaveSummary {
   id: string
+  name: string
   players: string[]
   nemesisType: string
   round: number
@@ -103,6 +104,8 @@ export function summarizeGameSave(save: StoredSave): SaveSummary {
   const currentPlayer = save.game.players.find(player => player.id === save.currentTurn)
   return {
     id: save.id,
+    name: save.name?.trim()
+      || `${save.players.join(' + ')} vs ${displayMageName(save.nemesisType)}`,
     players: save.players.map(displayMageName),
     nemesisType: displayMageName(save.nemesisType),
     round: save.round,

@@ -6,7 +6,8 @@ const { state } = useGame()
 const collapsed = ref(true)
 const box = ref<HTMLElement | null>(null)
 
-watch(() => state.log.length, async () => {
+watch([collapsed, () => state.log.length], async ([isCollapsed]) => {
+  if (isCollapsed) return
   await nextTick()
   if (box.value) box.value.scrollTop = box.value.scrollHeight
 })

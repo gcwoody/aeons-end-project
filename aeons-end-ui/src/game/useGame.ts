@@ -76,7 +76,7 @@ let pendingAttachCardFlight: { ownerId: PlayerId; cardId: string; flight: CardFl
 let pendingNemesisDrawFlight: { cardId: string; flight: CardFlightSnapshot } | null = null
 const damageTargetRects = new WeakMap<UndoSnapshot, Map<string, DamageTargetRect>>()
 const damageImpactTimers = new Map<number, ReturnType<typeof setTimeout>>()
-const DAMAGE_IMPACT_DURATION_MS = 920
+const DAMAGE_IMPACT_DURATION_MS = 1600
 let turnTransitionSequence = 0
 
 const state = reactive({
@@ -338,6 +338,7 @@ function saveCurrentGame(force = false) {
     const id = `save-${now}-${storedSaves.length + 1}`
     save = {
       id,
+      name: `${state.game.players.map(player => displayMageName(player.mageType)).join(' + ')} vs ${displayMageName(state.game.nemesis.type)}`,
       createdAt: now,
       updatedAt: now,
       players: [],
@@ -543,7 +544,9 @@ function maybeAutoEnd() {
   if (state.game.pendingDecision || state.game.pendingEffect) return
   if (!playerCanAct.value) {
     pushLog('No actions available — turn ends automatically', 'info')
-    doEndTurn()
+    // This automatic phase transition belongs to the action that exhausted
+    // the player's options. That action already recorded its undo snapshot.
+    doEndTurn(false)
   }
 }
 
@@ -746,6 +749,51 @@ export function clearSaves() {
 /** Backward-compatible alias for the debug panel. */
 export function clearSave() {
   clearSaves()
+}
+
+function createSaveId() {
+  let id = ''
+  do {
+    id = `save-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  } while (storedSaves.some(save => save.id === id))
+  return id
+}
+
+export function duplicateSave(saveId: string) {
+  const source = storedSaves.find(save => save.id === saveId)
+  if (!source) return
+
+  const sourceName = summarizeGameSave(source).name
+  const existingNames = new Set(storedSaves.map(save => summarizeGameSave(save).name.toLowerCase()))
+  let name = `${sourceName} (Copy)`
+  let copyNumber = 2
+  while (existingNames.has(name.toLowerCase())) {
+    name = `${sourceName} (Copy ${copyNumber})`
+    copyNumber++
+  }
+
+  const now = Date.now()
+  const copy: StoredSave = {
+    ...source,
+    id: createSaveId(),
+    name,
+    createdAt: now,
+    updatedAt: now,
+    players: [...source.players],
+    game: cloneGameState(source.game),
+    discardRemaining: [...source.discardRemaining],
+    undoStack: (source.undoStack ?? []).map(cloneUndoSnapshot),
+  }
+  storedSaves.unshift(copy)
+  persistStoredSaves()
+}
+
+export function renameSave(saveId: string, requestedName: string) {
+  const save = storedSaves.find(candidate => candidate.id === saveId)
+  const name = requestedName.trim().slice(0, 60)
+  if (!save || !name) return
+  save.name = name
+  persistStoredSaves()
 }
 
 export function requestDeleteSave(saveId: string) {
@@ -1378,6 +1426,19 @@ async function autoDiscardRemaining() {
   finalizeDraw()
 }
 
+/** Wave-specific artwork IDs for the basic Crystal and Spark represent the same cards. */
+function discardOrderIdentity(cardId: string): string {
+  const card = getCard(cardId)
+  const normalizedName = card.name.trim().toLowerCase()
+  if (card.type === 'gem' && normalizedName === 'crystal') return 'shared-basic-gem:crystal'
+  if (card.type === 'spell' && normalizedName === 'spark') return 'shared-basic-spell:spark'
+  return `card:${cardId}`
+}
+
+function areSameDiscardOrderCards(cardIds: readonly string[]): boolean {
+  return new Set(cardIds.map(discardOrderIdentity)).size <= 1
+}
+
 async function moveDiscardPhaseCard(index: number) {
   const p = cp()
   const cardId = state.discardRemaining[index]
@@ -1403,7 +1464,7 @@ async function moveDiscardPhaseCard(index: number) {
 }
 
 /** Core end-of-turn. Called by user action AND auto-end. */
-function doEndTurn() {
+function doEndTurn(recordDiscardUndoBoundary = true) {
   if (state.phase !== 'main' || !state.game) return
   const p = cp()
   if (p.playedThisTurn.length === 0) {
@@ -1414,7 +1475,7 @@ function doEndTurn() {
   // played cards into discard before resolveDrawPhase runs, but effects such
   // as Pact Prism still need to inspect the cards played this turn.
   p.pendingEndTurnCardIds = [...p.playedThisTurn]
-  if (new Set(p.playedThisTurn).size === 1) {
+  if (areSameDiscardOrderCards(p.playedThisTurn)) {
     // All played cards are identical — order is irrelevant, skip the click step.
     const cards = [...p.playedThisTurn]
     p.playedThisTurn = []
@@ -1425,9 +1486,10 @@ function doEndTurn() {
   }
   state.discardRemaining = [...p.playedThisTurn]
   state.phase = 'discard_order'
-  // Discard order is its own undo point. Once the next Mage starts their turn,
-  // undo should restore this phase instead of jumping back before Main.
-  recordUndoBoundary()
+  // A manually started End Turn keeps a separate snapshot for Discard Order.
+  // When auto-end follows another action, that action's snapshot should undo
+  // both the action and this transition together.
+  if (recordDiscardUndoBoundary) recordUndoBoundary()
   pushLog('Click played cards in the order they enter the discard pile', 'info')
 }
 
@@ -1464,7 +1526,7 @@ export async function clickDiscardCard(index: number) {
       return
     }
     // If the remaining played cards are all identical, discard them automatically.
-    if (new Set(state.discardRemaining).size === 1) {
+    if (areSameDiscardOrderCards(state.discardRemaining)) {
       await autoDiscardRemaining()
     }
   } finally {
@@ -1671,6 +1733,7 @@ export function useGame() {
     rerollMarketTemplate,
     newGame, resumeGame, clearSave, clearSaves,
     requestDeleteSave, requestDeleteSaves, cancelDeleteSave, deleteSave, deleteSaves,
+    duplicateSave, renameSave,
     requestExit, cancelExit, saveAndExit, exitWithoutSaving,
     returnToMainMenu,
     toggleDebug, setDebugFreeSpellCastEnabled, debugCastAnyPreppedSpell,

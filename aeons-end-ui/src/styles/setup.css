@@ -47,9 +47,20 @@
 .save-entry.selected { border-color: var(--accent); }
 .save-entry-select { flex: 0 0 auto; }
 .save-entry-info { flex: 1 1 auto; min-width: 0; }
-.save-entry strong { display: block; }
+.save-entry strong { display: block; overflow-wrap: anywhere; }
 .save-details { display: block; margin-top: 4px; color: var(--muted); font-size: 12px; }
-.save-actions { display: flex; flex-shrink: 0; gap: 8px; }
+.save-actions { display: flex; flex: 0 1 auto; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+.save-name-edit { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+.save-name-edit input {
+  flex: 1 1 160px;
+  min-width: 100px;
+  padding: 4px 7px;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 6px;
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
 .save-delete-overlay { z-index: var(--z-save-confirm); }
 .setup label { display: flex; flex-direction: column; gap: 6px; color: var(--muted); font-size: 13px; }
 .setup-select-row { display: flex; align-items: stretch; gap: 6px; }
