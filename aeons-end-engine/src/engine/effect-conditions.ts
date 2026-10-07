@@ -52,6 +52,20 @@ export function conditionMatches(
   if (condition.kind === 'has_recall_in_any_discard') {
     return services.hasRecallChoices(game, resolution?.sourcePlayerId ?? sourcePlayerId ?? playerId)
   }
+  if (condition.kind === 'has_last_selected_card_cost') {
+    const value = resolution?.lastSelectedCardCost ?? 0
+    if (condition.comparison === 'equals') return value === condition.amount
+    if (condition.comparison === 'at_most') return value <= condition.amount
+    if (condition.comparison === 'greater_than') return value > condition.amount
+    return value >= condition.amount
+  }
+  if (condition.kind === 'nemesis_discard_minion_count') {
+    const value = game.nemesis.discard.filter(cardId => getCard(cardId).type === 'minion').length
+    if (condition.comparison === 'equals') return value === condition.amount
+    if (condition.comparison === 'at_most') return value <= condition.amount
+    if (condition.comparison === 'greater_than') return value > condition.amount
+    return value >= condition.amount
+  }
   if (condition.kind === 'nemesis_turn_order_discard_count') {
     const value = game.turnOrderDiscard.filter(cardId => cardId === 'nemesis').length
     return condition.comparison === 'equals' ? value === condition.count : value >= condition.count
@@ -156,7 +170,10 @@ export function conditionMatches(
       (!condition.cardId || cardId === condition.cardId) &&
       (!condition.cardType || getCard(cardId).type === condition.cardType),
     ).length
-    return condition.comparison === 'equals' ? count === condition.count : count >= condition.count
+    if (condition.comparison === 'equals') return count === condition.count
+    if (condition.comparison === 'at_most') return count <= condition.count
+    if (condition.comparison === 'greater_than') return count > condition.count
+    return count >= condition.count
   }
   if (condition.kind === 'has_affordable_card_in_specific_deck') {
     const targetId = condition.player === 'source'
@@ -213,7 +230,10 @@ export function conditionMatches(
       .reduce((sum, breach) => sum + breach.prepSpells.length, 0)
     expected = condition.count
   }
-  return condition.comparison === 'equals' ? value === expected : value >= expected
+  if (condition.comparison === 'equals') return value === expected
+  if (condition.comparison === 'at_most') return value <= expected
+  if (condition.comparison === 'greater_than') return value > expected
+  return value >= expected
 }
 
 export function matchingBlocks(

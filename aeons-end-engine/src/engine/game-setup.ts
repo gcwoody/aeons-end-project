@@ -8,6 +8,7 @@ import {
 import { getNemesisRules } from '../nemesis/registry'
 import { marketPileChoices } from '../nemesis/market'
 import { buildTrinketDeck } from '../data/wave9/special-decks/trinkets'
+import { initializeCardInstanceZone, markCardInstanceRevealed } from './card-instances'
 import { shuffle } from './decks'
 import { clone } from './utilities'
 
@@ -126,7 +127,7 @@ export function createInitialGameState(
     const card = getCard(pile.cardId)
     return [...(card.mechanics ?? []), ...(card.developCost === undefined ? [] : ['develop' as const])]
   }))]
-  const hasSwapZone = [mage1Def, mage2Def].some(definition =>
+  const hasSwapZone = supplyMechanics.includes('swap') || [mage1Def, mage2Def].some(definition =>
     definition.hasSwapZone === true || (definition.swapZone?.length ?? 0) > 0,
   )
   const hasDevelopZone = supplyMechanics.includes('develop') || [mage1Def, mage2Def].some(definition =>
@@ -135,6 +136,15 @@ export function createInitialGameState(
 
   const nemesisDeck = nemesisDef.deckBuilder?.() ?? []
   const strikeDeck = nemesisDef.specificDeckBuilder?.() ?? []
+  const corruptionDeck = nemesisDef.corruptionDeckBuilder?.() ?? []
+  if (scenario.nemesisType === 'crooked_mask' && scenario.nemesisDifficulty === 'increased') {
+    // Increased Difficulty gives each Mage one unseen Corruption on the
+    // bottom of their starting deck. Corruption deck order is top-first.
+    for (const player of [player1, player2]) {
+      const corruptionId = corruptionDeck.pop()
+      if (corruptionId) player.deck.push(corruptionId)
+    }
+  }
   const trinketDeck = buildTrinketDeck()
   const turnOrder = buildScenarioTurnOrder(scenario, [player1.id, player2.id])
 
@@ -150,6 +160,8 @@ export function createInitialGameState(
       difficulty: scenario.nemesisDifficulty,
       deck: nemesisDeck, discard: [],
       strikeDeck, strikeDiscard: [],
+      corruptionDeck,
+      corruptionDeckRevealed: corruptionDeck.map(() => false),
       counters: { ...nemesisDef.startingCounters },
       playArea: [],
       tierAnnounced: [false, false, false],
@@ -171,6 +183,23 @@ export function createInitialGameState(
     nemesisResolution: null,
     decisionCounter: 0,
     damagePrevention: false,
+  }
+
+  game.nemesis.deckInstanceIds = initializeCardInstanceZone(game, game.nemesis.deck)
+  game.nemesis.discardInstanceIds = initializeCardInstanceZone(game, game.nemesis.discard, true)
+  game.nemesis.strikeDeckInstanceIds = initializeCardInstanceZone(game, game.nemesis.strikeDeck)
+  game.nemesis.strikeDiscardInstanceIds = initializeCardInstanceZone(game, game.nemesis.strikeDiscard, true)
+  game.nemesis.corruptionDeckInstanceIds = initializeCardInstanceZone(game, game.nemesis.corruptionDeck ?? [])
+  game.trinketDeckInstanceIds = initializeCardInstanceZone(game, game.trinketDeck ?? [])
+  for (const player of game.players) {
+    player.specificDeckInstanceIds = initializeCardInstanceZone(game, player.specificDeck ?? [])
+  }
+  game.cardInstanceStates ??= {}
+  for (const card of game.nemesis.playArea) {
+    const instanceId = card.instanceId ?? `${card.cardId}:${card.placedAt}`
+    card.instanceId = instanceId
+    game.cardInstanceStates![instanceId] = { cardId: card.cardId, revealed: true }
+    markCardInstanceRevealed(game, instanceId)
   }
 
   getNemesisRules(nemesisDef.rulesModuleId ?? nemesisDef.type)?.setup?.({

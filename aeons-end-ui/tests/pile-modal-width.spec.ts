@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test'
 
-test('empty specific deck and other pile viewers retain readable widths', async ({ page }) => {
+test('empty player and Nemesis piles stay inert without a border', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 800 })
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
@@ -16,9 +16,15 @@ test('empty specific deck and other pile viewers retain readable widths', async 
   const stateField = page.locator('.debug-panel textarea')
   const saved = JSON.parse(await stateField.inputValue())
   const stake = saved.game.players.find((player: { mageType: string }) => player.mageType === 'stake')
-  stake.specificDeck = []
-  stake.deck = []
-  stake.discard = []
+  for (const player of saved.game.players) {
+    player.specificDeck = []
+    player.deck = []
+    player.discard = []
+  }
+  saved.game.nemesis.deck = []
+  saved.game.nemesis.discard = []
+  saved.game.nemesis.strikeDeck = []
+  saved.game.nemesis.strikeDiscard = []
   saved.selectedPlayer = stake.id
   saved.phase = 'main'
   saved.game.currentTurn = stake.id
@@ -29,32 +35,43 @@ test('empty specific deck and other pile viewers retain readable widths', async 
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
-  await page.getByLabel("Open Stake's Breach Upgrade Deck").click()
   const modal = page.locator('.pile-modal')
-  await expect(modal).toBeVisible()
-  await expect(modal.locator('.empty')).toBeVisible()
-  await expect.poll(async () => (await modal.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(440)
-  expect(await modal.locator('h3').evaluate(heading => heading.getBoundingClientRect().height)).toBeLessThan(30)
-  await modal.screenshot({ path: 'test-results/stake-empty-pile.png' })
-  await modal.getByRole('button', { name: 'Close' }).click()
+  await page.evaluate(async () => {
+    const { nemesisPresentations } = await import('/src/game/nemesis-presentation.ts')
+    nemesisPresentations.rageborne.specificDiscard.enabled = true
+  })
+  const emptyPlayerPiles = [
+    page.locator('.player-specific-deck-pile').first(),
+    page.locator('.player-deck-pile').first(),
+    page.locator('.player-discard-pile').first(),
+  ]
+  for (const pile of emptyPlayerPiles) {
+    await expect(pile).toHaveClass(/is-empty/)
+    await expect.poll(() => pile.evaluate(element => getComputedStyle(element).cursor)).toBe('pointer')
+    await expect.poll(() => pile.evaluate(element => getComputedStyle(element).borderTopColor)).toBe('rgba(0, 0, 0, 0)')
+    await expect.poll(() => pile.evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(21, 26, 41)')
+    const bounds = await pile.boundingBox()
+    expect(bounds).not.toBeNull()
+    await page.mouse.click(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
+    await expect(modal).toHaveCount(0)
+  }
 
-  await page.locator('.player-deck-pile').first().click()
-  await expect(modal.locator('.empty')).toBeVisible()
-  await expect.poll(async () => (await modal.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(280)
-  await modal.getByRole('button', { name: 'Close' }).click()
-
-  await page.locator('.player-discard-pile').first().click()
-  await expect(modal.locator('.empty')).toBeVisible()
-  await expect.poll(async () => (await modal.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(280)
-  await modal.getByRole('button', { name: 'Close' }).click()
-
-  await page.getByRole('button', { name: 'Open Nemesis Discard' }).click()
-  await expect.poll(async () => (await modal.boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(440)
-  await modal.getByRole('button', { name: 'Close' }).click()
-
-  await page.setViewportSize({ width: 360, height: 640 })
-  await page.getByLabel("Open Stake's Breach Upgrade Deck").click()
-  await expect.poll(async () => (await modal.boundingBox())?.width ?? 999).toBeLessThanOrEqual(328)
+  const emptyNemesisPiles = [
+    page.getByRole('button', { name: 'Open Nemesis Deck' }),
+    page.getByRole('button', { name: 'Open Nemesis Discard' }),
+    page.getByRole('button', { name: 'Open Strike Deck' }),
+    page.getByRole('button', { name: 'Open Nemesis Specific Discard' }),
+  ]
+  for (const pile of emptyNemesisPiles) {
+    await expect(pile).toHaveClass(/is-empty/)
+    await expect.poll(() => pile.evaluate(element => getComputedStyle(element).cursor)).toBe('pointer')
+    await expect.poll(() => pile.locator('.nemesis-pile-placeholder').evaluate(element => getComputedStyle(element).borderTopColor)).toBe('rgba(0, 0, 0, 0)')
+    await expect.poll(() => pile.locator('.nemesis-pile-placeholder').evaluate(element => getComputedStyle(element).backgroundColor)).toBe('rgb(21, 26, 41)')
+    const bounds = await pile.boundingBox()
+    expect(bounds).not.toBeNull()
+    await page.mouse.click(bounds!.x + bounds!.width / 2, bounds!.y + bounds!.height / 2)
+    await expect(modal).toHaveCount(0)
+  }
 })
 
 test('enabled Nemesis specific discard uses the same pile viewer width', async ({ page }) => {
@@ -73,6 +90,12 @@ test('enabled Nemesis specific discard uses the same pile viewer width', async (
   const stateField = page.locator('.debug-panel textarea')
   const saved = JSON.parse(await stateField.inputValue())
   saved.game.nemesis.strikeDiscard = ['slaughter']
+  saved.phase = 'main'
+  saved.selectedPlayer = saved.game.players[0].id
+  saved.game.currentTurn = saved.game.players[0].id
+  saved.game.currentPhase = 'main'
+  saved.game.pendingDecision = null
+  saved.game.pendingEffect = null
   await stateField.fill(JSON.stringify(saved))
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()

@@ -16,8 +16,6 @@ import {
   getPreppedSpellChoices,
   getCastableSpells,
   getSpellBreachTargets,
-  movePreppedSpell,
-  returnPreppedSpellToHand,
   getSpellDamagePreview,
   prepSpell,
   resolveDrawPhase,
@@ -28,6 +26,7 @@ import {
   dealDamage,
   sufferPlayerDamage,
   getSpellDamagePreviewRange,
+  resolveEffects,
 } from '../engine'
 import { arcaneNexus, getCard, INITIAL_CARDS, MARKET_CARDS, MAGES } from '../data'
 import type { CardChoice, DamageTargetRef, GameState, PendingDecisionAnswer } from '../types'
@@ -550,7 +549,8 @@ function testSpellEffects(): void {
     noDamageCaster.breaches[2]!.prepSpells = ['arcane_nexus']
     noDamageSpell.nemesis.hp = 20
     const noDamageMessage = castSpell(noDamageSpell, noDamageSpell.players[0]!.id, 3)
-    assertEqual(noDamageSpell.nemesis.hp, 19, `Breach III adds damage when a spell has no damage effect (${noDamageMessage})`)
+    assertEqual(noDamageSpell.nemesis.hp, 20, `Additional damage does not create a damage event without spell damage (${noDamageMessage})`)
+    assertEqual(noDamageSpell.pendingDecision, null, 'A damage bonus alone does not request an enemy target')
 
     arcaneNexus.effects = [{
       trigger: { kind: 'on_cast' },
@@ -577,6 +577,67 @@ function testSpellEffects(): void {
   assertEqual(brama.bonusAether, 1, 'Casting-phase aether is stored immediately')
 }
 
+function testStakeBreachDamageUpgrades(): void {
+  for (const [upgradeId, bonus] of [
+    ['upgraded_focus', 2],
+    ['upgraded_potential', 3],
+  ] as const) {
+    const installGame = createGame('stake', 'brama')
+    const installer = installGame.players[0]!
+    installer.knowledge = 20
+    const breach = installer.breaches.find(item => item.index === 4)!
+    const originalBonus = breach.damageBonus
+    resolveEffects(installGame, installer.id, [{
+      kind: 'install_breach_upgrade', breachIndex: 4, cardType: 'breach_upgrade', player: 'source',
+    }], 'tinker')
+    const upgradeDecision = installGame.pendingDecision
+    assertEqual(upgradeDecision?.kind, 'select_cards', `${upgradeId} installation offers upgrade cards`)
+    assert(upgradeDecision?.kind === 'select_cards', `${upgradeId} installation has a card choice`)
+    const selectedUpgrade = upgradeDecision.candidates.find(choice => choice.cardId === upgradeId)
+    assert(selectedUpgrade, `${upgradeId} appears in Stake's upgrade deck`)
+    resolvePendingDecision(installGame, upgradeDecision.id, {
+      kind: 'select_cards', choices: [selectedUpgrade],
+    })
+    assertEqual(breach.damageBonus, originalBonus + bonus,
+      `${upgradeId} adds exactly ${bonus} damage to the Prototype breach`)
+
+    // A second on-cast upgrade switches the effect source while the spell is
+    // resolving. That context change must not make the damage bonus look like
+    // a new damage event after Spark's original hit.
+    const castGame = createGame('stake', 'brama')
+    const caster = castGame.players[0]!
+    const prototype = caster.breaches.find(item => item.index === 4)!
+    prototype.opened = true
+    prototype.damageBonus = bonus
+    prototype.installedUpgrades = ['upgraded_energetics']
+    prototype.prepSpells = ['spark']
+    castGame.nemesis.hp = 20
+    castGame.nemesis.playArea = [{
+      cardId: 'bane_sire', cardType: 'minion', placedAt: 1, lifeTokens: 20,
+    }]
+
+    castSpell(castGame, caster.id, 4)
+    let decision = castGame.pendingDecision
+    assertEqual(decision?.kind, 'select_damage_target', `${upgradeId} spell asks for its damage target`)
+    assert(decision?.kind === 'select_damage_target', 'Stake spell has a damage target decision')
+    const minionTarget = decision.targets.find(target => target.kind === 'minion')
+    assert(minionTarget, 'The minion is a legal spell damage target')
+    resolvePendingDecision(castGame, decision.id, { kind: 'select_damage_target', target: minionTarget })
+    assertEqual(castGame.nemesis.playArea[0]?.lifeTokens, 19 - bonus,
+      `${upgradeId} modifies Spark's original damage instance`)
+
+    decision = castGame.pendingDecision
+    assertEqual(decision?.kind, 'choose_one', 'Prototype and Upgraded Energetics effects resolve after the spell')
+    assert(decision?.kind === 'choose_one', 'Stake breach has simultaneous on-cast effects')
+    resolvePendingDecision(castGame, decision.id, {
+      kind: 'choose_one', optionId: decision.options[0]!.id,
+    })
+    assertEqual(castGame.pendingDecision, null,
+      `${upgradeId} does not request a second damage target for its bonus`)
+    assertEqual(castGame.nemesis.hp, 20, `${upgradeId} does not deal its bonus as a separate hit`)
+  }
+}
+
 function testSpellDamagePreview(): void {
   const game = freshGame()
   const player = game.players[0]!
@@ -589,28 +650,6 @@ function testSpellDamagePreview(): void {
     6,
     'Spell damage preview includes Planar Insight damage and the third-breach bonus',
   )
-}
-
-function testMovePreppedSpell(): void {
-  const game = freshGame()
-  const player = game.players[0]!
-  player.breaches[0]!.prepSpells = ['spark']
-  player.breaches[1]!.opened = false
-  player.breaches[1]!.focusedThisTurn = false
-  assertEqual(
-    movePreppedSpell(game, player.id, 1, 0, 2),
-    'The target Breach is not available for preparation',
-    'A closed Breach cannot receive a moved spell',
-  )
-  player.breaches[1]!.opened = true
-  assert(movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Moved Spark'), 'A moved spell can use a Breach opened later')
-  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Moving removes the spell from its source Breach')
-  assertEqual(player.breaches[1]!.prepSpells.join(','), 'spark', 'Moving places the spell on the newly opened Breach')
-
-  player.breaches[0]!.prepSpells = ['flare']
-  assert(movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Swapped'), 'Moving onto a prepared Breach swaps spells')
-  assertEqual(player.breaches[0]!.prepSpells.join(','), 'spark', 'The target spell moves to the source Breach')
-  assertEqual(player.breaches[1]!.prepSpells.join(','), 'flare', 'The dragged spell moves to the target Breach')
 }
 
 function testSpellBreachTargetQueries(): void {
@@ -628,54 +667,24 @@ function testSpellBreachTargetQueries(): void {
   prepPlayer.breaches[2]!.prepSpells = ['flare']
 
   assertEqual(
-    getSpellBreachTargets(prepGame, prepPlayer.id, { kind: 'hand', cardId: 'spark' }).join(','),
+    getSpellBreachTargets(prepGame, prepPlayer.id, 'spark').join(','),
     '1,2',
     'Regular hand spells target open or currently focused Breaches with room',
   )
   assertEqual(
-    getSpellBreachTargets(prepGame, prepPlayer.id, { kind: 'hand', cardId: 'feral_lightning' }).join(','),
+    getSpellBreachTargets(prepGame, prepPlayer.id, 'feral_lightning').join(','),
     '1,2,4',
     'Special hand spells may also target a closed Breach',
   )
   assertEqual(
-    getSpellBreachTargets(prepGame, prepPlayer.id, { kind: 'hand', cardId: 'crystal' }).length,
+    getSpellBreachTargets(prepGame, prepPlayer.id, 'crystal').length,
     0,
     'Non-spells do not receive prep targets',
   )
 
-  const moveGame = freshGame()
-  const movePlayer = moveGame.players[0]!
-  for (const breach of movePlayer.breaches) {
-    breach.opened = false
-    breach.focusedThisTurn = false
-    breach.prepSpells = []
-  }
-  movePlayer.breaches[0]!.opened = true
-  movePlayer.breaches[0]!.prepSpells = ['spark']
-  movePlayer.breaches[1]!.focusedThisTurn = true
-  movePlayer.breaches[2]!.opened = true
-  movePlayer.breaches[2]!.prepSpells = ['flare']
-  assertEqual(
-    getSpellBreachTargets(moveGame, movePlayer.id, { kind: 'prepped', breachIndex: 1, spellIndex: 0 }).join(','),
-    '2,3',
-    'Move targets include a focused Breach and an occupied Breach that can be swapped with',
-  )
-  movePlayer.breaches[0]!.prepSpells = ['feral_lightning']
-  assertEqual(
-    getSpellBreachTargets(moveGame, movePlayer.id, { kind: 'prepped', breachIndex: 1, spellIndex: 0 }).join(','),
-    '2,3,4',
-    'Moving a special spell preserves its permission to target a closed Breach',
-  )
-
-  moveGame.currentPhase = 'casting'
-  assertEqual(
-    getSpellBreachTargets(moveGame, movePlayer.id, { kind: 'prepped', breachIndex: 1, spellIndex: 0 }).length,
-    0,
-    'Spell movement targets are hidden outside the Main Phase',
-  )
 }
 
-function testHandAndBreachSpellTransfers(): void {
+function testHandSpellCannotReplacePreppedSpell(): void {
   const game = freshGame()
   const player = game.players[0]!
   player.hand = ['flare']
@@ -688,59 +697,21 @@ function testHandAndBreachSpellTransfers(): void {
   )
   assertEqual(player.hand.join(','), 'flare', 'The rejected hand spell remains in hand')
   assertEqual(player.breaches[0]!.prepSpells.join(','), 'spark', 'The existing prepped spell remains on the Breach')
-
-  assert(
-    returnPreppedSpellToHand(game, player.id, 1, 0)?.includes('Returned Spark'),
-    'A prepped spell can be returned to hand during Main Phase',
-  )
-  assertEqual(player.hand.join(','), 'flare,spark', 'Returned spells are appended to hand')
-  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Returning a spell clears its Breach slot')
 }
 
-function testPreppedSpellRepositionDoesNotKeepMainPhaseOpen(): void {
+function testPlayingSelectedDuplicatePreservesHandOrder(): void {
   const game = freshGame()
   const player = game.players[0]!
-  game.currentTurn = player.id
-  game.currentPhase = 'main'
-  player.hand = []
-  player.bonusAether = 0
-  player.breaches[0]!.opened = true
-  player.breaches[0]!.prepSpells = ['spark']
-  player.breaches[1]!.opened = true
+  player.hand = ['crystal', 'spark', 'spark', 'spark', 'crystal']
 
-  assert(!canPlayerAct(game, player.id), 'Prepped spell repositioning is not a Main Phase action')
-  assert(
-    movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Moved Spark'),
-    'A prepped spell can move after other Main Phase actions are exhausted',
-  )
-  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'The source Breach is cleared after repositioning')
-  assertEqual(player.breaches[1]!.prepSpells.join(','), 'spark', 'The spell reaches the newly available Breach')
-}
+  assert(playCard(game, player.id, 'crystal', 4)?.includes('Played Crystal'),
+    'Playing the rightmost duplicate uses the selected hand slot')
+  assertEqual(player.hand.join(','), 'crystal,spark,spark,spark',
+    'Playing the rightmost Crystal leaves the first Crystal before the three Spells')
+  assertEqual(player.playedThisTurn[player.playedThisTurn.length - 1], 'crystal', 'The selected Crystal enters the Played zone')
 
-function testClosedBreachRepositionForSpecialSpell(): void {
-  const game = freshGame()
-  const player = game.players[0]!
-  player.breaches[0]!.prepSpells = ['feral_lightning']
-  player.breaches[1]!.opened = false
-  player.breaches[1]!.focusedThisTurn = false
-
-  assert(
-    movePreppedSpell(game, player.id, 1, 0, 2)?.includes('Moved Feral Lightning'),
-    'Feral Lightning can be moved onto a closed Breach',
-  )
-  assertEqual(player.breaches[0]!.prepSpells.length, 0, 'Moving Feral Lightning clears its source Breach')
-  assertEqual(player.breaches[1]!.prepSpells.join(','), 'feral_lightning', 'Feral Lightning reaches the closed Breach')
-
-  const regular = freshGame()
-  const regularPlayer = regular.players[0]!
-  regularPlayer.breaches[0]!.prepSpells = ['spark']
-  regularPlayer.breaches[1]!.opened = false
-  regularPlayer.breaches[1]!.focusedThisTurn = false
-  assertEqual(
-    movePreppedSpell(regular, regularPlayer.id, 1, 0, 2),
-    'The target Breach is not available for preparation',
-    'Regular spells still cannot be moved onto a closed Breach',
-  )
+  assertEqual(playCard(game, player.id, 'crystal', 3), 'Card not in hand',
+    'A stale hand index cannot play a different card that shifted into that slot')
 }
 
 function testPreppedOncePerTurnAndTargets(): void {
@@ -1162,12 +1133,11 @@ function run(): void {
   testInitialCardEffects()
   testRelicEffects()
   testSpellEffects()
+  testStakeBreachDamageUpgrades()
   testSpellDamagePreview()
-  testMovePreppedSpell()
   testSpellBreachTargetQueries()
-  testHandAndBreachSpellTransfers()
-  testPreppedSpellRepositionDoesNotKeepMainPhaseOpen()
-  testClosedBreachRepositionForSpecialSpell()
+  testHandSpellCannotReplacePreppedSpell()
+  testPlayingSelectedDuplicatePreservesHandOrder()
   testPreppedOncePerTurnAndTargets()
   testManualWhilePreppedSpellAction()
   testRepeatableWhilePreppedSpellAction()

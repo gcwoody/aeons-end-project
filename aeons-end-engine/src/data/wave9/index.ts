@@ -16,6 +16,7 @@ import * as Stake from './mages/stake'
 import * as Tressa from './mages/tressa'
 import * as Wolf from './mages/wolf'
 import * as YanMagda from './mages/yanmagda'
+import * as CrookedMask from './nemeses/crooked-mask'
 
 export * from './cards/basic'
 export * from './cards/gems'
@@ -32,6 +33,8 @@ export * from './mages/stake'
 export * from './mages/tressa'
 export * from './mages/wolf'
 export * from './mages/yanmagda'
+export * from './nemeses/basic-cards'
+export * from './nemeses/crooked-mask'
 
 export const WAVE9_MAGE_CARDS: Record<string, CardDef> = mergeCatalogs(
   Dezmodia.DEZMODIA_CARDS,
@@ -45,6 +48,12 @@ export const WAVE9_MAGE_CARDS: Record<string, CardDef> = mergeCatalogs(
   Wolf.WOLF_CARDS,
   YanMagda.YAN_MAGDA_CARDS,
 )
+
+export const WAVE9_NEMESIS_CARDS = mergeCatalogs(
+  CrookedMask.CROOKED_MASK_UNIQUE_CARDS,
+  CrookedMask.CROOKED_MASK_CORRUPTION_CARDS,
+)
+export const WAVE9_NEMESES = { [CrookedMask.crookedMask.type]: CrookedMask.crookedMask }
 
 export const WAVE9_INITIAL_CARDS: Record<string, CardDef> = mergeCatalogs(
   { wave9_crystal: BasicCards.wave9Crystal, wave9_spark: BasicCards.wave9Spark },

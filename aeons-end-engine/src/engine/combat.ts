@@ -2,9 +2,13 @@ import type { DamageTargetRef, GameState, NemesisCardDef } from '../types'
 import { getCard, getNemesisDefinition } from '../data'
 import { isPresentBreach } from './breaches'
 import { getPlayer } from './zones'
+import { insertCardInstanceAt } from './card-instances'
+import { recordHealthChange } from './health-feedback'
 
 export function damageNemesis(game: GameState, amount: number): void {
-  game.nemesis.hp -= Math.max(0, amount)
+  const value = Math.max(0, amount)
+  if (value > 0) recordHealthChange(game, { kind: 'damage', targetId: 'nemesis', amount: value })
+  game.nemesis.hp -= value
   if (game.nemesis.hp <= 0) {
     game.nemesis.hp = 0
     finishGame(game, 'players')
@@ -24,6 +28,7 @@ export function dealDamage(game: GameState, target: DamageTargetRef, amount: num
     if (game.damagePrevention) return 'Gravehold suffers no damage this turn'
     const before = game.gravehold.hp
     game.gravehold.hp = Math.max(0, before - value)
+    recordHealthChange(game, { kind: 'damage', targetId: 'gravehold', amount: value })
     if (game.gravehold.hp <= 0) checkGameOver(game)
     return `Gravehold takes ${before - game.gravehold.hp} damage (${game.gravehold.hp}/${game.gravehold.maxHp})`
   }
@@ -33,14 +38,20 @@ export function dealDamage(game: GameState, target: DamageTargetRef, amount: num
   )
   if (!minion) return `Target ${target.label} is no longer in play`
   const definition = getCard(minion.cardId) as NemesisCardDef
+  const reducedValue = Math.max(1, value - Math.max(0, definition.damageReductionPerInstance ?? 0))
   const resolvedValue = definition.damagePerInstance === undefined
-    ? value
-    : Math.min(value, Math.max(0, definition.damagePerInstance))
+    ? reducedValue
+    : Math.min(reducedValue, Math.max(0, definition.damagePerInstance))
   const before = Math.max(0, minion.lifeTokens ?? 0)
+  recordHealthChange(game, { kind: 'damage', targetId: `minion:${minion.placedAt}`, amount: resolvedValue })
   minion.lifeTokens = Math.max(0, before - resolvedValue)
   if (minion.lifeTokens === 0) {
     game.nemesis.playArea = game.nemesis.playArea.filter(card => card !== minion)
-    game.nemesis.discard.unshift(minion.cardId)
+    insertCardInstanceAt(game, game.nemesis.discard, game.nemesis.discardInstanceIds ??= [], {
+      cardId: minion.cardId,
+      instanceId: minion.instanceId ?? `${minion.cardId}:${minion.placedAt}`,
+      revealed: true,
+    }, 0, true)
     return `${target.label} takes ${before} damage and is defeated`
   }
   return `${target.label} takes ${before - minion.lifeTokens} damage (${minion.lifeTokens} life remaining)`
@@ -53,10 +64,12 @@ export function sufferPlayerDamage(game: GameState, playerId: string, damage: nu
   if (player.exhausted) {
     const graveholdDamage = value * 2
     game.gravehold.hp = Math.max(0, game.gravehold.hp - graveholdDamage)
+    recordHealthChange(game, { kind: 'damage', targetId: 'gravehold', amount: graveholdDamage })
     if (game.gravehold.hp <= 0) checkGameOver(game)
     return `${player.mageType} is exhausted; Gravehold takes ${graveholdDamage} damage (${game.gravehold.hp}/${game.gravehold.maxHp})`
   }
   player.hp -= value
+  recordHealthChange(game, { kind: 'damage', targetId: `player:${player.id}`, amount: value })
   return `${player.mageType} takes ${value} damage (${player.hp}/${player.maxHp})`
 }
 
@@ -88,6 +101,7 @@ export function checkPlayerDeath(game: GameState, playerId: string, deferConsequ
     // queues the ordered consequences so they can pause and resume safely.
     if (!deferConsequences) {
       game.gravehold.hp = Math.max(0, game.gravehold.hp - excess * 2)
+      recordHealthChange(game, { kind: 'damage', targetId: 'gravehold', amount: excess * 2 })
       const openBreach = player.breaches.find(breach =>
         isPresentBreach(breach) && breach.opened && !breach.indestructible,
       )

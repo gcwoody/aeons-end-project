@@ -1,4 +1,31 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
+
+async function clearInitialNemesisDraw(page: Page) {
+  let quietChecks = 0
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const flight = page.locator('.nemesis-draw-flight-scene')
+    if (await flight.isVisible().catch(() => false)) {
+      await expect(flight).toHaveCount(0, { timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await reveal.click({ position: { x: 12, y: 12 } })
+      await expect(reveal).toHaveCount(0)
+      quietChecks = 0
+      continue
+    }
+    const shield = page.locator('.turn-transition-shield')
+    if (await shield.isVisible().catch(() => false)) {
+      await expect(shield).toBeHidden({ timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    await page.waitForTimeout(100)
+    if (++quietChecks >= 3) return
+  }
+}
 
 test('Tressa setup reveals loaded level-three Treasure fronts', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 1000 })
@@ -27,6 +54,7 @@ test('Tressa setup reveals loaded level-three Treasure fronts', async ({ page })
 
   await revealedTreasures.first().click()
   await expect(decision).toBeHidden()
+  await clearInitialNemesisDraw(page)
 
   await page.locator('.char-btn').filter({ hasText: 'Tressa' }).click()
   await page.locator('.player-specific-deck-pile').click()
@@ -174,12 +202,40 @@ test('Tressa Treasure action glow follows eligibility and the owning Mage turn',
     tressa.hand = ['crystal']
   })
   await expect(breachStance).toHaveClass(/in-play-action/)
+  await expect(breachStance).toHaveClass(/game-highlight--available/)
+  await expect.poll(() => breachStance.evaluate(element =>
+    getComputedStyle(element, '::after').borderTopColor,
+  )).toBe('rgb(158, 206, 106)')
 
+  await editState(saved => {
+    const tressa = saved.game.players.find((player: { mageType: string }) => player.mageType === 'tressa')
+    tressa.playerCardsInPlay = ['breach_stance', 'creator_stance']
+    tressa.playerCardSupplyTargets = [null, null]
+    tressa.playerCardPowerTokens = [0, 0]
+  })
+  const stackedBreachStance = page.locator('.player-in-play-card').filter({
+    has: page.locator('img[alt="Breach Stance"]'),
+  })
+  await expect(stackedBreachStance).toHaveClass(/in-play-action/)
+  const activeCardStackIndex = Number(await stackedBreachStance.evaluate(element =>
+    getComputedStyle(element.parentElement!).zIndex,
+  ))
+  const coveredCardStackIndex = Number(await page.locator('.player-in-play-card').filter({
+    has: page.locator('img[alt="Creator Stance"]'),
+  }).evaluate(element => getComputedStyle(element.parentElement!).zIndex))
+  expect(activeCardStackIndex).toBeGreaterThan(coveredCardStackIndex)
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+  await stackedBreachStance.click()
+  const inPlayPile = page.locator('.pile-modal')
+  await expect(inPlayPile.locator('.player-card-in-play-action img[alt="Breach Stance"]')).toBeVisible()
+  await inPlayPile.getByRole('button', { name: 'Close' }).click()
+
+  await page.keyboard.press('Control+d')
   await editState(saved => {
     const tressa = saved.game.players.find((player: { mageType: string }) => player.mageType === 'tressa')
     tressa.breaches.filter((breach: { present?: boolean }) => breach.present !== false)
       .forEach((breach: { opened: boolean }) => { breach.opened = true })
   })
-  await expect(breachStance).not.toHaveClass(/in-play-action/)
+  await expect(stackedBreachStance).not.toHaveClass(/in-play-action/)
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 })

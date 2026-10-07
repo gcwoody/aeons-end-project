@@ -36,7 +36,7 @@ const abilityEffects: CardEffect[] = [{
   options: [
     {
       id: 'cast_twice',
-      label: "Cast a spell from an ally's hand twice without discarding it",
+      label: "Cast a spell from an ally's hand without discarding it, then cast it again",
       effects: [{ kind: 'cast_spell_from_hand', times: 2 }],
     },
     {

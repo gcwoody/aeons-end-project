@@ -1,360 +1,171 @@
 # UI 开发指南
 
-本文是项目 UI 的唯一维护入口。组件目录、状态组合、尺寸与目标视口、
-层级、交互约定和验收方式都集中在这里。实现新的卡牌、Mage 或页面 UI
-之前，先查找是否已有可复用组件和状态。
+这里集中维护前端组件、交互、尺寸、动效和层级约定。改 UI 前先找可复用的组件和 Gallery 示例；不要另建平行的 UI 规范。
 
-UI Gallery 地址：`http://127.0.0.1:5173/?ui-gallery=1`
+UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 
-## 1. 基本边界
+更新时间：2026-10-06
 
-- 游戏规则、效果结算、目标选择和中断恢复由 `aeons-end-engine` 决定。
-- Vue 组件只负责显示状态、收集输入和调用引擎，不复制卡牌规则。
-- Breach 上准备法术或移动已准备法术时，目标高亮使用引擎 `getSpellBreachTargets()` 查询；Vue 只叠加当前视角/拖拽等交互状态，`prepSpell()` / `movePreppedSpell()` 仍负责提交时的最终校验。
-- 新需求优先组合已有组件和状态；只有现有模型无法表达时，才增加通用组件
-  或通用状态，不为单张卡牌复制一套 UI。
-- 所有用户可见 UI 文本使用英文；中文只用于内部文档。
+## 1. UI 与规则的边界
 
-## 2. 组件目录
+- `aeons-end-engine` 决定规则、合法目标、效果顺序和等待玩家操作时的状态。
+- Vue 负责显示状态、采集输入并调用引擎；不要在组件内复制卡牌规则。
+- Breach 法术准备/移动的可选目标由引擎查询，提交动作时也由引擎再次校验。
+- 新需求优先组合已有组件和状态；只有现有模式确实表达不了，才新增通用组件或决策类型。
+- 所有游戏界面文字使用英文；内部文档可用中文。
 
-### 卡牌和预览
+## 2. 常用组件
 
-| 名称 | 用途 | 常见状态 |
-| --- | --- | --- |
-| `Card.Hand` | 手牌中的大卡牌 | `face-up`、`draggable`、`selected`、`pending`、`disabled` |
-| `Card.Mini` | Played、Swap、Develop 和部分 Breach 卡牌 | `face-up`、`actionable`、`selected`、`overflow` |
-| `Card.Pile` | Deck、Discard、Specific Deck、Player Cards in Play | `face-up`、`face-down`、`empty`、`counted`、`clickable` |
-| `Card.FaceDown` | 牌背显示和面朝下准备的法术 | `fixed-back`、`known-back`、`draggable`、`locked` |
-| `Card.AttachedQuarter` | 覆盖在 Supply pile 右下角的卡牌 | `attached`、`empty-target`、`actionable` |
-| `Card.Reveal` | 弹窗中需要读清楚文字的已揭示卡牌 | `face-up`、`selected`、`placement-choice` |
-| `CardHoverPreview` | 鼠标悬停大图预览 | `delayed`、`visible`、`zoomed`、`disabled` |
-| `DragCardPreview` | 手牌或 Breach 卡牌拖拽预览 | `face-up`、`face-down`、`drop-valid`、`drop-invalid` |
-| `Card.DebugPicker` | Debug Tools 中搜索和选择卡牌 | `grouped`、`filtered`、`selected`、`preview` |
-| `Breach.Artwork` | Breach token 与悬停预览 | 图片和预览共用同一 artwork/rotation；闭合方向以引擎 `focusDirection` 为准，旋转基于素材登记的初始方向；`opened` 时显示开启图且不旋转 |
-
-主要实现位置：`CardSurface.vue`、`CardHoverPreview.vue`、`BreachArtwork.vue`、
-`PlayerArea.vue`（状态与交互协调）、`PlayerBreachArea.vue`、`PlayerHandArea.vue`、
-`PlayerZoneArea.vue`、`PlayerControls.vue`、`DebugCardPicker.vue`。
-
-所有 Breach 图片都必须通过 `aeons-end-ui/src/components/BreachArtwork.vue` 显示，使板面 token 和悬停预览共享同一张图及旋转角度。角度由当前 `focusDirection` 和 `aeons-end-ui/src/breach-images.ts` 登记的素材基准方向计算；`focusCount` 只表示规则进度，不可单独用来推算图片朝向。只有同一位 Mage 的同一个 Breach 状态实际改变时才播放 Focus/Open 动效；切换显示 Mage 只更新棋盘，不播放 Breach 动效。新增特殊 Breach 美术时，必须同时登记闭合/开启素材和闭合素材的基准方向，并覆盖初始朝向、一次 Focus 后方向变化、自动开启这三种状态的引擎与 UI 回归。
-
-### 牌堆和滚动区域
-
-| 名称 | 用途 | 规则 |
-| --- | --- | --- |
-| `Pile.Deck` | 玩家 Deck | 非空时显示牌背和数量；为空时显示名称与 0 |
-| `Pile.Discard` | 玩家 Discard | 非空时显示顶牌正面和数量；为空时显示名称与 0 |
-| `Pile.SpecificDeck` | Mage-specific deck | 可配置正面/牌背展示、数量和 PileViewer；正面牌堆在查看窗口中展示全部牌 |
-| `Pile.TrinketDeck` | 全局 Trinket 牌堆 | 位于 Breach 行最右侧，宽度随 Market Supply pile 缩放，与第三列水平居中对齐；棋盘与 PileViewer 卡框都使用 Aeon's End 实体卡 `63.5:88` 比例，垂直中心沿用已准备法术的锚点；可点击查看。每张实体牌独立记录是否已揭示，未知牌显示牌背，已知牌显示正面；打开查看窗口不会揭示未知牌 |
-| `Pile.PlayerCardsInPlay` | Put into play 的玩家卡牌 | 无牌时隐藏；单牌可直接触发，多牌打开选择弹窗 |
-| `Pile.NemesisSpecific` | Nemesis 专属牌堆或弃牌堆 | 根据 Nemesis 配置显示数量或顶牌 |
-| `PileViewer` | 查看牌堆内容 | 顶牌在左侧，每行最多 5 张 |
-| `ZoneScroller` | Played、Swap、Develop 和 Gallery 的横向溢出 | 内容短时居中，溢出时滚轮横向滚动 |
-
-Nemesis mat 右侧剩余区域分为上下两块：上方是 `.nemesis-board-upper`，依次排放 Nemesis 专属弃牌堆、Nemesis 弃牌堆、专属牌堆、Nemesis 牌堆、可选 Sub Board 和场上卡牌区；下方是 Info Bar。Info Bar 左侧从 Fury token 开始，随后是 Nemesis 血条，中间为六个 Turn Order token 与垂直居中的轮数，右侧为 Gravehold 血条。三个布局区域之间不显示分隔线，血条标签不重复写 `HP`。未揭示的 Turn Order 槽位显示问号，不暴露抽牌顺序，当前回合 token 不加边框。牌堆按剩余高度保持卡牌比例缩放，未使用的专属槽位固定显示 `Not used`，四个槽位均可点击查看。有牌图片在悬停时不改变边框颜色；Rageborne 的 Strike Deck 用带白边的专属牌背，牌堆和弹窗保持一致。Nemesis Play 区域与左侧牌堆一样分为两行高度，顶部留空、卡牌从下排左侧起横向排列并在需要时滚动；卡牌悬停时不移动，区域用深蓝色底区分且不绘制边框。当前 Mage 满足 To Discard 费用时，Power 卡显示可操作高亮，点击整张卡即可启动费用/目标决策，不显示独立按钮；Life 和 Power 计数徽标使用相同的 20px 高度并沿卡牌下边缘对齐。Nemesis Play、Played、Develop 和 Swap 区域为空时不显示占位文案。`.nemesis-area` 的 `--info-*-share` 和 `--info-*-hp-width` 调整三块区域份额和血条宽度；`--info-turn-token-size`、`--info-turn-token-gap`、`--info-turn-round-gap`、`--info-turn-round-font-size` 调整 Turn Order token 和轮数；`--info-nemesis-token-size` 调整 Fury 尺寸；`--info-hp-label-font-size` 与 `--info-hp-value-font-size` 调整血条文字。`.controls` 的 `--control-player-token-size`、`--control-aether-token-size` 和 `--control-main-offset-x` 分别调整玩家按钮 token、Aether Token 大小与中间操作区的屏幕居中偏移。
-
-从手牌打出 Gem 或 Relic、从 Supply pile 获得卡牌，以及 Discard Phase 将卡牌弃入弃牌堆时，复用 `.card-flight-clone` 飞向对应区域；Discard Phase 必须等当前卡牌飞行动画结束后再继续。弃牌飞行期间保留原弃牌堆顶牌作为落点底图，不隐藏它；动画完成后再将新牌切换为顶牌。`Play All Gems` 按顺序逐张播放；若卡牌产生引擎决策，先完成该张卡的移动，再显示决策窗，尚未播放的 Gems 保留在手牌中。统一通过 `tokens.css` 的 `--card-flight-duration` 和 `--card-flight-easing` 调整卡牌飞行时间与缓动。
-
-回合切换先播放当前 Turn Order token 的落位动效，再切换 Mage 视角，并沿用玩家区域现有的淡入效果；过渡期间短暂阻止棋盘操作。Nemesis 从主阶段进入抽牌阶段时，牌背从 Nemesis Deck 飞到抽牌确认位置；飞行途中卡牌横向收窄至边缘，在边缘处切换为预加载的正面图片后再展开，不显示旋转后的背面镜像。Turn Order 动效时长、最大放大倍数和展开阶段的不透明度分别由 `--turn-order-arrival-duration`、`--turn-order-arrival-scale`、`--turn-order-arrival-opacity` 调节；`--turn-order-arrival-opacity` 越高，放大阶段越不透明。Nemesis 抽牌飞行和翻面分别由 `--nemesis-draw-flight-duration`、`--nemesis-draw-flip-duration` 调节。
-
-Breach focus 时沿当前方向顺时针旋转；Breach open 时执行 3D 翻面。翻转轴沿 Breach 当前开口方向：朝上时绕竖直轴左右翻，朝右/下/左时轴随方向转动。`tokens.css` 中的 `--breach-focus-duration`、`--breach-open-duration` 和 `--breach-open-perspective` 调整转向时间、翻面时间和透视距离。
-
-执行 `deal_damage_divided` 时，合法 Nemesis 和 Minion 目标沿用棋盘目标高亮。每次点击把一点伤害暂存在该单位的 `+N` 徽标中，直到最后一次点击才由引擎统一结算；UI Gallery 的 `Damage.DividedAllocation` 示例展示这个状态。
-
-### 弹窗、标记和控制
-
-| 名称 | 用途 |
+| 组件 | 用途 |
 | --- | --- |
-| `ModalBase` | 所有标准弹窗的遮罩、焦点、拖动和 dialog 外壳 |
-| `Modal.Decision` | 引擎产生的阻塞式决策；一般 `choose_one` 用按钮，`large-card-selection` 显示可选大图并要求显式 Confirm |
-| `Decision.PlayerDamageChoice` | 通用玩家受伤目标选择；显示 token、Mage 名称、HP、伤害说明及悬停时的 `−X` 提示 |
-| `Decision.PlayerDiscardChoice` | 通用玩家弃牌目标选择；先说明要弃几张牌及是否紧接着抽牌，再显示 Mage 选择按钮 |
-| `Decision.RevealCard` | 展示引擎挂起的 revealed card；没有后续选择时使用单个 Confirm，卡牌在确认前保持可见 |
-| `Decision.TurnOrderTokens` | Turn Order deck 的 reveal、arrange 和 card selection 使用 token 图片；整副牌通过拖动 token 排序，单张 token 点击后提交 |
-| `Interaction.PointerReorder` | 卡牌和 token 通过 pointer capture 拖动、跨过目标中线插入，并以平滑位移动画重排；禁止原生 HTML drag image |
-| `Decision.MageAbilityChoice` | Mage mat 下方竖向排列的 Ability 二选一按钮 |
-| `Modal.CardSelection` | 从手牌、弃牌堆或候选卡牌中选择 |
-| `Modal.PileViewer` | 查看牌堆，不做决策 |
-| `Modal.SupplyPrompt` | 选择 Supply pile 的提示 |
-| `Badge.PileCount` | Deck、Discard、Specific Deck、Trinket Deck 的数量和空牌堆文字 |
-| `Badge.Token` | Power、Aether token 等状态标记 |
-| `Controls.TurnBar` | Mage 切换按钮、阶段、资源和回合按钮 |
+| `CardSurface.vue` | 共用卡面、牌背、尺寸和可交互状态 |
+| `CardHoverPreview.vue` | 卡牌与 Breach 的悬停放大预览 |
+| `BreachArtwork.vue` | Breach 棋盘图和预览共用方向、素材与旋转角度 |
+| `PlayerArea.vue` | 玩家区域的状态/交互协调 |
+| `PlayerBreachArea.vue`、`PlayerHandArea.vue`、`PlayerZoneArea.vue`、`PlayerControls.vue` | 玩家区域展示和输入 |
+| `NemesisArea.vue`、`MarketPanel.vue`、`SetupScreen.vue` | Nemesis 区域、市场和开局设置 |
+| `MatPreviewButton.vue` | Setup 中按图片自然边界显示 Mage/Nemesis mat，并共用圆角和悬停边线 |
+| `ModalBase.vue` | 标准弹窗外壳、遮罩、拖动和关闭行为 |
+| `CardDecisionModal.vue` | 将引擎的 typed decision 映射到决策 UI |
+| `CardSelectionPanel.vue` | 单选、多选、跳过、确认和可选排序 |
+| `LargeCardChoicePanel.vue` | 需要读卡面的即时单选 |
+| `TwoButtonChoice.vue`、`TokenAmountChoicePanel.vue` | 双按钮决策、token 数量决策 |
+| `PlayerDamageChoice.vue`、`PlayerDiscardChoice.vue` | 通用受伤目标和弃牌目标选择 |
+| `TurnOrderTokenRow.vue` | Turn Order token 展示与排序 |
+| `PileModal.vue`、`ZoneScroller.vue` | 查看牌堆、横向滚动牌区 |
+| `DamageFeedbackLayer.vue` | Mage、Nemesis、Gravehold 等位置的受击反馈 |
+| `UiGallery.vue` | 共用 UI 状态和组件的可视化目录 |
 
-每次进入 Setup 时，两位玩家从全部已实现 Mage 中随机获得不同角色，并同步选中各自的 Wave 标签。点击某位玩家的 Wave 标签会立即从该 Wave 随机选择 Mage；重复点击当前 Wave 也会重新抽取，并避开该玩家当前角色和另一玩家的角色。Mage 的 Reroll 按钮继续从全部 Wave 抽取。
+## 3. 卡牌、牌区和边界线
 
-控制栏的常规 Aether 使用 `image-database/common images/Aether.png` 图标加白色数字；图标带白色圆边，所有计数数字使用与 Mage 按钮一致的 12px 粗体。Gem、Spell、Breach 条件 Aether 继续写明类型，文字同为白色。Stake 的 Knowledge 计数使用 `image-database/common images/Knowledge.png` 图标加 `#E4DBBC` 数字，仍仅对追踪 Knowledge 的 Mage 显示。Breach Upgrade 卡牌以手牌尺寸悬停显示，并横向放在 Prototype Breach 左侧。前三个 Breach 隐藏外观但保留位置，为升级卡留出空间。
+- 所有游戏卡牌的卡面、牌背、牌堆、预览和弹窗统一使用 `styles/tokens.css` 的 `--card-aspect-ratio: 63.5 / 88`。这是唯一的卡牌比例来源；不要改图片素材或为单张卡另设比例。Mage/Nemesis mat、Breach 和 token 不受此规则限制。
+- 有图片的卡牌默认不显示中性灰边框，直接显示完整卡面；选中、可操作和目标提示使用覆盖在卡面上的彩色边框，不能改变卡牌尺寸或压缩图片。只有空牌区、无图片占位和选择控件可以保留结构边框。Nemesis Mat 等非卡牌区域按各自规则处理。
+- 游戏对象的提示边框统一使用 `.game-highlight` 覆盖层（`::after`），再按语义加一个颜色类。它覆盖卡图、不改变尺寸；不要给卡牌、Breach 或 Nemesis 目标另写 `border`、`outline` 或 `box-shadow` 高亮。默认粗细由 `--game-highlight-width` 控制；Nemesis Mat 可保留单独的 3px 表面尺寸，普通卡牌和棋盘目标为 2px。
+- 高亮颜色按含义固定：`.game-highlight--available` 绿色，表示可购买/可激活/可执行；`.game-highlight--choice` 橙色，表示尚未选中的合法候选；`.game-highlight--selected` 红色，表示玩家已选中的候选，与 `.game-highlight--required`（必须执行的目标）共用红色；`.game-highlight--context` 蓝色，表示拖拽中的临时落点或悬停上下文。禁用项保持灰暗、不加彩色边框。键盘焦点环、普通按钮和空区域占位的结构边框不属于游戏目标高亮，可以保留自己的可访问性/控件样式。Gallery 的 `Card.States` 展示这五种语义。全局色值和粗细只在 `styles/tokens.css` 调整，覆盖层实现只在 `styles/interaction-highlights.css` 维护。
+- Setup 的 Mage/Nemesis mat 预览使用 `MatPreviewButton.vue`。按钮跟随图片自然比例收缩，图片与高亮覆盖层同边界、同圆角；不要把 `object-fit: contain` 留出的空白也圈进边线。
+- 图片与边框共存时，内侧圆角应贴合卡面，不能遮住边框或在角落留下空隙。
+- 市场 Supply pile 保持紧凑的 3×3 排列；视口变化时卡牌随可用高度缩放，不用弹性分配把列间距拉大。Nemesis Play 区域使用剩余横向空间。Supply pile 悬停不做上浮位移。
+- Nemesis Play 区域分为上下两行：下行显示 Minion、Power 等正常在场卡牌；上行从左至右显示被规则放置在场边的 Nemesis 卡牌（例如 Dark Conclusion 暂放在 Turn Order deck 旁）。
+- Log 面板默认隐藏；Debug Tools 最后一项可切换显示。面板隐藏时，游戏日志仍持续记录；启用后保留原有的展开/折叠交互。
+- Supply pile 卡图始终保持正常颜色；费用足够时用绿色边框标记可购买项。费用不足不能通过降低卡图透明度来表示；费用不足时 Charge 按钮使用禁用样式。
+- 卡牌牌区内容不足时居中，超出时横向滚动；不能裁掉卡牌边缘。Deck、Discard、Trinket 等查看弹窗按顶牌在左、底牌在右，每行最多五张。
+- Trinket deck 是全局牌区：牌宽随 Supply pile 同步，水平位置与市场第三列对齐；切换 Mage 视角时它不淡入淡出。查看牌堆不会揭示未知牌；是否已看过要随实体卡移动。
+- Mage 抽牌堆和弃牌堆，无论使用哪位 Mage，都显示 Player Card Back；Mage-specific deck 显示自己的牌背（例如 Tressa's Vault 使用 Treasure 3 back）。普通 Deck/Discard 悬停不加蓝框；仅 Recall 等确实可执行的动作使用语义高亮。
+- 当前回合的 Turn Order token 不加环绕边框，回合到位动画本身负责提示。Nemesis 设置项按 `NemesisDef.wave` 分类，与 Mage 和 Market 的 Wave 分类一致。
+- Played Zone 始终显示。开局 Mage 或市场卡牌需要 Swap 时显示 Swap Zone；市场含有 Develop 卡牌时显示 Develop Zone。两种条件独立判断，区域对所有 Mage 视角可见。Swap 卡仍归其持有者，Develop 为共享区域。
+- Played、Swap、Develop 使用彼此分开的深色圆角区域。Swap 与 Develop 各占一份，Played 在单侧区域存在时占两份；两侧区域都存在时三等分。Swap/Develop 卡列在自己的区域内居中，Played 卡列始终以整行中心为中心并在空间不足时滚动。
+- 区域标题位于上边缘：Swap/Develop 标题居中对齐各自区域；Played 标题对齐整行中心，与 Played 卡列保持一致。
+- Breach 上附着的 Relic 放在 Breach 下层并露出卡牌下方；Focus/Open 按钮要在附着牌上层。垂直露出量只改 `--breach-attached-relic-offset-y`。
+- Focus 合法时，悬停 Breach 图或对应 Focus 按钮，都要同时把图和按钮边线临时变成蓝色；由 `board-pile-interactions.css` 的共享配对悬停规则处理。
 
-Mage ability 的 OR 决策使用可复用的 `Decision.MageAbilityChoice`：弹窗上方展示能力来源 Mage 的正面 mat 并裁切为统一圆角；下方显示与 mat 同宽、上下排列的两个可点击按钮。按钮使用蓝底深色文字，悬停时平滑变暗。所有 `choose_one` Ability 决策都应声明 `layout: 'mage-ability'`；非 Ability 的卡牌选择沿用普通决策 UI。Mage mat 宽度、选项文字大小和按钮最小高度集中在 `.decision-modal.mage-ability-modal` 的 CSS 自定义属性中，方便统一微调。Specific Deck 中需要直接辨认的升级卡选择使用 large 卡牌尺寸。
+Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；打开弃牌堆后的操作说明也使用蓝色。Recall、Develop、Supply 购买/Develop 和其他可操作状态都通过统一覆盖层提示，不能挤占卡面空间。不要给牌堆增加整块矩形高亮或 hover 上浮。
 
-普通的二选一决策使用 `Decision.TwoButtonChoice`：两个等宽蓝色按钮，点击后立即提交选择。需要玩家决定消耗多少 token 时使用 `Decision.TokenAmountChoice`：显示 token 图片、带数字步进器的输入框、实时效果句子和 Confirm 按钮。带有 `deal_damage_divided` 的效果按当前生命值由低到高自动分配伤害，使用红底白字的 `−X` 徽标展示；右键取消一点、左键补分配，全部分配后再次点击该 Spell 确认结算。
+### 决策目标高亮
 
-Turn Order deck 的决策使用 `TurnOrderToken.vue` 和 `TurnOrderTokenRow.vue`。`reorder_turn_order` 显示已揭示的玩家/Nemesis token，从左到右对应牌堆顶部到底部，玩家拖动 token 后通过 `Return Cards` 提交；`select_turn_order_card`、`confirm_turn_order_reveal` 和 `choose_turn_order_position` 均显示对应 token 图片，不再使用文字卡片按钮。普通 Turn Order 栏位仍用问号表示未揭示的 token。
+- 由规则条件筛出的合法目标，在决策出现时就要有持续可见的提示；不能只在鼠标悬停或选中后才显示。合法候选由引擎写入 `pendingDecision.candidates`，UI 直接按这份列表呈现，不要在 Vue 中重复计算卡牌费用、类型或其他规则条件。
+- 对棋盘上的目标和市场供牌，沿用同一 `.game-highlight` 覆盖层，并使用对应语义颜色。`emphasis: 'required'` 的强制限定目标使用红色；玩家可选的合法目标使用橙色。不要用鼠标悬停才显示的边框代替持续目标提示。
+- 对弃牌堆、牌库或专属牌堆等在决策面板中展示的卡牌，决策面板只列出合法候选。普通揭示/排序候选保持干净；可选择候选用橙色，选中后变为红色；如果规则条件筛选了可操作目标，则通过 `select_cards.targetHighlight` 给符合条件的候选加持续边框。
+- 新增条件选择效果时，同时验证引擎候选列表和对应 UI 的持续高亮。UI Gallery 的 `Decision.MarketTargets` 展示市场目标高亮样式。
+- 决策标题和提示文字使用 `text-wrap: pretty`，避免行末只剩一个短词；不要为单张卡牌的提示手工插入换行。
 
-### Pointer reorder rule
+## 4. 交互与动效
 
-所有允许玩家拖动卡牌或 token 改变顺序的界面都复用 `usePointerReorder.ts` 和 `pointer-sort-*` 样式：按下时先在卡片上使用 Pointer Events 与 pointer capture；移动超过拖动阈值后，捕获切换到稳定的排序行，避免 `TransitionGroup` 移动卡片节点时中断拖动，同时保留普通点击。越过目标项目的中线时即时调整顺序，`TransitionGroup` 用统一的 0.22 秒位移动画让其他项目平滑让位。卡片离开弹窗时，只要鼠标左键仍按住，拖动就会继续；鼠标释放后立刻结束。拖动状态同时监听全局 `pointerup`、`pointercancel`、`lostpointercapture`、窗口失焦和标签页隐藏；如果鼠标重新移动时主键已松开，也会立刻清理状态，避免卡牌粘在指针上。悬停时显示抓手，按住时显示抓取中；不使用 `draggable="true"`、原生拖动预览图或 dataTransfer。排序列表的项目必须有稳定 key 和 `data-sort-key`，这样跨位置重排时才会动态位移。
+### 玩家视角和 Breach
 
-当前这套交互用于可重排的 `CardSelectionPanel`、`TurnOrderTokenRow` 和 Debug Tools 的 `DebugDeckOrderModal`。未来新增任何可排序的卡牌、token 或 deck 顺序编辑，都复用相同 composable、TransitionGroup name `pointer-sort` 和 `.pointer-sort-row` / `.pointer-sort-item` 状态。以上示例在 Gallery 的 `Interaction.PointerReorder` 和 Turn Order 决策中展示。
+- 回合切换时，先播放 Turn Order token 到位/放大淡出的动效，再切换玩家区域；棋盘短暂拦截重复输入。
+- 玩家区域的淡入只用于玩家区域内容。底部 Control Bar 和全局 Trinket deck 不跟随淡入；切换 Mage 也不播放 Breach Focus/Open 动画。
+- Breach 只有自身方向或开合状态改变时才播放动效。Focus 按当前方向顺时针旋转；Open 使用随开口方向调整翻转轴的 3D 翻面。动作动画结束后，回合自动结束和后续阶段才会继续。
+- Nemesis 抽牌从牌堆飞向中央时，背景同步渐暗；卡牌在移动途中横向收窄，在背面不可见时切换预加载正面，再展开。不要展示镜像的牌背，也不要在动画完成后再突然弹出另一张正面牌。
+- Nemesis 抽牌翻开后直接停在屏幕中央；点击卡牌、遮罩区域或按 Space 确认继续，不再额外弹出一个只含 Confirm 的窗口。开局第一张 Nemesis 牌也必须走同一动画流程。
+- 从场上牌堆移动到玩家手牌、牌堆或弃牌堆的卡牌，统一使用 `src/game/card-flight.ts` 的 `captureCardZoneTransfer` / `resolveCardZoneTransfers` 和 `useGame.ts` 的区域目标动画。Supply 购买与 Nemesis 特殊牌堆获得 Corruption 都走这套逻辑；新增此类效果时复用它，并标记来源牌堆和玩家区域目标。落到玩家牌堆时使用 `overlay`，保留原有牌堆图像可见；只有落点是刚加入的手牌或弃牌顶牌时才使用 `replace` 暂时隐藏该张新牌，避免重复显示。手牌打出的 Gem/Relic 与弃牌阶段也使用卡牌飞行动画；弃牌动画以原弃牌顶牌为底图，Play All Gems 逐张播放，卡牌决策等当张卡飞完后再出现。
 
-伤害分配时 Nemesis 区域的 `Damage assigned` 状态提示保持原有居中位置。只调 `tokens.css` 根部的 `--damage-assigned-size` 即可等比改变正文、标题、间距、内边距、描边和圆角；默认值为 `1.35`。选择单个伤害目标或分配伤害时，敌方单位显示覆盖式黄色边框，同时显示已分配伤害徽标。Nemesis Mat 使用 `--damage-target-mat-border-width`（当前 `3px`），mini 卡使用 `--damage-target-card-border-width`（当前 `2px`）。目标状态下 mini 卡的基础灰色边框透明，只保留黄色覆盖层；颜色和外发光可通过 `--damage-target-border-color`、`--damage-target-border-glow` 调整。覆盖层不会改变 Nemesis Mat 或敌方卡牌的图片尺寸。等待二次点击确认的 Spell 沿用原准备位置和堆叠层级。
+### 决策和拖动
 
-`choose_one` 的 `large-card-selection` 用于需要辨认卡面的多张卡牌选择：卡图以 large 尺寸显示，玩家先点选一张，再点 Confirm；选择状态复用 2px 边界线。Setup 的 Market 卡牌替换弹窗按候选卡牌所属 Wave 提供 Wave tabs，默认切到当前槽位卡牌所属的 Wave。弹窗中的卡图悬停预览复用 `CardHoverPreview`，并高于该 Setup 弹窗显示。
+- 引擎决策使用可复用模式：多选后 Confirm/Skip 用 `CardSelectionPanel`；读卡后立即选一张用 `LargeCardChoicePanel`；双选用等宽上下排列按钮；token 数量选择用共享的 `DebugNumberInput` 与 Confirm。
+- 阻塞式决策不能被 Esc 或遮罩点击取消；普通查看弹窗可按其组件配置关闭。
+- Debug Tools 的文本框聚焦时，游戏快捷键交给文本输入；Esc 关闭 Debug Tools，Tab 切换玩家视角而不移动原生焦点。游戏界面不显示对象的原生键盘焦点环；鼠标悬停反馈仍保留。牌序编辑入口常驻，选定 Mage 后在独立牌堆窗口里用大图拖动排序。
+- Power 卡的 To Discard 条件满足时高亮整张卡，点击卡牌触发；不显示常驻的独立 Discard 按钮。
+- 玩家在 Main Phase 首次点击 End Turn 且仍有合法操作时，保留现有内联提醒，同时用引擎的 `getMainPhaseActionHint` 显示一个具体操作说明，并短暂闪亮该操作位置。若操作属于另一位 Mage，先闪亮其 Control Bar 选择按钮；切换视角后再闪亮实际操作目标。此提示不新增弹窗，`canPlayerAct` 与提示必须共用同一引擎判断。
+- 决策弹窗内所有可用按钮（包括不在候选列表中的 Skip/Confirm）统一有悬停和按下颜色反馈，由 `.decision-overlay .btn` 与 `.decision-options button` 公共规则维护。
+- Reveal 类效果要让玩家看到实际揭示的卡牌，再按规则提供 Confirm 或选择操作。Conjure 使用专用流程：揭示牌暂时显示在手牌并以橙色选择提示标记；没有拖动时不高亮 Breach，开始拖动后合法 Breach 才显示蓝色临时落点提示。即使无合法目标，仍展示卡牌并提供 Skip。
+- 需要选择 Breach 执行 Focus 效果时，合法目标显示橙色 Focus 按钮；按钮与 Breach 图提交同一决策，且不额外支付普通 Focus 费用。
+- 受伤/弃牌目标使用统一玩家选择按钮；伤害弹窗明确写出伤害量，弃牌弹窗显示需弃牌数量和随后抽牌数量（抽牌数为零时不写后续抽牌）。
+- Turn Order deck 的 Reveal、选择和排序使用 token 图片。排序弹窗不加冗余顺序文字；拖动 token 时相邻项目要平滑让位。
 
-需要玩家重排已揭示卡牌时，`select_cards` 决策可设置 `reorderable: true`。`CardSelectionPanel` 会在原有多选和 Confirm/Skip 流程中提供可拖动排序，卡牌位置平滑过渡；确认时同时提交选择项和最终顺序。拖动复用 `Interaction.PointerReorder`，已在 UI Gallery 的卡牌选择与 Turn Order 决策示例中展示。
+所有可以重排卡牌或 token 的界面都复用 `aeons-end-ui/src/game/usePointerReorder.ts`。使用 Pointer Events 和 pointer capture；跨过目标中线时改变顺序，用 `pointer-sort` 过渡显示位移。鼠标仍按住时拖动可离开弹窗继续跟随，松开、取消拖动、窗口失焦或标签页隐藏时都要清理状态。不要启用原生 HTML drag image 或 dataTransfer。当前共用位置包括卡牌选择、Turn Order token 和 Debug Deck Order。
 
-Wolf 的 5 枚 Doom token 显示在控制栏 Activate Ability 按钮右侧；未获得的 token 使用灰度与低透明度，已获得的 token 保留原图颜色。尺寸、间距与相对位置集中在 `.doom-token-track` 的四个 CSS 自定义属性中，方便微调。
+### 伤害反馈与伤害分配
 
-Mage 切换按钮常显该玩家的手牌数，HP 使用红色文字；当前显示玩家和当前回合玩家仍由按钮边界状态区分，控制栏不重复显示 Mage 名称。未显示玩家的手牌数增加时，该按钮的 Hand 数字变绿，并在其右下方向右伸出约 3 秒的 `+N` 标记，标记底边不超过按钮底边；点击按钮查看该玩家时清除标记，不自动切换玩家。撤销、载入存档或替换游戏状态时不重播旧标记。桌面控制栏的 Aether 和操作按钮相对于控制栏水平居中；紧凑宽度下按钮、阶段和操作区保持互不重叠。
+- 伤害反馈由页面级 `DamageFeedbackLayer` 显示，需保持在弹窗、控制栏及牌区之上。命中生命值时也要让相应生命条平滑变化。
+- `deal_damage_divided` 先智能地把伤害尽量分配给当前生命值最低的敌方单位。用红底白字的 `−X` 标记各单位已分配值；左键加分配、右键撤销一点。分完后再次点击法术或按 Space 才结算，不能在最后一点分配时自动结算。
+- 选择施法目标或分配伤害时，敌方可选目标使用橙色覆盖式边框；高亮不能与底色边框叠脏，也不能改变卡牌尺寸。二次点击确认中的法术仍保持原 Breach 位置。
+- “Damage assigned” 提示的位置固定；只调 `--damage-assigned-size` 就能按比例改变提示整体大小。
 
-弃牌排序阶段的 Played 区域只在当前回合 Mage 的视角显示待排序卡牌；切换到另一名 Mage 时仍显示该 Mage 自己的 Played 区域，不混入当前回合玩家的弃牌队列。
+## 5. 尺寸、颜色和动效参数
 
-控制栏内部下侧留白由 `.controls` 的 `--control-bar-bottom-padding` 调整，控制栏外侧到玩家区域底部的留白由 `.player-area` 的 `--player-area-bottom-padding` 调整；当前均为 6px。抽牌气泡在按钮右侧伸出，并由两个 Mage 按钮之间及 Mage 按钮与阶段文字之间的 24px 间距预留位置。玩家回合结束后 Draw Phase 补足 5 张手牌时不显示抽牌气泡；卡牌和能力效果抽牌仍显示。
+最低目标是浏览器内容区 1440×900 CSS 像素；推荐 1920×1080 或更大桌面视口。项目不为窄屏设计额外的游戏布局。
 
-主要实现位置：`ModalBase.vue`、`CardDecisionModal.vue`、`TurnOrderToken.vue`、`TurnOrderTokenRow.vue`、`MageAbilityChoice.vue`、`TwoButtonChoice.vue`、`TokenAmountChoicePanel.vue`、`CardSelectionPanel.vue`、
-`PileModal.vue`、`PileCountBadge.vue`、`TokenBadge.vue`。
+`aeons-end-ui/src/style.css` 是样式导入入口；按职责拆分的文件在 `src/styles/`。导入次序决定覆盖关系，不要随意重排。全局变量集中在 `src/styles/tokens.css`。
 
-## 3. 状态组合规则
+常用参数（以 tokens.css 当前值为准）：
 
-组件状态应从以下维度组合，而不是创建卡牌专用样式：
-
-| 维度 | 可用状态 |
+| 效果/尺寸 | 参数 |
 | --- | --- |
-| 尺寸 | `hand`、`mini`、`pile`、`large` |
-| 朝向 | `face-up`、`face-down`、`known-face-up` |
-| 数据 | `empty`、`single`、`multiple`、`counted` |
-| 交互 | `static`、`clickable`、`actionable`、`draggable`、`disabled` |
-| 选择 | `unselected`、`selected`、`pending` |
-| 溢出 | `centered`、`scrollable`、`clipped-prohibited` |
-| 可见性 | `visible`、`conditional`、`empty-hidden` |
+| 卡牌比例 | `--card-aspect-ratio: 63.5 / 88` |
+| Nemesis mat 圆角（棋盘、设置、预览和弹窗） | `--nemesis-mat-radius: 14px` |
+| Breach 附着 Relic 露出量 | `--breach-attached-relic-offset-y: 18px`，正值向下 |
+| Focus/Open 动效 | `--breach-focus-duration: 280ms`、`--breach-open-duration: 560ms`、`--breach-open-perspective: 620px` |
+| 手牌飞入 Played Zone | `--hand-to-play-zone-flight-duration: 200ms` |
+| 弃牌阶段飞入 Discard | `--discard-phase-flight-duration: 200ms` |
+| 其他卡牌飞行动画（购买、其他牌区移动） | `--card-flight-duration: 600ms`、`--card-flight-easing` |
+| 玩家区域切换 | `--transition-player-turn: 600ms` |
+| Turn Order token 到位 | `--turn-order-arrival-duration: 600ms`、`--turn-order-arrival-scale: 7`、`--turn-order-arrival-opacity: .50` |
+| Nemesis 抽牌飞行/翻面 | `--nemesis-draw-flight-duration: 500ms`、`--nemesis-draw-flip-duration: 150ms`；翻面约在飞行 45% 时开始 |
+| 双按钮决策 | `--two-button-choice-width: 420px`、`--two-button-choice-gap: 10px`、`--two-button-choice-button-height: 56px`、`--two-button-choice-font-size: 14px` |
+| 伤害分配提示缩放 | `--damage-assigned-size: 1.35` |
+| 伤害目标边框 | Mat `--damage-target-mat-border-width: 3px`；Mini 卡 `--damage-target-card-border-width: 2px` |
 
-典型组合示例：
-
-```text
-组件：Card.Pile
-状态：face-down + counted + clickable
-场景：Dezmodia's Stash
-
-组件：Card.Hand + DragCardPreview
-状态：face-up + draggable + drop-valid
-场景：从手牌准备 Spell
-```
-
-## 4. 视觉契约
-
-- UI 动效的时长、缓动和结束状态由对应组件统一定义。
-
-### 卡牌、边界线和圆角
-
-- 所有可见 `border`、`outline` 和 outline 风格的阴影都使用 2px。
-- 原生下拉框不显示浏览器默认白色焦点框，其余外观保持原样。
-- Debug Tools 的数字输入框使用统一的主题色步进箭头：鼠标悬停或键盘聚焦时显示；无悬停能力的设备保持可见。
-- Debug Tools 文本输入控件获得焦点时，游戏快捷键不触发且字符照常输入；Tab 阻止原生焦点移动并切换 Mage 视角，同时保留输入焦点；Esc 直接关闭 Debug Tools。
-- Debug Tools 的牌序编辑入口常驻；在面板中选择玩家并确认后打开独立弹窗。弹窗复用 Deck 查看器的卡牌网格，直接拖拽大卡牌调整顺序。
-- 图片卡牌的可操作/选中边界必须叠加在卡面上，用 2px 伪元素边框或内阴影绘制；状态变化不能增减卡牌容器的 `border-width`，避免缩放内部卡图。Breach spell frame 状态使用 `::after`；Supply pile 目标提示使用内阴影。
-- 所有代表游戏卡牌的图片和卡牌容器（卡面、牌背、市场牌、玩家牌、Nemesis 牌、牌堆、预览、Setup 选牌、决策弹窗和 Gallery）统一使用 `styles/tokens.css` 中的 `--card-aspect-ratio: 63.5 / 88`。这是全局唯一的卡牌比例来源；新增卡牌 UI 必须引用该变量，不得另写比例或为单张卡牌覆盖比例。通过设定宽度并使用 `height: auto` / `aspect-ratio: var(--card-aspect-ratio)` 控制尺寸，不修改图片素材来迁就 UI。Mage/Nemesis mat、Breach 和 token 属于非卡牌素材，保持各自比例。
-- 正常卡牌、背面卡牌和弹窗内卡牌都必须有统一圆角。
-- 图片填满卡牌时应贴合边框内侧圆角：内侧半径需从卡牌外侧半径扣除边框宽度，不能让图片盖住边界线，也不能在四角留下灰色缺口。
-- Breach 上面朝下的 Conjure 卡与玩家 Deck 牌背使用同一张图片和 `--pile-card-aspect-ratio`；不应用面朝下牌背专属缩放，保留原图白边。
-- Casting Phase 中可释放的面朝下法术使用 `--face-down-cast-border` 边框颜色；必须释放的状态继续使用 `--must-cast`。
-- `Card.AttachedQuarter` 使用自己的圆角，不能依赖下方 Supply pile 的圆角。
-- 附着在 Breach 上的 Relic 由 `.breach-attached-relic` 定位；需要微调垂直露出位置时，只修改全局 token `--breach-attached-relic-offset-y`（当前 `16px`，正值向下），不要给单张 Relic 加独立定位值。
-- 选中、可触发和目标高亮只改变颜色或内阴影，不改成 1px 边界。
-
-### 牌堆和区域
-
-- 非空 Deck、Discard、Specific Deck 和 Player Cards in Play 使用大图卡牌铺满区域。
-- 空牌堆保留完整的大卡牌比例，中央显示名称和数量；不能只显示孤立的 `0`。
-- 牌堆区域本身不因 hover 整体上浮，也不出现额外的蓝色区域边框。
-- 数量徽章固定在左上角，不能因 hover 或卡牌内容发生位移。
-- Played、Swap、Develop 短内容居中；内容溢出时横向滚动，不能裁切卡牌边界。
-- 如果开局任一 Mage 需要 Swap，或市场中有可 Develop 的牌，则每个 Mage 视角都保留 Swap / Played / Develop 三栏；没有相关机制时隐藏整组侧栏。Swap cards 始终归其 Mage 所有，但所有 Mage 视角都公开显示并标明归属；Develop 是全局共享区。
-- 可 Develop 的 Supply pile 左键仍执行购买，右键支付 Develop cost 并将一张卡移入 Develop 区；Develop 区的卡片可左键或右键支付 Develop cost 后获得。可用操作显示绿色 2px 高亮和费用提示；普通获得效果不能从 Develop 区拿牌。
-- Develop 区可操作卡牌的绿色边界沿卡牌外缘连续绘制；Recall 可用时，弃牌堆顶牌本身沿卡牌外缘显示蓝色边界，不在牌外额外画矩形框。
-- 没有侧栏需求时 Played 占整行；一旦任一侧栏需求存在，Swap / Played / Develop 三栏都保留并各占 1/3。Gallery 中若单独预览 Swap-only 或 Develop-only 布局，Played 卡牌仍以整行中心为基准；轨道接触相邻侧区边界时要钉在 Played 内侧边缘，Swap-only 向右增加、Develop-only 向左增加。只有轨道超过 Played 整个可视宽度时才显示横向滚动条。
-
-### 弹窗
-
-- 阻塞式决策弹窗使用灰色遮罩，底层玩家区域不能提升到弹窗上方。
-- 弹窗内卡牌可以使用 `CardHoverPreview`，但不能提升整个手牌或玩家区域。
-- 标题过长时换行，不能通过无限拉宽弹窗解决。
-- 选择按钮在选中前后保持稳定位置。
-- Tressa's Vault 开局二选一使用 `LargeCardChoicePanel`，点击一张 Treasure 立即确认；多步选牌仍使用带 Confirm 的 `CardSelectionPanel`。
-- `Decision.TwoButtonChoice` 使用上下堆叠、等宽且文字居中的蓝色按钮。可在 `style.css` 根 token 调整 `--two-button-choice-width`、`--two-button-choice-gap`、`--two-button-choice-button-height` 和 `--two-button-choice-font-size`；游戏与 Gallery 共用此组件和样式。
-- `Decision.RevealCard` 用于需要玩家看见牌面后才能继续的 reveal 效果；无选择余地时只显示一个 Confirm，若效果有分支则沿用 revealed card 区域并显示对应选择按钮。Conjure 继续使用已有的专用流程。
-- `Decision.TokenAmountChoice` 依次展示标题、居中的 token 图片与 `DebugNumberInput`、实时效果句子；Confirm 位于下方操作区。输入框和步进箭头与 Debug Tools 共用配色；弹窗的数字框为 92×44px，数字为 20px 粗体。点击箭头仅调整数值并让输入框失焦，直接点击输入框才进入手动编辑。可选的 summary 模板用 `{amount}` 插入按所选 token 数计算的卡牌效果值。
-- 牌堆查看弹窗说明明确的顺序：顶牌在左、底牌在右，每行最多 5 张。
-- Trinket Deck 使用标准牌堆查看弹窗，不因查看而翻开牌；揭示知识跟随牌堆中的实体副本移动，返回牌堆底部的 Trinket 保持正面可见。
-- 牌堆查看弹窗设定视口内的最小宽度：带行标签的 Deck/Discard 至少 280px，其他牌堆至少 440px，避免空牌堆或单张牌时长标题被挤成多行；窄窗口以视口宽度为上限。
-- Nemesis 四个牌堆均可打开查看弹窗；未启用的专属区域显示空内容。Nemesis Deck 始终只显示牌背，Specific Deck 按 Nemesis 配置显示牌背或正面。
-- `ModalBase` 的遮罩点击默认关闭对应弹窗；只有仍需引擎决策的弹窗显式设置 `blocking`，由游戏操作继续流程。
-- 只有不需要决策的查看类弹窗允许 ESC 关闭；决策弹窗不能被 ESC 取消。
-- Conjure 的牌库顶牌在决策期间以临时手牌显示，复用 `CardSurface`、`CardHoverPreview` 和待选牌的黄色边界；合法 Breach 复用棋盘目标高亮。弹窗沿用可操作棋盘的非遮挡样式，仅提供 Skip。拖动这张牌到合法 Breach 时准备为面朝下法术；Skip 将牌放回牌库顶。即使没有合法 Breach，也必须展示此牌并允许 Skip。
-- 效果要求玩家选择一个 Breach 来 Focus 时，所有合法目标都显示橙色边框的 `Focus` 按钮；点击按钮或 Breach 图像都提交同一个效果决策，不支付 Aether。普通主阶段 Focus 按钮只在没有待处理决策时执行付费 Focus。
-
-## 5. 尺寸和目标视口
-
-本项目面向桌面浏览器。最低设计目标是浏览器内容区 1440×900 CSS 像素；推荐 16:9 横屏，1920×1080 或更高。小于最低尺寸的窗口不保证布局和操作体验，不为其增加专门的游戏版面适配。开发和视觉回归以最低目标尺寸及常用桌面尺寸为准。
-
-运行时全局尺寸、颜色和层级 token 集中在 `aeons-end-ui/src/styles/tokens.css`；`aeons-end-ui/src/style.css` 是按职责导入样式的入口。各样式模块的导入顺序决定全局覆盖顺序，不要随意重排。
-
-| 样式文件 | 职责 |
-| --- | --- |
-| `styles/tokens.css`、`styles/base.css` | 全局变量、基础元素和通用页面布局 |
-| `styles/nemesis-area.css`、`styles/market.css` | Nemesis 区域、市场与 Supply pile |
-| `styles/player-board.css`、`styles/player-zones.css`、`styles/card-surfaces.css`、`styles/controls.css` | Mage/Breach 棋盘、玩家牌区、卡图/预览和底部控制栏 |
-| `styles/overlay.css`、`styles/decisions.css`、`styles/setup.css` | 遮罩、决策弹窗和开局设置 |
-| `styles/board-pile-interactions.css`、`styles/pile-viewer.css` | 牌堆交互和牌堆查看窗口 |
-| `styles/log.css`、`styles/help-modal.css`、`styles/debug-panel.css` | 日志、帮助和 Debug Tools |
-
-| 类别 | 当前 token |
-| --- | --- |
-| 市场面板宽度 | `--market-width` 随可用高度缩放，市场卡牌紧密排成三列；Nemesis Play 区域使用剩余横向空间 |
-| 卡牌宽高比 | 全局唯一变量 `--card-aspect-ratio: 63.5 / 88`，用于所有卡面/牌背和全部卡牌展示位置；Mage/Nemesis mat、Breach 与 token 保持各自比例 |
-| Breach 附着 Relic 垂直偏移 | `--breach-attached-relic-offset-y: 16px`，正值向下；只调整附着卡露出的垂直位置 |
-| 卡牌圆角 | `--card-radius: 9px` |
-| 统一边界线 | `--pixel-border-width: 2px` |
-| Mini 卡牌 | `--mini-card-width: 55px`、`--mini-card-height: 76.22px` |
-| Pile/Hand 卡牌 | `--pile-card-width: 122px`、`--pile-card-height: 169.07px` |
-| Large 卡牌 | `--large-card-width: 252px`、`--large-card-height: 349.1px` |
-| 卡牌 hover 上浮 | `--card-hover-lift: 3px` |
-| 回合切换动效 | `--turn-order-arrival-duration: 650ms`、`--turn-order-arrival-scale: 10`、`--turn-order-arrival-opacity: .88`、`--nemesis-draw-flight-duration: 900ms`、`--nemesis-draw-flip-duration: 420ms`；翻面在飞行约 45% 时开始 |
-| Zone 间距 | `--zone-gap: 10px` |
-| 普通滚动条 | `--scrollbar-size: 10px` |
-| 紧凑横向滚动条 | `--scrollbar-compact-size: 8px` |
-| 二选一按钮组 | `--two-button-choice-width: 420px`、`--two-button-choice-gap: 10px`、`--two-button-choice-button-height: 56px`、`--two-button-choice-font-size: 14px` |
-| Debug / token amount 数字框 | `--debug-number-width: 58px`（Token Amount 面板可用组件局部尺寸覆盖） |
-
-布局要求：
-
-- 手牌、Played、Swap、Develop 在内容不足时居中，溢出时横向滚动。
-- 横向滚动容器顶部必须预留 hover 上浮距离和 2px 边界线。
-- 在 1440×900 最低目标视口及更大的桌面视口中，Nemesis mat 和玩家区域都必须可见并可操作。
-- 优先使用 `clamp()`、`min()`、`max()` 和 flex/grid 约束，不随意增加断点。
-- 新增尺寸先修改 token 或通用组件，不在单张卡牌样式中写临时像素值。
+引擎在通用伤害/治疗结算中逐次记录目标和数值，页面级 `DamageFeedbackLayer` 消费事件显示反馈，不按卡牌或伤害来源判断。伤害显示红色负数，治疗显示绿色正数；新效果只要复用通用结算路径，就会自动获得反馈。手牌获得提示仍由玩家控制条显示。伤害数字停留动画目前为 1500ms，光晕为 540ms，HP 条过渡为 460ms，参数在 `src/styles/damage-feedback.css`。
 
 ## 6. 全局层级
 
-层级变量集中在 `aeons-end-ui/src/styles/tokens.css` 的 `:root`，不要在组件中添加
-临时的局部大数值。`aeons-end-ui/src/style.css` 只负责按职责导入 `styles/*.css`；
-层级 token 的定义以 `styles/tokens.css` 为准，具体元素由对应职责的样式文件引用。
+层级 token 在 `src/styles/tokens.css`。只有全局浮层使用全局 token；局部卡牌徽标和牌区叠放在各自 stacking context 内排序。
 
 | 层级 token | 值 | 用途 |
 | --- | ---: | --- |
 | `--z-board-token` | 0 | Breach 等棋盘底图 |
-| `--z-board-interaction` | 2 | 棋盘按钮、Focus/Open 操作层 |
-| `--z-board-spell` | 3 | Breach 上的法术和附着牌操作层 |
-| `--z-played` | 6 | Played/牌区基础层 |
-| `--z-local-hover` | 10 | 同一局部牌区内的 hover 项目 |
-| `--z-hand-row` | 40 | 手牌行，覆盖普通牌区内容 |
-| `--z-overlay` | 50 | 普通遮罩和普通图片查看层 |
-| `--z-help` | 110 | 游戏帮助窗口 |
-| `--z-decision` | 120 | 决策窗口、Nemesis reveal 背景 |
-| `--z-pile-viewer` | 130 | 牌堆查看窗口 |
-| `--z-save-confirm` | 140 | 存档删除确认 |
-| `--z-mage-modal` | 300 | Mage/Nemesis 图片弹窗 |
-| `--z-card-hover` | 490 | 棋盘内 hover 卡牌 |
-| `--z-controls` | 500 | 底部控制栏 |
-| `--z-drag-preview` | 550 | 拖拽中的卡牌预览 |
-| `--z-debug` | 600 | Debug Tools；牌序弹窗为 `calc(var(--z-debug) + 1)` |
-| `--z-card-preview` | 610 | Teleport 到页面层的大图 hover 预览 |
-| `--z-supply-decision` | 620 | Supply 选择窗口；Setup 预览为其上一级 |
-| `--z-card-flight-shield` | 630 | 卡牌飞行期间拦截重复输入 |
-| `--z-card-flight` | 640 | 卡牌飞行动画副本 |
-| `--z-turn-token-arrival` | 645 | Teleport 到 `body` 的放大 Turn Order token |
-| `--z-exit` | 1000 | ESC 退出/保存确认 |
-| `--z-damage-feedback` | 1100 | 全局伤害反馈，始终位于弹窗、控制栏和动画层之上 |
+| `--z-board-interaction` | 2 | Focus/Open 操作层 |
+| `--z-board-spell` | 3 | Breach 上的法术和附着牌 |
+| `--z-played` / `--z-local-hover` | 6 / 10 | 基础牌区和局部悬停 |
+| `--z-hand-row` | 40 | 手牌 |
+| `--z-overlay` | 50 | 普通遮罩 |
+| `--z-help` / `--z-decision` / `--z-pile-viewer` | 110 / 120 / 130 | 帮助、决策、牌堆查看 |
+| `--z-save-confirm` / `--z-mage-modal` | 140 / 300 | 存档确认、Mage/Nemesis 图片弹窗 |
+| `--z-card-hover` / `--z-controls` | 490 / 500 | 棋盘卡牌预览、Control Bar |
+| `--z-drag-preview` / `--z-debug` | 550 / 600 | 拖拽预览、Debug Tools |
+| `--z-card-preview` / `--z-supply-decision` | 610 / 620 | 页面级卡牌预览、Supply 决策 |
+| `--z-card-flight-shield` / `--z-card-flight` | 630 / 640 | 飞行期间输入遮挡、卡牌动画副本 |
+| `--z-turn-token-arrival` | 645 | 放大后淡出的 Turn Order token |
+| `--z-exit` / `--z-damage-feedback` | 1000 / 1100 | 退出确认、全局受击反馈 |
 
-层级关系：
+大的 `z-index` 不能越过父元素创建的 stacking context，也不能逃过 `overflow: hidden/clip`。跨区域动画或提示需要时使用 Teleport/页面级固定层；不要只给子元素继续叠加更大的数字。Setup 的卡图预览只比 Setup 选牌窗口高一级。
 
-```text
---z-damage-feedback (1100)
---z-exit (1000)
---z-turn-token-arrival (645)
---z-card-flight (640)
---z-card-flight-shield (630)
---z-supply-decision (620) + Setup picker preview (621)
---z-card-preview (610)
---z-debug (600) + deck-order modal (601)
---z-drag-preview (550)
---z-controls (500)
---z-card-hover (490)
---z-mage-modal (300)
---z-save-confirm (140)
---z-pile-viewer (130)
---z-decision (120)
---z-help (110)
---z-overlay (50)
---z-hand-row (40) → local board layers (0–10)
-```
+## 7. 修改和验收
 
-数字越大越靠上。卡牌飞行和 Turn Order 放大 token 是页面级临时图层；后者从当前 token
-位置复制坐标并 Teleport 到 `body`，避免被 Nemesis/Player 区域的 stacking context 或
-overflow 裁切。动画层只存在于转场期间，结束后随组件状态移除。
-
-玩家伤害目标弹窗复用控制栏的 Mage 选择按钮外观，只显示 Turn Order token、Mage 名称和当前 HP；
-弹窗同时提示将造成的伤害，悬停或键盘聚焦目标按钮时显示该目标的红色 `−X` 预览。伤害反馈层
-使用 `--z-damage-feedback`，不因弹窗存在而降到背景层。
-
-`z-index` 只在所属 stacking context 内比较。`transform`、`opacity`、`isolation`、
-`contain`、定位层等都可能创建新的上下文；子元素写再大的值，也不能越过父上下文。
-超出局部区块的临时提示或动画应使用页面级 Teleport/固定层，或者提升正确的父上下文，
-不要不断给子元素叠加更大的数字。`overflow: hidden/clip` 还会裁切后代图像，即使其
-`z-index` 更高也无法逃出裁切范围。
-
-局部 `z-index` 仅用于组件内部排序，不代表全局层级：例如 Nemesis 卡牌徽标、Breach
-上的法术与按钮、Supply 九宫格重叠卡，以及卡牌内的边框/徽标。新建全局覆盖层时优先
-复用上述 token；只有纯局部排序才使用小范围数字，并在对应模块注释其边界。
-
-拖拽 Spell 时：
-
-1. 关闭已经存在的卡牌预览。
-2. 其他卡牌不能响应 hover、点击或预览。
-3. 拖拽预览保持允许公开的朝向，并高于手牌和普通卡牌。
-4. 结束或取消拖拽后必须恢复正常 hover 行为。
-
-Setup 的 Market picker 是 `CardHoverPreview` 的层级特例：其卡图预览只需比 picker overlay 高一个层级，使用 `calc(var(--z-supply-decision) + 1)`；不要提升其他预览或底层游戏区域。
-
-## 7. 新 UI 需求流程
-
-实现前先回答：
-
-1. 是否已有合适的组件名称？
-2. 这是新组件，还是现有组件的新状态？
-3. 空状态、禁用状态和目标桌面视口中的溢出状态是什么？
-4. 是否涉及新的层级、圆角、边界线或滚轮行为？
-5. 是否需要在 UI Gallery 增加示例和截图？
-
-推荐流程：
-
-1. 先查阅本指南和 `UiGallery.vue`。
-2. 复用 `CardSurface`、`CardHoverPreview`、`ModalBase`、`ZoneScroller` 等基础组件。
-3. 完成后增加或更新 Playwright 场景。
-4. 视觉变化较大时，在 `ui/screenshots/` 保存最低目标尺寸（1440×900）和推荐桌面尺寸（1920×1080）的截图。
-5. 同步更新本指南中受到影响的组件或规则。
-
-## 8. 验收命令
+1. 查找本指南和 Gallery，确认能否复用现有组件/状态。
+2. 先改通用组件或全局 token，再改单个页面；避免同类交互各自补一套样式。
+3. 更新相关 Playwright 用例；明显视觉变化更新 Gallery 示例。自动截图不能代替桌面浏览器目视检查。
+4. 确认游戏过程、空状态、禁用状态、遮挡层级、拖动结束和键盘操作。
 
 ```powershell
 cd aeons-end-engine
 npm test
 
 cd ..\aeons-end-ui
+npx vue-tsc --noEmit
 npm run build
 npm run test:e2e
-```
-
-UI Gallery 测试：
-
-```powershell
-cd aeons-end-ui
 npm run test:ui-gallery
 ```
 
-当前阶段 1～4 的 UI 系统化和阶段 5 的首轮视觉回归已经完成。当前验收基线为：
-
-- Engine 测试：通过。
-- 前端生产构建：通过。
-- 完整 Playwright UI 回归：59/59 通过。
-
-新增 Wave 或新机制时，只需把新增状态加入本指南、Gallery 和对应回归测试，
-不需要重新建立整套 UI 规范。
+生产构建会先生成图片导入映射。新增可复用决策 UI、排序交互或明显视觉状态时，把模式也加入 UI Gallery，方便后续直接复用。

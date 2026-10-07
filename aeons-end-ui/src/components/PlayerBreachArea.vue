@@ -19,7 +19,6 @@ interface PendingDamageCast {
 }
 
 interface BreachDisplayBindings {
-  canMovePreppedTo: (breach: BreachState) => boolean
   canPrep: (breach: BreachState) => boolean
   conjureBreachChoice: (breach: BreachState) => unknown | null
   isCastableBreach: (breach: BreachState) => boolean
@@ -38,20 +37,18 @@ interface BreachDisplayBindings {
   effectFocusChoice: (breach: BreachState) => unknown | null
   breachCosts: (breach: BreachState) => BreachActionCosts
   isFaceDownPreppedSpell: (breach: BreachState, spellIndex: number) => boolean
-  isDraggedPreppedSpell: (breach: BreachState, spellIndex: number) => boolean
   isPendingPreppedSpellSelected: (choice: PreppedSpellChoice) => boolean
   spellDamagePreviewLabel: (breach: BreachState, spellIndex?: number) => string | null
+  isEndTurnActionTarget: (targetId: string) => boolean
 }
 
 const props = defineProps<{
   ownerId: string
   breaches: BreachState[]
   canActMain: boolean
-  canRepositionPrepped: boolean
   hasPendingDecision: boolean
   draggingSpell: boolean
   draggedSpellId: string | null
-  draggedPreppedSpell: { breachIndex: number; spellIndex: number } | null
   draggedConjuredCard: boolean
   ui: BreachDisplayBindings
 }>()
@@ -61,7 +58,6 @@ const emit = defineEmits<{
   'click-focus': [breach: BreachState]
   'open-breach': [breachIndex: number]
   'click-spell': [breach: BreachState, spellIndex: number]
-  'start-spell-drag': [breach: BreachState, spellIndex: number, event: PointerEvent]
   'confirm-divided-damage': []
 }>()
 </script>
@@ -77,12 +73,9 @@ const emit = defineEmits<{
         open: breach.opened,
         castable: ui.isCastableBreach(breach),
         'must-cast': ui.isMustCastBreach(breach),
-        'drag-target': draggingSpell && (draggedPreppedSpell
-          ? ui.canMovePreppedTo(breach)
-          : draggedConjuredCard
+        'drag-target': draggingSpell && (draggedConjuredCard
             ? !!ui.conjureBreachChoice(breach)
             : ui.canPrep(breach)),
-        'move-drag-target': draggingSpell && !!draggedPreppedSpell && ui.canMovePreppedTo(breach),
         'mandatory-prepped-effect': ui.isMandatoryPreppedEffect(breach),
       }"
       :aria-hidden="breach.present === false ? 'true' : undefined"
@@ -90,7 +83,17 @@ const emit = defineEmits<{
       @click="emit('click-breach', breach)"
     >
       <template v-if="breach.present !== false">
-        <div class="breach-token-wrap" :class="{ 'decision-breach-target': ui.isDecisionBreachTarget(breach) }">
+        <div
+          class="breach-token-wrap"
+          :class="{
+            'decision-breach-target': ui.isDecisionBreachTarget(breach),
+            'game-highlight': true,
+            'game-highlight--choice': ui.isDecisionBreachTarget(breach),
+            'game-highlight--context': draggingSpell && (draggedConjuredCard ? !!ui.conjureBreachChoice(breach) : ui.canPrep(breach)),
+            'end-turn-attention': ui.isEndTurnActionTarget(`breach-art:${ownerId}:${breach.index}`),
+          }"
+          :data-main-action-id="ui.isEndTurnActionTarget(`breach-art:${ownerId}:${breach.index}`) ? `breach-art:${ownerId}:${breach.index}` : undefined"
+        >
           <BreachArtwork
             :key="`${ownerId}-${breach.index}`"
             :breach="breach"
@@ -153,10 +156,13 @@ const emit = defineEmits<{
             >
               <div
                 class="breach-spell-card-frame"
-                :data-spell-index="spellIndex"
                 :class="{
+                  'game-highlight': ui.isCastableBreach(breach) || ui.isMustCastBreach(breach) || ui.isMandatoryPreppedEffect(breach, spellIndex) || !!ui.preppedSpellCastChoice(breach, spellIndex) || ui.isRepeatCastConfirmation(breach, spellIndex) || !!ui.pendingPreppedSpellChoice(breach, spellIndex) || ui.pendingCastSpell(breach, spellIndex) || ui.isPreppedSpellAction(breach, spellIndex) || ui.isRepeatablePreppedSpell(breach, spellIndex),
+                  'game-highlight--available': (ui.isCastableBreach(breach) && !ui.isMustCastBreach(breach) && !ui.isMandatoryPreppedEffect(breach, spellIndex)) || ui.isPreppedSpellAction(breach, spellIndex) || (ui.isRepeatablePreppedSpell(breach, spellIndex) && !ui.isRepeatCastConfirmation(breach, spellIndex)),
+                  'game-highlight--choice': (!!ui.preppedSpellCastChoice(breach, spellIndex) || !!ui.pendingPreppedSpellChoice(breach, spellIndex) || ui.pendingCastSpell(breach, spellIndex)) && !ui.isMustCastBreach(breach) && !ui.isMandatoryPreppedEffect(breach, spellIndex) && !ui.isRepeatCastConfirmation(breach, spellIndex),
+                  'game-highlight--required': ui.isMustCastBreach(breach) || ui.isMandatoryPreppedEffect(breach, spellIndex) || ui.isRepeatCastConfirmation(breach, spellIndex),
+                  'end-turn-attention': ui.isEndTurnActionTarget(`prepped-spell:${ownerId}:${breach.index}:${spellIndex}`),
                   'face-down-spell': ui.isFaceDownPreppedSpell(breach, spellIndex),
-                  'dragging-prepped-spell': ui.isDraggedPreppedSpell(breach, spellIndex),
                   'castable-spell': ui.isCastableBreach(breach),
                   'must-cast-spell': ui.isMustCastBreach(breach),
                   'mandatory-prepped-effect': ui.isMandatoryPreppedEffect(breach, spellIndex),
@@ -168,13 +174,12 @@ const emit = defineEmits<{
                   'pending-cast-spell': ui.pendingCastSpell(breach, spellIndex),
                   'manual-prepped-action': ui.isPreppedSpellAction(breach, spellIndex),
                   'repeatable-prepped-action': ui.isRepeatablePreppedSpell(breach, spellIndex),
-                  'repositionable-spell': canRepositionPrepped && !hasPendingDecision,
                 }"
+                :data-main-action-id="ui.isEndTurnActionTarget(`prepped-spell:${ownerId}:${breach.index}:${spellIndex}`) ? `prepped-spell:${ownerId}:${breach.index}:${spellIndex}` : undefined"
                 @click.stop="emit('click-spell', breach, spellIndex)"
-                @pointerdown="emit('start-spell-drag', breach, spellIndex, $event)"
               >
-                <img v-if="ui.isFaceDownPreppedSpell(breach, spellIndex)" :src="playerCardBackUrl()" alt="Face-down conjured spell" />
-                <img v-else-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" />
+                <img v-if="ui.isFaceDownPreppedSpell(breach, spellIndex)" :src="playerCardBackUrl()" alt="Face-down conjured spell" draggable="false" />
+                <img v-else-if="cardImageUrl(spellId)" :src="cardImageUrl(spellId)" :alt="getCard(spellId).name" draggable="false" />
                 <span v-else>[{{ getCard(spellId).name }}]</span>
                 <span
                   v-if="ui.spellDamagePreviewLabel(breach, spellIndex) !== null"
@@ -195,7 +200,7 @@ const emit = defineEmits<{
             >
               <button
                 type="button"
-                class="breach-spell-card-frame divided-damage-confirm-spell"
+                class="breach-spell-card-frame divided-damage-confirm-spell game-highlight game-highlight--choice"
                 :aria-label="`Confirm ${getCard(pendingSpell.cardId).name} damage allocation`"
                 :title="`Click to confirm ${getCard(pendingSpell.cardId).name}`"
                 @click.stop="emit('confirm-divided-damage')"
@@ -212,14 +217,24 @@ const emit = defineEmits<{
           @click.stop
         >
           <button
-            class="btn small"
-            :class="{ 'effect-focus-target': !!ui.effectFocusChoice(breach) }"
+            class="btn small breach-focus-button"
+            :class="{
+              'effect-focus-target': !!ui.effectFocusChoice(breach),
+              'end-turn-attention': ui.isEndTurnActionTarget(`breach-focus:${ownerId}:${breach.index}`),
+            }"
+            :data-main-action-id="ui.isEndTurnActionTarget(`breach-focus:${ownerId}:${breach.index}`) ? `breach-focus:${ownerId}:${breach.index}` : undefined"
             :aria-label="ui.effectFocusChoice(breach)
               ? `Focus Breach ${toRoman(breach.index)} with effect`
               : `Focus Breach ${toRoman(breach.index)} for ${ui.breachCosts(breach).focus} Aether`"
             @click.stop="emit('click-focus', breach)"
           >{{ ui.effectFocusChoice(breach) ? 'Focus' : `Focus ${ui.breachCosts(breach).focus}` }}</button>
-          <button v-if="canActMain && !hasPendingDecision" class="btn small" @click="emit('open-breach', breach.index)">Open {{ ui.breachCosts(breach).open }}</button>
+          <button
+            v-if="canActMain && !hasPendingDecision"
+            class="btn small"
+            :class="{ 'end-turn-attention': ui.isEndTurnActionTarget(`breach-open:${ownerId}:${breach.index}`) }"
+            :data-main-action-id="ui.isEndTurnActionTarget(`breach-open:${ownerId}:${breach.index}`) ? `breach-open:${ownerId}:${breach.index}` : undefined"
+            @click="emit('open-breach', breach.index)"
+          >Open {{ ui.breachCosts(breach).open }}</button>
         </div>
       </template>
     </div>

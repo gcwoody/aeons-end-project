@@ -5,6 +5,7 @@ import ZoneScroller from './ZoneScroller.vue'
 
 interface ZoneCardDisplay {
   key: string
+  ownerId?: string
   cardId: string
   index: number
   typeClass: string
@@ -12,12 +13,12 @@ interface ZoneCardDisplay {
   selected?: boolean
   preppedAction?: boolean
   actionAvailable?: boolean
+  endTurnActionAttention?: boolean
   title?: string
 }
 
 interface SwapZoneOwnerDisplay {
   id: string
-  mageName: string
   cards: ZoneCardDisplay[]
 }
 
@@ -41,12 +42,15 @@ const emit = defineEmits<{
 
 <template>
   <div class="played-zones" :class="{ 'has-swap-zone': hasSwapZone, 'has-develop-zone': hasDevelopZone }">
-    <section v-if="hasSwapZone" class="played-zone played-zone-swap">
-      <span class="label">Swap Zone</span>
+    <div class="played-zone-headings" aria-hidden="true">
+      <span v-if="hasSwapZone" class="played-zone-heading played-zone-heading-swap">SWAP ZONE</span>
+      <span class="played-zone-heading played-zone-heading-played">PLAYED ZONE</span>
+      <span v-if="hasDevelopZone" class="played-zone-heading played-zone-heading-develop">DEVELOP ZONE</span>
+    </div>
+    <section v-if="hasSwapZone" class="played-zone played-zone-swap" aria-label="Swap Zone">
       <ZoneScroller class="zone-card-scroll">
         <div class="zone-card-track">
           <template v-for="owner in swapZoneOwners" :key="`swap-owner-${owner.id}`">
-            <span class="swap-zone-owner-label">{{ owner.mageName }}</span>
             <CardHoverPreview
               v-for="card in owner.cards"
               :key="card.key"
@@ -58,8 +62,10 @@ const emit = defineEmits<{
                 :class="[card.typeClass, {
                   'pending-board-card': card.pending,
                   'pending-board-card-selected': card.pending && card.selected,
+                  'game-highlight': card.pending,
+                  'game-highlight--choice': card.pending && !card.selected,
+                  'game-highlight--selected': card.pending && card.selected,
                 }]"
-                :title="`${owner.mageName}'s Swap Zone`"
                 @click="emit('click-swap-card', owner.id, card.index, card.cardId)"
               />
             </CardHoverPreview>
@@ -68,8 +74,7 @@ const emit = defineEmits<{
       </ZoneScroller>
     </section>
 
-    <section class="played-zone played-zone-center">
-      <span class="label">Played</span>
+    <section class="played-zone played-zone-center" aria-label="Played">
       <ZoneScroller
         class="played-card-scroll"
         :overflow-anchor="hasDevelopZone && !hasSwapZone ? 'end' : 'start'"
@@ -99,7 +104,13 @@ const emit = defineEmits<{
                   'prepped-action': card.preppedAction,
                   'pending-board-card': card.pending,
                   'pending-board-card-selected': card.pending && card.selected,
+                  'game-highlight': card.preppedAction || card.pending,
+                  'game-highlight--available': card.preppedAction,
+                  'game-highlight--choice': card.pending && !card.selected,
+                  'game-highlight--selected': card.pending && card.selected,
+                  'end-turn-attention': card.endTurnActionAttention,
                 }]"
+                :data-main-action-id="card.endTurnActionAttention ? `played-card:${card.ownerId}:${card.index}` : undefined"
                 @click="emit('click-played-card', card.index)"
               />
             </CardHoverPreview>
@@ -108,8 +119,7 @@ const emit = defineEmits<{
       </ZoneScroller>
     </section>
 
-    <section v-if="hasDevelopZone" class="played-zone played-zone-develop">
-      <span class="label">Develop Zone</span>
+    <section v-if="hasDevelopZone" class="played-zone played-zone-develop" aria-label="Develop Zone">
       <ZoneScroller class="zone-card-scroll">
         <div class="zone-card-track">
           <CardHoverPreview v-for="card in developCards" :key="card.key" :card-id="card.cardId">
@@ -117,7 +127,13 @@ const emit = defineEmits<{
               :card-id="card.cardId"
               size="mini"
               :title="card.title"
-              :class="[card.typeClass, { 'develop-action-available': card.actionAvailable }]"
+              :class="[card.typeClass, {
+                'develop-action-available': card.actionAvailable,
+                'game-highlight': card.actionAvailable,
+                'game-highlight--available': card.actionAvailable,
+                'end-turn-attention': card.endTurnActionAttention,
+              }]"
+              :data-main-action-id="card.endTurnActionAttention ? `develop-zone-card:${card.index}` : undefined"
               @click="emit('click-develop-card', card.index)"
               @contextmenu.prevent="emit('click-develop-card', card.index)"
             />

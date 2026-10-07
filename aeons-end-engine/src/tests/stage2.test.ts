@@ -1,9 +1,12 @@
 import {
   advanceNemesisTurn,
   createGame,
+  isNemesisDeckCardRevealed,
   resolvePendingDecision,
+  returnNemesisDiscardCardToDeck,
   startTurn,
 } from '../engine'
+import { isCardInstanceRevealed } from '../engine/card-instances'
 import { getCard } from '../data'
 import type { GameState, NemesisCardDef } from '../types'
 
@@ -73,6 +76,13 @@ function testNemesisMainAndDrawOrder(): void {
   assertEqual(game.nemesis.playArea[0]!.cardId, 'provoker', 'Older cards are processed before the draw')
   assert(game.nemesis.discard.includes('agony_field'), 'Resolved Power enters the Nemesis discard pile')
   assert(game.nemesis.discard.includes('awaken'), 'Resolved Attack enters the Nemesis discard pile')
+  const awakenDiscardIndex = game.nemesis.discard.indexOf('awaken')
+  const awakenInstanceId = game.nemesis.discardInstanceIds?.[awakenDiscardIndex]
+  assert(isCardInstanceRevealed(game, awakenInstanceId ?? ''), 'A Nemesis card entering discard is remembered as revealed')
+  assertEqual(returnNemesisDiscardCardToDeck(game, awakenDiscardIndex), 'awaken',
+    'A known Nemesis card can return from discard to its deck')
+  assertEqual(game.nemesis.deck[0], 'awaken', 'The returned card is placed on top of the Nemesis deck')
+  assert(isNemesisDeckCardRevealed(game, 0), 'The Nemesis deck viewer shows a previously seen returned card face-up')
   assertEqual(game.currentPhase, 'nemesis_draw', 'Nemesis turn ends in the Draw phase state')
   assertEqual(game.nemesisResolution, null, 'Completed Nemesis turns clear their continuation state')
   agony.nemesisEffects = savedEffects
@@ -138,8 +148,33 @@ function testLethalGraveholdDamageStopsNemesisTurn(): void {
     'Nemesis Main Phase does not continue into the Draw Phase after game over')
 }
 
+function testDarkConclusionWaitsBesideTurnOrderDeckUntilReset(): void {
+  const game = nemesisGame()
+  game.nemesis.playArea = [{
+    cardId: 'dark_conclusion', cardType: 'power', placedAt: 1,
+    instanceId: 'dark-conclusion:instance-1', enteredOnNemesisTurn: 0, powerTokens: 1,
+  }]
+  game.nemesis.deck = []
+
+  advanceNemesisMain(game)
+  assertEqual(game.nemesis.setAsideCards?.length, 1, 'Resolved Dark Conclusion moves into the Nemesis set-aside row')
+  assertEqual(game.nemesis.setAsideCards?.[0]?.cardId, 'dark_conclusion', 'The set-aside row preserves Dark Conclusion')
+  assert(!game.nemesis.playArea.some(card => card.cardId === 'dark_conclusion'),
+    'A set-aside card leaves the active Nemesis play row')
+  assert(!game.nemesis.discard.includes('dark_conclusion'),
+    'Dark Conclusion is not discarded while waiting beside the Turn Order deck')
+
+  game.turnOrderDeck = []
+  game.turnOrderDiscard = [game.players[0]!.id, game.players[1]!.id, 'nemesis']
+  startTurn(game)
+  assertEqual(game.nemesis.setAsideCards?.length, 0, 'Turn Order reset removes Dark Conclusion from the set-aside row')
+  assert(game.nemesis.discard.includes('dark_conclusion'), 'Dark Conclusion enters Nemesis discard when the deck resets')
+  assertEqual(game.nemesis.turnOrderDeckResetCardId, undefined, 'The reset marker clears after use')
+}
+
 testNemesisMainAndDrawOrder()
 testDrawnCardsEnterWithFreshCounters()
 testNemesisResolutionIsSerializable()
 testLethalGraveholdDamageStopsNemesisTurn()
+testDarkConclusionWaitsBesideTurnOrderDeckUntilReset()
 console.log('Stage 2 Nemesis phase and lifecycle tests passed.')

@@ -110,14 +110,28 @@ test.describe('Stage 5 visual acceptance', () => {
       const swap = document.querySelector('.played-zone-swap')!.getBoundingClientRect()
       const develop = document.querySelector('.played-zone-develop')!.getBoundingClientRect()
       const card = document.querySelector('.played-zone-center .card')!.getBoundingClientRect()
+      const swapHeading = document.querySelector('.played-zone-heading-swap')!.getBoundingClientRect()
+      const playedHeading = document.querySelector('.played-zone-heading-played')!.getBoundingClientRect()
+      const developHeading = document.querySelector('.played-zone-heading-develop')!.getBoundingClientRect()
       return {
         rowCenter: row.left + row.width / 2,
         cardCenter: card.left + card.width / 2,
         widths: [swap.width, center.width, develop.width],
+        headingCenters: [
+          swapHeading.left + swapHeading.width / 2,
+          playedHeading.left + playedHeading.width / 2,
+          developHeading.left + developHeading.width / 2,
+        ],
+        zoneCenters: [
+          swap.left + swap.width / 2,
+          center.left + center.width / 2,
+          develop.left + develop.width / 2,
+        ],
       }
     })
     expect(layout.widths[1] / layout.widths[0]).toBeCloseTo(1, 1)
     expect(layout.widths[2] / layout.widths[0]).toBeCloseTo(1, 1)
     expect(Math.abs(layout.cardCenter - layout.rowCenter)).toBeLessThan(2)
+    layout.headingCenters.forEach((center, index) => expect(Math.abs(center - layout.zoneCenters[index]!)).toBeLessThan(2))
   })
 })

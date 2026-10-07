@@ -19,17 +19,12 @@
 .hand .card.spell-draggable.dragging,
 .hand .card.spell-draggable:active { cursor: grabbing; }
 .hand .card.spell-draggable.dragging { opacity: .35; }
-.hand .card.dragging { border-color: var(--border); box-shadow: none; }
+.hand .card.dragging { border-color: transparent; box-shadow: none; }
 .card.selected { border-color: var(--border); box-shadow: none; }
 .card .cname { font-weight: 600; font-size: var(--font-size-control); }
 .card.gem, .card.spell, .card.relic { border-top: var(--pixel-border-width) solid var(--border); }
 .card.small { min-width: 0; padding: 6px 10px; cursor: pointer; }
-.card.small.clickable:hover { border-color: var(--border); }
-.played-zone-center .card.prepped-action {
-  border: 2px solid var(--ok);
-  box-shadow: 0 0 0 var(--pixel-border-width) rgba(97, 218, 151, .35) inset;
-}
-.played-zone-center .card.prepped-action:hover { border-color: var(--ok); }
+.card.small.clickable:hover:not(.card-image) { border-color: var(--border); }
 .card-hover-wrap { display: contents; }
 .card.card-image {
   width: var(--hand-card-width);
@@ -37,6 +32,21 @@
   height: var(--hand-card-height);
   padding: 0;
   overflow: hidden;
+  /* Image-backed cards use the card artwork as their edge. Keep the neutral
+     shell border available for colored interaction states, but never show it
+     as a default gray frame. */
+  border-color: transparent;
+  background: transparent;
+}
+.card-surface.card-image,
+.card-surface.card-image:hover {
+  border-color: transparent;
+  background: transparent;
+}
+.card-surface.card-image.gem,
+.card-surface.card-image.spell,
+.card-surface.card-image.relic {
+  border-top-color: transparent;
 }
 .played-zone .card.card-image {
   width: auto;
@@ -89,7 +99,6 @@
   height: var(--pile-card-height);
   transform: translate(-50%, -50%);
   pointer-events: none;
-  border: 2px solid var(--accent);
   border-radius: var(--radius-card);
   overflow: hidden;
   box-shadow: 0 12px 24px rgba(0, 0, 0, .35);
@@ -167,15 +176,15 @@ body.spell-dragging .card-hover-preview {
   border-radius: var(--mage-modal-radius);
 }
 .overlay.mage-overlay { z-index: var(--z-mage-modal); }
-.nemesis-mat-preview { border-radius: 8px; }
+.nemesis-mat-preview { border-radius: var(--nemesis-mat-radius); }
 .nemesis-mat-modal-frame {
   height: min(74vh, 800px);
   width: auto;
   max-width: 84vw;
   aspect-ratio: var(--nemesis-mat-ratio);
-  border-radius: 9px;
+  border-radius: var(--nemesis-mat-radius);
 }
-.nemesis-mat-modal-frame .mage-modal-image { object-fit: contain; border-radius: 9px; }
+.nemesis-mat-modal-frame .mage-modal-image { object-fit: contain; border-radius: var(--nemesis-mat-radius); }
 .nemesis-reveal-overlay { z-index: var(--z-decision); }
 .decision-overlay.nemesis-draw-reveal-screen {
   align-items: center;
@@ -184,12 +193,14 @@ body.spell-dragging .card-hover-preview {
   background: var(--overlay-backdrop);
   opacity: 1;
   pointer-events: auto;
-  cursor: pointer;
+  cursor: default;
 }
 .nemesis-draw-reveal-screen .nemesis-reveal-card {
   width: min(320px, calc(100vw - 48px));
   max-height: calc(var(--viewport-height) - 48px);
   margin: 0;
+  border: 0;
+  cursor: pointer;
   box-shadow: 0 18px 64px rgba(0, 0, 0, .5);
 }
 .nemesis-reveal-modal { min-width: min(360px, calc(100vw - 24px)); max-height: calc(var(--viewport-height) - 24px); overflow: auto; }
@@ -204,6 +215,7 @@ body.spell-dragging .card-hover-preview {
   overflow: hidden;
   background: #151a29;
 }
+.nemesis-reveal-card:has(> img) { border: 0; }
 .nemesis-reveal-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .nemesis-reveal-modal .confirm-button {
   min-height: 46px;

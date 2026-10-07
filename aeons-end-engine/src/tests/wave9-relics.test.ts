@@ -12,6 +12,68 @@ function assertEqual<T>(actual: T, expected: T, message: string): void {
   assert(actual === expected, `${message}: expected ${String(expected)}, got ${String(actual)}`)
 }
 
+function testVisionaryStaffDiscardsFromTheAllysFullHand(): void {
+  const game: GameState = createGame(createTwoPlayerScenario(['jian', 'brama']))
+  const [staffUser, ally] = game.players
+  assert(staffUser && ally, 'The scenario creates both players')
+  game.currentTurn = staffUser.id
+  game.currentPhase = 'main'
+  staffUser.hand = ['visionary_staff']
+  ally.hand = ['crystal', 'spark']
+  ally.deck = ['jade', 'moonstone_shard', 'crystal']
+  ally.discard = []
+
+  playCard(game, staffUser.id, 'visionary_staff')
+  const modeChoice = game.pendingDecision
+  assert(modeChoice?.kind === 'choose_one', 'Visionary Staff first asks which effect to use')
+  resolvePendingDecision(game, modeChoice.id, { kind: 'choose_one', optionId: 'draw_discard' })
+
+  const discardChoice = game.pendingDecision
+  assert(discardChoice?.kind === 'select_cards', 'The ally chooses cards to discard after drawing')
+  assertEqual(discardChoice.min, 2, 'Visionary Staff requires two cards to be discarded')
+  assertEqual(discardChoice.max, 2, 'Visionary Staff allows exactly two cards to be discarded')
+  assertEqual(discardChoice.candidates.map(choice => choice.cardId).join(','),
+    'crystal,spark,jade,moonstone_shard,crystal',
+    'Candidates include the ally’s existing hand and all cards just drawn')
+  assert(discardChoice.candidates.every(choice => choice.highlight === 'required'),
+    'Every card in the ally’s hand is highlighted as an eligible discard')
+
+  const oldHandCard = discardChoice.candidates.find(choice => choice.cardId === 'spark')!
+  const drawnCard = discardChoice.candidates.find(choice => choice.cardId === 'jade')!
+  resolvePendingDecision(game, discardChoice.id, {
+    kind: 'select_cards', choices: [oldHandCard, drawnCard],
+  })
+
+  assert(ally.discard.includes('spark'), 'The ally can discard a card they held before drawing')
+  assert(ally.discard.includes('jade'), 'The ally can also discard one of the newly drawn cards')
+  assertEqual(ally.discard.slice(0, 2).join(','), 'jade,spark',
+    'The last card selected is on top; discard order follows the player’s click sequence')
+  assertEqual(ally.hand.join(','), 'crystal,moonstone_shard,crystal',
+    'The two unselected cards remain in the ally’s hand')
+}
+
+function testCollectiveDiscardUsesEachPlayersClickOrder(): void {
+  const game: GameState = createGame(createTwoPlayerScenario(['jian', 'brama']))
+  const [playerA, playerB] = game.players
+  assert(playerA && playerB, 'The scenario creates both players')
+  game.currentTurn = playerA.id
+  game.currentPhase = 'main'
+  playerA.hand = ['crystal', 'spark']
+  playerB.hand = ['jade']
+
+  resolveEffects(game, playerA.id, [{ kind: 'discard_cards_collectively', amount: 2, source: 'hand' }])
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'select_collective_cards', 'Collective discard asks which cards to discard')
+  const crystal = decision.candidates.find(item => item.playerId === playerA.id && item.choice.cardId === 'crystal')!
+  const spark = decision.candidates.find(item => item.playerId === playerA.id && item.choice.cardId === 'spark')!
+  resolvePendingDecision(game, decision.id, {
+    kind: 'select_collective_cards', choices: [crystal, spark],
+  })
+
+  assertEqual(playerA.discard.slice(0, 2).join(','), 'spark,crystal',
+    'Collective discards preserve the order selected by the player for that Mage')
+}
+
 function testThoughtTotemRefillsARevealFromTheUnshuffledDiscardPile(): void {
   const game: GameState = createGame(createTwoPlayerScenario(['jian', 'brama']))
   const player = game.players[0]!
@@ -29,6 +91,8 @@ function testThoughtTotemRefillsARevealFromTheUnshuffledDiscardPile(): void {
   assertEqual(decision.candidates.map(choice => choice.cardId).join(','),
     'jade,moonstone_shard,spark',
     'The reveal continues into the reversed, unshuffled discard pile after the deck cards')
+  assert(decision.candidates.every(choice => choice.highlight === undefined),
+    'Revealed reorder candidates stay visually clean until the player selects one')
   assertEqual(player.discard.length, 0,
     'The full player discard pile is recycled into the deck before the reveal decision')
   assertEqual(player.deck[3], 'crystal',
@@ -287,6 +351,8 @@ function testCrossPlayerSpellUsesCasterForAttachedRelicAllyScope(): void {
 
 testThoughtTotemRefillsARevealFromTheUnshuffledDiscardPile()
 testOmenLoopRefillsAndReordersTheTurnOrderDeckAtRoundEnd()
+testVisionaryStaffDiscardsFromTheAllysFullHand()
+testCollectiveDiscardUsesEachPlayersClickOrder()
 testVisionaryStaffRepeatsOneSelectedRecallFromTheDiscardPile()
 testNestedCrossPlayerCastRestoresTheOuterSourceCard()
 testNestedGainTriggerUsesItsOwnCardAndRestoresOuterContext()

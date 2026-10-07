@@ -1,7 +1,6 @@
 import { getCard, MAGES } from '../data'
 import {
   activateAbility, canPlayerAct, castSpell, createGame, playCard, resolvePendingDecision,
-  movePreppedSpell, returnPreppedSpellToHand,
 } from '../engine'
 import type { GameState } from '../types'
 
@@ -45,11 +44,6 @@ function testSetupAndConjure(): void {
   const prepared = indira.breaches[conjure.candidates[0]!.breachIndex - 1]!
   assertEqual(prepared.preppedSpellFaceDown?.[0], true, 'Conjure stores the face-down flag')
   assertEqual(prepared.prepSpells[0], 'spark', 'Conjure recycles an empty deck from discard')
-  assertEqual(
-    returnPreppedSpellToHand(game, indira.id, prepared.index, 0),
-    'Face-down Conjured spells cannot be returned to hand',
-    'Face-down Conjured spells cannot be returned to hand',
-  )
   const hp = game.nemesis.hp
   castSpell(game, indira.id, prepared.index)
   assertEqual(game.nemesis.hp, hp - 2, 'A face-down Conjured card deals exactly two damage')
@@ -87,30 +81,6 @@ function testConjureRevealsWithoutEligibleBreach(): void {
   assertEqual(restored.pendingDecision, null, 'The Conjure decision finishes after leaving the card on top')
 }
 
-function testFaceDownConjureMovement(): void {
-  const game = freshGame()
-  const indira = game.players[0]!
-  const source = indira.breaches[1]!
-  const target = indira.breaches[2]!
-  source.opened = true
-  target.opened = true
-  source.prepSpells = ['spark']
-  source.preppedThisTurn = [false]
-  source.preppedSpellFaceDown = [true]
-
-  assertEqual(
-    movePreppedSpell(game, indira.id, source.index, 0, target.index),
-    'Moved Spark to Breach III',
-    'A face-down Conjured spell can move to another legal Breach',
-  )
-  assertEqual(target.preppedSpellFaceDown?.[0], true, 'Face-down status survives Breach movement')
-  assertEqual(
-    returnPreppedSpellToHand(game, indira.id, target.index, 0),
-    'Face-down Conjured spells cannot be returned to hand',
-    'A moved face-down Conjured spell still cannot return to hand',
-  )
-}
-
 function testTransferAndAbility(): void {
   const game = freshGame()
   const indira = game.players[0]!
@@ -133,14 +103,16 @@ function testTransferAndAbility(): void {
   resolvePendingDecision(game, game.pendingDecision!.id, { kind: 'choose_one', optionId: 'cast_twice' })
   const collective = game.pendingDecision!
   assert(collective.kind === 'select_collective_cards', 'Ability selects an ally spell')
+  const spellsCastBeforeAbility = indira.spellsCastThisTurn ?? 0
   resolvePendingDecision(game, collective.id, { kind: 'select_collective_cards', choices: [collective.candidates[0]!] })
   assertEqual(game.nemesis.hp, abilityHp - 2, 'Pyromancer Guile casts an ally spell twice')
-  assertEqual(ally.hand[0], 'spark', 'Pyromancer Guile does not discard the ally spell')
+  assertEqual(ally.hand.length, 0, 'The final cast removes the spell from the ally hand')
+  assertEqual(ally.discard.join(','), 'spark', 'The final cast places the spell in its owner\'s discard pile')
+  assertEqual(indira.spellsCastThisTurn, spellsCastBeforeAbility + 2, 'Both casts are attributed to Indira')
 }
 
 testSetupAndConjure()
 testConjureRevealsWithoutEligibleBreach()
 testTransferAndAbility()
 testSpellOnlyAetherKeepsTurnOpen()
-testFaceDownConjureMovement()
 console.log('Wave 9 Indira tests passed')

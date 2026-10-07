@@ -18,7 +18,7 @@ function targetKind(targetId: string): 'player' | 'nemesis' | 'gravehold' | 'min
       v-for="impact in impacts"
       :key="impact.id"
       class="damage-impact"
-      :class="`damage-impact-${targetKind(impact.targetId)}`"
+      :class="[`damage-impact-${targetKind(impact.targetId)}`, `damage-impact--${impact.kind}`]"
       :style="{
         left: `${impact.left}px`,
         top: `${impact.top}px`,
@@ -28,7 +28,7 @@ function targetKind(targetId: string): 'player' | 'nemesis' | 'gravehold' | 'min
       }"
     >
       <span class="damage-impact-aura" />
-      <span class="damage-impact-number">−{{ impact.amount }}</span>
+      <span class="damage-impact-number">{{ impact.kind === 'damage' ? '−' : '+' }}{{ impact.amount }}</span>
     </div>
   </div>
 </template>

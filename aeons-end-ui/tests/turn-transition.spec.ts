@@ -69,6 +69,7 @@ test('first-turn Nemesis draw waits for the board and flies from its deck', asyn
   await page.getByRole('button', { name: 'Start Game' }).click()
 
   await expect(page.locator('.turn-order-cards .slot.arriving')).toBeVisible()
+  await expect(page.locator('.turn-order-cards .slot.current')).not.toHaveClass(/game-highlight/)
   const sourceRect = await page.locator('[data-nemesis-deck-pile="true"]').evaluate(element => {
     const rect = element.getBoundingClientRect()
     return { left: rect.left, top: rect.top }
@@ -212,6 +213,10 @@ test('turn changes animate the token first, then reveal a Nemesis draw from its 
   await expect(page.locator('.nemesis-draw-flight-scene')).toHaveCount(0)
   await expect(page.locator('.nemesis-reveal-card img[alt="Agony Field"]')).toBeVisible()
   await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0)
+  expect(await page.locator('.nemesis-draw-reveal-screen').evaluate(element => getComputedStyle(element).cursor)).toBe('default')
+  const revealedCard = page.locator('.nemesis-draw-reveal-screen .nemesis-reveal-card')
+  expect(await revealedCard.evaluate(element => getComputedStyle(element).cursor)).toBe('pointer')
+  await expect(revealedCard).toHaveCSS('border-width', '0px')
   await page.locator('.nemesis-reveal-overlay').click({ position: { x: 12, y: 12 } })
   await expect(page.locator('.nemesis-reveal-overlay')).toHaveCount(0)
 })

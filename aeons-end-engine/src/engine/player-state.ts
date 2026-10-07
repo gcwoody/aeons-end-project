@@ -86,6 +86,7 @@ export function ensurePlayerCollections(player: PlayerState): void {
   if (!player.swapZone) player.swapZone = []
   if (!player.specificDeck) player.specificDeck = []
   if (!player.knownSpecificDeckCards) player.knownSpecificDeckCards = []
+  player.trinketInstanceIds ??= []
   if (!player.playerCardsInPlay) player.playerCardsInPlay = []
   ensureHandPreppedSpellInstanceIds(player)
   if (!player.playerCardSupplyTargets) player.playerCardSupplyTargets = []

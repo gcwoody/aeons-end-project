@@ -6,13 +6,19 @@
   line-height: 1.2;
 }
 .breach-token-wrap.decision-breach-target {
-  border-radius: var(--breach-radius);
-  box-shadow: 0 0 0 2px #f3c64e;
   cursor: pointer;
 }
-.breach-token-wrap.decision-breach-target:hover { box-shadow: 0 0 0 var(--pixel-border-width) #79e38b; }
+.breach-token-wrap.decision-breach-target:hover,
+.breach:has(.breach-focus-button.effect-focus-target:hover) .breach-token-wrap.decision-breach-target {
+  --game-highlight-color: var(--game-highlight-context);
+}
+.breach-focus-button.effect-focus-target:hover,
+.breach:has(.breach-token-wrap.decision-breach-target:hover) .breach-focus-button.effect-focus-target {
+  border-color: var(--accent);
+  background: rgba(122, 162, 255, .14);
+  color: var(--game-highlight-context);
+}
 
 /* ===== Clickable piles ===== */
 .deck-pile.clickable, .discard-pile.clickable { cursor: pointer; }
-.deck-pile.clickable:hover, .discard-pile.clickable:hover { border-color: var(--accent); }
 

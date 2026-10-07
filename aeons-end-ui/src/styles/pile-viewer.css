@@ -81,24 +81,14 @@
 .pile-card.player-card-in-play-choice {
   cursor: pointer;
 }
-.pile-card.player-card-in-play-choice.player-card-in-play-action {
-  border-color: var(--ok);
-  box-shadow: 0 0 0 var(--pixel-border-width) rgba(158, 206, 106, .28) inset;
-}
 .pile-card.player-card-in-play-choice.player-card-in-play-disabled {
   cursor: not-allowed;
   opacity: .62;
 }
-.pile-card.player-card-in-play-choice.player-card-in-play-action:hover {
-  border-color: var(--ok);
-}
 .pile-card.recall-card-action {
-  border-color: var(--recall-highlight);
-  box-shadow: 0 0 0 2px rgba(101, 184, 255, .28) inset;
   cursor: pointer;
 }
-.pile-card.recall-card-action:hover { border-color: var(--recall-highlight); }
-.recall-pile-hint { margin: 0 0 8px; color: var(--recall-highlight); font-size: var(--font-size-small); }
+.recall-pile-hint { margin: 0 0 8px; color: var(--game-highlight-context); font-size: var(--font-size-small); }
 
 @media (max-width: 520px) {
   .pile-row {
@@ -124,19 +114,13 @@
   }
 }
 
-.card.small.selected { border: 2px solid var(--ok); box-shadow: 0 0 0 var(--pixel-border-width) var(--ok) inset; }
+.card.small.selected { border-color: transparent; }
 .card.pending-board-card {
-  border: 2px solid #e6c84f;
   cursor: pointer;
 }
-.hand .card.pending-conjure-card,
-.hand .card.pending-conjure-card:hover,
-.hand .card.pending-conjure-card.dragging { border: 2px solid #e6c84f; }
 .card.pending-board-card-selected {
   /* Selected board cards stay in the same top board layer as hovered cards. */
   z-index: var(--z-card-hover);
-  border-color: var(--ok);
-  box-shadow: 0 0 0 2px rgba(158, 206, 106, .35);
   transform: translateY(-3px);
 }
 

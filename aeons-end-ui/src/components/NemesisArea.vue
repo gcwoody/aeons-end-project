@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
-import type { NemesisCardInPlay } from '@engine/types'
+import type { NemesisCardDef, NemesisCardInPlay } from '@engine/types'
 import { cardImageUrl, nemesisCardBackUrl, nemesisMatImageUrl, nemesisSpecificDeckBackUrl, nemesisTokenImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
@@ -23,6 +23,9 @@ const presentation = computed(() => getNemesisPresentation(nemesis.value.type))
 const specificTopCard = computed(() => presentation.value.specificDeck.display === 'face_up'
   ? nemesis.value.strikeDeck[0] ?? null
   : null)
+const specificDeckCardCount = computed(() => nemesis.value.type === 'crooked_mask'
+  ? nemesis.value.corruptionDeck?.length ?? 0
+  : nemesis.value.strikeDeck.length)
 const canActivateSpecificTopCard = computed(() =>
   presentation.value.specificDeck.topCardAction === 'buy' && !!specificTopCard.value && canActMain.value)
 const specificTopCardActionLabel = computed(() => {
@@ -35,7 +38,29 @@ function measureMat(event: Event) {
   const image = event.target as HTMLImageElement
   if (image.naturalHeight) matRatio.value = image.naturalWidth / image.naturalHeight
 }
-const playCards = computed(() => [...nemesis.value.playArea].sort((a, b) => a.placedAt - b.placedAt))
+const stationedCards = computed(() => {
+  const cards = [...(nemesis.value.setAsideCards ?? [])]
+  const resetCardId = nemesis.value.turnOrderDeckResetCardId
+  if (resetCardId && !cards.some(card => card.cardId === resetCardId &&
+    (!nemesis.value.turnOrderDeckResetCardInstanceId ||
+      card.instanceId === nemesis.value.turnOrderDeckResetCardInstanceId))) {
+    cards.push({
+      cardId: resetCardId,
+      cardType: 'power',
+      placedAt: -1,
+      instanceId: nemesis.value.turnOrderDeckResetCardInstanceId ?? `stationed:${resetCardId}`,
+    })
+  }
+  return cards.sort((a, b) => a.placedAt - b.placedAt)
+})
+function isStationedNemesisCard(card: NemesisCardInPlay): boolean {
+  return stationedCards.value.some(stationed => stationed.cardId === card.cardId &&
+    (stationed.instanceId?.startsWith('stationed:') ||
+      nemesisCardInstanceId(stationed) === nemesisCardInstanceId(card)))
+}
+const playCards = computed(() => [...nemesis.value.playArea]
+  .filter(card => !isStationedNemesisCard(card))
+  .sort((a, b) => a.placedAt - b.placedAt))
 const damageDecision = computed(() => {
   const decision = state.game?.pendingDecision
   return decision?.kind === 'select_damage_target' || decision?.kind === 'allocate_divided_damage'
@@ -52,7 +77,6 @@ const matPreviewWidth = computed(() => matPreviewHeight * matRatio.value)
 const matSide = ref<'front' | 'back'>('front')
 const matModalOpen = ref(false)
 const { modalEl: matModalEl, modalStyle: matModalStyle, dragging: matDragging, startDrag: startMatDrag } = useModalDrag()
-
 const playScroll = ref<HTMLElement | null>(null)
 let scrollTarget = 0
 let scrollFrame: number | null = null
@@ -133,6 +157,10 @@ function nemesisCardInstanceId(card: NemesisCardInPlay): string {
   return card.instanceId ?? `${card.cardId}:${card.placedAt}`
 }
 
+function isEndTurnActionCard(card: NemesisCardInPlay): boolean {
+  return state.endTurnActionHint?.targetId === `nemesis-card:${nemesisCardInstanceId(card)}`
+}
+
 function activateNemesisCard(card: NemesisCardInPlay) {
   const targetId = minionTargetId(card.placedAt)
   if (isDamageTarget(targetId)) {
@@ -176,6 +204,13 @@ function cardCounter(card: NemesisCardInPlay): string | null {
   return null
 }
 
+function nemesisTokenCounter(card: NemesisCardInPlay): string | null {
+  if (card.cardType !== 'minion') return null
+  const definition = getCard(card.cardId) as NemesisCardDef
+  if (definition.nemesisTokens == null) return null
+  return `Token ${card.nemesisTokens ?? card.powerTokens ?? definition.nemesisTokens}`
+}
+
 onMounted(() => window.addEventListener('wheel', handlePlayWheel, { capture: true, passive: false }))
 onBeforeUnmount(() => {
   window.removeEventListener('wheel', handlePlayWheel, true)
@@ -197,8 +232,11 @@ onBeforeUnmount(() => {
         preview-class="nemesis-mat-preview"
       >
         <button
-          class="nemesis-mat-wrap"
-          :class="{ 'damage-target': isDamageTarget('nemesis') }"
+          class="nemesis-mat-wrap game-highlight"
+          :class="{
+            'damage-target': isDamageTarget('nemesis'),
+            'game-highlight--choice': isDamageTarget('nemesis'),
+          }"
           :aria-label="`Open ${nemesis.name} mat`"
           @click="isDamageTarget('nemesis') ? chooseDamageTarget('nemesis') : openMat()"
           @contextmenu="cancelDamageTarget('nemesis', $event)"
@@ -214,14 +252,14 @@ onBeforeUnmount(() => {
     <div class="nemesis-board">
       <div class="nemesis-board-upper">
         <div class="nemesis-pile-column" aria-label="Nemesis discard piles">
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled }" :aria-label="`Open ${presentation.specificDiscard.label}`" :title="presentation.specificDiscard.label" @click="openNemesisSpecificDiscardPile">
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled, 'is-empty': !presentation.specificDiscard.enabled || nemesis.strikeDiscard.length === 0 }" :aria-disabled="!presentation.specificDiscard.enabled || nemesis.strikeDiscard.length === 0" :aria-label="`Open ${presentation.specificDiscard.label}`" :title="presentation.specificDiscard.label" @click="openNemesisSpecificDiscardPile">
             <CardHoverPreview v-if="presentation.specificDiscard.enabled && nemesis.strikeDiscard[0]" :card-id="nemesis.strikeDiscard[0]">
               <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="nemesis.strikeDiscard[0]" />
             </CardHoverPreview>
             <span v-else class="nemesis-pile-placeholder">{{ presentation.specificDiscard.enabled ? `${presentation.specificDiscard.label} 0` : 'Not used' }}</span>
             <span v-if="presentation.specificDiscard.enabled && nemesis.strikeDiscard.length > 0" class="nemesis-pile-count">{{ nemesis.strikeDiscard.length }}</span>
           </button>
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" aria-label="Open Nemesis Discard" title="Nemesis Discard" @click="openNemesisDiscardPile">
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-empty': nemesis.discard.length === 0 }" :aria-disabled="nemesis.discard.length === 0" aria-label="Open Nemesis Discard" title="Nemesis Discard" @click="openNemesisDiscardPile">
             <CardHoverPreview v-if="nemesis.discard[0]" :card-id="nemesis.discard[0]">
               <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="nemesis.discard[0]" />
             </CardHoverPreview>
@@ -234,8 +272,9 @@ onBeforeUnmount(() => {
           <NemesisSpecificPile
             :label="presentation.specificDeck.label"
             :enabled="presentation.specificDeck.enabled"
-            :card-count="nemesis.strikeDeck.length"
+            :card-count="specificDeckCardCount"
             :back-image-url="nemesisSpecificDeckBackUrl(nemesis.type)"
+            :flight-source="nemesis.type === 'crooked_mask' ? 'corruption-deck' : undefined"
             :display="presentation.specificDeck.display"
             :top-card-id="specificTopCard ?? undefined"
             :action-label="specificTopCardActionLabel"
@@ -243,7 +282,7 @@ onBeforeUnmount(() => {
             @activate="activateSpecificTopCard"
             @inspect="openNemesisSpecificPile"
           />
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" aria-label="Open Nemesis Deck" title="Nemesis Deck" @click="openNemesisDeckPile">
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-empty': nemesis.deck.length === 0 }" :aria-disabled="nemesis.deck.length === 0" aria-label="Open Nemesis Deck" title="Nemesis Deck" @click="openNemesisDeckPile">
             <CardSurface v-if="nemesis.deck.length > 0" data-nemesis-deck-pile="true" base-class="nemesis-pile-card" size="pile" :image-url="nemesisCardBackUrl()" image-alt="Nemesis Deck card back" />
             <span v-else class="nemesis-pile-placeholder">Nemesis Deck 0</span>
             <span v-if="nemesis.deck.length > 0" class="nemesis-pile-count">{{ nemesis.deck.length }}</span>
@@ -256,7 +295,19 @@ onBeforeUnmount(() => {
         </section>
 
         <section class="nemesis-play" aria-label="Nemesis Cards in Play">
-          <div class="nemesis-play-top">
+          <div class="nemesis-play-top" aria-label="Nemesis cards set aside">
+            <CardHoverPreview
+              v-for="card in stationedCards"
+              :key="nemesisCardInstanceId(card)"
+              :card-id="card.cardId"
+              :preview-width="210"
+              :preview-height="291.02"
+            >
+              <div class="nemesis-play-card nemesis-stationed-card" :aria-label="`${getCard(card.cardId).name}, set aside`">
+                <img v-if="cardImageUrl(card.cardId)" :src="cardImageUrl(card.cardId)" :alt="getCard(card.cardId).name" draggable="false" />
+                <div v-else class="nemesis-card-fallback">{{ getCard(card.cardId).name }}</div>
+              </div>
+            </CardHoverPreview>
             <div v-if="dividedDamageDecision && dividedDamageAllocation" class="divided-damage-instructions" role="status" aria-live="polite">
               <strong>Damage assigned: {{ dividedDamageAllocation.total - dividedDamageAllocation.remaining }}/{{ dividedDamageAllocation.total }}</strong>
               <span>Left-click to assign unassigned damage. Right-click to cancel 1 damage. Click the casting spell again to resolve.</span>
@@ -265,10 +316,11 @@ onBeforeUnmount(() => {
           <div v-if="playCards.length > 0" ref="playScroll" class="nemesis-play-row nemesis-card-scroll">
             <div class="nemesis-card-track">
               <CardHoverPreview v-for="card in playCards" :key="nemesisCardInstanceId(card)" :card-id="card.cardId" :preview-width="210" :preview-height="291.02">
-                <div class="nemesis-play-card" :data-damage-target="card.cardType === 'minion' ? minionTargetId(card.placedAt) : undefined" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(nemesisCardInstanceId(card)) }]" @click="activateNemesisCard(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
+                <div class="nemesis-play-card game-highlight" :data-damage-target="card.cardType === 'minion' ? minionTargetId(card.placedAt) : undefined" :data-main-action-id="isEndTurnActionCard(card) ? `nemesis-card:${nemesisCardInstanceId(card)}` : undefined" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(nemesisCardInstanceId(card)), 'game-highlight--available': nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'game-highlight--choice': isDamageTarget(minionTargetId(card.placedAt)), 'game-highlight--required': isMainEffectTarget(nemesisCardInstanceId(card)), 'end-turn-attention': isEndTurnActionCard(card) }]" @click="activateNemesisCard(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
                   <img v-if="cardImageUrl(card.cardId)" :src="cardImageUrl(card.cardId)" :alt="getCard(card.cardId).name" draggable="false" />
                   <div v-else class="nemesis-card-fallback">{{ getCard(card.cardId).name }}</div>
                   <span v-if="dividedDamageAssigned(minionTargetId(card.placedAt)) > 0" class="damage-allocation-badge" :aria-label="`${dividedDamageAssigned(minionTargetId(card.placedAt))} damage assigned`">−{{ dividedDamageAssigned(minionTargetId(card.placedAt)) }}</span>
+                  <span v-if="nemesisTokenCounter(card)" class="nemesis-card-counter nemesis-card-token-counter">{{ nemesisTokenCounter(card) }}</span>
                   <div class="nemesis-card-meta"><span v-if="cardCounter(card)" class="nemesis-card-counter">{{ cardCounter(card) }}</span></div>
                 </div>
               </CardHoverPreview>

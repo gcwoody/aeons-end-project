@@ -1,4 +1,5 @@
-import { createGame, resolveEffects, resolvePendingDecision } from '../engine'
+import { createGame, gainFirethornTopCard, isSpecificDeckCardRevealed, resolveEffects, resolvePendingDecision } from '../engine'
+import { initializeCardInstanceZone } from '../engine/card-instances'
 
 declare const console: { log(...messages: unknown[]): void }
 
@@ -39,6 +40,45 @@ function testFirethornDeckIsShuffledAtGameStart(): void {
   }
   assert(shuffledOrder.some((cardId, index) => cardId !== originalOrder[index]),
     'Game setup randomizes the Firethorn order')
+}
+
+function testFirethornRevealMemoryDoesNotSpreadToMatchingCopies(): void {
+  const game = createGame('inco', 'qu')
+  const inco = game.players.find(player => player.mageType === 'inco')!
+  inco.specificDeck = ['arcing_firethorn', 'arcing_firethorn', 'arcing_firethorn']
+  inco.specificDeckInstanceIds = initializeCardInstanceZone(game, inco.specificDeck)
+
+  assertEqual(isSpecificDeckCardRevealed(game, inco.id, 0), true,
+    'The top Firethorn copy is visible by the Firethorn deck rule')
+  assertEqual(isSpecificDeckCardRevealed(game, inco.id, 1), false,
+    'The second matching Firethorn copy stays hidden')
+  assertEqual(isSpecificDeckCardRevealed(game, inco.id, 2), false,
+    'The third matching Firethorn copy stays hidden')
+
+  game.currentTurn = inco.id
+  game.currentPhase = 'main'
+  inco.bonusAether = 5
+  assert(gainFirethornTopCard(game, inco.id)?.includes('Gained'),
+    'Inco can gain the revealed top Firethorn')
+  assertEqual(inco.specificDeckInstanceIds?.length, 2,
+    'Gaining a Firethorn removes its matching instance ID from the deck')
+  assertEqual(isSpecificDeckCardRevealed(game, inco.id, 0), true,
+    'The next physical Firethorn is visible when it becomes the top card')
+  assertEqual(isSpecificDeckCardRevealed(game, inco.id, 1), false,
+    'A matching copy deeper in the deck remains hidden')
+}
+
+function testAmbiguousLegacySpecificDeckMemoryDoesNotRevealEveryCopy(): void {
+  const game = createGame('inco', 'qu')
+  const inco = game.players.find(player => player.mageType === 'inco')!
+  inco.specificDeck = ['arcing_firethorn', 'arcing_firethorn']
+  inco.specificDeckInstanceIds = undefined
+  inco.knownSpecificDeckCards = ['arcing_firethorn']
+
+  assertEqual(isSpecificDeckCardRevealed(game, inco.id, 0), true,
+    'The Firethorn top-revealed rule still reveals the current top card')
+  assertEqual(isSpecificDeckCardRevealed(game, inco.id, 1), false,
+    'An old cardId-only save does not reveal every matching physical copy')
 }
 
 function testIncoRevealsBothDecksEvenWhenNoFirethornIsAvailable(): void {
@@ -117,6 +157,8 @@ function testIncoFirethornChoiceShowsBothZonesAndMovesSelectedCardsToHand(): voi
 }
 
 testFirethornDeckIsShuffledAtGameStart()
+testFirethornRevealMemoryDoesNotSpreadToMatchingCopies()
+testAmbiguousLegacySpecificDeckMemoryDoesNotRevealEveryCopy()
 testIncoRevealsBothDecksEvenWhenNoFirethornIsAvailable()
 testIncoFirethornChoiceShowsBothZonesAndMovesSelectedCardsToHand()
 console.log('Wave 9 Inco tests passed')

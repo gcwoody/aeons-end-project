@@ -3,6 +3,8 @@ import {
   buyCard, canGainCharge, createGame, gainCharge, getTrinketDeckCards, isTrinketDeckCardRevealed,
   playCard, resolveEffects, resolvePendingDecision,
 } from '../engine'
+import { createCardInstance, isCardInstanceRevealed, resetCardInstancesAfterShuffle } from '../engine/card-instances'
+import { ensureTrinketDeckState, rememberOwnedTrinketInstance } from '../engine/zones'
 import { buildTrinketDeck, TRINKET_DECK_CARD_IDS } from '../data/wave9/special-decks/trinkets'
 import type { GameState } from '../types'
 
@@ -47,17 +49,25 @@ function testTrinketDeckCompositionAndShuffle(): void {
   assertEqual(getCard('clouded_trinket').mechanics?.includes('trinket'), true, 'Trinket cards are registered as player cards')
 }
 
-function testGainTrinketsUsesDestinationAndKeepsCopyRevealStateAligned(): void {
+function testRevealMemoryBelongsToEachPhysicalTrinketCopy(): void {
   const game = createGame(createTwoPlayerScenario(['jian', 'brama']))
   const player = game.players[0]!
   game.trinketDeck = ['ethereal_trinket', 'ethereal_trinket', 'power_trinket']
   game.trinketDeckRevealed = [true, false, false]
+  const knownCopyOutsideDeck = createCardInstance(game, 'ethereal_trinket', true).instanceId
+
+  assertEqual(isTrinketDeckCardRevealed(game, 0), true, 'The revealed physical copy stays known')
+  assertEqual(isTrinketDeckCardRevealed(game, 1), false, 'A matching printed copy stays face-down')
 
   resolveEffects(game, player.id, [{ kind: 'gain_trinkets', amount: 1, destination: 'discard_top' }], 'test', 0, player.id)
   assertEqual(player.discard[0], 'ethereal_trinket', 'A gained Trinket goes to the top of discard by default')
   assertEqual(game.trinketDeck?.join(','), 'ethereal_trinket,power_trinket', 'Gaining removes only the top physical copy')
-  assertEqual(game.trinketDeckRevealed?.join(','), 'false,false', 'An unseen duplicate stays hidden after the known copy leaves')
-  assertEqual(isTrinketDeckCardRevealed(game, 0), false, 'Reveal memory follows card copies rather than card identities')
+  assertEqual(game.trinketDeckRevealed?.join(','), 'false,false', 'The remaining copy keeps its own face-down state')
+  assertEqual(isTrinketDeckCardRevealed(game, 0), false, 'Removing a known copy does not reveal a matching copy')
+  resetCardInstancesAfterShuffle(game, game.trinketDeckInstanceIds ?? [])
+  assertEqual(isTrinketDeckCardRevealed(game, 0), false, 'Shuffling keeps the remaining copy unknown')
+  assertEqual(isCardInstanceRevealed(game, knownCopyOutsideDeck), true,
+    'Shuffling one deck does not erase knowledge of a matching card outside that deck')
 
   player.deck = []
   game.trinketDeck = ['golden_trinket', 'power_trinket']
@@ -167,7 +177,35 @@ function testOlderSavesInitializeTrinketsWithoutLosingDeckKnowledge(): void {
   saved.trinketDeck = ['power_trinket', 'power_trinket']
   saved.trinketDeckRevealed = [true, false]
   assertEqual(isTrinketDeckCardRevealed(saved, 0), true, 'Known-card memory persists through JSON save/load')
-  assertEqual(isTrinketDeckCardRevealed(saved, 1), false, 'Unknown duplicate copies remain hidden after save/load')
+  assertEqual(isTrinketDeckCardRevealed(saved, 1), false, 'A matching copy keeps its independent state after save/load')
+}
+
+function testPlayedCloudedCopyDoesNotRevealMatchingTrinketOnTop(): void {
+  const game = createGame(createTwoPlayerScenario(['jian', 'brama']))
+  const player = game.players[0]!
+  setMainPhase(game, player.id)
+  game.trinketDeck = ['clouded_trinket']
+  game.trinketDeckRevealed = [false]
+  const topCopyInstanceId = ensureTrinketDeckState(game).instanceIds[0]!
+  const playedCopyInstanceId = createCardInstance(game, 'clouded_trinket').instanceId
+  rememberOwnedTrinketInstance(player, playedCopyInstanceId)
+  assertEqual(player.trinketInstanceIds?.join(','), playedCopyInstanceId,
+    'The played Clouded copy is tracked separately from the shared deck copies')
+  player.hand = ['clouded_trinket']
+
+  playCard(game, player.id, 'clouded_trinket')
+  const optionalCast = game.pendingDecision
+  if (optionalCast?.kind === 'select_prepped_spells') {
+    resolvePendingDecision(game, optionalCast.id, { kind: 'select_prepped_spells', choices: [] })
+  }
+  const deck = ensureTrinketDeckState(game)
+  assertEqual(deck.cards[0], 'clouded_trinket', 'The untouched top copy remains in the deck')
+  assertEqual(deck.instanceIds[0], topCopyInstanceId, 'The untouched top copy keeps its physical identity')
+  assertEqual(isTrinketDeckCardRevealed(game, 0), false,
+    'Returning the played Clouded Trinket does not reveal the other Clouded copy')
+  assertEqual(deck.cards[1], 'clouded_trinket', 'The played copy returns at the bottom')
+  assertEqual(deck.instanceIds[1], playedCopyInstanceId, 'The played copy returns with its own identity')
+  assertEqual(isTrinketDeckCardRevealed(game, 1), true, 'The returned played copy remains face-up')
 }
 
 function getTrinketRevealCount(game: GameState): number | undefined {
@@ -175,7 +213,8 @@ function getTrinketRevealCount(game: GameState): number | undefined {
 }
 
 testTrinketDeckCompositionAndShuffle()
-testGainTrinketsUsesDestinationAndKeepsCopyRevealStateAligned()
+testRevealMemoryBelongsToEachPhysicalTrinketCopy()
+testPlayedCloudedCopyDoesNotRevealMatchingTrinketOnTop()
 testAnyPlayerCanGainTrinketsToTheirDeck()
 testPlayedTrinketsReturnFaceUpToTheBottom()
 testCloudedTrinketCanSkipCasting()

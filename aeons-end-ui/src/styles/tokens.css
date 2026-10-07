@@ -22,6 +22,7 @@
   --radius-card: 9px;
   --radius-panel: 10px;
   --radius-modal: 12px;
+  --nemesis-mat-radius: 5%;
   /* Single source of truth for every rendered game card. */
   --card-aspect-ratio: 63.5 / 88;
   --mini-card-width: 55px;
@@ -45,7 +46,12 @@
   --turn-order-arrival-duration: 600ms;
   --turn-order-arrival-scale: 7;
   --turn-order-arrival-opacity: .50;
-  --card-flight-duration: 240ms;
+  --card-flight-duration: 500ms;
+  --hand-gain-reflow-duration: 220ms;
+  --hand-card-reflow-duration: 220ms;
+  --hand-to-play-zone-flight-duration: 200ms;
+  --hand-to-discard-flight-duration: 200ms;
+  --discard-phase-flight-duration: 200ms;
   --card-flight-easing: cubic-bezier(.22, .78, .24, 1);
   --nemesis-draw-flight-duration: 500ms;
   --nemesis-draw-flip-duration: 150ms;
@@ -87,18 +93,22 @@
   --text: #dfe4f0;
   --muted: #8b93a7;
   --accent: #7aa2ff;
-  --recall-highlight: #65b8ff;
+  /* Gameplay outlines use one color per meaning across every board zone. */
+  --game-highlight-available: #9ece6a;
+  --game-highlight-choice: #f2994a;
+  --game-highlight-required: #e05252;
+  --game-highlight-context: #7aa2ff;
+  --game-highlight-width: 2px;
   --gem: #5ad1c5;
   --spell: #c678dd;
-  --must-cast: #ff3030;
-  --face-down-cast-border: #e6c84f;
+  --must-cast: var(--game-highlight-required);
   --relic: #e0af68;
   --nemesis: #f7768e;
   --danger: #f7768e;
   --player-hp: #8f0e1f;
-  --ok: #9ece6a;
+  --ok: var(--game-highlight-available);
   --warn: #e0af68;
-  --decision-focus-target: #f2994a;
+  --decision-focus-target: var(--game-highlight-choice);
   --two-button-choice-width: 420px;
   --two-button-choice-gap: 10px;
   --two-button-choice-button-height: 56px;
@@ -107,8 +117,6 @@
   --damage-assigned-size: 1.35;
   --damage-target-mat-border-width: 3px;
   --damage-target-card-border-width: 2px;
-  --damage-target-border-color: #e6c84f;
-  --damage-target-border-glow: rgba(230, 200, 79, .35);
   /* Global backdrop used by every modal overlay. Lower alpha shows more of the board. */
   --overlay-backdrop: rgba(8, 10, 16, .38);
   --overlay-in-duration: var(--transition-overlay);

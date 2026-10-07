@@ -129,7 +129,7 @@
   color: var(--muted);
   cursor: pointer;
 }
-.debug-number-step:hover, .debug-number-step:focus-visible { background: var(--border); color: var(--accent); outline: none; }
+.debug-number-step:hover { background: var(--border); color: var(--accent); }
 .debug-number-step::before { content: ''; width: 5px; height: 5px; border: solid currentColor; border-width: 2px 0 0 2px; }
 .debug-number-step.up::before { transform: translateY(1px) rotate(45deg); }
 .debug-number-step.down::before { transform: translateY(-1px) rotate(225deg); }
@@ -166,8 +166,8 @@
   cursor: pointer;
   text-align: left;
 }
-.debug-card-option:hover { border-color: var(--accent); background: rgba(122, 162, 255, .1); }
-.debug-card-option.selected { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(87, 214, 141, .26); }
+.debug-card-option:hover { --game-highlight-color: var(--game-highlight-context); background: rgba(122, 162, 255, .1); }
+.debug-card-option.selected { --game-highlight-color: var(--game-highlight-choice); }
 .debug-card-option img, .debug-card-fallback {
   width: 100%;
   aspect-ratio: var(--card-aspect-ratio);

@@ -1,0 +1,40 @@
+/*
+ * One overlay implementation for gameplay highlights. Apply this class to
+ * the card or board object itself, then choose exactly one semantic tone.
+ * The pseudo-element sits above artwork without changing its dimensions.
+ */
+.game-highlight {
+  --game-highlight-color: transparent;
+  --game-highlight-layer: 1;
+  position: relative;
+  isolation: isolate;
+}
+.game-highlight::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: var(--game-highlight-layer);
+  box-sizing: border-box;
+  border: var(--game-highlight-width) solid var(--game-highlight-color);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.game-highlight--context { --game-highlight-color: var(--game-highlight-context); }
+.game-highlight--available { --game-highlight-color: var(--game-highlight-available); }
+.game-highlight--choice { --game-highlight-color: var(--game-highlight-choice); }
+.game-highlight--selected { --game-highlight-color: var(--game-highlight-required); }
+.game-highlight--required { --game-highlight-color: var(--game-highlight-required); }
+
+/* Briefly draw attention to the next legal action named by End Turn. */
+.end-turn-attention {
+  animation: end-turn-attention-pulse 1.2s ease-in-out 3;
+}
+@keyframes end-turn-attention-pulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 0 rgba(255, 196, 92, 0));
+  }
+  50% {
+    filter: drop-shadow(0 0 8px rgba(255, 196, 92, .95));
+  }
+}

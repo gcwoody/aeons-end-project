@@ -37,7 +37,9 @@ export function nemesisCardBackUrl(): string {
 }
 
 export function nemesisSpecificDeckBackUrl(nemesisType: string): string {
-  return nemesisType === 'rageborne' ? rageborneStrikeDeckBack : nemesisCardBack
+  if (nemesisType === 'rageborne') return rageborneStrikeDeckBack
+  if (nemesisType === 'crooked_mask') return playerCardBack
+  return nemesisCardBack
 }
 
 export function nemesisTokenImageUrl(nemesisType: string, tokenName: string): string | undefined {

@@ -38,6 +38,7 @@ async function startGame(page: Page) {
     }
     break
   }
+  await expect(page.locator('.turn-transition-shield')).toHaveCount(0)
 }
 
 async function seedCardsAndEndTurn(page: Page, cards: string[]) {
@@ -67,10 +68,29 @@ async function seedCardsAndEndTurn(page: Page, cards: string[]) {
   current.selectedPlayer = player.id
   await field.fill(JSON.stringify(current))
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const applied = JSON.parse(await field.inputValue())
+  expect(applied.game.currentTurn).toBe(player.id)
+  expect(applied.game.players.find((candidate: any) => candidate.id === player.id).playedThisTurn).toEqual(cards)
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+  await page.addStyleTag({ content: ':root { --discard-phase-flight-duration: 450ms; }' })
 
   await page.getByRole('button', { name: 'End Turn', exact: true }).click()
-  await expect(page.getByText('Discard Phase · Card Order', { exact: true })).toHaveCount(0)
+  const discardPhase = page.getByText('Discard Phase · Card Order', { exact: true })
+  if (await page.getByText('Actions remain. End turn anyway?', { exact: true }).isVisible().catch(() => false)) {
+    await page.getByRole('button', { name: 'End Turn', exact: true }).click()
+  }
+  await expect(discardPhase).toBeVisible()
+  await expect(page.locator('.card-flight-clone')).toBeVisible()
+  const firstFlight = await page.locator('.card-flight-clone').elementHandle()
+  expect(firstFlight).not.toBeNull()
+  await firstFlight!.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
+  await expect.poll(() => firstFlight!.evaluate(element => element.isConnected).catch(() => false)).toBe(false)
+  await expect(page.locator('.card-flight-clone')).toBeVisible()
+  await expect(discardPhase).toBeVisible()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(0)
+  await expect(discardPhase).toHaveCount(0)
+  await expect(page.locator('.turn-transition-shield')).toHaveCount(0)
 
   await page.keyboard.press('Control+d')
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
@@ -83,7 +103,7 @@ for (const [cardName, cardIds] of [
   ['Crystal', ['crystal', 'wave9_crystal']],
   ['Spark', ['spark', 'wave9_spark']],
 ] as const) {
-  test(`${cardName} versions from different Waves discard without ordering`, async ({ page }) => {
+  test(`${cardName} versions from different Waves discard automatically with sequential flights`, async ({ page }) => {
     await startGame(page)
     await seedCardsAndEndTurn(page, [...cardIds])
   })

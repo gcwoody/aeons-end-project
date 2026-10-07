@@ -15,7 +15,11 @@ const marketDecision = computed(() => {
     ? decision
     : null
 })
+const requiredMarketChoice = computed(() => marketDecision.value?.kind === 'select_market_pile'
+  && marketDecision.value.emphasis === 'required')
 const developActions = computed(() => state.game ? getDevelopActions(state.game, state.selectedPlayer) : [])
+const endTurnActionAttention = (pileIndex: number) =>
+  state.endTurnActionHint?.targetId === `market-pile:${pileIndex}`
 
 function marketChoice(pileIndex: number) {
   return marketDecision.value?.candidates.find(choice => choice.pileIndex === pileIndex) ?? null
@@ -102,11 +106,19 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             type="button"
             class="pile"
             :data-supply-card-id="b.cardId"
+            :data-supply-pile-index="b.pileIndex"
             :class="{
               'can-buy': canBuy && !marketDecision && b.affordable,
               'decision-market-choice': !!marketChoice(b.pileIndex),
+              'decision-market-choice-required': !!marketChoice(b.pileIndex) && requiredMarketChoice,
               'develop-action-available': canDevelopSupplyPile(b.pileIndex),
+              'game-highlight': (!marketDecision && canBuy && b.affordable) || (!marketDecision && canDevelopSupplyPile(b.pileIndex)) || !!marketChoice(b.pileIndex),
+              'game-highlight--available': !marketDecision && (canBuy && b.affordable || canDevelopSupplyPile(b.pileIndex)),
+              'game-highlight--choice': !!marketChoice(b.pileIndex) && !requiredMarketChoice,
+              'game-highlight--required': !!marketChoice(b.pileIndex) && requiredMarketChoice,
+              'end-turn-attention': endTurnActionAttention(b.pileIndex),
             }"
+            :data-main-action-id="endTurnActionAttention(b.pileIndex) ? `market-pile:${b.pileIndex}` : undefined"
             :aria-disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy || !b.affordable"
             :title="developHint(b.pileIndex, b.developCost)"
             :disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy"
@@ -133,7 +145,11 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
               <span
                 v-if="b.remaining > 0 && cardImageUrl(setCardId.cardId)"
                 class="market-set-card-overlay"
-                :class="{ 'market-set-card-overlay-action': setCardHasAction(setCardId) }"
+                :class="{
+                  'market-set-card-overlay-action': setCardHasAction(setCardId),
+                  'game-highlight': setCardHasAction(setCardId),
+                  'game-highlight--available': setCardHasAction(setCardId),
+                }"
                 :style="{ '--set-card-index': setIndex }"
                 @click="onSetCardClick($event, setCardId)"
               >
@@ -148,7 +164,11 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
           class="pile pile-empty"
           :class="{
             'decision-market-choice': !!marketChoice(b.pileIndex),
+            'decision-market-choice-required': !!marketChoice(b.pileIndex) && requiredMarketChoice,
             'has-set-card': hasSetCards(b.pileIndex),
+            'game-highlight': !!marketChoice(b.pileIndex),
+            'game-highlight--choice': !!marketChoice(b.pileIndex) && !requiredMarketChoice,
+            'game-highlight--required': !!marketChoice(b.pileIndex) && requiredMarketChoice,
           }"
           :disabled="marketDecision ? !marketChoice(b.pileIndex) : false"
           @click="onPileClick(b.pileIndex)"

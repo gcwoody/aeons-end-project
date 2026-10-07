@@ -3,8 +3,13 @@ import { getCard, MAGES } from '../data'
 import { isPresentBreach } from './breaches'
 import { marketPileChoices } from '../nemesis/market'
 import { shuffle } from './decks'
+import { ensureCardInstanceZone } from './card-instances'
 import { MAX_PULSE_TOKENS, addCardToHand, addCardsToHand, createPreppedSpellInstanceId, ensurePlayerCollections, getPlayerTurnEffects, removeCardFromHand } from './player-state'
-import { getPlayer } from './zones'
+import {
+  getPlayer, putPlayerCardInDeck, putPlayerDeckInstancesOnTop,
+  rememberOwnedTrinketInstance, takePlayerDeckCard, takePlayerDeckCardAt,
+  takePlayerDeckInstancesAt,
+} from './zones'
 import { effectTargetPlayerId, gainLife, getDamageTargets, getEffectPlayerTargets, getPlayerTargets, getSelectedPlayerTargets } from './targets'
 import type { DecisionResolutionServices } from '../engine'
 
@@ -26,6 +31,7 @@ export function createDecisionResolver(services: DecisionResolutionServices) {
     createDecision,
     damageEffectAmountValue,
     dealDamage,
+    dealNemesisTargetDamage,
     destroyExhaustedBreach,
     destroyOwnedCard,
     devourMarketPile,
@@ -34,6 +40,7 @@ export function createDecisionResolver(services: DecisionResolutionServices) {
     discardSelectedCards,
     drawCardsForPlayer,
     effectPlayerId,
+    ensureTrinketDeckState,
     gainCard,
     gainPulseTokens,
     gainSwapZoneCard,
@@ -240,7 +247,7 @@ function resolvePendingDecision(
     if (getCard(revealed.cardId).type !== 'spell') {
       return [`${player.mageType} reveals ${getCard(revealed.cardId).name}; it remains on top of the deck`, ...runEffectResolution(g, resolution)]
     }
-    player.deck.shift()
+    takePlayerDeckCard(g, player)
     addCardToHand(player, revealed.cardId)
     return [`${player.mageType} reveals ${getCard(revealed.cardId).name} and puts it into their hand`, ...runEffectResolution(g, resolution)]
   } else if (answer.kind === 'confirm_prepped_effect') {
@@ -287,8 +294,8 @@ function resolvePendingDecision(
         return ['The revealed card is no longer on top of the deck']
       }
       if (answer.optionId === 'discard') {
-        player.deck.shift()
-        player.discard.unshift(revealed.cardId)
+        const cardId = takePlayerDeckCard(g, player)
+        if (cardId) player.discard.unshift(cardId)
       }
       resolution.revealedTopCard = undefined
       addRemainingEffects(resolution, [effect])
@@ -324,22 +331,37 @@ function resolvePendingDecision(
     }
     const reveal = resolution.specificDeckReveal
     const owner = reveal ? getPlayer(g, reveal.playerId) : null
-    const selectedIndex = reveal?.cards.indexOf(answer.cardId) ?? -1
+    const selectedIndex = reveal
+      ? answer.slot !== undefined
+        ? reveal.cardSlots?.indexOf(answer.slot) ?? -1
+        : reveal.cards.indexOf(answer.cardId)
+      : -1
     if (!reveal || !owner || reveal.mode !== 'return_each' ||
       selectedIndex < 0 || !['top', 'bottom'].includes(answer.placement) ||
       decision.cards.length !== reveal.cards.length ||
-      decision.cards.some((card, index) => card.cardId !== reveal.cards[index])) {
+      decision.cards.some((card, index) => card.cardId !== reveal.cards[index] ||
+        card.slot !== (reveal.cardSlots?.[index] ?? index)) ||
+      reveal.cards[selectedIndex] !== answer.cardId) {
       restore()
       return ['Invalid Mage-specific deck placement choice']
     }
     const [returned] = reveal.cards.splice(selectedIndex, 1)
+    const [returnedInstanceId] = reveal.instanceIds?.splice(selectedIndex, 1) ?? []
     reveal.cardSlots?.splice(selectedIndex, 1)
     if (!returned) {
       restore()
       return ['The selected Mage-specific card is no longer available']
     }
-    if (answer.placement === 'top') owner.specificDeck!.unshift(returned)
-    else owner.specificDeck!.push(returned)
+    owner.specificDeckInstanceIds = ensureCardInstanceZone(g, owner.specificDeck!, owner.specificDeckInstanceIds)
+    if (answer.placement === 'top') {
+      owner.specificDeck!.unshift(returned)
+      if (returnedInstanceId) owner.specificDeckInstanceIds.unshift(returnedInstanceId)
+      else owner.specificDeckInstanceIds.unshift(ensureCardInstanceZone(g, [returned], undefined, true)[0]!)
+    } else {
+      owner.specificDeck!.push(returned)
+      if (returnedInstanceId) owner.specificDeckInstanceIds.push(returnedInstanceId)
+      else owner.specificDeckInstanceIds.push(ensureCardInstanceZone(g, [returned], undefined, true)[0]!)
+    }
     if (reveal.cards.length > 0) {
       const nextDecision = createDecision(g,
         'Choose a revealed card to return to the top or bottom of the Mage-specific deck',
@@ -406,7 +428,7 @@ function resolvePendingDecision(
     const conjured = resolution.conjuredCard
     const owner = getPlayer(g, conjured.playerId)
     const putBack = () => {
-      owner.deck.unshift(conjured.cardId)
+      putPlayerCardInDeck(g, owner, conjured.cardId, 'top')
       resolution.conjuredCard = undefined
     }
     if (!answer.choice) {
@@ -472,7 +494,7 @@ function resolvePendingDecision(
     addRemainingEffects(resolution, [effect])
   } else if (answer.kind === 'select_breach') {
     if (decision.kind !== 'select_breach' ||
-      (effect.kind !== 'focus_breach' && effect.kind !== 'focus_breach_all_players' && effect.kind !== 'reset_open_breach' && effect.kind !== 'attach_relic')) {
+      (effect.kind !== 'focus_breach' && effect.kind !== 'focus_breach_all_players' && effect.kind !== 'reset_open_breach' && effect.kind !== 'attach_relic' && effect.kind !== 'destroy_breach')) {
       restore()
       return ['Decision answer has the wrong type']
     }
@@ -539,6 +561,28 @@ function resolvePendingDecision(
         : `Attached ${getCard(cardId).name} to ${choice.playerName}'s Breach ${toRoman(choice.breachIndex)}`
       return [playMessage, ...runEffectResolution(g, resolution)]
     }
+    if (effect.kind === 'destroy_breach') {
+      const ownerId = resolution.selectedActionPlayerId
+      const currentChoice = ownerId
+        ? getExhaustBreachChoices(g, ownerId).find(candidate =>
+          candidate.playerId === choice.playerId && candidate.breachIndex === choice.breachIndex)
+        : undefined
+      const stinger = g.nemesis.playArea.find(card =>
+        card.cardType === 'minion' && card.cardId === resolution.sourceCardId)
+      if (!currentChoice || !stinger || (stinger.nemesisTokens ?? stinger.powerTokens ?? 0) < 2) {
+        restore()
+        return ['The selected Breach can no longer be destroyed']
+      }
+      const message = destroyExhaustedBreach(g, currentChoice)
+      if (message.includes('no longer available')) {
+        restore()
+        return [message]
+      }
+      stinger.nemesisTokens = Math.max(0, (stinger.nemesisTokens ?? stinger.powerTokens ?? 0) - 2)
+      delete stinger.powerTokens
+      resolution.selectedActionPlayerId = undefined
+      return [message, ...runEffectResolution(g, resolution)]
+    }
     const currentCandidates = effect.kind === 'focus_breach_all_players'
       ? getBreachChoices(g, 'self', choice.playerId)
       : getBreachChoices(g, effect.target,
@@ -598,6 +642,110 @@ function resolvePendingDecision(
       restore()
       return ['Card selection is no longer valid']
     }
+    if (effect.kind === 'resolve_corruptions') {
+      const choice = selected[0]
+      const owner = getPlayer(g, currentPlayerId)
+      if (selected.length !== 1 || choice?.zone !== 'hand' ||
+        getCard(choice.cardId).type !== 'corruption' || owner.hand[choice.index] !== choice.cardId) {
+        restore()
+        return ['Choose one Corruption from your hand']
+      }
+      const outerContext = captureEffectContext(resolution)
+      const removed = removeSelectedCards(g, owner.id, selected)
+      if (removed.length !== 1) {
+        restore()
+        return ['The selected Corruption is no longer in hand']
+      }
+      if (effect.timing === 'end_main') {
+        const tracked = owner.corruptionsDrawnThisTurn ?? []
+        const trackedIndex = tracked.indexOf(choice.cardId)
+        if (trackedIndex >= 0) tracked.splice(trackedIndex, 1)
+      }
+      const cardContext: CardEffect = {
+        kind: 'restore_effect_context', sourcePlayerId: owner.id, sourceCardOwnerId: owner.id,
+        sourceCardId: choice.cardId, effectPlayerId: owner.id,
+      }
+      const cardEffects = matchingBlocks(choice.cardId, owner.id, g, { kind: 'on_play' }, undefined,
+        owner.id, undefined, owner.id).flatMap(block => block.effects)
+      addRemainingEffects(resolution, [
+        cardContext,
+        ...cardEffects,
+        { kind: 'destroy_source_corruption' },
+        outerContext,
+        { kind: 'resolve_corruptions', timing: effect.timing },
+      ])
+      return [`${owner.mageType} resolves ${getCard(choice.cardId).name}`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'place_card_on_top_of_own_deck') {
+      const choice = selected[0]
+      if (selected.length !== 1 || choice?.zone !== 'hand' || getPlayer(g, currentPlayerId).hand[choice.index] !== choice.cardId) {
+        restore()
+        return ['Choose one card from your hand']
+      }
+      const owner = getPlayer(g, currentPlayerId)
+      const cardId = removeSelectedCards(g, owner.id, selected)[0]
+      if (!cardId) {
+        restore()
+        return ['The selected card is no longer in hand']
+      }
+      putPlayerCardInDeck(g, owner, cardId, 'top')
+      return [`Placed ${getCard(cardId).name} on top of ${owner.mageType}'s deck`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'place_hand_card_on_ally_deck') {
+      const choice = selected[0]
+      const actorId = resolution.selectedActionPlayerId
+      const recipientId = resolution.placementRecipientPlayerId
+      const actor = actorId ? getPlayer(g, actorId) : null
+      if (!actor || !recipientId || selected.length !== 1 || choice?.zone !== 'hand' ||
+        !getPlayerTargets(g, actor.id, 'ally').some(target => target.playerId === recipientId) ||
+        actor.hand[choice.index] !== choice.cardId) {
+        restore()
+        return ['Choose a card in the selected player’s hand and an ally to receive it']
+      }
+      const cardId = removeSelectedCards(g, actor.id, selected)[0]
+      if (!cardId) {
+        restore()
+        return ['The selected card is no longer in hand']
+      }
+      putPlayerCardInDeck(g, getPlayer(g, recipientId), cardId, 'top')
+      resolution.selectedActionPlayerId = undefined
+      resolution.placementRecipientPlayerId = undefined
+      return [`${actor.mageType} places ${getCard(cardId).name} on top of ${getPlayer(g, recipientId).mageType}'s deck`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'discard_noncorruption_cards') {
+      if (selected.length !== effect.amount || !selected.every(choice => choice.zone === 'hand' && getCard(choice.cardId).type !== 'corruption')) {
+        restore()
+        return [`Choose ${effect.amount} non-Corruption card(s)`]
+      }
+      const removed = discardSelectedCards(g, currentPlayerId, selected, true)
+      return [`Discarded ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'discard_noncorruptions_and_gain_corruptions') {
+      const ownerId = resolution.selectedActionPlayerId ?? currentPlayerId
+      if (!selected.every(choice => choice.zone === 'hand' && getCard(choice.cardId).type !== 'corruption') ||
+        selected.length !== Math.min(effect.discardAmount, getPlayer(g, ownerId).hand.filter(id => getCard(id).type !== 'corruption').length)) {
+        restore()
+        return ['Choose the required number of non-Corruption cards']
+      }
+      const removed = discardSelectedCards(g, ownerId, selected, true)
+      resolution.effectPlayerId = ownerId
+      resolution.selectedActionPlayerId = undefined
+      addRemainingEffects(resolution, [{ kind: 'gain_corruptions', amount: effect.corruptionAmount, target: 'self', destination: effect.destination }])
+      return [`${getPlayer(g, ownerId).mageType} discards ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'look_at_top_card_may_destroy') {
+      const choice = selected[0]
+      const owner = getPlayer(g, currentPlayerId)
+      if (selected.length > 1 || (choice && (choice.zone !== 'deck' || owner.deck[choice.index] !== choice.cardId))) {
+        restore()
+        return ['The revealed top card has changed']
+      }
+      if (choice) {
+        takePlayerDeckCardAt(g, owner, choice.index)
+        destroyOwnedCard(owner, choice.cardId, g)
+      }
+      return [choice ? `Destroyed ${getCard(choice.cardId).name} from the top of the deck` : 'Kept the revealed card on top of the deck', ...runEffectResolution(g, resolution)]
+    }
     if (effect.kind === 'select_breach_upgrade_card') {
       const choice = selected[0]
       const candidate = choice && decision.candidates.find(item =>
@@ -650,14 +798,18 @@ function resolvePendingDecision(
         restore()
         return ['The level-3 Treasure or Vault card is no longer available']
       }
+      rememberSpecificDeckCard(g, owner, owner.specificDeck[0]!, 0)
+      const instanceIds = ensureCardInstanceZone(g, owner.specificDeck, owner.specificDeckInstanceIds)
+      owner.specificDeckInstanceIds = instanceIds
+      instanceIds.shift()
       const incoming = owner.specificDeck.shift()!
       owner.specificDeck.push(choice.cardId)
-      rememberSpecificDeckCard(owner, choice.cardId)
-      rememberSpecificDeckCard(owner, incoming)
+      owner.specificDeckInstanceIds = ensureCardInstanceZone(g, owner.specificDeck, instanceIds)
+      rememberSpecificDeckCard(g, owner, choice.cardId, owner.specificDeck.length - 1)
       owner.playerCardsInPlay!.splice(choice.index, 1)
       owner.playerCardSupplyTargets?.splice(choice.index, 1)
       owner.playerCardPowerTokens?.splice(choice.index, 1)
-      rememberSpecificDeckTop(owner)
+      rememberSpecificDeckTop(g, owner)
       addRemainingEffects(resolution, putPlayerCardIntoPlay(
         g, owner.id, incoming, resolution.sourcePlayerId ?? currentPlayerId, captureEffectContext(resolution),
       ))
@@ -680,7 +832,7 @@ function resolvePendingDecision(
         restore()
         return [`Choose only cards costing ${effect.minCost} Aether or more`]
       }
-      const removed = discardSelectedCards(g, currentPlayerId, selected)
+      const removed = discardSelectedCards(g, currentPlayerId, selected, true)
       resolution.lastSelectedCardCount = removed.length
       resolution.lastSelectedCardCost = removed.length > 0 ? Math.max(...removed.map(id => getCard(id).cost)) : 0
       if (effect.restoreToSourceAfterSelection) {
@@ -691,11 +843,10 @@ function resolvePendingDecision(
     if (effect.kind === 'draw_and_discard_cards') {
       if (selected.length !== effect.discardAmount || !selected.every(choice => choice.zone === 'hand')) {
         restore()
-        return [`Choose exactly ${effect.discardAmount} newly drawn card(s)`]
+        return [`Choose exactly ${effect.discardAmount} card(s) from hand`]
       }
       const target = getPlayer(g, resolution.effectPlayerId ?? currentPlayerId)
-      const removed = removeSelectedCards(g, target.id, selected)
-      removed.forEach(cardId => target.discard.unshift(cardId))
+      const removed = discardSelectedCards(g, target.id, selected, true)
       return [`${target.mageType} discards ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'reveal_top_cards_for_discard') {
@@ -714,15 +865,17 @@ function resolvePendingDecision(
           return ['The revealed cards or their order are no longer valid']
         }
         const selectedKeys = new Set(selected.map(choice => `${choice.zone}:${choice.index}:${choice.cardId}`))
-        const discarded: string[] = []
-        const returnedToTop: string[] = []
-        for (const choice of order) {
-          const key = `${choice.zone}:${choice.index}:${choice.cardId}`
-          if (selectedKeys.has(key)) discarded.push(choice.cardId)
-          else returnedToTop.push(choice.cardId)
-        }
-        owner.deck.splice(0, decision.candidates.length)
-        owner.deck.unshift(...returnedToTop)
+        const discarded = order.filter(choice =>
+          selectedKeys.has(`${choice.zone}:${choice.index}:${choice.cardId}`),
+        ).map(choice => choice.cardId)
+        const reordered = takePlayerDeckInstancesAt(
+          g, owner, Array.from({ length: decision.candidates.length }, (_, index) => index),
+        )
+        const refsByIndex = new Map(reordered.map((card, index) => [index, card]))
+        const returnedToTop = order.filter(choice =>
+          !selectedKeys.has(`${choice.zone}:${choice.index}:${choice.cardId}`),
+        ).map(choice => refsByIndex.get(choice.index)!).filter(Boolean)
+        putPlayerDeckInstancesOnTop(g, owner, returnedToTop)
         owner.discard.unshift(...discarded)
         return [
           discarded.length > 0
@@ -736,8 +889,8 @@ function resolvePendingDecision(
         restore()
         return ['The revealed cards are no longer on top of the deck']
       }
-      const removed = [...selectedByIndex.keys()].sort((a, b) => b - a)
-        .map(index => owner.deck.splice(index, 1)[0]).filter((id): id is string => !!id)
+      const removed = takePlayerDeckInstancesAt(g, owner, [...selectedByIndex.keys()])
+        .map(card => card.cardId)
       removed.forEach(cardId => owner.discard.unshift(cardId))
       return [`Discarded ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
     }
@@ -757,7 +910,7 @@ function resolvePendingDecision(
       const removed = removeSelectedCards(g, currentPlayerId, selected)
       const p = getPlayer(g, currentPlayerId)
       ensurePlayerCollections(p)
-      removed.forEach(cardId => destroyOwnedCard(p, cardId))
+      removed.forEach(cardId => destroyOwnedCard(p, cardId, g))
       resolution.lastSelectedCardCount = removed.length
       resolution.lastSelectedCardCost = removed.length > 0 ? Math.max(...removed.map(id => getCard(id).cost)) : 0
       if (effect.restoreToSourceAfterSelection) {
@@ -783,7 +936,7 @@ function resolvePendingDecision(
         return [`Choose exactly ${count} card(s) to destroy`]
       }
       const removed = removeSelectedCards(g, target.id, selected)
-      removed.forEach(cardId => destroyOwnedCard(target, cardId))
+      removed.forEach(cardId => destroyOwnedCard(target, cardId, g))
       addRemainingEffects(resolution, [{ kind: 'destroy_player_card_in_play', cardId: effect.cardId, playerId: tokenOwner.id }])
       return [`Destroyed ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
     }
@@ -819,26 +972,33 @@ function resolvePendingDecision(
       const reveal = resolution.specificDeckReveal
       const selectedChoice = selected[0]
       const owner = reveal ? getPlayer(g, reveal.playerId) : null
+      const selectedIndex = selectedChoice?.index
       if (!reveal || !owner || !selectedChoice || selectedChoice.zone !== 'specific_deck' ||
-        !reveal.cards.includes(selectedChoice.cardId)) {
+        !Number.isInteger(selectedIndex) || selectedIndex! < 0 ||
+        reveal.cards[selectedIndex!] !== selectedChoice.cardId) {
         restore()
         return ['Choose one revealed Mage-specific card to put into play']
       }
+      owner.specificDeckInstanceIds = ensureCardInstanceZone(g, owner.specificDeck!, owner.specificDeckInstanceIds)
       const revealed = owner.specificDeck!.splice(0, reveal.cards.length)
-      if (revealed.length !== reveal.cards.length || revealed.some((cardId, index) => cardId !== reveal.cards[index])) {
+      const revealedInstanceIds = owner.specificDeckInstanceIds.splice(0, reveal.cards.length)
+      if (revealed.length !== reveal.cards.length || revealed.some((cardId, index) => cardId !== reveal.cards[index]) ||
+        (reveal.instanceIds && revealedInstanceIds.some((instanceId, index) => instanceId !== reveal.instanceIds![index]))) {
         owner.specificDeck!.unshift(...revealed)
+        owner.specificDeckInstanceIds.unshift(...revealedInstanceIds)
         restore()
         return ['The revealed Mage-specific cards are no longer available']
       }
-      const selectedIndex = reveal.cards.indexOf(selectedChoice.cardId)
-      const putIntoPlay = revealed[selectedIndex]
+      const putIntoPlay = revealed[selectedIndex!]
       const returned = revealed.filter((_, index) => index !== selectedIndex)
+      const returnedInstanceIds = revealedInstanceIds.filter((_, index) => index !== selectedIndex)
       if (!putIntoPlay) {
         restore()
         return ['The selected Mage-specific card is no longer available']
       }
       owner.specificDeck!.push(...returned)
-      rememberSpecificDeckTop(owner)
+      owner.specificDeckInstanceIds.push(...returnedInstanceIds)
+      rememberSpecificDeckTop(g, owner)
       resolution.specificDeckReveal = undefined
       addRemainingEffects(resolution, putPlayerCardIntoPlay(
         g, owner.id, putIntoPlay, resolution.sourcePlayerId ?? currentPlayerId, captureEffectContext(resolution),
@@ -870,7 +1030,8 @@ function resolvePendingDecision(
     }
     if (effect.kind === 'return_cards_to_hand') {
       if (!selected.every(choice => choice.zone === effect.source &&
-        (effect.cardTypes ?? ['spell']).includes(getCard(choice.cardId).type))) {
+        (effect.cardTypes ?? ['spell']).includes(getCard(choice.cardId).type) &&
+        (effect.maxCost === undefined || getCard(choice.cardId).cost <= effect.maxCost))) {
         restore()
         return ['Invalid card selection']
       }
@@ -956,7 +1117,7 @@ function resolvePendingDecision(
       restore()
       return ['All required prepped spells must be selected']
     }
-    discardPreppedSpellChoices(g, selected)
+    discardPreppedSpellChoices(g, selected, true)
     return [`Discarded ${selected.map(choice => choice.cardName).join(', ')}`, ...runEffectResolution(g, resolution)]
   } else if (answer.kind === 'select_collective_cards') {
     if (decision.kind !== 'select_collective_cards') {
@@ -975,7 +1136,7 @@ function resolvePendingDecision(
         restore()
         return [`Choose exactly ${amount} card(s) to discard collectively`]
       }
-      const removed = discardCollectiveCards(g, selected)
+      const removed = discardCollectiveCards(g, selected, true)
       return [`Players collectively discard ${removed.map(id => getCard(id).name).join(', ')}`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'deal_gravehold_damage_with_gem_discard') {
@@ -983,10 +1144,29 @@ function resolvePendingDecision(
         restore()
         return ['Only gems may be discarded for this effect']
       }
-      const removed = discardCollectiveCards(g, selected)
+      const removed = discardCollectiveCards(g, selected, true)
       const damage = Math.max(0, effect.amount - selected.length * effect.reductionPerGem)
       const message = dealDamage(g, { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' }, damage)
       return [`Discarded ${removed.map(id => getCard(id).name).join(', ')} to reduce damage`, message, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'devouring_wave_discard_and_gain') {
+      if (selected.length !== decision.max || !selected.every(item => getCard(item.choice.cardId).cost >= 2)) {
+        restore()
+        return [`Choose exactly ${decision.max} card(s) costing 2 Aether or more`]
+      }
+      const removed = discardCollectiveCards(g, selected, true)
+      const trinkets = ensureTrinketDeckState(g)
+      for (const item of selected) {
+        const cardId = trinkets.cards.shift()
+        trinkets.revealed.shift()
+        const instanceId = trinkets.instanceIds.shift()
+        if (cardId) {
+          const recipient = getPlayer(g, item.playerId)
+          addCardToHand(recipient, cardId)
+          if (instanceId) rememberOwnedTrinketInstance(recipient, instanceId)
+        }
+      }
+      return [`Discarded ${removed.map(id => getCard(id).name).join(', ')}; each selected player gains a Trinket into hand`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'resolve_recall') {
       if (selected.length === 0) return ['Skipped Recall', ...runEffectResolution(g, resolution)]
@@ -1067,9 +1247,21 @@ function resolvePendingDecision(
       const maxCost = effect.bonusOverLastSelection === undefined
         ? effect.maxCost
         : Math.max(0, (resolution.lastSelectedCardCost ?? 0) + effect.bonusOverLastSelection)
-      if (maxCost !== undefined && getMarketCardCost(g, choice.pileIndex, effectPlayerId(g, resolution)) > maxCost) {
+      const selectedCost = getMarketCardCost(g, choice.pileIndex, effectPlayerId(g, resolution))
+      const activeCandidates = decision.candidates.filter(candidate => {
+        const candidatePile = g.market.piles[candidate.pileIndex]
+        return candidatePile?.cardId === candidate.cardId && candidatePile.remaining > 0 &&
+          (!effect.cardType || getCard(candidate.cardId).type === effect.cardType) &&
+          (maxCost === undefined || getMarketCardCost(g, candidate.pileIndex, effectPlayerId(g, resolution)) <= maxCost)
+      })
+      const leastCost = activeCandidates.length > 0
+        ? Math.min(...activeCandidates.map(candidate => getMarketCardCost(g, candidate.pileIndex, effectPlayerId(g, resolution))))
+        : Number.POSITIVE_INFINITY
+      if ((effect.cardType && getCard(choice.cardId).type !== effect.cardType) ||
+        (maxCost !== undefined && selectedCost > maxCost) ||
+        (effect.leastExpensive && selectedCost !== leastCost)) {
         restore()
-        return [`${getCard(choice.cardId).name} is above the ${maxCost} Aether limit`]
+        return ['The selected supply pile no longer matches this effect']
       }
     }
     if (effect.kind === 'set_next_to_supply_pile') {
@@ -1087,6 +1279,7 @@ function resolvePendingDecision(
         destination, choice!.pileIndex, false)
       if (message) {
         resolution.lastGainedCardId = choice!.cardId
+        resolution.lastSelectedCardCost = getCard(choice!.cardId).cost
         const gainingPlayerId = effectPlayerId(g, resolution)
         const restoreContext = captureEffectContext(resolution)
         const followups = matchingBlocks(choice!.cardId, gainingPlayerId, g, { kind: 'on_gain' },
@@ -1110,6 +1303,14 @@ function resolvePendingDecision(
   } else if (answer.kind === 'select_player_target') {
     if (decision.kind !== 'select_player_target' ||
       (effect.kind !== 'draw_cards' && effect.kind !== 'deal_player_damage' &&
+        effect.kind !== 'gain_corruptions' && effect.kind !== 'gain_corruptions_collectively' &&
+        effect.kind !== 'gain_corruption_and_shuffle_discard' &&
+        effect.kind !== 'resolve_glinting_stinger' &&
+        effect.kind !== 'place_hand_card_on_ally_deck' &&
+        effect.kind !== 'tempt_highest_crystals' &&
+        effect.kind !== 'discard_noncorruptions_and_gain_corruptions' &&
+        effect.kind !== 'shuffle_hand_into_deck_and_draw' &&
+        effect.kind !== 'obliterate_most_open_breach_player' &&
         effect.kind !== 'discard_cards' && effect.kind !== 'shuffle_discard_into_deck' &&
         effect.kind !== 'destroy_top_cards' && effect.kind !== 'place_cast_spell_in_ally_hand' &&
         effect.kind !== 'gain_aether_token' && effect.kind !== 'gain_trinkets' && effect.kind !== 'gain_pulse_token' &&
@@ -1127,6 +1328,103 @@ function resolvePendingDecision(
       return ['Invalid player target']
     }
     const player = getPlayer(g, target.playerId)
+    if (effect.kind === 'gain_corruptions') {
+      if (!getEffectPlayerTargets(g, resolution, effectPlayerId(g, resolution), effect.target ?? 'self')
+        .some(item => item.playerId === target.playerId)) {
+        restore()
+        return ['Invalid Corruption recipient']
+      }
+      resolution.effectPlayerId = target.playerId
+      addRemainingEffects(resolution, [{ ...effect, target: 'self' }])
+      return [`${player.mageType} will gain Corruption(s)`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'gain_corruptions_collectively') {
+      if (!g.players.some(item => item.id === target.playerId)) {
+        restore()
+        return ['Invalid player for collective Corruption gain']
+      }
+      const remaining = resolution.remainingCorruptionGains ?? Math.max(0, Math.floor(effect.amount))
+      if (remaining <= 0) {
+        restore()
+        return ['There are no Corruptions left to assign']
+      }
+      resolution.remainingCorruptionGains = remaining - 1
+      resolution.effectPlayerId = target.playerId
+      addRemainingEffects(resolution, [
+        { kind: 'gain_corruptions', amount: 1, target: 'self', destination: effect.destination },
+        effect,
+      ])
+      return [`${player.mageType} will gain a Corruption (${effect.amount - remaining + 1}/${effect.amount})`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'resolve_glinting_stinger') {
+      const eligible = getExhaustBreachChoices(g, target.playerId).length > 0
+      if (!eligible) {
+        restore()
+        return ['That player has no Breach that can be destroyed']
+      }
+      resolution.selectedActionPlayerId = target.playerId
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} will choose a Breach to destroy`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'place_hand_card_on_ally_deck') {
+      const actorId = resolution.selectedActionPlayerId
+      if (actorId) {
+        if (!getPlayerTargets(g, actorId, 'ally').some(item => item.playerId === target.playerId)) {
+          restore()
+          return ['Invalid ally to receive a card']
+        }
+        resolution.placementRecipientPlayerId = target.playerId
+      } else {
+        if (!getPlayerTargets(g, effectPlayerId(g, resolution), 'any_player')
+          .some(item => item.playerId === target.playerId)) {
+          restore()
+          return ['Invalid player to choose a card from']
+        }
+        resolution.selectedActionPlayerId = target.playerId
+      }
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} will choose a card to place on an ally's deck`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'tempt_highest_crystals') {
+      if (!getSelectedPlayerTargets(g, effectPlayerId(g, resolution), 'any_player', 'most_crystals')
+        .some(item => item.playerId === target.playerId)) {
+        restore()
+        return ['The selected player no longer has the most Crystals']
+      }
+      resolution.selectedActionPlayerId = target.playerId
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} is affected by Tempt`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'discard_noncorruptions_and_gain_corruptions') {
+      if (!getPlayerTargets(g, effectPlayerId(g, resolution), 'any_player')
+        .some(item => item.playerId === target.playerId)) {
+        restore()
+        return ['Invalid player for Ruin Priest']
+      }
+      resolution.selectedActionPlayerId = target.playerId
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} is targeted by Ruin Priest`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'shuffle_hand_into_deck_and_draw') {
+      if (!getPlayerTargets(g, effectPlayerId(g, resolution), 'any_player')
+        .some(item => item.playerId === target.playerId)) {
+        restore()
+        return ['Invalid player to shuffle their hand']
+      }
+      resolution.selectedActionPlayerId = target.playerId
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} is targeted by Masticate`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'obliterate_most_open_breach_player') {
+      if (!getSelectedPlayerTargets(g, effectPlayerId(g, resolution), 'any_player', 'most_opened_breaches')
+        .some(item => item.playerId === target.playerId)) {
+        restore()
+        return ['The selected player no longer has the most opened Breaches']
+      }
+      resolution.selectedActionPlayerId = target.playerId
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} is targeted by Obliterate`, ...runEffectResolution(g, resolution)]
+    }
     if (effect.kind === 'conjure') {
       const targetContextPlayerId = effectTargetPlayerId(
         resolution, effectPlayerId(g, resolution), effect.target ?? 'self', effect.relativeToSource === true,
@@ -1139,6 +1437,14 @@ function resolvePendingDecision(
       }
       resolution.conjureTargetPlayerId = target.playerId
       return [`${player.mageType} will Conjure`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'gain_corruption_and_shuffle_discard') {
+      resolution.effectPlayerId = target.playerId
+      addRemainingEffects(resolution, [
+        { kind: 'gain_corruptions', amount: 1, target: 'self', destination: 'deck_top' },
+        { kind: 'shuffle_discard_into_deck', target: 'self' },
+      ])
+      return [`${player.mageType} gains a Corruption and shuffles their discard pile`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'resolve_mage_form_supply_gain') {
       if (effect.step !== 'choose_ally' || effect.formSide !== 'giver' ||
@@ -1374,18 +1680,16 @@ function resolvePendingDecision(
         const finalTarget = getDamageTargets(g, allocation.target, resolution.sourceCardId)
           .find(candidate => candidate.id === targetId)
         if (!finalTarget) continue
-        messages.push(dealDamage(g, finalTarget, amount))
+        messages.push(dealNemesisTargetDamage(g, resolution, finalTarget, amount))
       }
       resolution.dividedDamageAllocation = undefined
-      resolution.spellDamageEffectSeen = true
       return [...messages, ...runEffectResolution(g, resolution)]
     }
     const amount = damageEffectAmountValue(
       g, effectPlayerId(g, resolution), effect.amount, effect.additionalDamage,
       resolution.sourceCardId, resolution,
     )
-    resolution.spellDamageEffectSeen = true
-    const message = dealDamage(g, target, applySpellDamageBonus(resolution, amount))
+    const message = dealNemesisTargetDamage(g, resolution, target, applySpellDamageBonus(resolution, amount))
     return [message, ...runEffectResolution(g, resolution)]
   }
   return runEffectResolution(g, resolution)

@@ -16,8 +16,11 @@ export const MAGE_UNIQUE_CARDS: Record<string, string[]> = {
   ...Wave9.WAVE9_MAGE_UNIQUE_CARDS,
 }
 
+export const NEMESES = { ...Wave1.WAVE1_NEMESES, ...Wave9.WAVE9_NEMESES }
+export const ALL_NEMESIS_CARDS = mergeCatalogs(Wave1.WAVE1_NEMESIS_CARDS, Wave9.WAVE9_NEMESIS_CARDS)
+
 export function getNemesisDefinition(type: string) {
-  return Wave1.WAVE1_NEMESES[type]
+  return NEMESES[type]
 }
 
 /** Create the only currently supported scenario: two players versus one Nemesis. */
@@ -34,7 +37,7 @@ export function createTwoPlayerScenario(
   if (firstMage === secondMage) {
     throw new Error('This Mage has already been selected by another player')
   }
-  if (!Wave1.WAVE1_NEMESES[nemesisType]) {
+  if (!NEMESES[nemesisType]) {
     throw new Error(`Unknown Nemesis: ${nemesisType}`)
   }
   return {
@@ -142,7 +145,7 @@ export function resolveMarketCardIds(config?: MarketSetupConfig, random: RandomS
 }
 
 export function getCard(id: string): CardDef {
-  return INITIAL_CARDS[id] ?? ALL_MARKET_CARDS[id] ?? Wave1.WAVE1_NEMESIS_CARDS[id]
+  return INITIAL_CARDS[id] ?? ALL_MARKET_CARDS[id] ?? ALL_NEMESIS_CARDS[id]
 }
 
 /** Resolve wave-specific artwork for the shared Crystal and Spark starters. */
@@ -275,13 +278,13 @@ function validateContentReferences(): void {
     }
   }
 
-  for (const nemesis of Object.values(Wave1.WAVE1_NEMESES)) {
+  for (const nemesis of Object.values(NEMESES)) {
     const referencedIds = [
       ...Object.values(nemesis.uniqueCardIdsByTier).flat(),
       ...nemesis.strikeCardIds,
     ]
     for (const cardId of referencedIds) {
-      if (!Object.prototype.hasOwnProperty.call(Wave1.WAVE1_NEMESIS_CARDS, cardId)) {
+      if (!Object.prototype.hasOwnProperty.call(ALL_NEMESIS_CARDS, cardId)) {
         throw new Error(`Nemesis "${nemesis.type}" references missing Nemesis card "${cardId}"`)
       }
     }

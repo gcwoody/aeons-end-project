@@ -53,6 +53,11 @@ async function editDebugState(page: Page, edit: (state: any) => void) {
 
 test('opening the log scrolls to its newest entries', async ({ page }) => {
   await startGame(page)
+  await expect(page.locator('.log-col')).toHaveCount(0)
+  await page.keyboard.press('Control+d')
+  await page.getByLabel('Show Log Panel').check()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
   await page.locator('.log-toggle').evaluate(element => {
     const panel = (element as HTMLElement & { __vueParentComponent?: any }).__vueParentComponent
     const log = panel?.setupState?.state?.log

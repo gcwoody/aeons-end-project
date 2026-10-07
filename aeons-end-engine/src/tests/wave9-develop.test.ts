@@ -46,6 +46,11 @@ function testDevelopZoneVisibilityIsSetupWideAndSwapCardsStayPublic(): void {
   const withoutSwap = createGame(scenarioWithMarketCard('chromia_sphere'))
   assertEqual(getGameZoneVisibility(withoutSwap).swap, false, 'Games without Swap users do not reserve that zone')
   assertEqual(getGameZoneVisibility(withoutSwap).develop, true, 'Develop visibility stays enabled across player views')
+
+  withoutSwap.hasSwapZone = false
+  withoutSwap.supplyMechanics = ['swap']
+  assertEqual(getGameZoneVisibility(withoutSwap).swap, true,
+    'A Swap mechanic on a market card enables the shared Swap zone')
 }
 
 function testDevelopPaymentsAndBothTransitions(): void {

@@ -1,5 +1,5 @@
 import {
-  activateRecall, checkGameOver, createGame, getRecallActions, getSupplyMechanics,
+  activateRecall, canPlayerAct, checkGameOver, createGame, getRecallActions, getSupplyMechanics,
   resolveDrawPhase, resolveEffects, resolvePendingDecision,
 } from '../engine'
 import { getCard } from '../data'
@@ -132,6 +132,22 @@ function testRecallIsMainPhaseOnlyAndEachDuplicateCanBeUsedOnce(): void {
   }
 }
 
+function testAvailableRecallKeepsTheMainPhaseOpenAfterSpendingAether(): void {
+  const game = createGame('nook', 'brama')
+  const player = game.players[0]!
+  game.currentTurn = player.id
+  game.currentPhase = 'main'
+  player.hand = []
+  player.bonusAether = 0
+  player.aetherTokens = 0
+  player.discard = ['visionary_staff']
+
+  assertEqual(getRecallActions(game, player.id).length, 1,
+    'The purchased Recall relic is available from the active player\'s Discard')
+  assert(canPlayerAct(game, player.id),
+    'An available Recall action prevents the Main Phase from auto-ending after Aether is spent')
+}
+
 function testPulseTokensAreDiscardedWhenTheGameEnds(): void {
   const game = createGame('jian', 'brama')
   game.players[0]!.pulseTokens = 4
@@ -158,6 +174,7 @@ testPulseTokensAreCappedPersistentAndSpentExactly()
 testPulseTokenEffectsCanSelectAnyPlayer()
 testPulseTokenSupplyVisibilityUsesSetupMechanics()
 testRecallIsMainPhaseOnlyAndEachDuplicateCanBeUsedOnce()
+testAvailableRecallKeepsTheMainPhaseOpenAfterSpendingAether()
 testPulseTokensAreDiscardedWhenTheGameEnds()
 testPactPrismEndTurnTriggerSurvivesUiDiscardOrdering()
 

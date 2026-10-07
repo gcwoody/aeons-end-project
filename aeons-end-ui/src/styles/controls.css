@@ -9,8 +9,8 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   gap: var(--control-gap);
   align-items: center;
-  border-top: var(--pixel-border-width) solid var(--border);
-  background: var(--panel);
+  border-top: var(--pixel-border-width) solid transparent;
+  background: #20283a;
   padding-top: var(--space-4);
   padding-bottom: var(--control-bar-bottom-padding);
   /* Stay above ordinary board content while hand hover cards remain above it;
@@ -118,6 +118,12 @@
   text-align: left;
   white-space: normal;
 }
+.end-turn-warning-action {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-weight: 600;
+}
 .end-turn-warning::after {
   content: '';
   position: absolute;
@@ -139,20 +145,43 @@
 .controls > .btn,
 .controls .btn { height: var(--control-height); }
 .controls .aether { display: inline-flex; align-items: center; gap: 4px; color: #fff; font-size: 13px; white-space: nowrap; }
-.help-button {
+.controls-utility {
   grid-column: 3;
   justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.utility-icon-button {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
   min-width: 32px;
-  padding-left: 8px;
-  padding-right: 8px;
+  height: var(--control-height);
+  padding: 4px;
   color: var(--accent);
   font-weight: 700;
 }
+.utility-icon-button svg {
+  display: block;
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+.help-button {
+  min-width: 32px;
+  padding-left: 4px;
+  padding-right: 4px;
+}
 @media (max-width: 1100px) {
   .controls { display: flex; flex-wrap: wrap; padding-right: 42px; }
-  .controls-left, .controls-main, .help-button { grid-column: auto; }
+  .controls-left, .controls-main, .controls-utility { grid-column: auto; }
   .controls-main { gap: 6px; }
   .controls-main { position: static; left: auto; margin-inline: auto; }
-  .help-button { position: absolute; top: var(--space-4); right: 0; }
+  .controls-utility { position: absolute; top: var(--space-4); right: 0; }
 }
 

@@ -146,31 +146,7 @@ test('Mage board modal stays above the hand and below the exit modal', async ({ 
 })
 
 
-test('prepped spells can move between Breaches and swap positions during Main Phase', async ({ page }) => {
-  await resetSetup(page)
-  await page.getByLabel('Player 1').selectOption('jian')
-  await page.getByLabel('Player 2').selectOption('brama')
-  await page.getByRole('button', { name: 'Start Game' }).click()
-  await resolveStartupInterrupts(page)
-
-  await applyDebugGameState(page, game => {
-    game.currentTurn = game.players[0].id
-    game.currentPhase = 'main'
-    game.players[0].breaches[0].opened = true
-    game.players[0].breaches[0].prepSpells = ['spark']
-    game.players[0].breaches[1].opened = true
-    game.players[0].breaches[1].prepSpells = ['flare']
-  }, 'main')
-
-  const source = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
-  const target = page.locator('.breach[data-breach-index="2"] .breach-spell-card-frame')
-  await dragLocatorToLocator(page, source, target)
-
-  await expect(page.locator('.breach[data-breach-index="1"] img[alt="Flare"]')).toBeVisible()
-  await expect(page.locator('.breach[data-breach-index="2"] img[alt="Spark"]')).toBeVisible()
-})
-
-test('Feral Lightning can move onto a closed Breach during Main Phase', async ({ page }) => {
+test('prepped spells cannot be manually moved or returned during Main Phase', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -182,28 +158,40 @@ test('Feral Lightning can move onto a closed Breach during Main Phase', async ({
     game.currentPhase = 'main'
     game.players[0].hand = []
     game.players[0].breaches[0].opened = true
-    game.players[0].breaches[0].prepSpells = ['feral_lightning']
-    game.players[0].breaches[1].opened = false
-    game.players[0].breaches[1].focusedThisTurn = false
+    game.players[0].breaches[0].prepSpells = ['spark']
+    game.players[0].breaches[1].opened = true
     game.players[0].breaches[1].prepSpells = []
   }, 'main')
 
   const source = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
-  const target = page.locator('.breach[data-breach-index="2"]')
-  await expect(source).toHaveClass(/repositionable-spell/)
-  await expect(target).not.toHaveClass(/drag-target/)
-  const sourceBox = await source.boundingBox()
-  const targetBox = await target.boundingBox()
-  expect(sourceBox).not.toBeNull()
-  expect(targetBox).not.toBeNull()
-  await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + targetBox!.height / 2, { steps: 8 })
-  await expect(target).toHaveClass(/move-drag-target/)
-  await page.mouse.up()
+  await expect(source).not.toHaveClass(/repositionable-spell/)
+  await expect(page.locator('.breach[data-breach-index="1"] img[alt="Spark"]')).toBeVisible()
+  await expect(page.locator('.breach[data-breach-index="2"] .breach-spell-card-frame')).toHaveCount(0)
+  await expect(page.locator('.hand img[alt="Spark"]')).toHaveCount(0)
+})
 
-  await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(0)
-  await expect(page.locator('.breach[data-breach-index="2"] img[alt="Feral Lightning"]')).toBeVisible()
+test('playing a selected duplicate preserves the remaining hand order', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    game.currentTurn = game.players[0].id
+    game.currentPhase = 'main'
+    game.players[0].hand = ['crystal', 'spark', 'spark', 'spark', 'crystal']
+    game.players[0].bonusAether = 6
+  }, 'main')
+
+  const handCards = page.locator('.hand .card img')
+  await expect.poll(() => handCards.evaluateAll(images => images.map(image => image.alt))).toEqual([
+    'Crystal', 'Spark', 'Spark', 'Spark', 'Crystal',
+  ])
+  await page.locator('.hand .card').nth(4).click()
+  await expect.poll(() => handCards.evaluateAll(images => images.map(image => image.alt))).toEqual([
+    'Crystal', 'Spark', 'Spark', 'Spark',
+  ])
 })
 
 test('hand spell prep highlights an engine-legal Breach', async ({ page }) => {
@@ -279,42 +267,7 @@ test('hand spells do not highlight a closed Breach that is not prep-eligible', a
   await expect(page.locator('.breach .breach-spell-card-frame img[alt="Spark"]')).toHaveCount(0)
 })
 
-test('ordinary prepped spells do not highlight closed move targets', async ({ page }) => {
-  await resetSetup(page)
-  await page.getByLabel('Player 1').selectOption('jian')
-  await page.getByLabel('Player 2').selectOption('brama')
-  await page.getByRole('button', { name: 'Start Game' }).click()
-  await resolveStartupInterrupts(page)
-
-  await applyDebugGameState(page, game => {
-    game.currentTurn = game.players[0].id
-    game.currentPhase = 'main'
-    game.players[0].hand = []
-    for (const breach of game.players[0].breaches) {
-      breach.opened = false
-      breach.focusedThisTurn = false
-      breach.prepSpells = []
-    }
-    game.players[0].breaches[0].opened = true
-    game.players[0].breaches[0].prepSpells = ['spark']
-  }, 'main')
-
-  const source = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
-  const target = page.locator('.breach[data-breach-index="2"]')
-  const sourceBox = await source.boundingBox()
-  const targetBox = await target.boundingBox()
-  expect(sourceBox).not.toBeNull()
-  expect(targetBox).not.toBeNull()
-  await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(targetBox!.x + targetBox!.width / 2, targetBox!.y + targetBox!.height / 2, { steps: 8 })
-  await expect(target).not.toHaveClass(/move-drag-target/)
-  await page.mouse.up()
-  await expect(page.locator('.breach[data-breach-index="1"] img[alt="Spark"]')).toBeVisible()
-  await expect(page.locator('.breach[data-breach-index="2"] .breach-spell-card-frame')).toHaveCount(0)
-})
-
-test('prepped spells remain movable during discard order before the turn fully ends', async ({ page }) => {
+test('prepped spells cannot be manually moved during discard order', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -331,12 +284,9 @@ test('prepped spells remain movable during discard order before the turn fully e
   }, 'discard_order')
 
   const source = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
-  const target = page.locator('.breach[data-breach-index="2"]')
-  await expect(source).toHaveClass(/repositionable-spell/)
-  await dragLocatorToLocator(page, source, target)
-
-  await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(0)
-  await expect(page.locator('.breach[data-breach-index="2"] img[alt="Spark"]')).toBeVisible()
+  await expect(source).not.toHaveClass(/repositionable-spell/)
+  await expect(page.locator('.breach[data-breach-index="1"] img[alt="Spark"]')).toBeVisible()
+  await expect(page.locator('.breach[data-breach-index="2"] .breach-spell-card-frame')).toHaveCount(0)
 })
 
 test('discarding a duplicate card preserves the remaining Played order', async ({ page }) => {
@@ -366,7 +316,7 @@ test('discarding a duplicate card preserves the remaining Played order', async (
   ])
 })
 
-test('a hand spell does not replace a prepped spell, while a prepped spell can return to hand', async ({ page }) => {
+test('a hand spell does not replace a prepped spell', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')
   await page.getByLabel('Player 2').selectOption('brama')
@@ -387,11 +337,6 @@ test('a hand spell does not replace a prepped spell, while a prepped spell can r
   await dragLocatorToLocator(page, handSpell, breachSpell)
   await expect(page.locator('.breach[data-breach-index="1"] img[alt="Spark"]')).toBeVisible()
   await expect(hand.locator('img[alt="Flare"]')).toBeVisible()
-
-  const returnedSpell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
-  await dragLocatorToLocator(page, returnedSpell, hand)
-  await expect(page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')).toHaveCount(0)
-  await expect(hand.locator('img[alt="Spark"]')).toBeVisible()
 })
 
 test('a spell stays highlighted until its damage target is confirmed', async ({ page }) => {

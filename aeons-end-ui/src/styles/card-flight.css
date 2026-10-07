@@ -15,6 +15,23 @@
   object-fit: cover;
 }
 
+.card-flight-flip-face {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  transform-origin: center;
+  will-change: transform;
+}
+
+.card-flight-flip-face img {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.card-flight-flip-front { opacity: 1; }
+.card-flight-flip-back { opacity: 0; }
+
 .card-motion-shield {
   position: fixed;
   inset: 0;
@@ -45,7 +62,7 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border: var(--pixel-border-width) solid var(--border);
+  border: 0;
   border-radius: var(--card-radius);
   background: #151a29;
   will-change: transform;

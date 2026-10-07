@@ -24,6 +24,11 @@ export const nemesisPresentations: Record<string, NemesisPresentation> = {
     specificDeck: { enabled: true, label: 'Devoured Pile', display: 'face_up', topCardAction: 'buy' },
     specificDiscard: { enabled: false, label: 'Nemesis Specific Discard' },
   },
+  crooked_mask: {
+    subBoard: { enabled: false, aspectRatio: 1 },
+    specificDeck: { enabled: true, label: 'Corruption Deck' },
+    specificDiscard: { enabled: false, label: 'Corruption Discard' },
+  },
 }
 
 const defaultPresentation: NemesisPresentation = {

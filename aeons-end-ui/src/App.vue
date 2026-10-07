@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount } from 'vue'
+import { onMounted, onBeforeUnmount, ref } from 'vue'
 import { useGame } from './game/useGame'
 import SetupScreen from './components/SetupScreen.vue'
 import GameTopArea from './components/GameTopArea.vue'
@@ -18,13 +18,18 @@ import { dismissTopmostOverlay } from './game/dismissible-overlays'
 const {
   state, undo, toggleDebug, selectPlayer, openPile, closePile,
   closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
-  toMainPhase, requestEndTurn, resolveDecision,
+  toMainPhase, requestEndTurn, resolveDecision, canRequestEndTurn,
 } = useGame()
 
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
 const { modalEl: exitModalEl, modalStyle: exitModalStyle, dragging: exitDragging, startDrag: startExitDrag } = useModalDrag()
 const { modalEl: gameoverModalEl, modalStyle: gameoverModalStyle, dragging: gameoverDragging, startDrag: startGameoverDrag } = useModalDrag()
 const isUiGallery = new URLSearchParams(window.location.search).get('ui-gallery') === '1'
+const logVisible = ref(false)
+
+function setLogVisibility(visible: boolean) {
+  logVisible.value = visible
+}
 
 function onKeydown(e: KeyboardEvent) {
   if (e.defaultPrevented) return
@@ -195,11 +200,14 @@ function canConfirmDividedDamageWithSpace(): boolean {
 /** Match the visible phase-advance buttons without bypassing an open interaction. */
 function canAdvancePhaseWithSpace(): boolean {
   const game = state.game
+  if (state.phase === 'main') return canRequestEndTurn.value
   return !!game
-    && (state.phase === 'casting' || state.phase === 'main')
+    && state.phase === 'casting'
     && state.selectedPlayer === game.currentTurn
     && !game.pendingDecision
     && !game.pendingEffect
+    && !state.cardMotionBatchActive
+    && !state.turnTransitionActive
     && !state.viewPile
     && !state.helpOpen
     && !state.exitPrompt
@@ -241,7 +249,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 <template>
   <UiGallery v-if="isUiGallery" />
   <SetupScreen v-else-if="!state.game" />
-  <div v-else class="app" :class="{ 'card-motion-batch-active': state.cardMotionBatchActive }">
+  <div v-else class="app" :class="{ 'card-motion-batch-active': state.cardMotionBatchActive, 'without-log': !logVisible }">
     <div class="main-col">
       <div class="top-section">
         <GameTopArea class="top-main" />
@@ -249,14 +257,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       </div>
       <PlayerArea />
     </div>
-    <LogPanel class="log-col" />
+    <LogPanel v-if="logVisible" class="log-col" />
     <DamageFeedbackLayer />
     <div v-if="state.cardMotionBatchActive" class="card-motion-shield" aria-hidden="true" />
     <div v-if="state.turnTransitionActive" class="turn-transition-shield" aria-hidden="true" />
 
     <PileModal />
     <CardDecisionModal />
-    <DebugPanel />
+    <DebugPanel :log-visible="logVisible" @log-visibility-change="setLogVisibility" />
 
     <ModalBase
       v-if="state.helpOpen"

@@ -9,6 +9,14 @@ export function isPresentBreach(breach: BreachState): boolean {
   return breach.present !== false
 }
 
+/**
+ * Whether a spell may be prepared on this Breach under the standard rule.
+ * `allowClosedBreach` is reserved for card effects with an explicit exception.
+ */
+export function canPrepOnBreach(breach: BreachState, allowClosedBreach = false): boolean {
+  return allowClosedBreach || breach.opened || breach.focusedThisTurn
+}
+
 /** Apply one focus consistently for paid and effect-granted Breach focuses. */
 export function advanceBreachFocus(breach: BreachState): boolean {
   breach.focusCount++

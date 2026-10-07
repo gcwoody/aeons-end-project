@@ -49,8 +49,20 @@ test('Recall closes the discard viewer before a follow-up spell decision', async
     breach.preppedSpellFaceDown = [false]
   })
 
+  const boardRecallCard = page.locator('.player-discard-pile .player-discard-top-card')
+  await expect(boardRecallCard).toHaveClass(/game-highlight--context/)
+  await expect.poll(() => boardRecallCard.evaluate(element => getComputedStyle(element, '::after').borderTopColor))
+    .toBe('rgb(122, 162, 255)')
+
   await page.locator('.player-discard-pile').click()
-  await page.locator('.pile-modal .pile-card.recall-card-action').click()
+  const recallHint = page.locator('.recall-pile-hint')
+  await expect(recallHint).toHaveText('Click a blue highlighted card to activate its Recall effect.')
+  await expect.poll(() => recallHint.evaluate(element => getComputedStyle(element).color)).toBe('rgb(122, 162, 255)')
+  const modalRecallCard = page.locator('.pile-modal .pile-card.recall-card-action')
+  await expect(modalRecallCard).toHaveClass(/game-highlight--context/)
+  await expect.poll(() => modalRecallCard.evaluate(element => getComputedStyle(element, '::after').borderTopColor))
+    .toBe('rgb(122, 162, 255)')
+  await modalRecallCard.click()
   await expect(page.locator('.pile-modal')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: 'Choose a prepped spell to cast' })).toBeVisible()
 })

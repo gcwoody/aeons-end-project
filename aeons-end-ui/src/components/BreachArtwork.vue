@@ -2,6 +2,7 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import type { BreachState, Direction } from '@engine/types'
 import { breachPresentation } from '../breach-images'
+import { trackBreachMotion } from '../game/breach-motion'
 import CardHoverPreview from './CardHoverPreview.vue'
 
 const props = defineProps<{
@@ -54,13 +55,13 @@ async function animateFocus(start: number, delta: number) {
   await nextTick()
   const image = tokenImage.value
   if (!image || delta === 0) return
-  const animation = image.animate([
+  const animation = trackBreachMotion(image.animate([
     { transform: `rotate(${start}deg)` },
     { transform: `rotate(${start + delta}deg)` },
   ], {
     duration: motionDuration('--breach-focus-duration', 280),
     easing: 'cubic-bezier(.25, .8, .25, 1)',
-  })
+  }))
   activeAnimation = animation
   try {
     await animation.finished
@@ -78,13 +79,13 @@ async function animateOpen() {
   if (!card || !currentFlip) return
   const [x, y] = currentFlip.axis
   const axis = `rotate3d(${x}, ${y}, 0, `
-  const animation = card.animate([
+  const animation = trackBreachMotion(card.animate([
     { transform: `${axis}0deg)` },
     { transform: `${axis}180deg)` },
   ], {
     duration: motionDuration('--breach-open-duration', 560),
     easing: 'cubic-bezier(.4, 0, .2, 1)',
-  })
+  }))
   activeAnimation = animation
   try {
     await animation.finished

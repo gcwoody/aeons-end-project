@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
-import { drawCardsForPlayer, getPlayer, MAX_PULSE_TOKENS, toRoman } from '@engine/engine'
-import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, NEMESIS_CARDS } from '@engine/data'
+import { drawCardsForPlayer, ensurePlayerDeckInstances, getPlayer, MAX_PULSE_TOKENS, putPlayerCardInDeck, toRoman } from '@engine/engine'
+import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, ALL_NEMESIS_CARDS, NEMESIS_CARDS } from '@engine/data'
 import type { CardDef, GameState, PlayerState } from '@engine/types'
 import { useGame } from '../game/useGame'
 import { cardImageUrl } from '../card-images'
@@ -10,6 +10,11 @@ import DebugNumberInput from './DebugNumberInput.vue'
 import CardHoverPreview from './CardHoverPreview.vue'
 import DebugDeckOrderModal from './DebugDeckOrderModal.vue'
 import { displayMageName, displayPlayerId } from '../game/display-name'
+
+const props = defineProps<{ logVisible: boolean }>()
+const emit = defineEmits<{
+  'log-visibility-change': [visible: boolean]
+}>()
 
 const { state, toggleDebug, setDebugFreeSpellCastEnabled, clearSaves } = useGame()
 
@@ -126,11 +131,13 @@ const currentTurnPlayerId = computed(() => {
 })
 
 const allCards = computed<CardDef[]>(() => {
-  const ids = [...Object.keys(INITIAL_CARDS), ...Object.keys(ALL_MARKET_CARDS)]
-  // Keep this explicit whitelist closed so future card types never appear here.
+  const ids = [
+    ...Object.keys(INITIAL_CARDS),
+    ...Object.keys(ALL_MARKET_CARDS),
+    ...Object.keys(ALL_NEMESIS_CARDS),
+  ]
   return [...new Set(ids)]
     .map(cardId => getCard(cardId))
-    .filter(isDebugAddableCard)
 })
 const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId => {
   const card = getCard(cardId)
@@ -149,7 +156,7 @@ watch(
   ([, playerId]) => { addPlayer.value = playerId },
   { immediate: true },
 )
-const addZone = ref<'hand' | 'deck' | 'discard'>('hand')
+const addZone = ref<'hand' | 'discard_top' | 'deck_top'>('hand')
 const addCard = ref('crystal')
 const addNemesisCard = ref(allNemesisCards.value[0] ?? '')
 
@@ -172,6 +179,7 @@ watch(
 )
 
 function openDeckOrderModal() {
+  if (state.game && deckOrderPlayer.value) ensurePlayerDeckInstances(state.game, deckOrderPlayer.value)
   deckOrderModalOpen.value = true
 }
 
@@ -182,20 +190,18 @@ function closeDeckOrderModal() {
 function addCardToPlayer() {
   const playerId = selectedAddPlayer.value
   if (!playerId) return
-  const card = getCard(addCard.value)
-  if (!isDebugAddableCard(card)) return
+  const card = allCards.value.find(candidate => candidate.id === addCard.value)
+  if (!card) return
   const p = getPlayer(state.game!, playerId)
-  p[addZone.value].push(addCard.value)
+  if (addZone.value === 'hand') p.hand.push(addCard.value)
+  else if (addZone.value === 'discard_top') p.discard.unshift(addCard.value)
+  else putPlayerCardInDeck(state.game!, p, addCard.value, 'top')
 }
 
 function drawOneCardForPlayer() {
   const playerId = selectedAddPlayer.value
   if (!playerId || !state.game) return
   drawCardsForPlayer(state.game, playerId, 1)
-}
-
-function isDebugAddableCard(card: CardDef): boolean {
-  return card.type === 'gem' || card.type === 'relic' || card.type === 'spell'
 }
 
 function addCardToNemesis() {
@@ -282,6 +288,10 @@ function applyJson() {
 }
 function copyJson() {
   navigator.clipboard.writeText(jsonText.value)
+}
+
+function updateLogVisibility(event: Event) {
+  emit('log-visibility-change', (event.target as HTMLInputElement).checked)
 }
 
 onMounted(() => {
@@ -410,17 +420,6 @@ onBeforeUnmount(() => {
       </div>
 
       <div class="debug-section">
-        <DebugCardPicker v-model="addCard" :cards="allCards" title="Add card" />
-        <div class="debug-card-selected" aria-live="polite">
-          <CardHoverPreview v-if="cardImageUrl(addCard)" :card-id="addCard" :preview-width="210" :preview-height="291.02">
-            <img :src="cardImageUrl(addCard)" :alt="getCard(addCard).name" draggable="false" />
-          </CardHoverPreview>
-          <div>
-            <span class="debug-label">Selected</span>
-            <strong>{{ getCard(addCard).name }}</strong>
-            <span class="debug-hint">{{ getCard(addCard).type }} · {{ getCard(addCard).cost }} Aether</span>
-          </div>
-        </div>
         <div class="debug-row debug-add-controls">
           <label>
             Player
@@ -430,14 +429,32 @@ onBeforeUnmount(() => {
           </label>
           <button class="btn small" :disabled="!selectedAddPlayer" @click="drawOneCardForPlayer()">Draw 1 Card</button>
           <label>
-            Zone
+            Add to
             <select v-model="addZone" aria-label="Debug card zone">
               <option value="hand">Hand</option>
-              <option value="deck">Deck</option>
-              <option value="discard">Discard</option>
+              <option value="discard_top">Top of discard pile</option>
+              <option value="deck_top">Top of deck</option>
             </select>
           </label>
           <button class="btn small" :disabled="!selectedAddPlayer" @click="addCardToPlayer()">Add Card</button>
+        </div>
+        <DebugCardPicker
+          v-model="addCard"
+          :cards="allCards"
+          :initial-visible-types="['gem', 'relic', 'spell']"
+          :allow-type-filter="false"
+          :show-cost="false"
+          :show-meta="false"
+          title="Add card"
+        />
+        <div class="debug-card-selected" aria-live="polite">
+          <CardHoverPreview v-if="cardImageUrl(addCard)" :card-id="addCard" :preview-width="210" :preview-height="291.02">
+            <img :src="cardImageUrl(addCard)" :alt="getCard(addCard).name" draggable="false" />
+          </CardHoverPreview>
+          <div>
+            <span class="debug-label">Selected</span>
+            <strong>{{ getCard(addCard).name }}</strong>
+          </div>
         </div>
       </div>
 
@@ -476,6 +493,13 @@ onBeforeUnmount(() => {
 
       <div class="debug-section">
         <button class="btn small" @click="clearSaves()">Clear Saves</button>
+      </div>
+
+      <div class="debug-section">
+        <label class="debug-toggle-row">
+          <input type="checkbox" :checked="props.logVisible" @change="updateLogVisibility" />
+          <span>Show Log Panel</span>
+        </label>
       </div>
     </div>
 

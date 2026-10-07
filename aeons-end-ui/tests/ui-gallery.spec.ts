@@ -28,6 +28,11 @@ test.describe('UI Gallery', () => {
     await expect(page.locator('[data-ui-gallery]')).toBeVisible()
     await expect(page.locator('[data-component="Interaction.PointerReorder"]')).toContainText('Pointer capture')
     await page.waitForFunction(() => Array.from(document.images).every(image => image.complete && image.naturalWidth > 0))
+    const marketTargets = page.locator('[data-component="Decision.MarketTargets"]')
+    const legalSupplyTarget = marketTargets.locator('.decision-market-choice').first()
+    await expect(legalSupplyTarget).toBeVisible()
+    const legalTargetBorder = await legalSupplyTarget.evaluate(element => getComputedStyle(element, '::after').borderTopColor)
+    expect(legalTargetBorder).toBe('rgb(242, 153, 74)')
     const scrollMetrics = await page.locator('[data-ui-gallery]').evaluate(element => ({
       clientHeight: element.clientHeight,
       scrollHeight: element.scrollHeight,
@@ -187,7 +192,19 @@ test.describe('UI Gallery', () => {
     expect(twoButtonBoxes[1]!.y).toBeGreaterThan(twoButtonBoxes[0]!.y)
     await expect(twoButtonChoices.first()).toHaveCSS('text-align', 'center')
     await expect(twoButtonChoices.first()).toHaveCSS('min-height', '56px')
+    const idleFilter = await twoButtonChoices.first().evaluate(button => getComputedStyle(button).filter)
+    await twoButtonChoices.first().hover()
+    await expect.poll(() => twoButtonChoices.first().evaluate(button => getComputedStyle(button).filter)).not.toBe(idleFilter)
+    await page.mouse.down()
+    await expect.poll(() => twoButtonChoices.first().evaluate(button => getComputedStyle(button).filter)).not.toBe(idleFilter)
     await twoButtonModal.screenshot({ path: resolve(screenshotRoot, 'decision-two-button-modal-1440x900.png') })
+    const headingBox = await twoButtonModal.locator('h2').boundingBox()
+    expect(headingBox).not.toBeNull()
+    await page.mouse.move(headingBox!.x + headingBox!.width / 2, headingBox!.y + headingBox!.height / 2)
+    await page.mouse.up()
+    if (!await twoButtonModal.isVisible().catch(() => false)) {
+      await page.getByRole('button', { name: 'Open Two Button Choice' }).click()
+    }
     await twoButtonChoices.first().click()
     await expect(page.getByText('Two-button choice confirmed: Deal 2 damage and gain 1 Pulse token', { exact: true })).toBeVisible()
 
@@ -260,5 +277,39 @@ test.describe('UI Gallery', () => {
       path: resolve(screenshotRoot, 'ui-gallery-overview-1024x768.png'),
       fullPage: true,
     })
+  })
+
+  test('renders card highlight borders as overlays above the artwork', async ({ page }) => {
+    await page.goto('/?ui-gallery=1')
+    const outlinedCard = page.locator('[data-component="Card.States"] .game-highlight--required').first()
+    await expect(outlinedCard).toBeVisible()
+    const outline = await outlinedCard.evaluate(element => {
+      const style = getComputedStyle(element, '::after')
+      return {
+        content: style.content,
+        position: style.position,
+        zIndex: style.zIndex,
+        topColor: style.borderTopColor,
+        topWidth: style.borderTopWidth,
+      }
+    })
+    expect(outline.content).not.toBe('none')
+    expect(outline.position).toBe('absolute')
+    expect(outline.zIndex).toBe('1')
+    expect(outline.topColor).toBe('rgb(224, 82, 82)')
+    expect(outline.topWidth).toBe('2px')
+
+    const semanticColors = [
+      ['game-highlight--available', 'rgb(158, 206, 106)'],
+      ['game-highlight--choice', 'rgb(242, 153, 74)'],
+      ['game-highlight--selected', 'rgb(224, 82, 82)'],
+      ['game-highlight--required', 'rgb(224, 82, 82)'],
+      ['game-highlight--context', 'rgb(122, 162, 255)'],
+    ] as const
+    for (const [className, color] of semanticColors) {
+      const card = page.locator(`[data-component="Card.States"] .${className}`).first()
+      await expect(card).toBeVisible()
+      await expect.poll(() => card.evaluate(element => getComputedStyle(element, '::after').borderTopColor)).toBe(color)
+    }
   })
 })

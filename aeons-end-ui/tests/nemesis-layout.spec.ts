@@ -103,6 +103,7 @@ test('Info Bar spans the board below the Nemesis piles and cards in play', async
 
   await expect(page.getByRole('region', { name: 'Nemesis Sub Board' })).toHaveCount(0)
   await expect(page.getByRole('button', { name: 'Open Nemesis Specific Discard' })).toContainText('Not used')
+  await expect(page.getByRole('button', { name: 'Open Nemesis Specific Discard' })).toHaveClass(/is-empty/)
   const strikeBack = page.locator('.nemesis-specific-pile-asset img')
   const nemesisBack = page.getByRole('button', { name: 'Open Nemesis Deck' }).locator('img')
   expect(await strikeBack.evaluate(image => image.naturalWidth)).toBeGreaterThan(0)
@@ -138,8 +139,6 @@ test('Info Bar spans the board below the Nemesis piles and cards in play', async
   await page.locator('.pile-viewer-overlay').click({ position: { x: 5, y: 5 } })
 
   await page.getByRole('button', { name: 'Open Nemesis Specific Discard' }).click()
-  await expect(page.locator('.pile-modal .empty')).toBeVisible()
-  await page.locator('.pile-viewer-overlay').click({ position: { x: 5, y: 5 } })
   await expect(page.locator('.pile-modal')).toHaveCount(0)
   await page.locator('.nemesis-card-scroll').hover({ position: { x: 5, y: 5 } })
   await page.mouse.wheel(0, 700)
@@ -180,6 +179,32 @@ test('Info Bar spans the board below the Nemesis piles and cards in play', async
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const resolvedState = JSON.parse(await page.locator('.debug-panel textarea').inputValue())
   expect(resolvedState.game.pendingDecision).toBeNull()
+})
+
+test('Dark Conclusion set beside the Turn Order deck appears in the first Nemesis play row', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.game.nemesis.playArea = []
+  debugState.game.nemesis.turnOrderDeckResetCardId = 'dark_conclusion'
+  debugState.game.nemesis.turnOrderDeckResetCardInstanceId = 'dark-conclusion:stationed'
+  debugState.game.nemesis.setAsideCards = [{
+    cardId: 'dark_conclusion', cardType: 'power', placedAt: 1,
+    instanceId: 'dark-conclusion:stationed', powerTokens: 0,
+  }]
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const stationedCard = page.locator('.nemesis-play-top .nemesis-stationed-card img[alt="Dark Conclusion"]')
+  await expect(stationedCard).toBeVisible()
+  await expect(page.locator('.nemesis-play-row .nemesis-play-card')).toHaveCount(0)
 })
 
 test('Nemesis mat modal receives focus and remains draggable', async ({ page }) => {
@@ -265,7 +290,11 @@ test('Space confirms the red-highlighted Nemesis Main Phase card in order', asyn
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
   await expect(page.locator('.nemesis-play-card.effect-target')).toHaveCount(1)
+  const graveholdHp = page.locator('.nemesis-info-gravehold .hp-num b')
+  await expect(graveholdHp).toHaveText('30')
   await page.keyboard.press('Space')
+  await expect(graveholdHp).toHaveText('28')
+  await expect(page.locator('.damage-impact-gravehold .damage-impact-number')).toHaveText('−2')
   await expect(page.locator('.nemesis-play-card.effect-target')).toHaveCount(1)
   await page.keyboard.press('Space')
   await expect(page.getByText('Nemesis Draw Phase', { exact: true })).toBeVisible()
@@ -372,6 +401,42 @@ test('a payable Power is highlighted and its To Discard action starts by clickin
   await expect(powerCard.getByRole('button', { name: 'To Discard' })).toHaveCount(0)
   await powerCard.click()
   await expect(page.locator('.nemesis-play-card')).toHaveCount(1)
+})
+
+test('Minions that track Nemesis tokens show the count at the upper-left corner', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+
+  await page.keyboard.press('Control+d')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const stateField = page.locator('.debug-panel textarea')
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  debugState.game.currentTurn = debugState.game.players[0].id
+  debugState.game.currentPhase = 'main'
+  debugState.game.nemesis.playArea = [
+    { instanceId: 'stinger:token-ui', cardId: 'glinting_stinger', cardType: 'minion', placedAt: 1, lifeTokens: 6, nemesisTokens: 0 },
+    { instanceId: 'haze:token-ui', cardId: 'haze_spewer', cardType: 'minion', placedAt: 2, lifeTokens: 5 },
+  ]
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  const stinger = page.locator('.nemesis-play-card').first()
+  const tokenCounter = stinger.locator('.nemesis-card-token-counter')
+  await expect(tokenCounter).toHaveText('Token 0')
+  await expect(page.locator('.nemesis-play-card').nth(1).locator('.nemesis-card-token-counter')).toHaveCount(0)
+  const geometry = await page.evaluate(() => {
+    const card = document.querySelector('.nemesis-play-card')!.getBoundingClientRect()
+    const badge = document.querySelector('.nemesis-card-token-counter')!.getBoundingClientRect()
+    return { cardLeft: card.left, cardTop: card.top, badgeLeft: badge.left, badgeTop: badge.top }
+  })
+  expect(geometry.badgeLeft - geometry.cardLeft).toBeCloseTo(5, 0)
+  expect(geometry.badgeTop - geometry.cardTop).toBeCloseTo(5, 0)
 })
 
 test('Space confirms a To Discard card choice after the Power card is clicked', async ({ page }) => {
@@ -629,8 +694,13 @@ test('collective hand-card decisions use direct board selection', async ({ page 
   await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toBeVisible()
   await expect(page.locator('.pending-board-card')).toHaveCount(2)
   await expect(page.locator('.decision-card-choice')).toHaveCount(0)
+  await expect.poll(() => page.locator('.pending-board-card').first().evaluate(element =>
+    getComputedStyle(element, '::after').borderTopColor)).toBe('rgb(242, 153, 74)')
   await page.locator('.pending-board-card').first().click()
   await expect(page.locator('.pending-board-card-selected')).toHaveCount(1)
+  await expect(page.locator('.pending-board-card-selected')).toHaveClass(/game-highlight--selected/)
+  await expect.poll(() => page.locator('.pending-board-card-selected').evaluate(element =>
+    getComputedStyle(element, '::after').borderTopColor)).toBe('rgb(224, 82, 82)')
   await expect(page.getByText('1 / 3 selected', { exact: true })).toBeVisible()
   await page.locator('.char-btn').nth(1).click()
   await expect(page.locator('.pending-board-card')).toHaveCount(1)

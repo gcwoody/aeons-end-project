@@ -1,13 +1,54 @@
 import { expect, test } from '@playwright/test'
 
+async function clearInitialNemesisDraw(page: import('@playwright/test').Page) {
+  let quietChecks = 0
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const flight = page.locator('.nemesis-draw-flight-scene')
+    if (await flight.isVisible().catch(() => false)) {
+      await expect(flight).toHaveCount(0, { timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await reveal.click({ position: { x: 12, y: 12 } })
+      await expect(reveal).toHaveCount(0)
+      quietChecks = 0
+      continue
+    }
+    const shield = page.locator('.turn-transition-shield')
+    if (await shield.isVisible().catch(() => false)) {
+      await expect(shield).toBeHidden({ timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    await page.waitForTimeout(100)
+    if (++quietChecks >= 3) return
+  }
+}
+
 test('Market Supply cards do not lift on hover', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Start Game' }).click()
   for (let attempt = 0; attempt < 20; attempt++) {
+    const flight = page.locator('.nemesis-draw-flight-scene')
+    if (await flight.isVisible().catch(() => false)) {
+      await expect(flight).toHaveCount(0, { timeout: 5000 })
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await reveal.click({ position: { x: 12, y: 12 } })
+      await expect(reveal).toHaveCount(0)
+      continue
+    }
     const next = page.getByRole('button', { name: /^(Continue|Resolve Card|Skip|Confirm|Attack .+|Gravehold)$/ }).first()
     if (!(await next.isVisible().catch(() => false))) break
     await next.click()
   }
+  await clearInitialNemesisDraw(page)
+  await expect(page.locator('.turn-transition-shield')).toHaveCount(0)
+  await expect(page.locator('.card-motion-shield')).toHaveCount(0)
   const pile = page.locator('.market-grid .pile').first()
   await expect(pile).toBeVisible()
   await pile.hover()
@@ -61,7 +102,7 @@ test('Setup previews follow Mage and Nemesis selections', async ({ page }) => {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  const previews = page.locator('.setup-preview-card img')
+  const previews = page.locator('.mat-preview-button img')
   await expect(previews).toHaveCount(3)
   const initialMage = await previews.nth(0).getAttribute('src')
   const initialNemesis = await previews.nth(2).getAttribute('src')
@@ -109,7 +150,60 @@ test('Nemesis mat image opens a picker and syncs the Nemesis dropdown', async ({
   await page.getByRole('button', { name: 'Choose Prince of Gluttons Nemesis' }).click()
   await expect(nemesisSelect).toHaveValue('prince_of_gluttons')
   await expect(page.getByRole('dialog', { name: 'Choose Nemesis' })).toHaveCount(0)
-  await expect(page.getByRole('img', { name: 'prince_of_gluttons nemesis mat' })).toBeVisible()
+  await expect(page.getByRole('img', { name: 'Prince of Gluttons nemesis mat' })).toBeVisible()
+})
+
+test('Setup Mage and Nemesis mat frames match the rounded image bounds', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  for (const selector of ['.mat-preview-button--mage', '.mat-preview-button--nemesis']) {
+    const frame = page.locator(selector).first()
+    await expect(frame.locator('img')).toBeVisible()
+    await frame.hover()
+    const geometry = await frame.evaluate((button) => {
+      const image = button.querySelector('img')!
+      const frameRect = button.getBoundingClientRect()
+      const imageRect = image.getBoundingClientRect()
+      return {
+        frame: { left: frameRect.left, top: frameRect.top, right: frameRect.right, bottom: frameRect.bottom, width: frameRect.width, height: frameRect.height },
+        image: { left: imageRect.left, top: imageRect.top, right: imageRect.right, bottom: imageRect.bottom },
+        naturalRatio: image.naturalWidth / image.naturalHeight,
+        frameRadius: getComputedStyle(button).borderTopLeftRadius,
+        imageRadius: getComputedStyle(image).borderTopLeftRadius,
+        imageFit: getComputedStyle(image).objectFit,
+        highlight: getComputedStyle(button, '::after').borderTopColor,
+      }
+    })
+
+    for (const edge of ['left', 'top', 'right', 'bottom'] as const) {
+      expect(Math.abs(geometry.frame[edge] - geometry.image[edge])).toBeLessThan(0.5)
+    }
+    expect(Math.abs(geometry.frame.width / geometry.frame.height - geometry.naturalRatio)).toBeLessThan(0.005)
+    expect(geometry.frameRadius).not.toBe('0px')
+    expect(geometry.imageRadius).toBe(geometry.frameRadius)
+    expect(geometry.imageFit).toBe('fill')
+    expect(geometry.highlight).not.toBe('rgba(0, 0, 0, 0)')
+  }
+})
+
+test('Nemesis setup filters its dropdown and picker by Wave', async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+
+  const nemesisSelect = page.getByLabel('Nemesis', { exact: true })
+  await expect(nemesisSelect.locator('option')).toHaveCount(2)
+  await page.getByRole('group', { name: 'Nemesis Wave Tabs' }).getByRole('button', { name: 'Wave 9' }).click()
+  await expect(nemesisSelect).toHaveValue('crooked_mask')
+  await expect(nemesisSelect.locator('option')).toHaveCount(1)
+
+  await page.getByRole('button', { name: 'Choose Nemesis' }).click()
+  const pickerTabs = page.getByRole('tablist', { name: 'Nemesis Wave', exact: true })
+  await expect(pickerTabs.getByRole('tab', { name: 'Wave 9' })).toHaveAttribute('aria-selected', 'true')
+  await expect(page.locator('.nemesis-picker-card')).toHaveCount(1)
+  await expect(page.getByRole('button', { name: 'Choose Crooked Mask Nemesis' })).toBeVisible()
 })
 
 test('Setup randomizes Mages and Nemesis without changing difficulty', async ({ page }) => {
@@ -180,8 +274,8 @@ test('Setup uses three columns, a visual market grid, and vertical scrolling', a
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
-  await expect(page.locator('.setup-mage-column .setup-preview-card')).toHaveCount(2)
-  await expect(page.locator('.setup-nemesis-column .setup-preview-card')).toHaveCount(1)
+  await expect(page.locator('.setup-mage-column .mat-preview-button--mage')).toHaveCount(2)
+  await expect(page.locator('.setup-nemesis-column .mat-preview-button--nemesis')).toHaveCount(1)
   await expect(page.locator('.market-slot-grid')).toHaveCount(1)
   await expect(page.locator('.market-slot-grid img')).toHaveCount(9)
   await expect(page.locator('.market-slot-name, .market-slot-cost, .market-slot-label')).toHaveCount(0)

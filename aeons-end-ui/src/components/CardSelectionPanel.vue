@@ -13,7 +13,7 @@ export interface CardSelectionItem {
   groupLabel: string
   disabled?: boolean
   disabledReason?: string
-  highlight?: 'red' | 'yellow'
+  highlight?: 'required' | 'choice'
 }
 
 const props = defineProps<{
@@ -99,9 +99,10 @@ function toggleAfterClick(key: string): void {
           <button
             v-for="(choice, index) in props.choices"
             :key="choice.key"
-            class="decision-card-choice"
+            class="decision-card-choice game-highlight"
             :class="{
               selected: isSelected(choice.key),
+              'game-highlight--selected': isSelected(choice.key),
               unavailable: choice.disabled,
               'pointer-sort-item': true,
               'is-dragging': draggingKey === choice.key,
@@ -110,6 +111,8 @@ function toggleAfterClick(key: string): void {
             :aria-label="'Select ' + choice.cardName + '; position ' + (index + 1)"
             :aria-pressed="isSelected(choice.key)"
             :disabled="choice.disabled"
+            :data-card-selection-key="choice.key"
+            :data-card-selection-id="choice.cardId"
             :data-sort-key="choice.key"
             :title="choice.disabled ? choice.disabledReason : undefined"
             @click="toggleAfterClick(choice.key)"
@@ -141,12 +144,20 @@ function toggleAfterClick(key: string): void {
               :disabled="props.largeCards || choice.disabled"
             >
               <button
-                class="decision-card-choice"
-                :class="{ selected: isSelected(choice.key), unavailable: choice.disabled, 'highlight-red': choice.highlight === 'red', 'highlight-yellow': choice.highlight === 'yellow' }"
+                class="decision-card-choice game-highlight"
+                :class="{
+                  selected: isSelected(choice.key),
+                  'game-highlight--selected': isSelected(choice.key),
+                  'game-highlight--choice': !isSelected(choice.key) && choice.highlight === 'choice',
+                  'game-highlight--required': !isSelected(choice.key) && choice.highlight === 'required',
+                  unavailable: choice.disabled,
+                }"
                 type="button"
                 :aria-label="'Select ' + choice.cardName"
                 :aria-pressed="isSelected(choice.key)"
                 :disabled="choice.disabled"
+                :data-card-selection-key="choice.key"
+                :data-card-selection-id="choice.cardId"
                 :title="choice.disabled ? choice.disabledReason : undefined"
                 @click="toggle(choice.key)"
               >

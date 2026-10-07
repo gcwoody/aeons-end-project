@@ -9,6 +9,7 @@ import { cardImageUrl, nemesisMatImageUrl } from '../card-images'
 import { mageImageUrls } from '../mage-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import ModalBase from './ModalBase.vue'
+import MatPreviewButton from './MatPreviewButton.vue'
 
 const {
   state, newGame, resumeGame,
@@ -32,6 +33,11 @@ const magePickerWave = ref(mage1Wave.value)
 const mage1Options = computed(() => mageOptions.value.filter(mage => mage.wave === mage1Wave.value))
 const player2MageOptions = computed(() => mageOptions.value.filter(mage => mage.wave === mage2Wave.value && mage.type !== state.mage1))
 const nemesisOptions = computed(() => Object.values(NEMESES))
+const nemesisWaves = computed(() => [...new Set(nemesisOptions.value.map(nemesis => nemesis.wave ?? 1))].sort((a, b) => a - b))
+const nemesisWave = ref(NEMESES[state.nemesisType]?.wave ?? 1)
+const nemesisPickerWave = ref(nemesisWave.value)
+const nemesisWaveOptions = computed(() => nemesisOptions.value.filter(nemesis => (nemesis.wave ?? 1) === nemesisWave.value))
+const nemesisPickerOptions = computed(() => nemesisOptions.value.filter(nemesis => (nemesis.wave ?? 1) === nemesisPickerWave.value))
 const duplicateMage = computed(() => state.mage1 === state.mage2)
 const marketCards = computed(() => Object.values(ALL_MARKET_CARDS)
   .sort((a, b) => a.type.localeCompare(b.type) || a.cost - b.cost || a.name.localeCompare(b.name)))
@@ -115,8 +121,8 @@ function randomizeSetupMages() {
 randomizeSetupMages()
 
 function randomizeNemesis() {
-  const candidates = nemesisOptions.value.filter(nemesis => nemesis.type !== state.nemesisType)
-  const selected = randomChoice(candidates.length > 0 ? candidates : nemesisOptions.value)
+  const candidates = nemesisWaveOptions.value.filter(nemesis => nemesis.type !== state.nemesisType)
+  const selected = randomChoice(candidates.length > 0 ? candidates : nemesisWaveOptions.value)
   if (selected) state.nemesisType = selected.type
 }
 
@@ -131,6 +137,10 @@ watch(() => state.mage1, (type) => {
 watch(() => state.mage2, (type) => {
   const wave = MAGES[type]?.wave
   if (wave !== undefined) mage2Wave.value = wave
+})
+watch(() => state.nemesisType, (type) => {
+  const wave = NEMESES[type]?.wave
+  if (wave !== undefined) nemesisWave.value = wave
 })
 
 function startSelectedGame() {
@@ -204,6 +214,7 @@ function selectMage(mageType: string) {
 const magePickerOptions = computed(() => mageOptions.value.filter(mage => mage.wave === magePickerWave.value))
 
 function openNemesisPicker() {
+  nemesisPickerWave.value = NEMESES[state.nemesisType]?.wave ?? nemesisWaves.value[0] ?? 1
   nemesisPickerOpen.value = true
 }
 
@@ -214,6 +225,7 @@ function closeNemesisPicker() {
 function selectNemesis(nemesisType: string) {
   if (!nemesisOptions.value.some(nemesis => nemesis.type === nemesisType)) return
   state.nemesisType = nemesisType
+  nemesisWave.value = NEMESES[nemesisType]?.wave ?? 1
   nemesisPickerOpen.value = false
 }
 
@@ -291,14 +303,13 @@ function cancelSaveRename() {
           <button type="button" class="btn small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Reroll</button>
           </span>
         </div>
-        <button
-          type="button"
-          class="setup-preview-card setup-mage-preview"
+        <MatPreviewButton
+          kind="mage"
+          :image-url="mage1Preview?.front"
+          :image-alt="`${displayMageName(state.mage1)} mage mat`"
+          label="Choose First Mage"
           @click="openMagePicker(1)"
-        >
-          <span class="sr-only">Choose First Mage</span>
-          <img v-if="mage1Preview" :src="mage1Preview.front" :alt="`${displayMageName(state.mage1)} mage mat`" draggable="false" />
-        </button>
+        />
         <div class="setup-mage-field">
           <label for="player2-mage-select">Player 2 Mage</label>
           <span class="wave-tabs" role="tablist" aria-label="Mage Wave Tabs — Second Player">
@@ -313,28 +324,30 @@ function cancelSaveRename() {
           <button type="button" class="btn small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Reroll</button>
           </span>
         </div>
-        <button
-          type="button"
-          class="setup-preview-card setup-mage-preview"
+        <MatPreviewButton
+          kind="mage"
+          :image-url="mage2Preview?.front"
+          :image-alt="`${displayMageName(state.mage2)} mage mat`"
+          label="Choose Second Mage"
           @click="openMagePicker(2)"
-        >
-          <span class="sr-only">Choose Second Mage</span>
-          <img v-if="mage2Preview" :src="mage2Preview.front" :alt="`${displayMageName(state.mage2)} mage mat`" draggable="false" />
-        </button>
+        />
       </section>
 
       <section class="setup-nemesis-column setup-character-column" aria-label="Nemesis selection">
-        <label>
-          Nemesis
-          <span class="setup-select-row">
-          <select v-model="state.nemesisType" aria-label="Nemesis">
-            <option v-for="nemesis in nemesisOptions" :key="nemesis.type" :value="nemesis.type">
-              {{ nemesis.name }}
-            </option>
-          </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis">Reroll</button>
+        <div class="setup-mage-field">
+          <label for="nemesis-select">Nemesis</label>
+          <span class="wave-tabs" role="group" aria-label="Nemesis Wave Tabs">
+            <button v-for="wave in nemesisWaves" :key="`nemesis-wave-${wave}`" type="button" :aria-pressed="nemesisWave === wave" :class="{ active: nemesisWave === wave }" @click="nemesisWave = wave; randomizeNemesis()">Wave {{ wave }}</button>
           </span>
-        </label>
+          <span class="setup-select-row">
+            <select id="nemesis-select" v-model="state.nemesisType" aria-label="Nemesis">
+              <option v-for="nemesis in nemesisWaveOptions" :key="nemesis.type" :value="nemesis.type">
+                {{ nemesis.name }}
+              </option>
+            </select>
+            <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis">Reroll</button>
+          </span>
+        </div>
         <label>
           Nemesis Difficulty
           <select v-model="state.nemesisDifficulty" aria-label="Nemesis Difficulty">
@@ -342,14 +355,13 @@ function cancelSaveRename() {
             <option value="increased">Increased</option>
           </select>
         </label>
-        <button
-          type="button"
-          class="setup-preview-card setup-nemesis-preview nemesis-preview-card"
-          aria-label="Choose Nemesis"
+        <MatPreviewButton
+          kind="nemesis"
+          :image-url="nemesisPreview"
+          :image-alt="`${NEMESES[state.nemesisType]?.name ?? state.nemesisType} nemesis mat`"
+          label="Choose Nemesis"
           @click="openNemesisPicker"
-        >
-          <img v-if="nemesisPreview" :src="nemesisPreview" :alt="`${state.nemesisType} nemesis mat`" draggable="false" />
-        </button>
+        />
       </section>
 
       <section class="market-setup" aria-label="Market Setup">
@@ -381,7 +393,7 @@ function cancelSaveRename() {
           >
             <button
               type="button"
-              class="market-slot-card"
+              class="market-slot-card game-highlight"
               :aria-label="`${label}: ${ALL_MARKET_CARDS[state.marketSlots[index]]?.name ?? 'Choose a card'}. Click to replace.`"
               @click="openReplacement(index)"
             >
@@ -516,9 +528,9 @@ function cancelSaveRename() {
           >
             <button
               type="button"
-              class="market-picker-card"
+              class="market-picker-card game-highlight"
               :aria-label="`Choose ${card.name}`"
-              :class="{ selected: card.id === replacementCurrentId, unavailable: card.id !== replacementCurrentId && state.marketSlots.includes(card.id) }"
+              :class="{ selected: card.id === replacementCurrentId, 'game-highlight--choice': card.id === replacementCurrentId, unavailable: card.id !== replacementCurrentId && state.marketSlots.includes(card.id) }"
               :disabled="card.id !== replacementCurrentId && state.marketSlots.includes(card.id)"
               @click="replaceMarketCard(card.id)"
             >
@@ -557,9 +569,9 @@ function cancelSaveRename() {
           >
             <button
               type="button"
-              class="mage-picker-card"
+              class="mage-picker-card game-highlight"
               :aria-label="`Choose ${displayMageName(mage.type)} Mage`"
-              :class="{ selected: mage.type === magePickerCurrent }"
+              :class="{ selected: mage.type === magePickerCurrent, 'game-highlight--choice': mage.type === magePickerCurrent }"
               :disabled="mageOptionDisabled(mage.type)"
               @click="selectMage(mage.type)"
             >
@@ -586,9 +598,12 @@ function cancelSaveRename() {
           <h2 id="nemesis-picker-title">{{ nemesisPickerTitle }}</h2>
           <button type="button" class="btn small" aria-label="Close Nemesis picker" @click="closeNemesisPicker">Close</button>
         </div>
+        <div class="wave-tabs mage-picker-wave-tabs" role="tablist" aria-label="Nemesis Wave">
+          <button v-for="wave in nemesisWaves" :key="`nemesis-picker-wave-${wave}`" type="button" role="tab" :aria-selected="nemesisPickerWave === wave" :class="{ active: nemesisPickerWave === wave }" @click="nemesisPickerWave = wave">Wave {{ wave }}</button>
+        </div>
         <div class="nemesis-picker-grid">
           <CardHoverPreview
-            v-for="nemesis in nemesisOptions"
+            v-for="nemesis in nemesisPickerOptions"
             :key="nemesis.type"
             :image-url="nemesisMatImageUrl(nemesis.type, 'front')"
             :image-alt="`${nemesis.name} nemesis mat`"
@@ -600,9 +615,9 @@ function cancelSaveRename() {
           >
             <button
               type="button"
-              class="nemesis-picker-card"
+              class="nemesis-picker-card game-highlight"
               :aria-label="`Choose ${nemesis.name} Nemesis`"
-              :class="{ selected: nemesis.type === state.nemesisType }"
+              :class="{ selected: nemesis.type === state.nemesisType, 'game-highlight--choice': nemesis.type === state.nemesisType }"
               @click="selectNemesis(nemesis.type)"
             >
               <img

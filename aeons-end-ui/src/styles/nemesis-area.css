@@ -12,7 +12,8 @@
   flex-shrink: 0;
   height: auto;
   min-height: var(--top-section-min-height);
-  border-bottom: var(--pixel-border-width) solid var(--border);
+  /* Blend the separator into PlayerArea without revealing the dark page below. */
+  border-bottom: var(--pixel-border-width) solid var(--panel);
 }
 .top-main {
   flex: 1;
@@ -148,9 +149,10 @@
 }
 .nemesis-discard-button { cursor: pointer; }
 .nemesis-discard-button:hover .nemesis-pile-placeholder { border-color: var(--accent); }
-.nemesis-discard-button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .nemesis-pile-inspect:hover .nemesis-pile-placeholder { border-color: var(--accent); }
-.nemesis-pile-inspect:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.nemesis-pile-slot.is-empty .nemesis-pile-placeholder,
+.nemesis-pile-slot.is-empty .nemesis-pile-inspect:hover .nemesis-pile-placeholder { border-color: transparent; }
+.nemesis-pile-slot.is-empty .nemesis-pile-placeholder { background: #151A29; }
 .nemesis-section-title {
   color: var(--muted);
   font-size: 11px;
@@ -168,25 +170,20 @@
   justify-content: center;
   overflow: hidden;
   border: var(--pixel-border-width) solid var(--border);
-  border-radius: 9px;
+  border-radius: var(--nemesis-mat-radius);
   background: #151a29;
   padding: 0;
   cursor: pointer;
   color: inherit;
   font: inherit;
 }
-.nemesis-mat-wrap::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  box-sizing: border-box;
-  border-radius: inherit;
-  pointer-events: none;
+.nemesis-mat-wrap:has(.nemesis-mat-image) {
+  border-color: transparent;
+  background: transparent;
 }
-.nemesis-mat-wrap.damage-target::after {
-  border: var(--damage-target-mat-border-width) solid var(--damage-target-border-color);
-  box-shadow: 0 0 0 var(--pixel-border-width) var(--damage-target-border-glow);
+.nemesis-mat-wrap.game-highlight {
+  --game-highlight-layer: 2;
+  --game-highlight-width: var(--damage-target-mat-border-width);
 }
 .damage-allocation-badge { position: absolute; top: 7px; right: 7px; z-index: 3; display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 6px; border: 2px solid #fff; border-radius: 999px; background: #c9363e; color: #fff; box-shadow: 0 2px 7px rgba(0, 0, 0, .65); font-size: 15px; font-weight: 900; line-height: 1; pointer-events: none; }
 .nemesis-mat-image {
@@ -230,6 +227,7 @@
 }
 .nemesis-info-gravehold { display: flex; align-items: center; }
 .nemesis-info-region .hp-block { flex: 1 1 auto; min-width: 0; gap: 6px; }
+.nemesis-info-gravehold .hp-block { position: relative; }
 .nemesis-info-region .hp-name,
 .nemesis-info-region .hp-num { white-space: nowrap; }
 .nemesis-info-region .hp-name { font-size: var(--info-hp-label-font-size); }
@@ -258,14 +256,13 @@
 .nemesis-specific-buy { position: absolute; right: 4px; bottom: 4px; z-index: 2; padding: 2px 5px; height: 22px; font-size: 10px; }
 .face-up-pile-card {
   padding: 0;
-  border: var(--pixel-border-width) solid var(--border);
+  border: var(--pixel-border-width) solid transparent;
   border-radius: 5px;
-  background: #151a29;
+  background: transparent;
   overflow: hidden;
   cursor: default;
 }
 .face-up-pile-card.is-primary-action { cursor: pointer; }
-.face-up-pile-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .face-up-pile-card img { display: block; width: 100%; height: 100%; object-fit: cover; }
 .asset-subtext { color: var(--muted); font-size: 11px; }
 .pile-box {
@@ -283,7 +280,7 @@
 .pile-top { color: var(--spell); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .nemesis-play { flex: 1 1 auto; min-width: 0; min-height: 0; border: 0; border-radius: 8px; padding: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--nemesis-pile-gap); background: #20283a; overflow: visible; }
-.nemesis-play-top { display: flex; min-width: 0; min-height: 0; align-items: center; justify-content: center; }
+.nemesis-play-top { display: flex; min-width: 0; min-height: 0; align-items: center; justify-content: flex-start; gap: 10px; }
 .divided-damage-instructions {
   display: grid;
   gap: .2em;
@@ -304,16 +301,14 @@
 .nemesis-play-order { color: var(--muted); font-size: 10px; }
 .nemesis-card-scroll { display: flex; align-items: stretch; overflow-x: auto; overflow-y: hidden; scrollbar-gutter: stable; padding: 0; }
 .nemesis-card-track { min-width: 100%; width: max-content; height: 100%; min-height: 0; display: flex; align-items: stretch; justify-content: flex-start; gap: 10px; }
-.nemesis-play-card { position: relative; flex: 0 0 auto; width: auto; height: 100%; aspect-ratio: var(--card-aspect-ratio); min-height: 0; max-height: 100%; border: var(--pixel-border-width) solid var(--border); border-radius: 7px; background: #151a29; overflow: visible; transition: border-color var(--transition-border); z-index: 1; cursor: pointer; }
-.nemesis-play-card::after { content: ''; position: absolute; inset: 0; z-index: 2; box-sizing: border-box; border-radius: inherit; pointer-events: none; }
-.nemesis-play-card.discardable { border: 2px solid var(--warn); box-shadow: 0 0 0 var(--pixel-border-width) rgba(224, 175, 104, .35) inset; }
-.nemesis-play-card.damage-target {
-  border-color: transparent;
-}
-.nemesis-play-card.damage-target::after { border: var(--damage-target-card-border-width) solid var(--damage-target-border-color); box-shadow: 0 0 0 var(--pixel-border-width) var(--damage-target-border-glow); }
-.nemesis-play-card.effect-target { border: 2px solid var(--must-cast); box-shadow: 0 0 0 var(--pixel-border-width) rgba(255, 48, 48, .35); }
+.nemesis-play-card { position: relative; flex: 0 0 auto; width: auto; height: 100%; aspect-ratio: var(--card-aspect-ratio); min-height: 0; max-height: 100%; border: var(--pixel-border-width) solid transparent; border-radius: 7px; background: transparent; overflow: visible; transition: border-color var(--transition-border); z-index: 1; cursor: pointer; }
+.nemesis-stationed-card { cursor: default; }
+.nemesis-play-card.game-highlight { --game-highlight-layer: 2; }
+.nemesis-play-card.damage-target { --game-highlight-width: var(--damage-target-card-border-width); }
+.nemesis-play-card.discardable { cursor: pointer; }
 .nemesis-play-card > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
 .nemesis-card-meta { position: absolute; right: 3px; bottom: 3px; left: 3px; display: flex; justify-content: space-between; align-items: center; gap: 3px; pointer-events: none; }
+.nemesis-card-token-counter { position: absolute; top: 3px; left: 3px; z-index: 3; pointer-events: none; }
 .nemesis-card-counter {
   display: inline-flex;
   align-items: center;

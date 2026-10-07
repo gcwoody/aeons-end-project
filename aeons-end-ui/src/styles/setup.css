@@ -180,53 +180,43 @@
   object-fit: contain;
   border-radius: 7px;
 }
-.setup-mage-preview {
-  flex: 0 1 auto;
-  width: 100%;
-  height: auto;
+.mat-preview-button {
+  --mat-preview-radius: var(--card-radius);
+  --mat-preview-ratio: var(--mage-mat-ratio);
+  display: block;
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  width: auto;
+  height: 0;
   max-height: 100%;
-  aspect-ratio: var(--mage-mat-ratio);
+  max-width: 100%;
+  aspect-ratio: var(--mat-preview-ratio);
+  align-self: center;
+  box-sizing: border-box;
   padding: 0;
   border: 0;
-  border-radius: var(--mage-radius);
+  border-radius: var(--mat-preview-radius);
+  overflow: hidden;
   background: transparent;
   color: inherit;
   cursor: pointer;
   font: inherit;
-  overflow: hidden;
+  line-height: 0;
 }
-.setup-mage-preview:hover, .setup-mage-preview:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 0;
-}
-.setup-mage-preview img { border-radius: var(--mage-radius); }
-.setup-nemesis-column .setup-preview-card { flex: 1 1 auto; margin-top: 2px; }
-.setup-nemesis-column .setup-preview-card img { max-height: 100%; }
-.setup-nemesis-preview {
-  width: 100%;
-  height: auto;
-  max-height: 100%;
-  aspect-ratio: var(--nemesis-mat-ratio);
-  padding: 0;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: inherit;
-  cursor: pointer;
-  font: inherit;
-  overflow: hidden;
-}
-.setup-nemesis-column .setup-nemesis-preview { flex: 0 1 auto; }
-.setup-nemesis-preview:hover, .setup-nemesis-preview:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 0;
-}
-.setup-nemesis-preview img {
+.mat-preview-button > img {
+  display: block;
   width: 100%;
   height: 100%;
-  object-fit: contain;
-  border-radius: var(--card-radius);
+  object-fit: fill;
+  border-radius: inherit;
 }
+.mat-preview-button--mage { --mat-preview-radius: var(--mage-radius); --mat-preview-ratio: var(--mage-mat-ratio); }
+.mat-preview-button--nemesis { --mat-preview-radius: var(--nemesis-mat-radius); --mat-preview-ratio: var(--nemesis-mat-ratio); }
+.mat-preview-button:hover, .mat-preview-button:focus-visible { --game-highlight-color: var(--game-highlight-context); }
+.setup-nemesis-column .setup-preview-card { flex: 1 1 auto; margin-top: 2px; }
+.setup-nemesis-column .setup-preview-card img { max-height: 100%; }
 .market-setup {
   /* Compact grid knobs: adjust slot width or the gap without recalculating the layout. */
   --market-slot-max-width: 140px;
@@ -283,7 +273,7 @@
   font: inherit;
   overflow: hidden;
 }
-.market-slot-card:hover, .market-slot-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 0; }
+.market-slot-card:hover, .market-slot-card:focus-visible { --game-highlight-color: var(--game-highlight-context); }
 .market-slot-card img {
   display: block;
   width: 100%;
@@ -302,6 +292,7 @@
 .setup-nemesis-overlay { z-index: var(--z-decision); }
 .setup-nemesis-picker { width: min(1120px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow-y: auto; }
 .setup-nemesis-picker:focus { outline: none; }
+.setup-nemesis-picker .mage-picker-wave-tabs { margin-bottom: 14px; }
 .setup-market-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
 .setup-market-picker-head h2 { margin: 0; }
 .market-picker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
@@ -319,9 +310,9 @@
   cursor: pointer;
   font: inherit;
 }
-.market-picker-card:hover, .market-picker-card:focus-visible { border-color: var(--accent); }
+.market-picker-card:hover, .market-picker-card:focus-visible { --game-highlight-color: var(--game-highlight-context); }
 .market-picker-card:disabled { opacity: .38; cursor: not-allowed; }
-.market-picker-card.selected { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(158, 206, 106, .35) inset; }
+.market-picker-card.selected { --game-highlight-color: var(--game-highlight-choice); }
 .market-picker-card img { display: block; width: 100%; aspect-ratio: var(--market-card-ratio); object-fit: cover; border-radius: var(--market-card-radius); }
 .mage-picker-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .mage-picker-card {
@@ -335,9 +326,9 @@
   cursor: pointer;
   font: inherit;
 }
-.mage-picker-card:hover, .mage-picker-card:focus-visible { border-color: var(--accent); }
+.mage-picker-card:hover, .mage-picker-card:focus-visible { --game-highlight-color: var(--game-highlight-context); }
 .mage-picker-card:disabled { opacity: .38; cursor: not-allowed; }
-.mage-picker-card.selected { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(158, 206, 106, .35) inset; }
+.mage-picker-card.selected { --game-highlight-color: var(--game-highlight-choice); }
 .mage-picker-card img { display: block; width: 100%; aspect-ratio: 840 / 604; object-fit: cover; border-radius: var(--mage-radius); }
 .nemesis-picker-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
 .nemesis-picker-card {
@@ -351,9 +342,9 @@
   cursor: pointer;
   font: inherit;
 }
-.nemesis-picker-card:hover, .nemesis-picker-card:focus-visible { border-color: var(--accent); }
-.nemesis-picker-card.selected { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(158, 206, 106, .35) inset; }
-.nemesis-picker-card img { display: block; width: 100%; aspect-ratio: var(--nemesis-mat-ratio); object-fit: contain; border-radius: 9px; }
+.nemesis-picker-card:hover, .nemesis-picker-card:focus-visible { --game-highlight-color: var(--game-highlight-context); }
+.nemesis-picker-card.selected { --game-highlight-color: var(--game-highlight-choice); }
+.nemesis-picker-card img { display: block; width: 100%; aspect-ratio: var(--nemesis-mat-ratio); object-fit: contain; border-radius: var(--nemesis-mat-radius); }
 .setup-start-row { flex: 0 0 auto; display: flex; justify-content: center; }
 @media (max-width: 1080px) {
   .setup-layout { grid-template-columns: minmax(150px, .72fr) minmax(180px, .82fr) minmax(0, var(--market-panel-width)); gap: 10px; }

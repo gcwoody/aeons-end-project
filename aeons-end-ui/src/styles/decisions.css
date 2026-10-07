@@ -70,8 +70,10 @@
   margin-inline: auto;
   line-height: 1.25;
   white-space: normal;
-  overflow-wrap: anywhere;
+  overflow-wrap: normal;
+  text-wrap: pretty;
 }
+.decision-modal :is(.decision-hint, p) { text-wrap: pretty; }
 .decision-modal:has(.card-selection-panel.large-cards.no-group-labels),
 .decision-modal:has(.large-card-choice-panel) {
   width: min(620px, calc(100vw - 32px));
@@ -90,7 +92,15 @@
   flex-wrap: wrap;
   margin-top: 18px;
 }
-.decision-option { min-width: 150px; }
+.decision-options .decision-option { min-width: 150px; }
+.decision-overlay .btn,
+.decision-options button {
+  transition: background-color var(--transition-border), border-color var(--transition-border), filter 120ms ease;
+}
+.decision-overlay .btn:hover:not(:disabled),
+.decision-options button:hover:not(:disabled) { filter: brightness(.9); }
+.decision-overlay .btn:active:not(:disabled),
+.decision-options button:active:not(:disabled) { filter: brightness(.78); transform: translateY(1px); }
 .decision-options.stacked-panels {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
@@ -179,6 +189,7 @@
   overflow: hidden;
   background: #151a29;
 }
+.reveal-top-card:has(> img) { border: 0; }
 .reveal-top-card img {
   display: block;
   width: 100%;
@@ -208,6 +219,7 @@
   overflow: hidden;
   background: #151a29;
 }
+.specific-deck-reveal-card:has(> img) { border: 0; }
 .specific-deck-reveal-card img {
   display: block;
   width: 100%;
@@ -260,8 +272,7 @@
   text-align: left;
   transition: border-color var(--transition-border), background-color var(--transition-border);
 }
-.char-btn.discard-target-choice:hover,
-.char-btn.discard-target-choice:focus-visible {
+.char-btn.discard-target-choice:hover {
   border-color: var(--accent);
   background: #2a334a;
 }
@@ -285,8 +296,7 @@
   text-align: left;
   transition: border-color var(--transition-border), background-color var(--transition-border);
 }
-.char-btn.damage-target-choice:hover,
-.char-btn.damage-target-choice:focus-visible {
+.char-btn.damage-target-choice:hover {
   border-color: var(--accent);
   background: #2a334a;
 }
@@ -315,8 +325,7 @@
   pointer-events: none;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
-.char-btn.damage-target-choice:hover .damage-choice-loss,
-.char-btn.damage-target-choice:focus-visible .damage-choice-loss {
+.char-btn.damage-target-choice:hover .damage-choice-loss {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
@@ -345,8 +354,7 @@
   pointer-events: none;
   transition: opacity 120ms ease-out, transform 120ms ease-out;
 }
-.char-btn.life-target-choice:hover .life-choice-gain,
-.char-btn.life-target-choice:focus-visible .life-choice-gain {
+.char-btn.life-target-choice:hover .life-choice-gain {
   opacity: 1;
   transform: translateY(0) scale(1);
 }
@@ -423,8 +431,10 @@
      all four corner pixels intact. */
   overflow: hidden;
   color: var(--text);
-  background: var(--panel-2);
-  border: var(--pixel-border-width) solid var(--border);
+  background: transparent;
+  /* Unselected cards show only their artwork. Selected and rule-highlighted
+     states add their own colored border below. */
+  border: var(--pixel-border-width) solid transparent;
   border-radius: 7px;
   cursor: pointer;
 }
@@ -437,17 +447,7 @@
 }
 .decision-card-choice.selected {
   z-index: var(--z-card-hover);
-  border: 2px solid var(--ok);
-  box-shadow: 0 0 0 2px var(--ok) inset;
   transform: translateY(-3px);
-}
-.decision-card-choice.highlight-red {
-  border-color: #e05252;
-  box-shadow: 0 0 0 2px rgba(224, 82, 82, 0.22);
-}
-.decision-card-choice.highlight-yellow {
-  border-color: #f1d84b;
-  box-shadow: 0 0 0 2px rgba(241, 216, 75, 0.22);
 }
 .decision-card-choice:disabled {
   opacity: .42;
@@ -532,11 +532,6 @@
   aspect-ratio: var(--card-aspect-ratio);
   border-radius: 8px;
 }
-.large-card-choice:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
 @media (max-width: 840px) {
   .decision-modal.mage-ability-modal {
     width: calc(100vw - 16px);

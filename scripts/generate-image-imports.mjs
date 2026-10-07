@@ -62,8 +62,8 @@ async function walkSourceFiles(directory) {
 
 function extractRegisteredCardIds(source) {
   const ids = new Set()
-  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|mage_form|breach_upgrade|attack|minion|power|strike)['"]/g
-  const factoryCardPattern = /\b(?:make(?:Nemesis|Strike)Card|makeGem|makeSpell|vaultCard|trinket)\(\s*['"]([a-z0-9_]+)['"]/g
+  const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|corruption|mage_form|breach_upgrade|attack|minion|power|strike)['"]/g
+  const factoryCardPattern = /\b(?:make(?:Nemesis|Strike)Card|makeCard|makeGem|makeSpell|corruptionCard|vaultCard|trinket)\(\s*['"]([a-z0-9_]+)['"]/g
   for (const pattern of [directCardPattern, factoryCardPattern]) {
     for (const match of source.matchAll(pattern)) ids.add(match[1])
   }
@@ -104,6 +104,7 @@ function getCardImageIndex(files) {
   const eligibleFiles = files.filter((file) => {
     const relativePath = relative(cardsRoot, file).replaceAll('\\', '/')
     const baseName = basename(file)
+    if (relativePath.split('/').some(part => part.trim().toLowerCase() === 'first edition')) return false
     const isMagePortrait = relativePath.includes('/mages/') && /\s+(front|back)\.[^.]+$/i.test(baseName)
     const isNemesisMat = relativePath.includes('/nemesis/')
       && /\s+(front|back)\.[^.]+$/i.test(baseName)
@@ -112,6 +113,15 @@ function getCardImageIndex(files) {
     return !isMagePortrait && !isNemesisMat && !isCardBack
   })
   const index = indexBySlug(eligibleFiles, (file) => slug(basename(file)))
+
+  // Some Beyond the Breach runtime IDs use the concise `_btb` suffix while
+  // the printed image filename spells out `(Beyond the Breach)`.
+  for (const [key, file] of [...index.entries()]) {
+    if (key.endsWith('_beyond_the_breach')) {
+      const shortKey = key.replace(/_beyond_the_breach$/, '_btb')
+      if (!index.has(shortKey)) index.set(shortKey, file)
+    }
+  }
 
   // Basic cards keep the same printed name across waves but can have
   // wave-specific artwork. Expose a stable `waveN_<card>` alias for data
@@ -158,17 +168,30 @@ function getMageTokenImageIndex(files) {
 
 function getNemesisMatImageIndex(files) {
   const index = new Map()
+  const waveNumber = (file) => Number(
+    relative(cardsRoot, file).replaceAll('\\', '/').match(/^wave(\d+)\//i)?.[1] ?? 0,
+  )
   for (const file of files) {
     const relativePath = relative(cardsRoot, file).replaceAll('\\', '/')
     if (!relativePath.includes('/nemesis/')) continue
     const baseName = basename(file)
+    if (relativePath.split('/').some(part => part.trim().toLowerCase() === 'first edition')) continue
     const match = baseName.match(/^(.+)\s+(Front|Back)\.[^.]+$/i)
-    if (!match || slug(match[1]) !== slug(relativePath.split('/').at(-2) ?? '')) continue
-    const nemesisType = slug(match[1])
+    if (!match) continue
+    const normalizedName = slug(match[1]).replace(/_(?:beyond_the_breach|the_surface|the_returned)$/, '')
+    const directoryName = slug(relativePath.split('/').at(-2) ?? '')
+      .replace(/_(?:beyond_the_breach|the_surface|the_returned)$/, '')
+    if (normalizedName !== directoryName) continue
+    const nemesisType = normalizedName
     const side = match[2].toLowerCase()
     const images = index.get(nemesisType) ?? {}
     if (images[side] && images[side] !== file) {
-      throw new Error(`Duplicate Nemesis mat ${side} image for "${nemesisType}":\n- ${images[side]}\n- ${file}`)
+      // A Nemesis can be reprinted with a revised mat in a later Wave while
+      // keeping the same runtime ID. The registered definition is merged in
+      // wave order too, so use the latest Wave's mat for that shared ID.
+      if (waveNumber(file) <= waveNumber(images[side])) {
+        throw new Error(`Duplicate Nemesis mat ${side} image for "${nemesisType}":\n- ${images[side]}\n- ${file}`)
+      }
     }
     images[side] = file
     index.set(nemesisType, images)

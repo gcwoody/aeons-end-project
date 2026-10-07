@@ -5,6 +5,7 @@ import type {
 import { getCard, MAGES } from '../data'
 import { isPresentBreach } from './breaches'
 import { getPlayer } from './zones'
+import { recordHealthChange } from './health-feedback'
 
 export function getLifeTargets(
   game: GameState, sourcePlayerId: string, scope: LifeTargetScope,
@@ -55,7 +56,12 @@ export function getSelectedPlayerTargets(
       return player.breaches.reduce((sum, breach) => sum + breach.prepSpells.length, 0)
     }
     if (selection === 'lowest_hp') return -player.hp
+    if (selection === 'highest_hp') return player.hp
     if (selection === 'most_charges') return player.charge
+    if (selection === 'most_crystals') return player.hand.filter(cardId => {
+      const card = getCard(cardId)
+      return card.type === 'gem' && card.name.trim().toLowerCase() === 'crystal'
+    }).length
     return player.breaches.filter(breach => isPresentBreach(breach) && breach.opened).length
   })
   const best = Math.max(...values)
@@ -115,18 +121,24 @@ export function gainLife(game: GameState, target: LifeTargetRef, amount: number)
     if (player.exhausted) return `${player.mageType} cannot gain life while exhausted`
     const before = player.hp
     player.hp = Math.min(player.maxHp, before + value)
-    return `${player.mageType} gains ${player.hp - before} life (${player.hp}/${player.maxHp})`
+    const gained = player.hp - before
+    recordHealthChange(game, { kind: 'healing', targetId: `player:${player.id}`, amount: gained })
+    return `${player.mageType} gains ${gained} life (${player.hp}/${player.maxHp})`
   }
 
   if (target.kind === 'nemesis') {
     const before = game.nemesis.hp
     game.nemesis.hp = Math.min(game.nemesis.maxHp, before + value)
-    return `Nemesis gains ${game.nemesis.hp - before} life (${game.nemesis.hp}/${game.nemesis.maxHp})`
+    const gained = game.nemesis.hp - before
+    recordHealthChange(game, { kind: 'healing', targetId: 'nemesis', amount: gained })
+    return `Nemesis gains ${gained} life (${game.nemesis.hp}/${game.nemesis.maxHp})`
   }
 
   const before = game.gravehold.hp
   game.gravehold.hp = Math.min(game.gravehold.maxHp, before + value)
-  return `Gravehold gains ${game.gravehold.hp - before} life (${game.gravehold.hp}/${game.gravehold.maxHp})`
+  const gained = game.gravehold.hp - before
+  recordHealthChange(game, { kind: 'healing', targetId: 'gravehold', amount: gained })
+  return `Gravehold gains ${gained} life (${game.gravehold.hp}/${game.gravehold.maxHp})`
 }
 
 export function getDamageTargets(game: GameState, scope: DamageTargetScope, sourceCardId?: string): DamageTargetRef[] {

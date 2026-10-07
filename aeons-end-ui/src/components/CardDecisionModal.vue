@@ -260,9 +260,9 @@ function confirmTurnOrder() {
   answer({ kind: 'reorder_turn_order', order: [...selectedTurnOrder.value] })
 }
 
-function placeSpecificDeckCard(cardId: string, placement: SpecificDeckPlacement) {
+function placeSpecificDeckCard(cardId: string, slot: number, placement: SpecificDeckPlacement) {
   if (decision.value?.kind !== 'place_specific_deck_card') return
-  answer({ kind: 'place_specific_deck_card', cardId, placement })
+  answer({ kind: 'place_specific_deck_card', cardId, slot, placement })
 }
 
 function resetTurnOrder() {
@@ -287,7 +287,8 @@ function collectiveZoneLabel(zone: CardChoice['zone']): string {
 
 const selectionItems = computed<CardSelectionItem[]>(() => {
   if (decision.value?.kind === 'select_cards') {
-    const items = decision.value.candidates.map(choice => ({
+    const current = decision.value
+    const items = current.candidates.map(choice => ({
       key: choiceKey(choice),
       cardId: choice.cardId,
       cardName: choice.cardName,
@@ -299,9 +300,9 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
             : choice.zone === 'specific_deck' ? specificDeckName.value : 'PLAYED THIS TURN',
       disabled: choice.disabled,
       disabledReason: choice.disabledReason ?? (choice.disabled ? 'Not enough Knowledge to install this upgrade.' : undefined),
-      highlight: choice.highlight,
+      highlight: choice.highlight ?? (selectedCardKeys.value.includes(choiceKey(choice)) ? undefined : current.targetHighlight),
     }))
-    if (decision.value.reorderable) {
+    if (current.reorderable) {
       const order = new Map(selectedCardOrderKeys.value.map((key, index) => [key, index]))
       items.sort((a, b) => (order.get(a.key) ?? Number.MAX_SAFE_INTEGER) -
         (order.get(b.key) ?? Number.MAX_SAFE_INTEGER))
@@ -387,6 +388,33 @@ function orderedSelectionChoices(): CardChoice[] {
   })
 }
 
+const selectedDiscardChoiceOrderMatters = computed(() => {
+  const kind = state.game?.pendingEffect?.awaiting?.kind
+  return kind === 'discard_cards' ||
+    kind === 'draw_and_discard_cards' ||
+    kind === 'discard_noncorruption_cards' ||
+    kind === 'discard_noncorruptions_and_gain_corruptions' ||
+    kind === 'discard_prepped_spells' ||
+    kind === 'discard_cards_collectively' ||
+    kind === 'deal_gravehold_damage_with_gem_discard' ||
+    kind === 'devouring_wave_discard_and_gain' ||
+    kind === 'reveal_top_cards_for_discard'
+})
+
+function selectedChoicesInClickOrder<T>(
+  candidates: readonly T[], selectedKeys: readonly string[], keyFor: (candidate: T) => string,
+): T[] {
+  if (!selectedDiscardChoiceOrderMatters.value) {
+    const selected = new Set(selectedKeys)
+    return candidates.filter(candidate => selected.has(keyFor(candidate)))
+  }
+  const byKey = new Map(candidates.map(candidate => [keyFor(candidate), candidate]))
+  return selectedKeys.flatMap(key => {
+    const candidate = byKey.get(key)
+    return candidate ? [candidate] : []
+  })
+}
+
 function confirmSelectedCards() {
   if (isLargeCardSelection.value && decision.value?.kind === 'choose_one') {
     if (selectedCardKeys.value.length !== 1) return
@@ -396,7 +424,9 @@ function confirmSelectedCards() {
     return
   }
   if (decision.value?.kind === 'select_cards') {
-    const choices = decision.value.candidates.filter(choice => selectedCardKeys.value.includes(choiceKey(choice)))
+    const choices = selectedChoicesInClickOrder(
+      decision.value.candidates, selectedCardKeys.value, choiceKey,
+    )
     if (choices.length < decision.value.min || choices.length > decision.value.max) return
     resolveDecision({
       kind: 'select_cards', choices,
@@ -405,7 +435,9 @@ function confirmSelectedCards() {
     return
   }
   if (decision.value?.kind === 'select_collective_cards') {
-    const choices = decision.value.candidates.filter(choice => selectedCardKeys.value.includes(collectiveChoiceKey(choice)))
+    const choices = selectedChoicesInClickOrder(
+      decision.value.candidates, selectedCardKeys.value, collectiveChoiceKey,
+    )
     if (choices.length < decision.value.min || choices.length > decision.value.max) return
     resolveDecision({ kind: 'select_collective_cards', choices })
   }
@@ -743,14 +775,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
               <button
                 class="btn decision-option"
                 type="button"
-                @click="placeSpecificDeckCard(card.cardId, 'top')"
+                @click="placeSpecificDeckCard(card.cardId, card.slot, 'top')"
               >
                 Return to Top
               </button>
               <button
                 class="btn decision-option"
                 type="button"
-                @click="placeSpecificDeckCard(card.cardId, 'bottom')"
+                @click="placeSpecificDeckCard(card.cardId, card.slot, 'bottom')"
               >
                 Return to Bottom
               </button>

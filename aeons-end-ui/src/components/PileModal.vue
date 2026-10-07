@@ -1,8 +1,12 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
-import { getTrinketDeckCards, isTrinketDeckCardRevealed } from '@engine/engine'
+import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, playerCardBackUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
+import {
+  getTrinketDeckCards, isCorruptionDeckCardRevealed, isNemesisDeckCardRevealed,
+  isPlayerDeckCardRevealed,
+  isSpecificDeckCardRevealed, isTrinketDeckCardRevealed,
+} from '@engine/engine'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
@@ -39,21 +43,19 @@ const title = computed(() => {
   if (state.viewPile === 'nemesis_deck') return 'Nemesis Deck'
   if (state.viewPile === 'nemesis_discard') return 'Nemesis Discard'
   if (state.viewPile === 'player_cards_in_play') return 'Player Cards in Play'
+  if (state.viewPile === 'destroyed') return 'Destroyed Cards'
   return state.viewPile === 'deck' ? 'Deck' : 'Discard'
 })
-const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
+const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)'
+  : state.viewPile === 'destroyed' ? '' : '(top → bottom)')
 const isSpecificDeck = computed(() => state.viewPile === 'specific_deck')
 const isTrinketDeck = computed(() => state.viewPile === 'trinket_deck')
+const isCorruptionDeck = computed(() => state.viewPile === 'nemesis_specific'
+  && state.game?.nemesis.type === 'crooked_mask')
 const isQuFormDeck = computed(() => isSpecificDeck.value && displayPlayer.value?.mageType === 'qu')
 const isNemesisFaceDown = computed(() => state.viewPile === 'nemesis_deck'
   || (state.viewPile === 'nemesis_specific'
     && getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.display !== 'face_up'))
-const specificDeckFaceUp = computed(() =>
-  MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckDisplay === 'face_up',
-)
-const specificDeckTopRevealed = computed(() =>
-  MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckDisplay === 'top_revealed',
-)
 const specificDeckBackImage = computed(() =>
   specificDeckBackUrl(MAGES[displayPlayer.value?.mageType ?? '']?.specificDeckBack ?? 'player'),
 )
@@ -61,9 +63,9 @@ const faceDownBackImage = computed(() => {
   if (state.viewPile === 'trinket_deck') return trinketDeckBackUrl()
   if (state.viewPile === 'nemesis_deck') return nemesisCardBackUrl()
   if (state.viewPile === 'nemesis_specific') return nemesisSpecificDeckBackUrl(state.game?.nemesis.type ?? '')
+  if (state.viewPile === 'deck' || state.viewPile === 'discard') return playerCardBackUrl()
   return specificDeckBackImage.value
 })
-const knownSpecificDeckCards = computed(() => new Set(displayPlayer.value?.knownSpecificDeckCards ?? []))
 const playerCardEntries = computed(() =>
   (displayPlayer.value?.playerCardsInPlay ?? [])
     .map((cardId, cardIndex) => ({ cardId, cardIndex }))
@@ -72,11 +74,16 @@ const playerCardEntries = computed(() =>
 const cards = computed(() => {
   if (state.viewPile === 'trinket_deck') return state.game ? getTrinketDeckCards(state.game) : []
   if (state.viewPile === 'specific_deck') return displayPlayer.value?.specificDeck ?? []
-  if (state.viewPile === 'nemesis_specific') return state.game?.nemesis.strikeDeck ?? []
+  if (state.viewPile === 'nemesis_specific') {
+    return state.game?.nemesis.type === 'crooked_mask'
+      ? state.game.nemesis.corruptionDeck ?? []
+      : state.game?.nemesis.strikeDeck ?? []
+  }
   if (state.viewPile === 'nemesis_specific_discard') return state.game?.nemesis.strikeDiscard ?? []
   if (state.viewPile === 'nemesis_deck') return state.game?.nemesis.deck ?? []
   if (state.viewPile === 'nemesis_discard') return state.game?.nemesis.discard ?? []
   if (state.viewPile === 'player_cards_in_play') return playerCardEntries.value.map(entry => entry.cardId)
+  if (state.viewPile === 'destroyed') return displayPlayer.value?.destroyedCards ?? []
   return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
 })
 const recallActions = computed(() => state.viewPile === 'discard' && displayPlayer.value
@@ -133,18 +140,25 @@ function selectPileCard(groupIndex: number, cardIndex: number) {
   activatePlayerCardInPlayAction(index)
 }
 
-function isKnownSpecificDeckCard(cardId: string): boolean {
-  return knownSpecificDeckCards.value.has(cardId)
-}
-
 function recallActionAvailable(index: number, cardId: string): boolean {
   return recallActions.value.some(action => action.discardIndex === index && action.cardId === cardId)
 }
 
 function isFaceVisible(cardId: string, index: number): boolean {
   if (isTrinketDeck.value) return state.game ? isTrinketDeckCardRevealed(state.game, index) : false
-  return !isNemesisFaceDown.value && (!isSpecificDeck.value || specificDeckFaceUp.value ||
-    (specificDeckTopRevealed.value && index === 0) || isKnownSpecificDeckCard(cardId))
+  if (isCorruptionDeck.value) return state.game ? isCorruptionDeckCardRevealed(state.game, index) : false
+  if (state.viewPile === 'nemesis_deck') return state.game ? isNemesisDeckCardRevealed(state.game, index) : false
+  if (state.viewPile === 'deck') {
+    return state.game && displayPlayer.value
+      ? isPlayerDeckCardRevealed(state.game, displayPlayer.value.id, index)
+      : false
+  }
+  if (isSpecificDeck.value) {
+    return state.game && displayPlayer.value
+      ? isSpecificDeckCardRevealed(state.game, displayPlayer.value.id, index)
+      : false
+  }
+  return !isNemesisFaceDown.value
 }
 
 function specificCardImage(cardId: string): string | undefined {
@@ -201,6 +215,9 @@ function specificCardImage(cardId: string): string | undefined {
                 'player-card-in-play-action': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
                 'player-card-in-play-disabled': isPlayerCardsInPlay && !playerCardActionAvailable(cardIndexInPile(gi, i), cid),
                 'recall-card-action': recallActionAvailable(cardIndexInPile(gi, i), cid),
+                'game-highlight': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || recallActionAvailable(cardIndexInPile(gi, i), cid),
+                'game-highlight--available': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
+                'game-highlight--context': recallActionAvailable(cardIndexInPile(gi, i), cid),
               }"
               @click="selectPileCard(gi, i)"
             />

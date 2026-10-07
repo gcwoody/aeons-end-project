@@ -1,30 +1,28 @@
 # Aeon's End Digital Demo
 
-这是一个本地单机 Web Demo：两名 Mage 对抗一名 Nemesis。项目使用 Vue 3 + Vite 前端和共享的 TypeScript 规则引擎，当前版本主要覆盖 Wave 1，以及已经接入的 Wave 9 内容。
+这是一个本地单机网页版 Demo：两名 Mage 对抗一名 Nemesis。规则由共享的 TypeScript 引擎处理，Vue 前端负责显示棋盘、收集操作和保存本地进度。
 
-> 本项目是非官方的个人项目，不代表 Aeon's End 官方。项目中的卡牌、角色和相关图片素材仅用于当前 Demo 的测试与朋友试玩；公开发布或商业化前需要重新确认素材的授权、版权和商标范围。
+> 本项目是非官方个人项目，不代表 Aeon's End 官方。卡牌、角色和图片素材用于 Demo 与朋友试玩；公开发布或商业化前，需要另行确认素材授权、版权和商标范围。
 
-## 当前范围
+## 当前内容
 
-- 固定的双人场景：两名不同的 Mage，对抗一名 Nemesis。
-- 已注册 8 个 Wave 1 Mage，以及 10 个 Wave 9 Mage：Indira、Nook、Stake、Wolf、Dezmodia、Remnant、Inco、Qu、Tressa、Yan Magda。
-- 已注册 Nemesis：Rageborne、Prince of Gluttons。
-- Wave 1 与 Wave 9 的 Gems、Relics、Spells 市场牌，以及 Wave 9 Trinket deck。
-- Setup 支持 Mage/Nemesis 图片选择、随机选择、Nemesis 难度，以及 Template 1 市场九宫格和逐槽位替换。
-- 支持卡牌效果、目标决策、Breach、Nemesis 的 Attack/Power/Minion、Unleash 和当前已接入的 Nemesis 专属规则。
-- 支持 Save & Exit、Resume、浏览器刷新恢复，以及最多 10 步的 Ctrl+Z 撤销；撤销历史会随存档保留。
-- 支持 Ctrl+D 调试面板，用于调整生命、Aether、充能、Knowledge、卡牌、Breach 和 JSON 存档。
-- Wave 9 的 10 位 Mage、供应牌和 Trinket deck 已接入。Friends、Foes、Banners、Wave 9 Nemeses 与 Basic Nemesis Cards 目前只有资料，尚未接入运行时。
+- 固定双人场景：两名不同的 Mage 对抗一名 Nemesis；目前没有账号、联机或跨设备同步。
+- 已接入 8 位 Wave 1 Mage、10 位 Wave 9 Mage，以及 Rageborne 和 Prince of Gluttons 两位 Nemesis。
+- 可使用 Wave 1 与 Wave 9 的 Gems、Relics、Spells 和 Wave 9 Trinket deck。Wave 9 Friends、Foes、Banners、Nemeses 与 Basic Nemesis Cards 目前仍是资料，尚未接入对局；详见 [Wave 9 状态](design/wave9-plan.md)。
+- Setup 支持选择或随机选择 Mage/Nemesis、设置 Nemesis 难度，以及使用 Template 1 市场并逐槽替换卡牌。
+- 支持卡牌效果与目标决策、Breach、Nemesis Attack/Power/Minion、Unleash、存档恢复和最多 10 步的 Ctrl+Z 撤销。
+- 棋盘包含卡牌飞行、Breach Focus/Open、回合切换、Nemesis 抽牌翻面和受击反馈等动效；组件复用和样式约定见 [UI 开发指南](ui/ui-guide.md)。
+- Debug Tools（`Ctrl+D`）用于调整游戏状态、牌序和调试操作。
 
-当前不是联机游戏：没有账号、服务器、数据库或多人同步。存档只保存在当前浏览器的 `localStorage` 中，清除网站数据会删除存档。
+存档只保存在当前浏览器的 `localStorage` 中；清除网站数据会删除存档。
 
-## 推荐游玩配置
+## 建议游玩尺寸
 
-本游戏面向桌面浏览器，建议最大化窗口或按 `F11` 全屏，以 16:9 横屏游玩；推荐 1920×1080 或更高分辨率。前端的最低设计目标是浏览器内容区 1440×900 CSS 像素；更小的窗口不保证布局和操作体验。
+面向桌面浏览器，建议最大化窗口或按 `F11` 全屏，以 16:9 横屏游玩；推荐 1920×1080 或更高分辨率。最低设计目标是浏览器内容区 1440×900 CSS 像素；小于此尺寸不保证布局和操作体验。
 
-## 快速开始
+## 启动项目
 
-在仓库根目录打开 PowerShell：
+在仓库根目录的 PowerShell 中运行：
 
 ```powershell
 cd aeons-end-engine
@@ -36,66 +34,69 @@ npm ci
 npm run dev        # http://localhost:5173
 ```
 
-首次运行浏览器测试时，还需要安装 Playwright 浏览器：
+首次运行浏览器测试时安装 Playwright 浏览器：
 
 ```powershell
 cd aeons-end-ui
 npx playwright install chromium
 ```
 
-## 常用验证
+## 验证改动
 
 ```powershell
-# 规则引擎：类型检查并运行 stage1、stage2、stage3、stage4、stage7、stage8 回归测试
+# 引擎类型检查和回归测试
 cd aeons-end-engine
 npm test
 
-# 前端类型检查和生产构建
+# 前端类型检查与生产构建
 cd ..\aeons-end-ui
 npx vue-tsc --noEmit
 npm run build
 
-# 浏览器流程测试
+# 浏览器流程与交互测试
 npm run test:e2e
+
+# UI Gallery 回归
+npm run test:ui-gallery
 ```
 
-`npm run build` 会先运行 `npm run generate:images`，从 `image-database/` 重新生成实际使用图片的导入映射。不要手动编辑 `aeons-end-ui/src/generated-image-imports.ts`。
+前端 `npm run build` 会先运行 `npm run generate:images`，从 `image-database/` 生成图片导入映射。不要手动编辑 `aeons-end-ui/src/generated-image-imports.ts`。
 
-## 项目结构
+## 代码入口
 
+```text
+aeons-end-engine/src/data/   按 Wave 和内容类型组织的 Mage、卡牌与牌堆资料
+aeons-end-engine/src/engine/ 共享规则模块；engine.ts 保留公开入口
+aeons-end-engine/src/nemesis/ Nemesis 专属规则模块
+aeons-end-ui/src/components/ Vue 棋盘、卡牌、弹窗和 UI Gallery
+aeons-end-ui/src/game/       前端游戏状态、阶段协调、存档和撤销
+aeons-end-ui/src/styles/     按职责拆分的样式；tokens.css 保存全局变量
+documents/                   游戏卡牌与 Mage 的基础资料
+design/                      当前 Wave 状态等少量仍有效的设计记录
 ```
-aeons-end-engine/  纯 TypeScript 规则引擎和游戏数据
-aeons-end-ui/      Vue 3 + Vite 展示层，通过 @engine 直接引用引擎源码
-scripts/           图片映射生成脚本
-image-database/    卡牌、Mage Mat、Nemesis Mat 和 Breach 素材
-documents/         卡牌资料和抓取结果
-design/            当前有效的设计、发布和部署文档
-ui/                UI 统一开发指南和截图
-```
 
-引擎原地修改一个 `GameState`；UI 使用 Vue `reactive()` 追踪状态。规则、资源、目标选择和中断恢复由引擎决定，组件只负责显示状态、收集输入并调用引擎。
+引擎原地修改一个 `GameState`；前端直接通过 `@engine` 引用引擎，并用 Vue `reactive()` 追踪状态。规则结果由引擎决定，组件只显示状态、收集输入并调用引擎。
 
 ## 开发入口
 
-- 新增卡牌、Mage、Nemesis 或场景：先阅读 [dev-guide.md](dev-guide.md)。
-- 处理 UI 组件、状态、布局、弹窗、悬停、拖拽和 `z-index`：阅读 [ui/ui-guide.md](ui/ui-guide.md)。
-- 配置托管时，以当前托管平台的项目设置和构建输出为准；本仓库不维护单独的发布或部署计划文档。
+- 卡牌、Mage、Nemesis 与引擎规则：先读 [dev-guide.md](dev-guide.md)，再读对应的 `documents/` 资料和引擎数据/测试。
+- 布局、组件、弹窗、动效、拖拽和层级：[ui/ui-guide.md](ui/ui-guide.md)。
+- 只在检查 Wave 9 接入进度时阅读 [design/wave9-plan.md](design/wave9-plan.md)。
 
 ## 浏览器快捷键
 
 | 快捷键 | 功能 |
 | --- | --- |
-| `Ctrl+Z` | 撤销最近一次操作，最多 10 步 |
+| `Ctrl+Z` | 撤销最近操作，最多 10 步 |
 | `Ctrl+D` | 打开或关闭 Debug Tools |
 | `1`–`4` | 切换当前显示的 Mage |
-| `Tab` | 循环切换当前显示的玩家 |
-| `Q` | 查看当前 Mage 的抽牌堆 |
-| `W` | 查看当前 Mage 的弃牌堆 |
-| `Space` | 确认决策窗口中可用的 Confirm、确认 Nemesis 抽牌、结算红框标记的 Nemesis 主阶段卡牌，或推进当前阶段 |
-| `Esc` | 打开或关闭退出菜单 |
+| `Tab` | 切换当前显示的玩家 |
+| `Q` / `W` | 查看当前 Mage 的抽牌堆 / 弃牌堆 |
+| `Space` | 确认可用的决策、确认 Nemesis 抽牌、确认待结算法术伤害，或推进支持空格操作的阶段 |
+| `Esc` | 打开或关闭退出菜单；阻塞式决策弹窗不会被它取消 |
 
-## 发布说明
+Debug Tools 文本框聚焦时，普通快捷键交给文本输入；`Esc` 关闭工具，`Tab` 仍切换玩家视角。
 
-当前版本适合通过 Vercel Preview 分享给朋友试玩。Vercel 只负责托管静态前端，不会自动提供联机、账号或云端存档。部署时需确认托管平台允许 UI 构建读取 `aeons-end-engine/` 和 `scripts/`。
+## 试玩部署
 
-分享时应提供网站地址，而不是部署 Token 或项目管理权限。建议保留上一版 Preview/Deployment，以便出现阻塞问题时回滚。
+项目可以通过 Vercel Preview 分享静态前端。存档仍在玩家当前浏览器本地，不会因为托管而变成云存档。部署构建需要能读取 `aeons-end-engine/`、`aeons-end-ui/` 和根目录 `scripts/`；分享试玩地址即可，不要分享部署 Token 或项目管理权限。建议保留前一版 Preview，方便必要时回退。

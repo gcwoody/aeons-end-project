@@ -11,7 +11,7 @@ before making changes; do not duplicate their detailed rules here.
 4. For a card or Mage change, read only its source entry under `documents/` and
    the matching engine data/tests. Read `documents/wave9/collection-summary.md`
    only when checking the full Wave 9 collection.
-5. Read `design/wave9-plan.md` only for Wave 9 status.
+5. Read `design/wave9-plan.md` only when checking Wave 9 implementation status.
 
 ## Non-negotiable project rules
 
@@ -33,9 +33,11 @@ cd aeons-end-engine
 npm test
 
 cd ..\aeons-end-ui
+npx vue-tsc --noEmit
 npm run dev
 npm run build
 npm run test:e2e
+npm run test:ui-gallery
 ```
 
 For UI-specific conventions, use `ui/ui-guide.md` rather than adding another

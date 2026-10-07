@@ -1,5 +1,32 @@
 import { test, expect, type Page } from '@playwright/test'
 
+async function clearInitialNemesisDraw(page: Page) {
+  let quietChecks = 0
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const flight = page.locator('.nemesis-draw-flight-scene')
+    if (await flight.isVisible().catch(() => false)) {
+      await expect(flight).toHaveCount(0, { timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await reveal.click({ position: { x: 12, y: 12 } })
+      await expect(reveal).toHaveCount(0)
+      quietChecks = 0
+      continue
+    }
+    const shield = page.locator('.turn-transition-shield')
+    if (await shield.isVisible().catch(() => false)) {
+      await expect(shield).toBeHidden({ timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    await page.waitForTimeout(100)
+    if (++quietChecks >= 3) return
+  }
+}
+
 async function startCleanGame(page: Page) {
   await page.setViewportSize({ width: 1920, height: 1080 })
   await page.goto('/')
@@ -32,8 +59,9 @@ async function startCleanGame(page: Page) {
       await confirm.click()
       continue
     }
-    return
+    break
   }
+  await clearInitialNemesisDraw(page)
 }
 
 async function applyMainPhaseState(page: Page, update: (game: any, player: any) => void) {
@@ -83,11 +111,100 @@ test('casting a damaging spell shows localized damage feedback on the target', a
   await expect(page.locator('.damage-impact-aura')).toBeVisible()
 })
 
+test('Tressa Overload Stance shows feedback when the last spell auto-enters Main Phase', async ({ page }) => {
+  await startCleanGame(page)
+  await applyMainPhaseState(page, (game, player) => {
+    player.mageType = 'tressa'
+    player.playerCardsInPlay = ['overload_stance']
+    player.playerCardSupplyTargets = [null]
+    player.playerCardPowerTokens = [0]
+    player.spellsCastThisTurn = 0
+    for (const breach of player.breaches) {
+      breach.prepSpells = []
+      breach.preppedThisTurn = []
+      breach.preppedSpellFaceDown = []
+    }
+    player.breaches[0].opened = true
+    player.breaches[0].prepSpells = ['spark']
+    player.breaches[0].preppedThisTurn = [false]
+    player.breaches[0].preppedSpellFaceDown = [false]
+    game.nemesis.hp = 70
+    game.nemesis.playArea = []
+    game.currentPhase = 'casting'
+  })
+
+  // The helper sets Main Phase for its standard fixtures; put the UI back in
+  // Casting Phase so the final Spark drives the same automatic transition.
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'casting'
+  debugState.game.currentPhase = 'casting'
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame').click()
+  await expect(page.locator('.nemesis-info-nemesis .hp-num b')).toHaveText('68')
+  const bubbles = page.locator('.damage-impact-nemesis .damage-impact-number')
+  await expect(bubbles).toHaveCount(2)
+  await expect(bubbles.nth(0)).toHaveText('−1')
+  await expect(bubbles.nth(1)).toHaveText('−1')
+})
+
+test('damage to a Minion from a resolved effect gets a localized damage bubble', async ({ page }) => {
+  await startCleanGame(page)
+
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  debugState.selectedPlayer = player.id
+  debugState.phase = 'casting'
+  debugState.game.currentTurn = player.id
+  debugState.game.currentPhase = 'casting'
+  for (const breach of player.breaches) breach.prepSpells = []
+  player.breaches[0].opened = true
+  player.breaches[0].prepSpells = ['spark']
+  debugState.game.nemesis.playArea = [{
+    cardId: 'haze_spewer', cardType: 'minion', placedAt: 123456,
+    instanceId: 'haze-spewer-damage-feedback-test', enteredOnNemesisTurn: 0, lifeTokens: 5,
+  }]
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame').click()
+  const minion = page.locator('[data-damage-target="minion:123456"]')
+  await expect(minion).toBeVisible()
+  await minion.click()
+  await expect(page.locator('.damage-impact-minion .damage-impact-number')).toHaveText('−1')
+})
+
+test('a resolved healing effect shows a green health feedback bubble', async ({ page }) => {
+  await startCleanGame(page)
+  await applyMainPhaseState(page, (game, player) => {
+    game.gravehold.hp = 27
+    player.hand = ['focusing_orb']
+    player.playedThisTurn = []
+  })
+
+  await page.locator('[data-hand-card-index="0"]').click()
+  await page.getByRole('button', { name: 'Destroy this to let Gravehold gain 3 life' }).click()
+
+  await expect(page.locator('.nemesis-info-gravehold .hp-num b')).toHaveText('30')
+  const bubble = page.locator('.damage-impact-gravehold .damage-impact-number')
+  await expect(bubble).toHaveText('+3')
+  await expect(page.locator('.damage-impact-gravehold')).toHaveClass(/damage-impact--healing/)
+})
+
 test('Play All Gems animates in sequence and waits for a card decision', async ({ page }) => {
   await startCleanGame(page)
   // Keep the travel long enough to assert the intermediate state rather than
   // racing the end of the animation on a fast test machine.
-  await page.addStyleTag({ content: ':root { --card-flight-duration: 1200ms; }' })
+  await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 1200ms; }' })
   await applyMainPhaseState(page, (_game, player) => {
     player.hand = ['crystal', 'emerald_shard']
     player.playedThisTurn = []
@@ -124,16 +241,20 @@ test('buying a supply card animates it into the top of the discard pile', async 
   expect(cardId).toBeTruthy()
   await supply.click()
 
-  await expect(page.locator('.card-flight-clone')).toBeVisible()
+  const flight = page.locator('.card-flight-clone')
+  await expect(flight).toBeVisible()
+  await expect(flight).not.toHaveClass(/can-buy|develop-action-available/)
+  await expect(flight.locator('.remaining, .develop-cost-badge')).toHaveCount(0)
   const destination = page.locator(`.player-discard-pile [data-discard-top-card="${cardId}"]`)
-  await expect(destination).toBeHidden()
+  await expect(destination).toBeVisible()
+  await expect(page.locator('.player-discard-pile')).toBeVisible()
   await expect(page.locator('.card-flight-clone')).toHaveCount(0)
   await expect(destination).toBeVisible()
 })
 
 test('Discard Phase waits for each card flight before advancing the turn', async ({ page }) => {
   await startCleanGame(page)
-  await page.addStyleTag({ content: ':root { --card-flight-duration: 1200ms; }' })
+  await page.addStyleTag({ content: ':root { --discard-phase-flight-duration: 1200ms; }' })
   await applyMainPhaseState(page, (_game, player) => {
     player.hand = []
     player.playedThisTurn = ['crystal', 'spark', 'emerald_shard']
@@ -142,9 +263,25 @@ test('Discard Phase waits for each card flight before advancing the turn', async
 
   await page.getByRole('button', { name: 'End Turn', exact: true }).click()
   await expect(page.locator('.controls .phase')).toHaveText('Discard Phase · Card Order')
+  const playedHeading = page.locator('.played-zone-heading-played')
+  const firstPlayedCard = page.locator('.played-zone-center [data-discard-phase-card-index="0"]')
+  await firstPlayedCard.hover()
+  const headingLayout = await page.evaluate(() => {
+    const heading = document.querySelector('.played-zone-heading-played')!
+    const zone = document.querySelector('.played-zone-center')!
+    return {
+      headingTop: heading.getBoundingClientRect().top,
+      zoneTop: zone.getBoundingClientRect().top,
+      headingLayer: Number.parseInt(getComputedStyle(heading.parentElement!).zIndex, 10),
+      hoveredZoneLayer: Number.parseInt(getComputedStyle(zone).zIndex, 10),
+    }
+  })
+  await expect(playedHeading).toBeVisible()
+  expect(headingLayout.headingTop - headingLayout.zoneTop).toBeCloseTo(5, 0)
+  expect(headingLayout.headingLayer).toBeGreaterThan(headingLayout.hoveredZoneLayer)
   const previousTop = page.locator('.player-discard-pile [data-discard-top-card="vriswood_amber"]')
   await expect(previousTop).toBeVisible()
-  await page.locator('.played-zone-center [data-discard-phase-card-index="0"]').click()
+  await firstPlayedCard.click()
 
   const crystalDestination = page.locator('.player-discard-pile [data-discard-top-card="crystal"]')
   await expect(page.locator('.card-flight-clone')).toBeVisible()

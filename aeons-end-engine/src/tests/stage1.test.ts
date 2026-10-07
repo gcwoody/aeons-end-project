@@ -2,6 +2,9 @@ import { createGame } from '../engine'
 import {
   BASIC_NEMESIS_CARDS,
   BASIC_NEMESIS_CARDS_BY_TIER,
+  WAVE9_BASIC_NEMESIS_CARDS,
+  CROOKED_MASK_CORRUPTION_CARDS,
+  crookedMask,
   NEMESIS_CARDS,
   RAGEBORNE_STRIKE_CARDS,
   RAGEBORNE_UNIQUE_CARDS,
@@ -28,7 +31,8 @@ function fixedRandom(): () => number {
 }
 
 function testNemesisCatalog(): void {
-  assertEqual(Object.keys(BASIC_NEMESIS_CARDS).length, 22, 'Basic Nemesis catalog contains 22 cards')
+  assertEqual(Object.keys(BASIC_NEMESIS_CARDS).length, 43, 'Basic Nemesis catalog includes all supported waves')
+  assertEqual(Object.keys(WAVE9_BASIC_NEMESIS_CARDS).length, 22, 'Wave 9 contributes 22 Basic Nemesis cards')
   assertEqual(Object.keys(RAGEBORNE_UNIQUE_CARDS).length, 9, 'Rageborne catalog contains 9 unique cards')
   assertEqual(Object.keys(RAGEBORNE_STRIKE_CARDS).length, 6, 'Rageborne catalog contains 6 Strike cards')
 
@@ -48,6 +52,24 @@ function testNemesisCatalog(): void {
     for (const id of ids) assertEqual(RAGEBORNE_UNIQUE_CARDS[id]!.tier, Number(tier), `${id} tier`)
   }
   for (const id of Object.keys(RAGEBORNE_STRIKE_CARDS)) assertEqual(getCard(id).type, 'strike', `${id} is a Strike card`)
+}
+
+function testCrookedMaskSetup(): void {
+  assertEqual(Object.keys(CROOKED_MASK_CORRUPTION_CARDS).length, 11, 'Crooked Mask has eleven Corruption cards')
+  const standard = createGame(createTwoPlayerScenario(['jian', 'brama'], 'crooked_mask'))
+  assertEqual(standard.nemesis.name, 'Crooked Mask', 'Crooked Mask is selectable in Setup')
+  assertEqual(standard.nemesis.hp, 70, 'Crooked Mask starts with 70 life')
+  assertEqual(standard.nemesis.deck.length, 24, 'Crooked Mask deck contains 9 unique and 15 Basic cards')
+  assertEqual(standard.nemesis.corruptionDeck?.length, 11, 'Crooked Mask initializes a shuffled Corruption deck')
+  assertEqual(standard.nemesis.strikeDeck.length, 0, 'Crooked Mask does not receive a Strike deck')
+
+  const increased = createGame(createTwoPlayerScenario(['jian', 'brama'], 'crooked_mask', 'increased'))
+  for (const player of increased.players) {
+    assertEqual(getCard(player.deck[player.deck.length - 1]!).type, 'corruption', 'Increased difficulty Corruption remains face down in the starting deck')
+  }
+  assertEqual(increased.nemesis.corruptionDeck?.length, 9, 'Increased difficulty takes one Corruption for each Mage')
+  assert(Object.values(BASIC_NEMESIS_CARDS_BY_TIER).flat().includes('dark_conclusion'), 'Wave 9 Basic cards enter the shared Nemesis pool')
+  assert(crookedMask.basicCardsPerTier[3] === 7, 'Crooked Mask uses seven Tier 3 Basic cards')
 }
 
 function testRageborneDeckBuilder(): void {
@@ -114,6 +136,7 @@ function testNemesisGameInitialization(): void {
 }
 
 testNemesisCatalog()
+testCrookedMaskSetup()
 testRageborneDeckBuilder()
 testNemesisGameInitialization()
 console.log('Stage 1 Nemesis data and deck tests passed.')

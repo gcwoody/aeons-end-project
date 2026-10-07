@@ -47,6 +47,7 @@ body {
   width: 100vw;
 }
 .app:has(.log-col.collapsed) { grid-template-columns: 1fr 38px; }
+.app.without-log { grid-template-columns: 1fr; }
 .main-col {
   display: flex;
   flex-direction: column;
@@ -65,6 +66,7 @@ body {
   flex-direction: column;
 }
 .log-panel { height: 100%; display: flex; flex-direction: column; min-width: 0; }
+.panel.log-panel { border: 0; }
 .log-panel.collapsed { padding: 8px 4px; }
 .log-toggle {
   display: flex;
@@ -211,7 +213,6 @@ body {
 }
 .slot.done { color: var(--text); background: var(--panel-2); }
 .slot.nemesis { color: var(--danger); border-color: var(--danger); }
-.slot.current { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .hp-block { display: flex; align-items: center; gap: 8px; }
 .hp-name { color: var(--muted); font-size: 12px; font-weight: 700; }

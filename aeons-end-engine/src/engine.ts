@@ -16,7 +16,7 @@ import { buildScenarioTurnOrder, createInitialGameState, playerIdForMage } from 
 import { getNemesisRules } from './nemesis/registry'
 import { leastExpensiveMarketPiles, marketPileChoices } from './nemesis/market'
 import { buildTrinketDeck } from './data/wave9/special-decks/trinkets'
-import { advanceBreachFocus, isPresentBreach, rotateDirection } from './engine/breaches'
+import { advanceBreachFocus, canPrepOnBreach, isPresentBreach, rotateDirection } from './engine/breaches'
 import { drawFromDeck, ensureDeckForReveal, preparePlayerDeckForReveal, shuffle } from './engine/decks'
 import {
   breachCostReduction, consumeBreachCostReductions, getAllRemainingConditional,
@@ -43,6 +43,7 @@ import type { EffectConditionServices } from './engine/effect-conditions'
 import { createNemesisTurnRuntime } from './engine/nemesis-turn'
 import type { NemesisDiscardAction as NemesisDiscardActionType } from './engine/nemesis-turn'
 import { createEffectResolver } from './engine/effect-resolution'
+import { gainPlayerCharge } from './engine/charge-feedback'
 import { createDecisionResolver } from './engine/decision-resolution'
 import {
   checkGameOver as combatCheckGameOver,
@@ -54,8 +55,12 @@ import {
 } from './engine/combat'
 import {
   ensureSharedDevelopZone, ensureTrinketDeckState, getDevelopZoneCards, getGameZoneVisibility, getPlayer, getSupplyMechanics,
-  getTrinketDeckCards, isTrinketDeckCardRevealed,
+  drawPlayerDeckCards, getTrinketDeckCards, isTrinketDeckCardRevealed,
+  preparePlayerDeckForRevealWithInstances, putPlayerCardInDeck, returnCorruptionToBottom,
 } from './engine/zones'
+import {
+  createCardInstance, ensureCardInstanceZone, insertCardInstanceAt, markCardInstanceRevealed,
+} from './engine/card-instances'
 import {
   automaticallyAllocateDamage, effectTargetPlayerId, gainLife, getDamageTargets, getDoomOwner,
   getEffectPlayerTargets, getLifeTargets, getPlayerTargets, getSelectedDamagePlayerTargets,
@@ -69,8 +74,10 @@ export { getLifeTargets, getPlayerTargets, gainLife, getDamageTargets } from './
 export { drawFromDeck, shuffle } from './engine/decks'
 export { getPrepSpellLimit, getPlayerTurnEffects, MAX_PULSE_TOKENS } from './engine/player-state'
 export {
-  getDevelopZoneCards, getGameZoneVisibility, getPlayer, getSupplyMechanics,
-  getTrinketDeckCards, isTrinketDeckCardRevealed,
+  drawPlayerDeckCards, ensurePlayerDeckInstances, getDevelopZoneCards, getGameZoneVisibility, getPlayer, getSupplyMechanics,
+  isPlayerDeckCardRevealed, putPlayerCardInDeck,
+  getTrinketDeckCards, isTrinketDeckCardRevealed, isCorruptionDeckCardRevealed,
+  isNemesisDeckCardRevealed, isSpecificDeckCardRevealed, returnNemesisDiscardCardToDeck,
 } from './engine/zones'
 export {
   getAllRemainingConditional, getConditionalAetherByType, getRemainingConditionalAether, getTotalAether,
@@ -132,10 +139,37 @@ export function resolveMageSetups(g: GameState): string[] {
 
 // ===== Turn Management =====
 
+function clearFocusedBreachMarkers(g: GameState): void {
+  for (const player of g.players) {
+    for (const breach of player.breaches) breach.focusedThisTurn = false
+  }
+}
+
 export function startTurn(g: GameState): GameState {
   g.damagePrevention = false
   if (g.turnOrderDeck.length === 0) {
-    g.turnOrderDeck = buildScenarioTurnOrder(g.scenario, g.players.map(player => player.id))
+    if (g.nemesis.turnOrderDeckResetCardId) {
+      const nemesisCards = g.turnOrderDiscard.filter(cardId => cardId === 'nemesis')
+      const playerCards = g.turnOrderDiscard.filter(cardId => cardId !== 'nemesis')
+      g.turnOrderDeck = [...nemesisCards, ...shuffle(playerCards)]
+      const cardId = g.nemesis.turnOrderDeckResetCardId
+      const stationedIndex = g.nemesis.setAsideCards?.findIndex(card =>
+        card.cardId === cardId && (!g.nemesis.turnOrderDeckResetCardInstanceId ||
+          card.instanceId === g.nemesis.turnOrderDeckResetCardInstanceId),
+      ) ?? -1
+      const stationedCard = stationedIndex >= 0
+        ? g.nemesis.setAsideCards!.splice(stationedIndex, 1)[0]
+        : undefined
+      const instanceId = g.nemesis.turnOrderDeckResetCardInstanceId ?? stationedCard?.instanceId
+        ?? createCardInstance(g, cardId, true).instanceId
+      insertCardInstanceAt(g, g.nemesis.discard, g.nemesis.discardInstanceIds ??= [], {
+        cardId, instanceId, revealed: true,
+      }, 0, true)
+      g.nemesis.turnOrderDeckResetCardId = undefined
+      g.nemesis.turnOrderDeckResetCardInstanceId = undefined
+    } else {
+      g.turnOrderDeck = buildScenarioTurnOrder(g.scenario, g.players.map(player => player.id))
+    }
     g.turnOrderDiscard = []
     g.round++
   }
@@ -144,8 +178,22 @@ export function startTurn(g: GameState): GameState {
   g.currentTurn = turn
   g.timestamp++
 
+  // A focus marker is only valid for the turn in which it was created. Clear
+  // it at every turn boundary so a Breach focused during the Nemesis turn (or
+  // another Mage's turn) cannot become prep-eligible on the next Mage's turn.
+  clearFocusedBreachMarkers(g)
+
   g.currentPhase = turn === 'nemesis' ? 'nemesis_main' : 'casting'
   if (turn === 'nemesis') initializeNemesisTurn(g)
+  else if (g.nemesis.corruptionDeck) {
+    const player = getPlayer(g, turn)
+    player.corruptionsDrawnThisTurn = []
+    if (player.hand.some(cardId => getCard(cardId).type === 'corruption')) {
+      g.pendingCorruptionStartPlayerId = player.id
+    } else {
+      g.pendingCorruptionStartPlayerId = undefined
+    }
+  }
   queueTurnOrderCardDrawnAbilities(g)
   return g
 }
@@ -189,37 +237,20 @@ function pendingActionMessage(g: GameState): string | null {
   return g.pendingDecision ? 'Resolve the pending card decision first' : null
 }
 
-export type SpellBreachTargetRequest =
-  | { kind: 'hand'; cardId: string }
-  | { kind: 'prepped'; breachIndex: number; spellIndex: number }
-
-/** Return the Breaches that can legally receive a hand or prepped spell right now. */
+/** Return the Breaches that can legally receive a spell from hand right now. */
 export function getSpellBreachTargets(
-  g: GameState, playerId: string, request: SpellBreachTargetRequest,
+  g: GameState, playerId: string, cardId: string,
 ): number[] {
   if (g.currentPhase !== 'main' || g.currentTurn !== playerId || pendingActionMessage(g)) return []
   const player = g.players.find(candidate => candidate.id === playerId)
   if (!player) return []
-
-  if (request.kind === 'hand') {
-    if (!player.hand.includes(request.cardId)) return []
-    const card = getCard(request.cardId)
-    if (card.type !== 'spell') return []
-    return player.breaches
-      .filter(breach => isPresentBreach(breach)
-        && breach.prepSpells.length < getPrepSpellLimit(player, breach.index)
-        && (breach.opened || breach.focusedThisTurn || card.prepToClosedBreach === true))
-      .map(breach => breach.index)
-  }
-
-  const source = player.breaches.find(breach => breach.index === request.breachIndex)
-  const cardId = source?.prepSpells[request.spellIndex]
-  if (!source || !isPresentBreach(source) || !cardId) return []
+  if (!player.hand.includes(cardId)) return []
   const card = getCard(cardId)
+  if (card.type !== 'spell') return []
   return player.breaches
-    .filter(breach => breach.index !== source.index
-      && isPresentBreach(breach)
-      && (breach.opened || breach.focusedThisTurn || card.prepToClosedBreach === true))
+    .filter(breach => isPresentBreach(breach)
+      && breach.prepSpells.length < getPrepSpellLimit(player, breach.index)
+      && canPrepOnBreach(breach, card.prepToClosedBreach === true))
     .map(breach => breach.index)
 }
 
@@ -280,25 +311,37 @@ function selectedCollectiveCardsAreCurrent(
   return true
 }
 
-function discardCollectiveCards(g: GameState, selected: CollectiveCardChoice[]): string[] {
-  const removed: string[] = []
+function discardCollectiveCards(
+  g: GameState, selected: CollectiveCardChoice[], preserveSelectionOrder = false,
+): string[] {
+  const valid = selected.filter(item => {
+    const player = getPlayer(g, item.playerId)
+    return getZoneCards(player, item.choice.zone)[item.choice.index] === item.choice.cardId
+  })
   const grouped = new Map<string, CollectiveCardChoice[]>()
-  for (const item of selected) {
+  for (const item of valid) {
     const group = grouped.get(item.playerId) ?? []
     group.push(item)
     grouped.set(item.playerId, group)
   }
   for (const [playerId, items] of grouped) {
     const player = getPlayer(g, playerId)
+    const removed: string[] = []
     for (const item of [...items].sort((a, b) => b.choice.index - a.choice.index)) {
       const cardId = removeCardFromZone(player, item.choice.zone, item.choice.index)
-      if (cardId) {
-        player.discard.unshift(cardId)
-        removed.push(cardId)
-      }
+      if (cardId) removed.push(cardId)
     }
+    if (!preserveSelectionOrder) for (const cardId of removed) player.discard.unshift(cardId)
   }
-  return removed
+  if (preserveSelectionOrder) {
+    // Treat the player's clicks as the discard sequence. The last selected
+    // card ends up on top because each discarded card is placed on top.
+    for (const item of valid) getPlayer(g, item.playerId).discard.unshift(item.choice.cardId)
+    return valid.map(item => item.choice.cardId)
+  }
+  return [...grouped.values()].flatMap(items =>
+    [...items].sort((a, b) => b.choice.index - a.choice.index).map(item => item.choice.cardId),
+  )
 }
 
 /** Return every currently prepped spell, including spells belonging to allies. */
@@ -407,21 +450,31 @@ function destroyExhaustedBreach(g: GameState, choice: BreachChoice): string {
 }
 
 /** Move selected prepped spells to their owners' discard piles. */
-function discardPreppedSpellChoices(g: GameState, choices: PreppedSpellChoice[]): string[] {
-  const discarded: string[] = []
-  const ordered = [...choices].sort((a, b) =>
-    a.playerId.localeCompare(b.playerId) ||
-    a.breachIndex - b.breachIndex ||
-    b.spellIndex - a.spellIndex)
-  for (const choice of ordered) {
+function discardPreppedSpellChoices(
+  g: GameState, choices: PreppedSpellChoice[], preserveSelectionOrder = false,
+): string[] {
+  const valid = choices.filter(choice => {
     const owner = getPlayer(g, choice.playerId)
     const breach = owner.breaches.find(item => item.index === choice.breachIndex)
-    if (!breach || breach.prepSpells[choice.spellIndex] !== choice.cardId) continue
-    removePreppedSpellAt(breach, choice.spellIndex)
-    owner.discard.unshift(choice.cardId)
-    discarded.push(choice.cardName)
+    return !!breach && breach.prepSpells[choice.spellIndex] === choice.cardId
+  })
+  const ordered = preserveSelectionOrder ? valid : [...valid].sort((a, b) =>
+    a.playerId.localeCompare(b.playerId) || a.breachIndex - b.breachIndex || b.spellIndex - a.spellIndex)
+  const grouped = new Map<string, PreppedSpellChoice[]>()
+  for (const choice of ordered) {
+    const key = `${choice.playerId}:${choice.breachIndex}`
+    const group = grouped.get(key) ?? []
+    group.push(choice)
+    grouped.set(key, group)
   }
-  return discarded
+  for (const choicesInBreach of grouped.values()) {
+    for (const choice of [...choicesInBreach].sort((a, b) => b.spellIndex - a.spellIndex)) {
+      const breach = getPlayer(g, choice.playerId).breaches.find(item => item.index === choice.breachIndex)
+      if (breach) removePreppedSpellAt(breach, choice.spellIndex)
+    }
+  }
+  for (const choice of ordered) getPlayer(g, choice.playerId).discard.unshift(choice.cardId)
+  return ordered.map(choice => choice.cardName)
 }
 
 export function removeCardFromZone(
@@ -434,10 +487,14 @@ export function removeCardFromZone(
 }
 
 /** Apply a card's replacement destination when it is destroyed. */
-function destroyOwnedCard(p: PlayerState, cardId: string): void {
+function destroyOwnedCard(p: PlayerState, cardId: string, g?: GameState): void {
   ensurePlayerCollections(p)
   if (getCard(cardId).returnToSwapZoneOnDestroy) {
     p.swapZone!.push(cardId)
+    return
+  }
+  if (getCard(cardId).type === 'corruption' && g?.nemesis.type === 'crooked_mask' && g.nemesis.corruptionDeck) {
+    returnCorruptionToBottom(g, cardId)
     return
   }
   p.destroyedCards.push(cardId)
@@ -698,10 +755,9 @@ function moveGainedSupplyCardToDeck(
   }
   if (!gainedCard) return ['The gained supply card is no longer available']
 
-  recipient.deck.unshift(gainedCard)
+  putPlayerCardInDeck(g, recipient, gainedCard, 'top')
   const chargePlayer = effect.formSide === 'giver' ? owner : gainer
-  const gainedCharge = Math.min(1, Math.max(0, chargePlayer.chargeThreshold - chargePlayer.charge))
-  chargePlayer.charge += gainedCharge
+  const gainedCharge = gainPlayerCharge(g, chargePlayer, 1)
   owner.mageFormSide = effect.formSide === 'giver' ? 'taker' : 'giver'
 
   const messages = [`Placed ${getCard(gainedCard).name} on top of ${recipient.mageType}'s deck`]
@@ -721,7 +777,7 @@ export function destroyCard(g: GameState, playerId: string, choice: CardChoice):
 
   const cardId = removeCardFromZone(p, choice.zone, choice.index)
   if (!cardId) return 'Card not found'
-  destroyOwnedCard(p, cardId)
+  destroyOwnedCard(p, cardId, g)
   return getCard(cardId).returnToSwapZoneOnDestroy
     ? `${getCard(cardId).name} returns to the Swap zone`
     : `Destroyed ${getCard(cardId).name}`
@@ -759,7 +815,7 @@ export function gainCard(
   }
 
   const p = getPlayer(g, playerId)
-  if (destination === 'deck_top') p.deck.unshift(cardId)
+  if (destination === 'deck_top') putPlayerCardInDeck(g, p, cardId, 'top')
   else p.discard.unshift(cardId)
   const message = `Gained ${card.name} -> ${destination === 'deck_top' ? 'deck' : 'discard pile'}`
   if (!triggerEffects) return message
@@ -803,6 +859,8 @@ export function gainFirethornTopCard(g: GameState, playerId: string): string | n
   const available = getSpendableAether(player, spendType)
   if (available < 5) return `Need 5 Aether, have ${available}`
   spendAether(player, 5, spendType)
+  player.specificDeckInstanceIds = ensureCardInstanceZone(g, player.specificDeck!, player.specificDeckInstanceIds)
+  player.specificDeckInstanceIds.shift()
   player.specificDeck!.shift()
   forgetSpecificDeckCard(player, cardId)
   player.discard.unshift(cardId)
@@ -1035,7 +1093,6 @@ function captureEffectContext(resolution: PendingEffectResolution): CardEffect {
     pendingSpellCast: resolution.pendingSpellCast ? { ...resolution.pendingSpellCast } : undefined,
     spellDamageBonus: resolution.spellDamageBonus,
     spellAdditionalDamageBonus: resolution.spellAdditionalDamageBonus,
-    spellDamageEffectSeen: resolution.spellDamageEffectSeen,
   }
 }
 
@@ -1050,6 +1107,9 @@ function contextualizeCardEffectBlock(
   const context = {
     ...restoreContext,
     kind: 'restore_effect_context' as const,
+    // Changing the source/effect actor between blocks must not rewind the
+    // in-progress spell's damage bonus or forget that its damage was applied.
+    preserveSpellDamageState: true,
     sourcePlayerId: blockActorId,
     sourceCardOwnerId: ownerId,
     sourceCardId: cardId,
@@ -1077,22 +1137,30 @@ function canConjureToBreach(
   return isPresentBreach(breach) &&
     (breach.prepSpells.length < getPrepSpellLimit(player, breach.index) ||
       breach.prepSpells.some(preppedId => getCard(preppedId).mechanics?.includes('unlimited_conjure'))) &&
-    (eligibility === 'any_present' || breach.opened || breach.focusedThisTurn)
+    (eligibility === 'any_present' || canPrepOnBreach(breach))
 }
 
 function forgetSpecificDeckCard(player: PlayerState, cardId: string): void {
   player.knownSpecificDeckCards = (player.knownSpecificDeckCards ?? []).filter(id => id !== cardId)
 }
 
-function rememberSpecificDeckCard(player: PlayerState, cardId: string): void {
+function rememberSpecificDeckCard(
+  game: GameState, player: PlayerState, cardId: string, indexHint?: number,
+): void {
   player.knownSpecificDeckCards ??= []
   if (!player.knownSpecificDeckCards.includes(cardId)) player.knownSpecificDeckCards.push(cardId)
+  const deck = player.specificDeck ?? []
+  const index = indexHint !== undefined && deck[indexHint] === cardId ? indexHint : deck.indexOf(cardId)
+  if (index < 0) return
+  player.specificDeckInstanceIds = ensureCardInstanceZone(game, deck, player.specificDeckInstanceIds)
+  const instanceId = player.specificDeckInstanceIds[index]
+  if (instanceId) markCardInstanceRevealed(game, instanceId)
 }
 
-function rememberSpecificDeckTop(player: PlayerState): void {
+function rememberSpecificDeckTop(game: GameState, player: PlayerState): void {
   if (MAGES[player.mageType]?.specificDeckDisplay !== 'top_revealed') return
   const cardId = player.specificDeck?.[0]
-  if (cardId) rememberSpecificDeckCard(player, cardId)
+  if (cardId) rememberSpecificDeckCard(game, player, cardId, 0)
 }
 
 function resetBreachToStartingPosition(breach: BreachState): void {
@@ -1321,11 +1389,17 @@ function removeSelectedCards(g: GameState, playerId: string, choices: CardChoice
   return removed
 }
 
-function discardSelectedCards(g: GameState, playerId: string, choices: CardChoice[]): string[] {
-  const removed = removeSelectedCards(g, playerId, choices)
+function discardSelectedCards(
+  g: GameState, playerId: string, choices: CardChoice[], preserveSelectionOrder = false,
+): string[] {
   const p = getPlayer(g, playerId)
-  for (const cardId of removed) p.discard.unshift(cardId)
-  return removed
+  const selectedIds = choices.filter(choice =>
+    getZoneCards(p, choice.zone)[choice.index] === choice.cardId,
+  ).map(choice => choice.cardId)
+  const removed = removeSelectedCards(g, playerId, choices)
+  const orderedIds = preserveSelectionOrder ? selectedIds : removed
+  for (const cardId of orderedIds) p.discard.unshift(cardId)
+  return orderedIds
 }
 
 function returnSelectedCard(g: GameState, playerId: string, choice: CardChoice): string | null {
@@ -1366,11 +1440,46 @@ function pauseEffect(
 
 export function drawCardsForPlayer(g: GameState, playerId: string, amount: number): number {
   const p = getPlayer(g, playerId)
-  const result = drawFromDeck(p.deck, p.discard, Math.max(0, amount))
-  p.deck = result.newDeck
-  p.discard = result.newDiscard
-  addCardsToHand(p, result.drawn)
-  return result.drawn.length
+  const drawn = drawPlayerDeckCards(g, p, Math.max(0, amount))
+  addCardsToHand(p, drawn)
+  if (g.currentTurn === playerId && (g.currentPhase === 'casting' || g.currentPhase === 'main')) {
+    p.corruptionsDrawnThisTurn ??= []
+    p.corruptionsDrawnThisTurn.push(...drawn.filter(cardId => getCard(cardId).type === 'corruption'))
+  }
+  return drawn.length
+}
+
+/** Apply one player-dealt damage instance to a Nemesis target and queue its on-hit text. */
+function dealNemesisTargetDamage(
+  g: GameState, resolution: PendingEffectResolution, target: DamageTargetRef, amount: number,
+): string {
+  const minion = target.kind === 'minion'
+    ? g.nemesis.playArea.find(card => card.cardType === 'minion' && card.placedAt === target.placedAt)
+    : undefined
+  const before = minion?.lifeTokens ?? 0
+  const message = dealDamage(g, target, amount)
+  if (!minion || before <= (minion.lifeTokens ?? 0)) return message
+
+  const actorId = resolution.sourcePlayerId
+  const onDamage = (getCard(minion.cardId) as NemesisCardDef).onDamage ?? []
+  if (!actorId || onDamage.length === 0) return message
+
+  const outerContext = captureEffectContext(resolution)
+  addRemainingEffects(resolution, [
+    {
+      kind: 'restore_effect_context',
+      sourcePlayerId: actorId,
+      sourceCardOwnerId: undefined,
+      sourceCardId: minion.cardId,
+      effectPlayerId: actorId,
+      pendingSpellCast: undefined,
+      spellDamageBonus: undefined,
+      spellAdditionalDamageBonus: undefined,
+    },
+    ...onDamage,
+    outerContext,
+  ])
+  return message
 }
 
 function getPlayerTurnOrderCards(g: GameState): TurnOrderCardChoice[] {
@@ -1413,6 +1522,7 @@ export interface EffectResolutionServices {
   damageEffectAmountValue: typeof damageEffectAmountValue,
   damageNemesis: typeof damageNemesis,
   dealDamage: typeof dealDamage,
+  dealNemesisTargetDamage: typeof dealNemesisTargetDamage,
   destroyCard: typeof destroyCard,
   destroyExhaustedBreach: typeof destroyExhaustedBreach,
   destroyOwnedCard: typeof destroyOwnedCard,
@@ -1521,6 +1631,7 @@ const runEffectResolution = createEffectResolver({
   damageEffectAmountValue,
   damageNemesis,
   dealDamage,
+  dealNemesisTargetDamage,
   destroyCard,
   destroyExhaustedBreach,
   destroyOwnedCard,
@@ -1657,7 +1768,7 @@ function pauseRevealTopCard(
   playerId: string,
 ): string[] {
   const player = getPlayer(g, playerId)
-  preparePlayerDeckForReveal(player, 1)
+  preparePlayerDeckForRevealWithInstances(g, player, 1)
   const cardId = player.deck[0]
   if (!cardId) return [`${player.mageType} has no card to reveal`]
   resolution.revealedTopCard = { playerId, cardId }
@@ -2122,7 +2233,7 @@ function resolveDividedDamageAllocationAction(
   resolution.dividedDamageAllocation = undefined
   const messages = [`Resolved ${allocation.total} divided damage`]
   for (const { target, amount } of assignedTargets) {
-    messages.push(dealDamage(g, target, amount))
+    messages.push(dealNemesisTargetDamage(g, resolution, target, amount))
     if (g.gameOver) break
   }
   return [...messages, ...runEffectResolution(g, resolution)]
@@ -2146,6 +2257,7 @@ export interface DecisionResolutionServices {
   createDecision: typeof createDecision
   damageEffectAmountValue: typeof damageEffectAmountValue
   dealDamage: typeof dealDamage
+  dealNemesisTargetDamage: typeof dealNemesisTargetDamage
   destroyExhaustedBreach: typeof destroyExhaustedBreach
   destroyOwnedCard: typeof destroyOwnedCard
   devourMarketPile: typeof devourMarketPile
@@ -2154,6 +2266,7 @@ export interface DecisionResolutionServices {
   discardSelectedCards: typeof discardSelectedCards
   drawCardsForPlayer: typeof drawCardsForPlayer
   effectPlayerId: typeof effectPlayerId
+  ensureTrinketDeckState: typeof ensureTrinketDeckState
   gainCard: typeof gainCard
   gainPulseTokens: typeof gainPulseTokens
   gainSwapZoneCard: typeof gainSwapZoneCard
@@ -2205,6 +2318,7 @@ const resolvePendingDecisionWithServices = createDecisionResolver({
   createDecision,
   damageEffectAmountValue,
   dealDamage,
+  dealNemesisTargetDamage,
   destroyExhaustedBreach,
   destroyOwnedCard,
   devourMarketPile,
@@ -2213,6 +2327,7 @@ const resolvePendingDecisionWithServices = createDecisionResolver({
   discardSelectedCards,
   drawCardsForPlayer,
   effectPlayerId,
+  ensureTrinketDeckState,
   gainCard,
   gainPulseTokens,
   gainSwapZoneCard,
@@ -2263,6 +2378,7 @@ const nemesisTurn = createNemesisTurnRuntime({
   getPreppedSpellChoices,
   getPreppedSpellCost,
   discardSelectedCards,
+  drawCardsForPlayer,
   removeSelectedCards,
   destroyOwnedCard,
 })
@@ -2397,7 +2513,6 @@ export function castSpell(g: GameState, playerId: string, breachIndex: number, s
     effectPlayerId: playerId,
     pendingSpellCast: { ...pending },
     spellDamageBonus,
-    spellDamageEffectSeen: false,
   }
   const spellEffects: CardEffect[] = faceDown
     ? [{ kind: 'deal_damage', amount: 2, target: 'nemesis_or_minion' }]
@@ -2417,12 +2532,16 @@ export function castSpell(g: GameState, playerId: string, breachIndex: number, s
 
 // ===== Main Phase =====
 
-export function playCard(g: GameState, playerId: string, cardId: string): string | null {
+export function playCard(
+  g: GameState, playerId: string, cardId: string, handIndex?: number,
+): string | null {
   const blocked = pendingActionMessage(g)
   if (blocked) return blocked
   const p = getPlayer(g, playerId)
-  const idx = p.hand.indexOf(cardId)
-  if (idx === -1) return 'Card not in hand'
+  // Card IDs identify a card definition, not a physical copy. UI actions pass
+  // the selected slot so playing a later duplicate cannot remove the first one.
+  const idx = handIndex ?? p.hand.indexOf(cardId)
+  if (idx < 0 || idx >= p.hand.length || p.hand[idx] !== cardId) return 'Card not in hand'
 
   const card = getCard(cardId)
   if (card.type === 'spell') return 'Spells must be prepped, use "r" command'
@@ -2464,6 +2583,9 @@ export function prepSpell(
 ): string | null {
   const blocked = pendingActionMessage(g)
   if (blocked) return blocked
+  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) {
+    return 'Spells can only be prepped during your Main Phase'
+  }
   const p = getPlayer(g, playerId)
   const idx = handIndex ?? p.hand.indexOf(cardId)
   if (idx < 0 || idx >= p.hand.length || p.hand[idx] !== cardId) return 'Card not in hand'
@@ -2475,7 +2597,7 @@ export function prepSpell(
   if (!b || !isPresentBreach(b)) return 'Invalid breach'
   const prepLimit = getPrepSpellLimit(p, breachIndex)
   if (b.prepSpells.length >= prepLimit) return `Breach already has ${prepLimit} spell(s)`
-  if (!b.opened && !b.focusedThisTurn && !card.prepToClosedBreach) return 'Cannot prep on this breach'
+  if (!canPrepOnBreach(b, card.prepToClosedBreach === true)) return 'Cannot prep on this breach'
 
   ensurePlayerCollections(p)
   const removed = removeCardFromHand(p, idx)
@@ -2487,93 +2609,6 @@ export function prepSpell(
   b.preppedSpellInstanceIds ??= []
   b.preppedSpellInstanceIds.push(removed.preppedSpellInstanceId ?? createPreppedSpellInstanceId(p))
   return `Prepped ${card.name} on Breach ${toRoman(breachIndex)}`
-}
-
-/** Return one of the player's prepped spells to their hand during Main Phase. */
-export function returnPreppedSpellToHand(
-  g: GameState, playerId: string, breachIndex: number, spellIndex: number,
-): string | null {
-  const blocked = pendingActionMessage(g)
-  if (blocked) return blocked
-  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Prepped spells can only be returned during your Main Phase'
-
-  const p = getPlayer(g, playerId)
-  ensurePlayerCollections(p)
-  const breach = p.breaches.find(item => item.index === breachIndex)
-  if (!breach || !isPresentBreach(breach)) return 'Invalid Breach'
-  const cardId = breach.prepSpells[spellIndex]
-  if (!cardId) return 'No spell is prepped at this position'
-  if (isFaceDownPreppedSpell(breach, spellIndex)) {
-    return 'Face-down Conjured spells cannot be returned to hand'
-  }
-  const instanceId = breach.preppedSpellInstanceIds![spellIndex]!
-  removePreppedSpellAt(breach, spellIndex)
-  addCardToHand(p, cardId, instanceId)
-  return `Returned ${getCard(cardId).name} to hand`
-}
-
-/** Move a prepped spell during the player's turn, swapping with a spell at the target when needed. */
-export function movePreppedSpell(
-  g: GameState, playerId: string, sourceBreachIndex: number, sourceSpellIndex: number,
-  targetBreachIndex: number, targetSpellIndex?: number,
-): string | null {
-  const blocked = pendingActionMessage(g)
-  if (blocked) return blocked
-  if (g.currentPhase !== 'main' || g.currentTurn !== playerId) return 'Prepped spells can only be moved before your turn ends'
-  if (sourceBreachIndex === targetBreachIndex) return 'Choose a different Breach'
-
-  const p = getPlayer(g, playerId)
-  ensurePlayerCollections(p)
-  const source = p.breaches.find(breach => breach.index === sourceBreachIndex)
-  const target = p.breaches.find(breach => breach.index === targetBreachIndex)
-  if (!source || !target || !isPresentBreach(source) || !isPresentBreach(target)) return 'Invalid Breach'
-  const sourceCardId = source.prepSpells[sourceSpellIndex]
-  if (!sourceCardId) return 'No spell is prepped at the source position'
-  // Most spells can only be prepared on an open or focused Breach. A spell
-  // with the prepToClosedBreach keyword (for example Feral Lightning) keeps
-  // that exception when it is repositioned from one Breach to another.
-  const sourceCard = getCard(sourceCardId)
-  if (!target.opened && !target.focusedThisTurn && !sourceCard.prepToClosedBreach) {
-    return 'The target Breach is not available for preparation'
-  }
-
-  if (target.prepSpells.length > 0) {
-    const swapIndex = targetSpellIndex ?? 0
-    if (!target.prepSpells[swapIndex]) return 'No spell is prepped at the target position'
-    const targetCardId = target.prepSpells[swapIndex]!
-    const sourceInstanceId = source.preppedSpellInstanceIds![sourceSpellIndex]!
-    const targetInstanceId = target.preppedSpellInstanceIds![swapIndex]!
-    source.prepSpells[sourceSpellIndex] = targetCardId
-    target.prepSpells[swapIndex] = sourceCardId
-    source.preppedSpellInstanceIds![sourceSpellIndex] = targetInstanceId
-    target.preppedSpellInstanceIds![swapIndex] = sourceInstanceId
-    const sourceWasPrepped = source.preppedThisTurn?.[sourceSpellIndex] ?? false
-    const targetWasPrepped = target.preppedThisTurn?.[swapIndex] ?? false
-    source.preppedThisTurn ??= source.prepSpells.map(() => false)
-    target.preppedThisTurn ??= target.prepSpells.map(() => false)
-    source.preppedThisTurn[sourceSpellIndex] = targetWasPrepped
-    target.preppedThisTurn[swapIndex] = sourceWasPrepped
-    source.preppedSpellFaceDown ??= source.prepSpells.map(() => false)
-    target.preppedSpellFaceDown ??= target.prepSpells.map(() => false)
-    const sourceFaceDown = source.preppedSpellFaceDown[sourceSpellIndex] ?? false
-    const targetFaceDown = target.preppedSpellFaceDown[swapIndex] ?? false
-    source.preppedSpellFaceDown[sourceSpellIndex] = targetFaceDown
-    target.preppedSpellFaceDown[swapIndex] = sourceFaceDown
-    return `Swapped ${getCard(sourceCardId).name} and ${getCard(targetCardId).name}`
-  }
-
-  source.prepSpells.splice(sourceSpellIndex, 1)
-  const movedInstanceId = source.preppedSpellInstanceIds!.splice(sourceSpellIndex, 1)[0]!
-  const movedWasPrepped = source.preppedThisTurn?.splice(sourceSpellIndex, 1)[0] ?? false
-  const movedFaceDown = source.preppedSpellFaceDown?.splice(sourceSpellIndex, 1)[0] ?? false
-  target.prepSpells.push(sourceCardId)
-  target.preppedSpellInstanceIds ??= []
-  target.preppedSpellInstanceIds.push(movedInstanceId)
-  target.preppedThisTurn ??= []
-  target.preppedThisTurn.push(movedWasPrepped)
-  target.preppedSpellFaceDown ??= []
-  target.preppedSpellFaceDown.push(movedFaceDown)
-  return `Moved ${getCard(sourceCardId).name} to Breach ${toRoman(targetBreachIndex)}`
 }
 
 export interface BuyableCard {
@@ -2842,7 +2877,6 @@ export function openBreachDirect(g: GameState, playerId: string, breachIndex: nu
   spendAether(p, cost, 'breach')
   consumeBreachCostReductions(p, 'open')
   b.opened = true
-  b.focusedThisTurn = true
   b.focusCount = b.focusToOpen
   return [`Breach ${toRoman(breachIndex)} opened (${cost}a direct)!`, ...resolveBreachOpenedEffects(g, playerId)].join('; ')
 }
@@ -2867,8 +2901,8 @@ export function gainCharge(g: GameState, playerId: string, amount: number): stri
   if (blocked) return blocked
 
   spendAether(p, cost, 'general')
-  p.charge += amount
-  return `Gained ${amount} charge (${p.charge}/${p.chargeThreshold})`
+  const gained = gainPlayerCharge(g, p, amount)
+  return `Gained ${gained} charge (${p.charge}/${p.chargeThreshold})`
 }
 
 export function activateAbility(
@@ -2947,6 +2981,7 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
     p.regularAetherSpent = 0
     p.condAetherSpent = {}
     p.bonusAether = 0
+    p.corruptionsDrawnThisTurn = []
     p.aetherTokens = 0
     const turnEffects = getPlayerTurnEffects(p)
     turnEffects.nextBreachCostReductions = []
@@ -2957,13 +2992,10 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
     turnEffects.prepSpellLimit = 1
     turnEffects.prepSpellLimitByBreach = {}
     turnEffects.spellDamageBonuses = []
-    // Focus is a turn-wide marker. An effect such as Ember Gale may focus an
-    // ally's Breach during the active Mage's turn, so clear the marker for
-    // every player's Breach when that turn reaches its Draw Phase. The
-    // prepped-this-turn flags remain scoped to the player whose turn is ending.
-    for (const player of g.players) {
-      for (const b of player.breaches) b.focusedThisTurn = false
-    }
+    // Clear any focus granted during this Mage's turn before end-of-turn
+    // effects resolve. startTurn also clears markers, covering focuses made
+    // during the Nemesis turn or after a saved/paused boundary.
+    clearFocusedBreachMarkers(g)
     for (const b of p.breaches) b.preppedThisTurn = b.prepSpells.map(() => false)
     p.drawPhaseSetupComplete = true
     if (playedEndTurnEffects.length > 0) {
@@ -2976,12 +3008,9 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
 
   // Draw to 5
   while (p.hand.length < 5) {
-    const result = drawFromDeck(p.deck, p.discard, 1)
-    p.deck = result.newDeck
-    p.discard = result.newDiscard
-    if (result.drawn.length > 0) {
-      addCardToHand(p, result.drawn[0]!)
-    } else break
+    const drawn = drawPlayerDeckCards(g, p, 1)
+    if (drawn.length > 0) addCardToHand(p, drawn[0]!)
+    else break
   }
   msgs.push(`Hand filled to ${p.hand.length}, Aether reset${unusedAetherTokens > 0 ? `; discarded ${unusedAetherTokens} unused Aether token${unusedAetherTokens === 1 ? '' : 's'}` : ''}`)
   p.spellsCastThisTurn = 0
@@ -3005,63 +3034,184 @@ export function resolvePlayerExhaustion(
   })
 }
 
-export function canPlayerAct(g: GameState, playerId: string): boolean {
-  const p = getPlayer(g, playerId)
-  if (g.pendingDecision) return false
+export interface MainPhaseActionHint {
+  /** Stable UI target for the action that currently prevents the phase from ending. */
+  targetId: string
+  /** Player area that must be shown to interact with the target, when applicable. */
+  viewPlayerId: string
+  /** Short user-facing action description. */
+  label: string
+}
 
-  // Has non-spell cards in hand
-  if (p.hand.some(cid => getCard(cid).type !== 'spell')) return true
-  // Has open or focused breach to prep a spell
-  if (p.breaches.some(b => isPresentBreach(b) && b.prepSpells.length < getPrepSpellLimit(p, b.index) &&
-    p.hand.some(cid => {
-      const card = getCard(cid)
-      return card.type === 'spell' && (b.opened || b.focusedThisTurn || card.prepToClosedBreach)
-    }))) return true
+/** Return one currently legal Main Phase action for End Turn guidance. */
+export function getMainPhaseActionHint(g: GameState, playerId: string): MainPhaseActionHint | null {
+  const p = getPlayer(g, playerId)
+  if (g.pendingDecision) return null
+
+  // Playing a Gem or Relic is an available hand action.
+  const playableCardIndex = p.hand.findIndex(cardId => getCard(cardId).type !== 'spell')
+  if (playableCardIndex >= 0) {
+    const card = getCard(p.hand[playableCardIndex]!)
+    return {
+      targetId: `hand-card:${playerId}:${playableCardIndex}`,
+      viewPlayerId: playerId,
+      label: `Play ${card.name}`,
+    }
+  }
+
+  // A spell can be prepped when at least one breach can receive it.
+  for (const [handIndex, cardId] of p.hand.entries()) {
+    const card = getCard(cardId)
+    if (card.type !== 'spell') continue
+    const breach = p.breaches.find(candidate => isPresentBreach(candidate)
+      && candidate.prepSpells.length < getPrepSpellLimit(p, candidate.index)
+      && canPrepOnBreach(candidate, card.prepToClosedBreach === true))
+    if (breach) {
+      return {
+        targetId: `hand-card:${playerId}:${handIndex}`,
+        viewPlayerId: playerId,
+        label: `Prepare ${card.name}`,
+      }
+    }
+  }
 
   // A Power card's To Discard action remains a legal Main Phase action even
   // when the player has no Aether left. Keep it in the action check so an
   // Aether or Charge payment cannot end the phase before this interrupt.
-  if (getNemesisDiscardActions(g, playerId).length > 0) return true
+  const nemesisDiscardAction = getNemesisDiscardActions(g, playerId)[0]
+  if (nemesisDiscardAction) {
+    return {
+      targetId: `nemesis-card:${nemesisDiscardAction.instanceId}`,
+      viewPlayerId: playerId,
+      label: `Discard ${nemesisDiscardAction.cardName} in the Nemesis area`,
+    }
+  }
 
   // A prepped spell such as Arcane Nexus can expose a once-per-turn Main
   // Phase action even when the player has no cards to play or buy. Keep the
   // turn open so the clickable action is not skipped by auto-end logic.
-  if (getPreppedCardActions(g, playerId).length > 0) return true
+  const preppedAction = getPreppedCardActions(g, playerId)[0]
+  if (preppedAction) {
+    const selectedChoice = preppedAction.kind === 'return_card_to_hand'
+      ? preppedAction.choices[0]
+      : undefined
+    if (selectedChoice?.zone === 'played_this_turn') {
+      return {
+        targetId: `played-card:${playerId}:${selectedChoice.index}`,
+        viewPlayerId: playerId,
+        label: `Return ${selectedChoice.cardName} to hand using ${getCard(preppedAction.cardId).name}`,
+      }
+    }
+    return {
+      targetId: `prepped-spell:${playerId}:${preppedAction.breachIndex}:${preppedAction.spellIndex}`,
+      viewPlayerId: playerId,
+      label: `Activate ${getCard(preppedAction.cardId).name}`,
+    }
+  }
+
+  // A Recall effect in the active player's Discard is also a Main Phase
+  // action. Buying a Recall card can create this action after spending the
+  // player's last Aether, so it must prevent automatic phase completion.
+  const recallAction = getRecallActions(g, playerId)[0]
+  if (recallAction) {
+    return {
+      targetId: `discard-pile:${playerId}`,
+      viewPlayerId: playerId,
+      label: `Resolve Recall on ${getCard(recallAction.cardId).name} in your Discard`,
+    }
+  }
 
   // Mage-specific cards placed into play may expose an explicit Main Phase
   // action (for example, destroying a Treasure for its benefit).
-  if (g.players.some(player => getPlayerCardInPlayActions(g, player.id).length > 0)) return true
+  for (const owner of g.players) {
+    const inPlayAction = getPlayerCardInPlayActions(g, owner.id)[0]
+    if (inPlayAction) {
+      return {
+        targetId: `player-card-in-play:${owner.id}:${inPlayAction.cardIndex}`,
+        viewPlayerId: owner.id,
+        label: `Activate ${getCard(inPlayAction.cardId).name}`,
+      }
+    }
+  }
 
   // Developing a card is a Main Phase action that can remain available even
   // when the player has no cards left in hand.
-  if (getDevelopActions(g, playerId).length > 0) return true
+  const developAction = getDevelopActions(g, playerId)[0]
+  if (developAction) {
+    return {
+      targetId: developAction.source === 'supply'
+        ? `market-pile:${developAction.index}`
+        : `develop-zone-card:${developAction.index}`,
+      viewPlayerId: playerId,
+      label: `Develop ${developAction.cardName}`,
+    }
+  }
 
-  const aether = getSpendableAether(p, 'general')
-  const breachAether = getSpendableAether(p, 'breach')
+  // Inco can gain the revealed Firethorn using the same typed Aether rules as
+  // the action itself. This action must also keep the turn open.
+  const firethornId = p.mageType === 'inco' ? p.specificDeck?.[0] : undefined
+  if (firethornId) {
+    const firethorn = getCard(firethornId)
+    const spendType: SpendType = firethorn.type === 'gem' || firethorn.type === 'spell' || firethorn.type === 'relic'
+      ? firethorn.type
+      : 'gain'
+    if (getSpendableAether(p, spendType) >= 5) {
+      return {
+        targetId: `specific-deck:${playerId}`,
+        viewPlayerId: playerId,
+        label: `Gain ${firethorn.name} from the Firethorn deck`,
+      }
+    }
+  }
 
   // Can buy something from market. Conditional Aether is type-restricted
   // (for example Indira's Spell-only Aether), so check the same spend type
   // that buyCard uses instead of only the general Aether pool.
-  for (const pile of g.market.piles) {
+  for (const [pileIndex, pile] of g.market.piles.entries()) {
     if (pile.remaining <= 0) continue
     const card = getCard(pile.cardId)
     const spendType: SpendType = card.type === 'gem' ? 'gem'
       : card.type === 'spell' ? 'spell'
         : card.type === 'relic' ? 'relic' : 'general'
-    if (getMarketCardCost(g, g.market.piles.indexOf(pile), p.id) <= getSpendableAether(p, spendType)) return true
+    if (getMarketCardCost(g, pileIndex, p.id) <= getSpendableAether(p, spendType)) {
+      return {
+        targetId: `market-pile:${pileIndex}`,
+        viewPlayerId: playerId,
+        label: `Buy ${card.name} from the Market`,
+      }
+    }
   }
 
   // Can focus or open a breach
+  const breachAether = getSpendableAether(p, 'breach')
   for (const b of p.breaches) {
     if (!isPresentBreach(b)) continue
     const focusCost = Math.max(0, b.focusCost - breachCostReduction(p, 'focus'))
     const openCost = Math.max(0, currentBreachOpenCost(b) - breachCostReduction(p, 'open'))
-    if (!b.opened && b.focusCount < b.focusToOpen && focusCost <= breachAether) return true
-    if (!b.opened && openCost <= breachAether) return true
+    if (!b.opened && b.focusCount < b.focusToOpen && focusCost <= breachAether) {
+      return {
+        targetId: `breach-focus:${playerId}:${b.index}`,
+        viewPlayerId: playerId,
+        label: `Focus Breach ${toRoman(b.index)}`,
+      }
+    }
+    if (!b.opened && openCost <= breachAether) {
+      return {
+        targetId: `breach-open:${playerId}:${b.index}`,
+        viewPlayerId: playerId,
+        label: `Open Breach ${toRoman(b.index)}`,
+      }
+    }
   }
 
   // Can gain charge
-  if (aether >= 2 && p.charge < p.chargeThreshold) return true
+  if (canGainCharge(g, playerId)) {
+    return {
+      targetId: `charge-button:${playerId}`,
+      viewPlayerId: playerId,
+      label: 'Gain a Charge',
+    }
+  }
 
   // A charged mage may activate its ability. Some abilities are available
   // during any player's main phase, so they must also prevent auto-ending
@@ -3072,11 +3222,19 @@ export function canPlayerAct(g: GameState, playerId: string): boolean {
     if (!def || def.abilityEffects.length === 0) continue
     if (def.abilityEffects.some(effect => effect.kind === 'shuffle_turn_order_card') && getPlayerTurnOrderCards(g).length === 0) continue
     if (!def.abilityEffects.some(effect => effect.kind === 'cast_prepped_spell') || getPreppedSpellChoices(g).length > 0) {
-      return true
+      return {
+        targetId: `ability-button:${candidate.id}`,
+        viewPlayerId: candidate.id,
+        label: `Activate ${def.abilityName}`,
+      }
     }
   }
 
-  return false
+  return null
+}
+
+export function canPlayerAct(g: GameState, playerId: string): boolean {
+  return getMainPhaseActionHint(g, playerId) !== null
 }
 
 // ===== Helpers =====

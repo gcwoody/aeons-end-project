@@ -1,6 +1,6 @@
 import { getCard, MAGES } from '../data'
 import {
-  activateAbility, activatePlayerCardInPlayAction, createGame, getPlayerCardInPlayActions,
+  activateAbility, activatePlayerCardInPlayAction, createGame, getMainPhaseActionHint, getPlayerCardInPlayActions,
   buyCard, openBreachDirect, playCard, resolveDrawPhase, resolvePendingDecision,
 } from '../engine'
 import type { GameState } from '../types'
@@ -231,6 +231,18 @@ function testTreasureActionsUseActivePlayerContext(): void {
   brama.breaches.forEach(breach => {
     if (breach.present !== false) breach.opened = true
   })
+  brama.hand = []
+  brama.playedThisTurn = []
+  brama.bonusAether = 0
+  brama.aetherTokens = 0
+  brama.charge = 0
+  const remainingAction = getMainPhaseActionHint(coilGame, brama.id)
+  assertEqual(remainingAction?.targetId, `player-card-in-play:${dezmodia.id}:0`,
+    'End Turn guidance locates Corrupted Coil in the other Mage area')
+  assertEqual(remainingAction?.viewPlayerId, dezmodia.id,
+    'End Turn guidance directs the player to the Treasure owner area')
+  assert(remainingAction?.label.includes('Corrupted Coil'),
+    'End Turn guidance names the action card')
   const hpBefore = coilGame.nemesis.hp
   assertEqual(getPlayerCardInPlayActions(coilGame, dezmodia.id).length, 1,
     'A Treasure action remains available when another player is taking the turn')

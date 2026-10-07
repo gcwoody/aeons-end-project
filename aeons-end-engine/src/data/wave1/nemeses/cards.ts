@@ -1,5 +1,6 @@
 import type { CardEffect, CardEffectBlock, EffectAmount, NemesisCardDef, NemesisDef, StrikeCardDef } from '../../../types'
 import { mergeCatalogs } from '../../catalog'
+import { WAVE9_BASIC_NEMESIS_CARDS, WAVE9_BASIC_NEMESIS_CARDS_BY_TIER } from '../../wave9/nemeses/basic-cards'
 
 type Tier = 1 | 2 | 3
 type RandomSource = () => number
@@ -49,7 +50,7 @@ const mostPreppedDamage = (amount: Extract<CardEffect, { kind: 'deal_player_dama
   kind: 'deal_player_damage' as const, amount, target: 'any_player' as const, selection: 'most_prepped_spells' as const,
 })
 
-export const BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
+export const WAVE1_BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
   agony_field: {
     ...makeNemesisCard('agony_field', 'Agony Field', 'power', 1, { power: 2 }),
     nemesisEffects: powerResolved(
@@ -221,10 +222,20 @@ export const RAGEBORNE_STRIKE_CARDS: Record<string, StrikeCardDef> = {
   seize: makeStrikeCard('seize', 'Seize', [{ kind: 'discard_prepped_spells', amount: 2, target: 'any_player', mostExpensive: true }]),
 }
 
-export const BASIC_NEMESIS_CARDS_BY_TIER: Record<Tier, string[]> = {
+export const WAVE1_BASIC_NEMESIS_CARDS_BY_TIER: Record<Tier, string[]> = {
   1: ['agony_field', 'bane_sire', 'bleed_static', 'eye_of_nothing', 'haze_spewer', 'skewer', 'slaughter', 'woven_sky'],
   2: ['awaken', 'cauterizer', 'dispel', 'lay_waste', 'needlemaw', 'pulverizing_ray', 'venomite'],
   3: ['doom_aegis', 'gather_darkness', 'jagged_one', 'obliterate', 'reality_rupture', 'sunder', 'topple'],
+}
+
+// The default Nemesis deck pool contains every supported wave. Obliterate is a
+// reprint in Beyond the Breach, so the shared pool uses that artwork entry once.
+const { obliterate: _coreObliterate, ...wave1BasicPool } = WAVE1_BASIC_NEMESIS_CARDS
+export const BASIC_NEMESIS_CARDS = mergeCatalogs(wave1BasicPool, WAVE9_BASIC_NEMESIS_CARDS)
+export const BASIC_NEMESIS_CARDS_BY_TIER: Record<Tier, string[]> = {
+  1: [...WAVE1_BASIC_NEMESIS_CARDS_BY_TIER[1], ...WAVE9_BASIC_NEMESIS_CARDS_BY_TIER[1]],
+  2: [...WAVE1_BASIC_NEMESIS_CARDS_BY_TIER[2], ...WAVE9_BASIC_NEMESIS_CARDS_BY_TIER[2]],
+  3: [...WAVE1_BASIC_NEMESIS_CARDS_BY_TIER[3].filter(id => id !== 'obliterate'), ...WAVE9_BASIC_NEMESIS_CARDS_BY_TIER[3]],
 }
 
 export const RAGEBORNE_UNIQUE_CARDS_BY_TIER: Record<Tier, string[]> = {
@@ -309,7 +320,8 @@ export const PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER: Record<Tier, string[]> = {
 }
 
 export const NEMESIS_CARDS: Record<string, NemesisCardDef | StrikeCardDef> = mergeCatalogs<NemesisCardDef | StrikeCardDef>(
-  BASIC_NEMESIS_CARDS,
+  WAVE1_BASIC_NEMESIS_CARDS,
+  WAVE9_BASIC_NEMESIS_CARDS,
   RAGEBORNE_UNIQUE_CARDS,
   RAGEBORNE_STRIKE_CARDS,
   PRINCE_OF_GLUTTONS_UNIQUE_CARDS,
@@ -318,6 +330,7 @@ export const NEMESIS_CARDS: Record<string, NemesisCardDef | StrikeCardDef> = mer
 export const rageborne: NemesisDef = {
   type: 'rageborne',
   name: 'Rageborne',
+  wave: 1,
   hp: 70,
   difficultyLevel: 2,
   uniqueCardIdsByTier: RAGEBORNE_UNIQUE_CARDS_BY_TIER,
@@ -334,6 +347,7 @@ export const rageborne: NemesisDef = {
 export const princeOfGluttons: NemesisDef = {
   type: 'prince_of_gluttons',
   name: 'Prince of Gluttons',
+  wave: 1,
   hp: 70,
   difficultyLevel: 5,
   uniqueCardIdsByTier: PRINCE_OF_GLUTTONS_UNIQUE_CARDS_BY_TIER,
@@ -366,7 +380,7 @@ export function buildPrinceOfGluttonsDeck(random: RandomSource = Math.random): s
   return buildTieredNemesisDeck(princeOfGluttons, random)
 }
 
-function buildTieredNemesisDeck(nemesis: NemesisDef, random: RandomSource): string[] {
+export function buildTieredNemesisDeck(nemesis: NemesisDef, random: RandomSource = Math.random): string[] {
   const deck: string[] = []
   for (const tier of [1, 2, 3] as const) {
     const basic = shuffleWithRandom(BASIC_NEMESIS_CARDS_BY_TIER[tier], random)

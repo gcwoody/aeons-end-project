@@ -300,17 +300,54 @@ function reorderGalleryTurnOrder(keys: string[]) {
             </div>
           </div>
         </article>
+
+        <article class="ui-gallery-item" data-component="Decision.MarketTargets">
+          <h3>Decision.MarketTargets</h3>
+          <p class="ui-gallery-caption">Orange marks a choice; red marks a required target</p>
+          <div class="gallery-market-targets">
+            <div class="gallery-market-target-item">
+              <button class="pile decision-market-choice game-highlight game-highlight--choice" type="button" aria-label="Eligible supply pile">
+                <img :src="cardImageUrl('vriswood_amber')" alt="Eligible V’riswood Amber pile" draggable="false" />
+              </button>
+              <span>Eligible</span>
+            </div>
+            <div class="gallery-market-target-item">
+              <button class="pile" type="button" aria-label="Ineligible supply pile">
+                <img :src="cardImageUrl('crystal')" alt="Ineligible Crystal pile" draggable="false" />
+              </button>
+              <span>Ineligible</span>
+            </div>
+            <div class="gallery-market-target-item">
+              <button class="pile decision-market-choice decision-market-choice-required game-highlight game-highlight--required" type="button" aria-label="Required supply pile">
+                <img :src="cardImageUrl('runic_flute')" alt="Required Runic Flute pile" draggable="false" />
+              </button>
+              <span>Required</span>
+            </div>
+          </div>
+        </article>
       </div>
 
       <div class="ui-gallery-state-row" data-component="Card.States">
-        <span class="ui-gallery-state-label">Card states</span>
-        <div class="card small card-image gallery-state-card actionable-card">
+        <span class="ui-gallery-state-label">Highlight meaning</span>
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--available">
           <img :src="cardImageUrl('crystal')" alt="Actionable Crystal" draggable="false" />
-          <span class="gallery-state-chip">Actionable</span>
+          <span class="gallery-state-chip">Available</span>
         </div>
-        <div class="card small card-image gallery-state-card selected-card">
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--choice">
+          <img :src="cardImageUrl('spark')" alt="Selectable Spark" draggable="false" />
+          <span class="gallery-state-chip">Choice</span>
+        </div>
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--selected">
           <img :src="cardImageUrl('spark')" alt="Selected Spark" draggable="false" />
           <span class="gallery-state-chip">Selected</span>
+        </div>
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--required">
+          <img :src="cardImageUrl('spark')" alt="Highlighted target Spark" draggable="false" />
+          <span class="gallery-state-chip">Required</span>
+        </div>
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--context">
+          <img :src="cardImageUrl('crystal')" alt="Contextual target Crystal" draggable="false" />
+          <span class="gallery-state-chip">Context</span>
         </div>
         <div class="card small card-image gallery-state-card disabled-card">
           <img :src="cardImageUrl('crystal')" alt="Disabled Crystal" draggable="false" />
@@ -438,8 +475,8 @@ function reorderGalleryTurnOrder(keys: string[]) {
         <p class="ui-gallery-caption">Choose an optional prepped spell on the board, then confirm or skip</p>
         <div class="ui-gallery-surface gallery-prepped-choice-surface">
           <button
-            class="gallery-prepped-choice-card"
-            :class="{ selected: galleryPreppedSpellSelected === 1 }"
+            class="gallery-prepped-choice-card game-highlight"
+            :class="{ selected: galleryPreppedSpellSelected === 1, 'game-highlight--choice': galleryPreppedSpellSelected === 1 }"
             type="button"
             :aria-pressed="galleryPreppedSpellSelected === 1"
             @click="toggleGalleryPreppedSpell"
@@ -702,6 +739,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
   height: auto;
   aspect-ratio: var(--card-aspect-ratio);
   padding: 0;
+  border-color: transparent;
 }
 .gallery-hand-card img,
 .gallery-mini-card img,
@@ -724,9 +762,9 @@ function reorderGalleryTurnOrder(keys: string[]) {
   width: var(--hand-card-width);
   height: var(--hand-card-height);
   overflow: hidden;
-  border: var(--pixel-border-width) solid var(--border);
+  border: var(--pixel-border-width) solid transparent;
   border-radius: var(--card-radius);
-  background: #151a29;
+  background: transparent;
 }
 .gallery-pile-card-back img { object-fit: fill; }
 .gallery-pile-count {
@@ -747,7 +785,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
   width: var(--hand-card-width);
   height: var(--hand-card-height);
   overflow: hidden;
-  border: var(--pixel-border-width) solid var(--border);
+  border: var(--pixel-border-width) solid transparent;
   border-radius: var(--card-radius);
 }
 .attached-surface { min-height: 270px; }
@@ -757,7 +795,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
   height: auto;
   aspect-ratio: var(--card-aspect-ratio);
   overflow: hidden;
-  border: var(--pixel-border-width) solid var(--border);
+  border: var(--pixel-border-width) solid transparent;
   border-radius: var(--card-radius);
 }
 .gallery-attached-treasure {
@@ -771,14 +809,14 @@ function reorderGalleryTurnOrder(keys: string[]) {
   border-radius: var(--card-radius);
 }
 .reveal-surface { min-height: 270px; }
-.gallery-reveal-card { width: 96px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-reveal-card { width: 96px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: 0; border-radius: var(--card-radius); }
 .gallery-damage-allocation { display: flex; min-height: 174px; align-items: center; justify-content: center; gap: 18px; }
-.gallery-damage-unit { position: relative; width: 74px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: visible; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-damage-unit { position: relative; width: 74px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: visible; border: 0; border-radius: var(--card-radius); }
 .gallery-damage-unit > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
 .gallery-damage-unit .damage-allocation-badge { top: -10px; right: -10px; }
 .gallery-prepped-choice-surface { display: flex; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
 .gallery-prepped-choice-card { width: 62px; padding: 0; border: 2px solid transparent; border-radius: var(--card-radius); background: transparent; cursor: pointer; }
-.gallery-prepped-choice-card.selected { border-color: var(--accent); }
+.gallery-prepped-choice-card.selected { --game-highlight-color: var(--game-highlight-choice); }
 .gallery-prepped-choice-card .card-surface { width: 100%; aspect-ratio: var(--card-aspect-ratio); }
 .gallery-life-choice-surface { min-height: 164px; }
 .ui-gallery-state-row {
@@ -792,10 +830,11 @@ function reorderGalleryTurnOrder(keys: string[]) {
   border-radius: 8px;
 }
 .ui-gallery-state-label { margin-right: 4px; color: var(--muted); font-size: 12px; font-weight: 700; }
-.gallery-state-card { position: relative; width: 74px; height: auto; aspect-ratio: var(--card-aspect-ratio); padding: 0; overflow: hidden; }
+.gallery-state-card { position: relative; width: 74px; height: auto; aspect-ratio: var(--card-aspect-ratio); padding: 0; overflow: hidden; border-color: transparent; }
 .gallery-state-card img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
-.actionable-card { border-color: var(--ok); box-shadow: 0 0 0 2px rgba(158, 206, 106, .24) inset; }
-.selected-card { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(122, 162, 255, .28) inset; }
+.gallery-market-targets { display: flex; align-items: flex-start; justify-content: center; gap: 18px; padding: 8px 0; }
+.gallery-market-target-item { display: flex; width: 74px; flex-direction: column; align-items: center; gap: 6px; color: var(--muted); font-size: 11px; font-weight: 700; }
+.gallery-market-target-item .pile { width: 74px; }
 .disabled-card { opacity: .56; cursor: not-allowed; }
 .gallery-state-chip { position: absolute; right: 4px; bottom: 4px; left: 4px; padding: 3px 4px; border-radius: 4px; background: rgba(11, 16, 32, .86); color: #fff; font-size: 10px; text-align: center; }
 .ui-gallery-zone-scroll { min-width: 0; overflow-x: auto; padding: 8px 2px; border: var(--pixel-border-width) dashed var(--border); border-radius: 8px; background: #151a29; }
@@ -817,9 +856,9 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .ui-gallery-modal-close { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 26px; line-height: 1; }
 .ui-gallery-modal-hint { margin: 0 0 14px; color: var(--muted); }
 .ui-gallery-modal-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
-.gallery-modal-card { width: 100%; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-modal-card { width: 100%; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: 0; border-radius: var(--card-radius); }
 .ui-gallery-modal-reveal { display: flex; justify-content: center; gap: 20px; margin: 16px 0 20px; }
-.gallery-modal-reveal-card { width: 220px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: var(--pixel-border-width) solid var(--border); border-radius: var(--card-radius); }
+.gallery-modal-reveal-card { width: 220px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: 0; border-radius: var(--card-radius); }
 .ui-gallery-modal-actions { display: flex; justify-content: center; gap: 10px; }
 .ui-gallery-turn-order-hidden {
   display: flex;

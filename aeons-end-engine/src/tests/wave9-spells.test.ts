@@ -2,7 +2,7 @@ import { ALL_MARKET_CARDS, createTwoPlayerScenario, getCard } from '../data'
 import {
   activatePreppedSpellAction, activateRecall, castSpell, createGame,
   getPreppedCardActions, getRecallActions, getSpellDamagePreview, getSpellDamagePreviewRange, resolveCardEffects, resolveDrawPhase,
-  movePreppedSpell, playCard, prepSpell, resolveEffects, resolvePendingDecision, returnPreppedSpellToHand,
+  playCard, prepSpell, resolveEffects, resolvePendingDecision,
 } from '../engine'
 import type { GameState, PreppedSpellChoice } from '../types'
 
@@ -184,53 +184,7 @@ function testCosmicPulseAllowsAdditionalConjuresOnItsBreach(): void {
   assertEqual(breach.preppedSpellFaceDown?.[2], true, 'The conjured spell is face down')
 }
 
-function testOncePerTurnPreppedSpellUseFollowsItsCardInstance(): void {
-  const movedGame = createGame(scenarioWithSpell('frostfire_maelstrom'))
-  const movedPlayer = movedGame.players[0]!
-  setMainPhase(movedGame, movedPlayer.id)
-  movedPlayer.pulseTokens = 0
-  movedPlayer.hand = ['frostfire_maelstrom']
-  const [sourceBreach, targetBreach] = movedPlayer.breaches.filter(breach => breach.present !== false)
-  assert(sourceBreach && targetBreach, 'The Mage has two present Breaches')
-  sourceBreach.opened = true
-  targetBreach.opened = true
-  assert(prepSpell(movedGame, movedPlayer.id, 'frostfire_maelstrom', sourceBreach.index, 0),
-    'Frostfire Maelstrom can be prepped')
-
-  const sourceAction = getPreppedCardActions(movedGame, movedPlayer.id)
-    .find(action => action.cardId === 'frostfire_maelstrom')
-  assert(sourceAction, 'Frostfire Maelstrom exposes its once-per-turn action')
-  activatePreppedSpellAction(movedGame, movedPlayer.id, sourceAction.breachIndex, sourceAction.spellIndex)
-  assertEqual(movedPlayer.pulseTokens, 1, 'Frostfire Maelstrom grants its Pulse token once')
-  assertEqual(getPreppedCardActions(movedGame, movedPlayer.id).filter(action =>
-    action.cardId === 'frostfire_maelstrom').length, 0, 'The used action is no longer available in its original Breach')
-
-  assert(movePreppedSpell(movedGame, movedPlayer.id, sourceBreach.index, 0, targetBreach.index),
-    'A used Frostfire Maelstrom can move to another Breach')
-  assertEqual(getPreppedCardActions(movedGame, movedPlayer.id).filter(action =>
-    action.cardId === 'frostfire_maelstrom').length, 0, 'Moving the spell does not reset its once-per-turn use')
-
-  const returnedGame = createGame(scenarioWithSpell('frostfire_maelstrom'))
-  const returnedPlayer = returnedGame.players[0]!
-  setMainPhase(returnedGame, returnedPlayer.id)
-  returnedPlayer.pulseTokens = 0
-  returnedPlayer.hand = ['frostfire_maelstrom']
-  const [firstBreach, secondBreach] = returnedPlayer.breaches.filter(breach => breach.present !== false)
-  assert(firstBreach && secondBreach, 'The Mage has two present Breaches')
-  firstBreach.opened = true
-  secondBreach.opened = true
-  prepSpell(returnedGame, returnedPlayer.id, 'frostfire_maelstrom', firstBreach.index, 0)
-  const firstAction = getPreppedCardActions(returnedGame, returnedPlayer.id)
-    .find(action => action.cardId === 'frostfire_maelstrom')
-  assert(firstAction, 'The returned-path Frostfire action is available at first')
-  activatePreppedSpellAction(returnedGame, returnedPlayer.id, firstAction.breachIndex, firstAction.spellIndex)
-  assert(returnPreppedSpellToHand(returnedGame, returnedPlayer.id, firstBreach.index, 0),
-    'The used spell can be returned to hand')
-  prepSpell(returnedGame, returnedPlayer.id, 'frostfire_maelstrom', secondBreach.index, 0)
-  assertEqual(getPreppedCardActions(returnedGame, returnedPlayer.id).filter(action =>
-    action.cardId === 'frostfire_maelstrom').length, 0,
-  'Returning the spell to hand and re-prepping it does not restore the once-per-turn action')
-
+function testOncePerTurnPreppedSpellUseIsTrackedPerInstance(): void {
   const duplicateGame = createGame(scenarioWithSpell('frostfire_maelstrom'))
   const duplicatePlayer = duplicateGame.players[0]!
   setMainPhase(duplicateGame, duplicatePlayer.id)
@@ -509,6 +463,8 @@ function testTurnSpellBonusAppliesWhenCastingAnAllyHandSpell(): void {
   resolvePendingDecision(game, decision.id, { kind: 'select_collective_cards', choices: [selected] })
   assertEqual(game.nemesis.hp, before - 3, 'A hand spell cast this turn receives Descent’s +2 bonus')
   assertEqual(caster.spellsCastThisTurn, 1, "Casting an ally hand spell increments the caster's spell count")
+  assertEqual(ally.hand.length, 0, 'A single normal cast removes the ally spell from hand')
+  assertEqual(ally.discard.join(','), 'spark', 'A single normal cast places the spell in its owner\'s discard pile')
 }
 
 function testFrostfireMaelstromAllocatesDamageAndGroupsTargetHits(): void {
@@ -800,7 +756,7 @@ testWave9SupplySpellCatalogAndMechanics()
 testInfernalCascadeCastsTheChosenSpellOnceWithoutDiscardingThenNormally()
 testGenericPreppedSpellCastKeepsNestedInfernalChoicesIndependent()
 testCosmicPulseAllowsAdditionalConjuresOnItsBreach()
-testOncePerTurnPreppedSpellUseFollowsItsCardInstance()
+testOncePerTurnPreppedSpellUseIsTrackedPerInstance()
 testDescentBonusAppliesToLaterLowCostSpellsAndExpires()
 testDescentConjureCanTargetAClosedBreach()
 testBoundlessFireRecallSpendsChargeAndReturnsItToHand()

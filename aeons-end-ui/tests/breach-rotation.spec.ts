@@ -224,6 +224,65 @@ test('Breach focus rotates clockwise and opening flips around its facing axis', 
   await expect(image).toHaveAttribute('alt', 'Breach IV open')
 })
 
+test('automatic end waits for Breach focus before starting sequential discard flights', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1 Mage').selectOption('remnant')
+  await page.getByLabel('Player 2 Mage').selectOption('jian')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  const player = debugState.game.players[0]
+  const target = player.breaches.find((breach: any) => breach.index === 4)
+  debugState.selectedPlayer = player.id
+  debugState.phase = 'main'
+  debugState.game.currentTurn = player.id
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  player.hand = []
+  player.playedThisTurn = ['crystal', 'wave9_crystal']
+  player.discard = []
+  player.bonusAether = 0
+  player.regularAetherSpent = 0
+  player.conditionalAetherEarned = { breach: 4 }
+  player.condAetherSpent = {}
+  player.aetherTokens = 0
+  player.charge = 0
+  for (const breach of player.breaches) {
+    breach.prepSpells = []
+    if (breach.index !== 4) {
+      breach.focusCost = 100
+      breach.focusToOpen = 100
+    }
+  }
+  target.focusCount = 0
+  target.focusToOpen = 3
+  target.focusDirection = 'west'
+  target.opened = false
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+  await page.addStyleTag({ content: ':root { --breach-focus-duration: 1200ms; --discard-phase-flight-duration: 450ms; }' })
+
+  const breach = page.locator('.breach[data-breach-index="4"]')
+  const image = breach.locator('img.breach-token')
+  const phase = page.locator('.controls .phase')
+  await breach.getByRole('button', { name: 'Focus Breach IV for 4 Aether', exact: true }).click()
+  await expect.poll(() => image.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
+  await expect(phase).toHaveText('Main Phase · Action')
+  await expect(page.locator('.card-motion-shield')).toBeVisible()
+
+  await image.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
+  await expect(phase).toHaveText('Discard Phase · Card Order')
+  await expect(page.locator('.card-flight-clone')).toBeVisible()
+  await expect(phase).toHaveText('Discard Phase · Card Order')
+  await expect(phase).not.toHaveText('Discard Phase · Card Order')
+})
+
 test('resuming a one-focus Rift IV save repairs it to the two-focus opening rule', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1 Mage').selectOption('remnant')

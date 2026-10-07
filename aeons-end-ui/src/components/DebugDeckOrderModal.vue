@@ -46,10 +46,17 @@ const columns = computed(() => Math.max(1, Math.min(5, cards.value.length)))
 function reorderDeck(keys: string[]): void {
   const deck = props.player?.deck
   if (!deck || keys.length !== deckEntries.value.length) return
+  const instanceIds = props.player?.deckInstanceIds
+  const instanceIdByKey = instanceIds?.length === deckEntries.value.length
+    ? new Map(deckEntries.value.map((entry, index) => [entry.key, instanceIds[index]!]))
+    : undefined
   const entriesByKey = new Map(deckEntries.value.map(entry => [entry.key, entry]))
   const reordered = keys.map(key => entriesByKey.get(key)).filter((entry): entry is DeckEntry => !!entry)
   if (reordered.length !== deckEntries.value.length) return
   deck.splice(0, deck.length, ...reordered.map(entry => entry.cardId))
+  if (instanceIds && instanceIdByKey) {
+    instanceIds.splice(0, instanceIds.length, ...reordered.map(entry => instanceIdByKey.get(entry.key)!))
+  }
   deckEntries.value = reordered
 }
 

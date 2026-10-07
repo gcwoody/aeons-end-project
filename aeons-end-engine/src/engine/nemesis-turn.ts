@@ -10,6 +10,10 @@ import { shuffle } from './decks'
 import { getSpendableAether, spendAether } from './aether'
 import { ensurePlayerCollections, removePreppedSpellAt } from './player-state'
 import { getPlayer } from './zones'
+import {
+  createCardInstance, ensureCardInstanceZone, insertCardInstanceAt,
+  markCardInstanceRevealed, removeCardInstanceAt,
+} from './card-instances'
 import type { checkGameOver as CheckGameOver, dealDamage as DealDamage } from './combat'
 
 export interface NemesisTurnServices {
@@ -29,9 +33,10 @@ export interface NemesisTurnServices {
   getCardChoices(game: GameState, playerId: string, source: CardSelectionSource): CardChoice[]
   getPreppedSpellChoices(game: GameState): PreppedSpellChoice[]
   getPreppedSpellCost(game: GameState, playerId: string, breachIndex: number, spellIndex: number): number | null
-  discardSelectedCards(game: GameState, playerId: string, choices: CardChoice[]): string[]
+  discardSelectedCards(game: GameState, playerId: string, choices: CardChoice[], preserveSelectionOrder?: boolean): string[]
+  drawCardsForPlayer(game: GameState, playerId: string, amount: number): number
   removeSelectedCards(game: GameState, playerId: string, choices: CardChoice[]): string[]
-  destroyOwnedCard(player: PlayerState, cardId: string): void
+  destroyOwnedCard(player: PlayerState, cardId: string, game?: GameState): void
 }
 
 export interface NemesisDiscardAction {
@@ -45,7 +50,7 @@ export function createNemesisTurnRuntime(services: NemesisTurnServices) {
   const {
     conditionMatches, runEffectResolution, resolveEffects, createDecision, setPendingDecision,
     checkGameOver, dealDamage, getCardChoices, getPreppedSpellChoices, getPreppedSpellCost,
-    discardSelectedCards, removeSelectedCards, destroyOwnedCard,
+    discardSelectedCards, drawCardsForPlayer, removeSelectedCards, destroyOwnedCard,
   } = services
 
 function ensureNemesisRuntime(g: GameState): void {
@@ -59,7 +64,12 @@ function ensureNemesisRuntime(g: GameState): void {
   )
   for (const card of n.playArea) {
     card.instanceId ??= `${card.cardId}:${card.placedAt}`
+    createCardInstance(g, card.cardId, true, card.instanceId)
   }
+  n.deckInstanceIds = ensureCardInstanceZone(g, n.deck, n.deckInstanceIds)
+  n.discardInstanceIds = ensureCardInstanceZone(g, n.discard, n.discardInstanceIds, true)
+  n.strikeDeckInstanceIds = ensureCardInstanceZone(g, n.strikeDeck, n.strikeDeckInstanceIds)
+  n.strikeDiscardInstanceIds = ensureCardInstanceZone(g, n.strikeDiscard, n.strikeDiscardInstanceIds, true)
 }
 
 function cardInstanceKey(card: NemesisCardInPlay): string {
@@ -87,14 +97,29 @@ function activeNemesisCard(
 
 function discardNemesisCard(g: GameState, card: NemesisCardInPlay): void {
   g.nemesis.playArea = g.nemesis.playArea.filter(candidate => candidate !== card)
-  g.nemesis.discard.unshift(card.cardId)
+  const instanceId = card.instanceId ?? `${card.cardId}:${card.placedAt}`
+  insertCardInstanceAt(g, g.nemesis.discard, g.nemesis.discardInstanceIds ??= [], {
+    cardId: card.cardId, instanceId, revealed: true,
+  }, 0, true)
 }
 
 /** Move a resolved Attack or depleted Power to the Nemesis discard. */
 function discardCompletedNemesisCard(g: GameState, resolution: NemesisResolutionState): void {
   if (!resolution.activeCardPendingDiscard) return
   const card = activeNemesisCard(g, resolution)
-  if (card?.cardType === 'attack' || card?.cardType === 'power') discardNemesisCard(g, card)
+  const isSetAsideForTurnOrderReset = card?.cardType === 'power' &&
+    g.nemesis.turnOrderDeckResetCardId === card.cardId &&
+    (!g.nemesis.turnOrderDeckResetCardInstanceId ||
+      cardInstanceKey(card) === g.nemesis.turnOrderDeckResetCardInstanceId)
+  if (isSetAsideForTurnOrderReset && card) {
+    g.nemesis.playArea = g.nemesis.playArea.filter(candidate => candidate !== card)
+    g.nemesis.setAsideCards ??= []
+    if (!g.nemesis.setAsideCards.some(candidate => cardInstanceKey(candidate) === cardInstanceKey(card))) {
+      g.nemesis.setAsideCards.push(card)
+    }
+  } else if (card?.cardType === 'attack' || card?.cardType === 'power') {
+    discardNemesisCard(g, card)
+  }
   resolution.activeCardPendingDiscard = undefined
 }
 
@@ -298,6 +323,7 @@ function advanceNemesisTurn(g: GameState): string[] {
       if (resolution.drawnCardId && resolution.drawnCardProcessed) {
         discardCompletedNemesisCard(g, resolution)
         resolution.drawnCardId = undefined
+        resolution.drawnCardInstanceId = undefined
         resolution.drawnCardProcessed = undefined
         resolution.drawnCardResponseHandled = undefined
         resolution.drawnCardCancelled = undefined
@@ -305,13 +331,18 @@ function advanceNemesisTurn(g: GameState): string[] {
         resolution.step = 'complete'
         continue
       }
-      const cardId = resolution.drawnCardId ?? g.nemesis.deck.shift()
+      const drawnCard = resolution.drawnCardId
+        ? undefined
+        : removeCardInstanceAt(g, g.nemesis.deck, g.nemesis.deckInstanceIds ??= [], 0)
+      const cardId = resolution.drawnCardId ?? drawnCard?.cardId
       if (!cardId) {
         messages.push('Nemesis deck is empty — Draw Phase complete')
         resolution.step = 'complete'
         continue
       }
       resolution.drawnCardId = cardId
+      resolution.drawnCardInstanceId ??= drawnCard?.instanceId
+      if (resolution.drawnCardInstanceId) markCardInstanceRevealed(g, resolution.drawnCardInstanceId)
       const definition = getCard(cardId) as NemesisCardDef
       if (!resolution.drawnCardRevealed) {
         resolution.drawnCardRevealed = true
@@ -358,9 +389,10 @@ function advanceNemesisTurn(g: GameState): string[] {
           cardId,
           cardType: 'attack',
           placedAt: counter,
-          instanceId: `${cardId}:${counter}`,
+          instanceId: resolution.drawnCardInstanceId ?? `${cardId}:${counter}`,
           enteredOnNemesisTurn: g.nemesis.nemesisTurnNumber,
         }
+        createCardInstance(g, cardId, true, placed.instanceId)
         g.nemesis.playArea.push(placed)
         resolution.activeCardInstanceId = placed.instanceId
         resolution.activeCardId = cardId
@@ -376,12 +408,16 @@ function advanceNemesisTurn(g: GameState): string[] {
           cardId,
           cardType: definition.type,
           placedAt: counter,
-          instanceId: `${cardId}:${counter}`,
+          instanceId: resolution.drawnCardInstanceId ?? `${cardId}:${counter}`,
           enteredOnNemesisTurn: g.nemesis.nemesisTurnNumber,
           ...(definition.type === 'minion'
-            ? { lifeTokens: definition.life ?? 0 }
+            ? {
+                lifeTokens: definition.life ?? 0,
+                ...(definition.nemesisTokens != null ? { nemesisTokens: definition.nemesisTokens } : {}),
+              }
             : { powerTokens: definition.power ?? 0 }),
         }
+        createCardInstance(g, cardId, true, placed.instanceId)
         g.nemesis.playArea.push(placed)
         messages.push(`Drew ${definition.type === 'minion' ? 'Minion' : 'Power'}: ${definition.name} — placed in play`)
         const blockCount = nemesisEffectBlocks(definition, 'immediately')
@@ -547,16 +583,18 @@ function returnStrikeCardToDeck(g: GameState, cardId: string): void {
         messages.push(`${player.mageType} loses ${Math.max(0, cost.amount)} charge to discard ${action.cardName}`)
       }
     }
-    if (pending.selectedCards.length > 0) {
-      for (const payment of pending.selectedCardPayments) {
-        const cost = pending.costs[payment.costIndex]
-        const removed = cost?.kind === 'discard_cards'
-          ? discardSelectedCards(g, pending.playerId, payment.choices)
-          : removeSelectedCards(g, pending.playerId, payment.choices)
-        ensurePlayerCollections(player)
-        if (cost?.kind !== 'discard_cards') removed.forEach(cardId => destroyOwnedCard(player, cardId))
-        const actionWord = cost?.kind === 'discard_cards' ? 'Discarded' : 'Destroyed'
-        messages.push(`${actionWord} ${removed.map(id => getCard(id).name).join(', ')} to discard ${action.cardName}`)
+    for (const payment of pending.selectedCardPayments) {
+      const cost = pending.costs[payment.costIndex]
+      const removed = cost?.kind === 'discard_cards'
+        ? discardSelectedCards(g, pending.playerId, payment.choices, true)
+        : removeSelectedCards(g, pending.playerId, payment.choices)
+      ensurePlayerCollections(player)
+      if (cost?.kind !== 'discard_cards') removed.forEach(cardId => destroyOwnedCard(player, cardId, g))
+      const actionWord = cost?.kind === 'discard_cards' ? 'Discarded' : 'Destroyed'
+      messages.push(`${actionWord} ${removed.map(id => getCard(id).name).join(', ')} to discard ${action.cardName}`)
+      if (cost?.kind === 'discard_cards' && (cost.drawAfter ?? 0) > 0) {
+        const drawn = drawCardsForPlayer(g, pending.playerId, cost.drawAfter!)
+        messages.push(`${player.mageType} draws ${drawn} card${drawn === 1 ? '' : 's'} after paying ${action.cardName}'s To Discard cost`)
       }
     }
     for (const payment of pending.selectedPreppedSpellPayments) {
@@ -567,7 +605,7 @@ function returnStrikeCardToDeck(g: GameState, cardId: string): void {
         if (!breach || breach.prepSpells[choice.spellIndex] !== choice.cardId) continue
         removePreppedSpellAt(breach, choice.spellIndex)
         ensurePlayerCollections(owner)
-        destroyOwnedCard(owner, choice.cardId)
+        destroyOwnedCard(owner, choice.cardId, g)
         removed.push(choice.cardId)
       }
       messages.push(`Destroyed ${removed.map(id => getCard(id).name).join(', ')} to discard ${action.cardName}`)
@@ -579,7 +617,11 @@ function returnStrikeCardToDeck(g: GameState, cardId: string): void {
       return ['The Power card is no longer in play']
     }
     g.nemesis.playArea = g.nemesis.playArea.filter(candidate => candidate !== card)
-    g.nemesis.discard.unshift(card.cardId)
+    insertCardInstanceAt(g, g.nemesis.discard, g.nemesis.discardInstanceIds ??= [], {
+      cardId: card.cardId,
+      instanceId: card.instanceId ?? `${card.cardId}:${card.placedAt}`,
+      revealed: true,
+    }, 0, true)
     g.pendingNemesisDiscard = null
     messages.push(`Discarded Power: ${action.cardName}`)
     return messages

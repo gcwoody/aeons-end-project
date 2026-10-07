@@ -228,6 +228,9 @@ function testCoiledTrilliumGrantsAllyAetherTokensAndCharge(): void {
   assertEqual(ally!.pulseTokens, 4, 'Coiled Trillium does not grant Pulse tokens')
   assertEqual(ally!.charge, 1, 'The ally gains one charge')
   assertEqual(player!.charge, 0, 'The source Mage does not receive the ally reward')
+  assertEqual(game.chargeGainEvents?.length, 1, 'Charge gain feedback records the actual recipient')
+  assertEqual(game.chargeGainEvents?.[0]?.playerId, ally!.id, 'Charge feedback identifies the ally who gained it')
+  assertEqual(game.chargeGainEvents?.[0]?.amount, 1, 'Charge feedback records the gained amount')
 
   ally!.hand = ['coiled_trillium']
   resolveCardEffects(game, player!.id, 'coiled_trillium', { kind: 'on_play' })

@@ -15,7 +15,7 @@
   border-bottom: none;
   padding: 8px 10px;
 }
-.market-col .panel-title { margin-bottom: 6px; }
+.market-col .panel-title { margin-bottom: 6px; text-align: center; }
 
 .market-grid {
   display: grid;
@@ -63,21 +63,11 @@
      clipped by the supply pile's bottom-right corner. */
   overflow: visible;
 }
-.pile.can-buy:hover,
-.pile.can-buy:focus-visible {
+.pile.can-buy:hover {
   position: relative;
   z-index: var(--z-card-hover);
 }
-.pile.can-buy:not(.decision-market-choice)::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  box-sizing: border-box;
-  border: var(--pixel-border-width) solid var(--ok);
-  border-radius: inherit;
-  pointer-events: none;
-}
+.pile.game-highlight { --game-highlight-layer: 5; }
 .pile.develop-action-available { cursor: context-menu; }
 .develop-cost-badge {
   position: absolute;
@@ -117,27 +107,25 @@
 .market-set-card-overlay-action {
   cursor: pointer;
 }
-.market-set-card-overlay-action::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 2;
-  box-sizing: border-box;
-  border: var(--pixel-border-width) solid var(--ok);
-  border-radius: inherit;
-  pointer-events: none;
-}
+.market-set-card-overlay.game-highlight { --game-highlight-layer: 2; }
 .pile:not(.can-buy) { cursor: default; }
 .pile:disabled { opacity: 1; }
 .pile.decision-market-choice {
   opacity: 1;
-  box-shadow: inset 0 0 0 2px #e6c84f;
+  box-shadow: none;
   cursor: pointer;
 }
-.pile.decision-market-choice:hover,
-.pile.decision-market-choice:focus-visible {
+.pile.decision-market-choice { --game-highlight-layer: 20; }
+.pile.decision-market-choice:hover {
   z-index: var(--z-card-hover);
-  box-shadow: inset 0 0 0 2px #e6c84f, 0 0 0 2px rgba(230, 200, 79, .28);
+  box-shadow: none;
+}
+.pile.decision-market-choice-required {
+  box-shadow: none;
+}
+.pile.decision-market-choice-required:hover {
+  z-index: var(--z-card-hover);
+  box-shadow: none;
 }
 .pile.pile-empty {
   visibility: hidden;

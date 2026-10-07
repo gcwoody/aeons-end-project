@@ -34,8 +34,7 @@
   color: var(--text);
   white-space: nowrap;
 }
-.char-btn.sel { border: 2px solid var(--accent); }
-.char-btn.cur { outline: 2px solid var(--ok); outline-offset: 1px; }
+.char-btn.game-highlight { --game-highlight-layer: 1; }
 .char-btn.cur.turn-marker-arrival { animation: turn-marker-arrival var(--transition-player-turn) ease-out; }
 @keyframes turn-marker-arrival {
   0%, 100% { background-color: var(--panel-2); }
@@ -43,28 +42,41 @@
 }
 .char-btn .char-turn-token { grid-area: 1 / 1 / 3 / 2; display: block; width: var(--control-player-token-size); height: var(--control-player-token-size); border-radius: 6px; object-fit: cover; }
 .char-btn .cn { grid-area: 1 / 2; font-weight: 700; text-transform: capitalize; }
-.char-btn .chp { grid-area: 1 / 3; color: var(--danger); font-size: 12px; font-weight: 700; }
+.char-btn .chp-status { grid-area: 1 / 3; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.char-btn .chp { color: var(--danger); font-size: 12px; font-weight: 700; }
 .char-btn .cch { grid-area: 2 / 2; color: var(--accent); font-size: 12px; }
 .char-btn .chand { grid-area: 2 / 3; color: var(--muted); font-size: 12px; }
 .char-btn .chand strong { color: var(--text); }
-.char-btn.has-hand-gain .chand, .char-btn.has-hand-gain .chand strong { color: var(--ok); }
-.char-btn .chand-gain {
+.char-btn .status-change-bubbles,
+.nemesis-info-gravehold .status-change-bubbles {
   position: absolute;
-  bottom: 0;
-  right: -20px;
-  min-width: 25px;
-  padding: 0 4px;
-  border: var(--pixel-border-width) solid var(--ok);
-  border-radius: var(--radius-pill);
-  background: var(--panel);
-  color: var(--ok);
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  text-align: center;
+  top: -15px;
+  right: -9px;
+  z-index: var(--z-damage-feedback);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 3px;
   pointer-events: none;
 }
-.char-btn .cex { grid-column: 2 / -1; color: var(--danger); font-size: 11px; font-weight: 700; }
+.status-change-bubble {
+  display: grid;
+  min-width: 42px;
+  height: 27px;
+  box-sizing: border-box;
+  place-items: center;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, .72);
+  border-radius: 999px;
+  box-shadow: 0 5px 18px rgba(0, 0, 0, .34);
+  font-size: 15px;
+  font-weight: 850;
+  line-height: 1;
+  animation: damage-impact-number 1500ms cubic-bezier(.16, .76, .28, 1) both;
+}
+.status-change-bubble--hand { background: #fff; color: #171923; }
+.status-change-bubble--charge { background: #3157a4; color: #fff; }
+.char-btn .cex { color: var(--danger); font-size: 11px; font-weight: 700; }
 .phase-line { display: flex; gap: 10px; align-items: center; }
 .phase-line .turn { font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: 1px; }
 .phase-line .phase { color: var(--warn); }
@@ -98,7 +110,6 @@
   color: inherit;
   cursor: pointer;
 }
-.trinket-deck-pile:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .trinket-deck-pile .player-pile-card { width: 100%; height: 100%; }
 .breach {
   flex: 0 1 var(--breach-size);
@@ -122,6 +133,7 @@
   isolation: isolate;
   border-radius: var(--breach-radius);
 }
+.breach-token-wrap.game-highlight { --game-highlight-layer: calc(var(--z-board-token) + 1); }
 .breach-artwork {
   position: absolute;
   inset: 0;
@@ -223,10 +235,8 @@
 .breach.castable:hover { background: transparent; }
 .breach.castable.must-cast:hover { background: transparent; }
 .breach.prep-ok { cursor: pointer; }
-.breach.prep-ok .breach-token-wrap { outline: 2px solid var(--accent); }
 .breach.prep-ok:hover { background: transparent; }
-.breach.drag-target .breach-token-wrap { outline: 2px solid var(--accent); }
-.breach.move-drag-target .breach-token-wrap { outline: 2px solid var(--accent); }
+.breach.drag-target .breach-token-wrap { --game-highlight-color: var(--game-highlight-context); }
 .breach.drag-target:hover { background: transparent; }
 .breach .spell { color: var(--spell); font-size: 12px; }
 .breach .spell img {
@@ -245,14 +255,7 @@
   overflow: hidden;
   border-radius: 9px;
 }
-.breach-spell-card-frame::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: 3;
-  border-radius: inherit;
-  pointer-events: none;
-}
+.breach-spell-card-frame.game-highlight { --game-highlight-layer: 3; }
 .breach-spell-card-frame.divided-damage-confirm-spell {
   z-index: var(--z-board-spell);
   display: block;
@@ -261,13 +264,6 @@
   border: 0;
   background: transparent;
   cursor: pointer;
-}
-.breach-spell-card-frame.divided-damage-confirm-spell::after { border: 2px solid var(--accent); }
-.breach-spell-card-frame.divided-damage-confirm-spell:hover::after {
-  border-color: #9abaff;
-}
-.breach-spell-card-frame.divided-damage-confirm-spell:hover {
-  box-shadow: 0 0 0 2px rgba(122, 162, 255, .38);
 }
 .breach-spell-card-frame.face-down-spell {
   aspect-ratio: var(--pile-card-aspect-ratio);
@@ -303,51 +299,20 @@
   visibility: visible;
   transition-delay: 0s;
 }
-.breach-spell-card-frame.castable-spell::after { border: 2px solid #e6c84f; }
-.breach-spell-card-frame.face-down-spell.castable-spell:not(.must-cast-spell)::after { border-color: var(--face-down-cast-border); }
-.breach-spell-card-frame.manual-prepped-action {
-  box-shadow: 0 0 0 var(--pixel-border-width) rgba(97, 218, 151, .35) inset;
-  cursor: pointer;
-}
-.breach-spell-card-frame.manual-prepped-action::after { border: 2px solid var(--ok); }
-.breach-spell-card-frame.manual-prepped-action:hover::after { border-color: var(--ok); }
+.breach-spell-card-frame.castable-spell { cursor: pointer; }
+.breach-spell-card-frame.manual-prepped-action { cursor: pointer; }
 .breach-spell-card-frame.ability-prepped-spell,
 .breach-spell-card-frame.pending-prepped-spell { cursor: pointer; }
-.breach-spell-card-frame.ability-prepped-spell::after,
-.breach-spell-card-frame.pending-prepped-spell::after { border: 2px solid #e6c84f; }
-.breach-spell-card-frame.repeat-cast-confirmation::after {
-  border: 2px solid var(--must-cast);
-  box-shadow: 0 0 0 1px rgba(224, 82, 82, .28);
-}
 .breach-spell-card-frame.repeat-cast-confirmation { cursor: pointer; }
-.breach-spell-card-frame.repeatable-prepped-action {
-  box-shadow: 0 0 0 var(--pixel-border-width) rgba(122, 162, 255, .38) inset;
-  cursor: pointer;
-}
-.breach-spell-card-frame.repeatable-prepped-action::after { border: 2px solid var(--accent); }
-.breach-spell-card-frame.repeatable-prepped-action:hover::after { border-color: #9abaff; }
+.breach-spell-card-frame.repeatable-prepped-action { cursor: pointer; }
 .breach-spell-card-frame.pending-prepped-spell-selected {
-  box-shadow: 0 0 0 2px rgba(104, 214, 151, .35);
   transform: translateY(-3px);
 }
-.breach-spell-card-frame.pending-prepped-spell-selected::after { border: 2px solid var(--ok); }
-.breach-spell-card-frame.pending-cast-spell {
-  box-shadow: 0 0 0 2px rgba(158, 206, 106, .35);
-}
-.breach-spell-card-frame.pending-cast-spell::after { border: 2px solid var(--ok); }
-.breach-spell-card-frame.repositionable-spell { cursor: grab; }
-.breach-spell-card-frame.repositionable-spell:active { cursor: grabbing; }
-.breach-spell-card-frame.dragging-prepped-spell {
-  visibility: hidden;
-  pointer-events: none;
-}
-.breach-spell-card-frame.must-cast-spell::after { border: 2px solid var(--must-cast); }
+.breach-spell-card-frame.pending-cast-spell { cursor: pointer; }
 .breach.mandatory-prepped-effect { cursor: default; }
 .breach-spell-card-frame.mandatory-prepped-effect {
-  box-shadow: 0 0 0 var(--pixel-border-width) rgba(255, 48, 48, .35) inset;
   cursor: pointer;
 }
-.breach-spell-card-frame.mandatory-prepped-effect::after { border: 2px solid var(--must-cast); }
 .breach-spell-card-frame span {
   display: grid;
   width: 100%;
@@ -385,12 +350,12 @@
   font-size: 12px;
 }
 .breach .btns .btn.small.effect-focus-target {
-  border-color: var(--decision-focus-target);
+  border-color: var(--game-highlight-choice);
   color: #ffd2a1;
-  box-shadow: 0 0 0 var(--pixel-border-width) rgba(242, 153, 74, .28);
 }
 .breach .btns .btn.small.effect-focus-target:hover:not(:disabled) {
-  border-color: var(--decision-focus-target);
-  background: rgba(242, 153, 74, .14);
+  border-color: var(--game-highlight-context);
+  background: rgba(122, 162, 255, .14);
+  color: var(--game-highlight-context);
 }
 
