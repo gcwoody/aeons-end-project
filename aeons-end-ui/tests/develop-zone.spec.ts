@@ -29,6 +29,12 @@ test('Swap and Played zones stay public when Swap is the only side zone', async 
   debugState.game.supplyMechanics = []
   debugState.game.developZone = []
   const owner = debugState.game.players[0]
+  debugState.selectedPlayer = owner.id
+  debugState.phase = 'main'
+  debugState.game.currentTurn = owner.id
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
   owner.swapZone = ['crystal']
   owner.playedThisTurn = ['spark']
   await stateField.fill(JSON.stringify(debugState))
@@ -214,6 +220,55 @@ test('Develop uses right-click from supply, both clicks from the shared zone, an
   await expect(page.locator('.played-zone-develop')).toBeVisible()
   await expect(page.locator('.played-zone-swap .card')).toHaveCount(swapCardCount)
   await expect(page.locator('.swap-zone-owner-label')).toHaveCount(0)
+})
+
+test('Develop cards make room in the same frame as a new card arrives', async ({ page }) => {
+  await startTestGame(page)
+  await resolveStartupInterrupts(page)
+  await page.setViewportSize({ width: 1440, height: 900 })
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 900ms; }' })
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const state = JSON.parse(await stateField.inputValue())
+  const player = state.game.players[0]
+  state.selectedPlayer = player.id
+  state.phase = 'main'
+  state.game.currentTurn = player.id
+  state.game.currentPhase = 'main'
+  state.game.pendingDecision = null
+  state.game.pendingEffect = null
+  state.game.hasDevelopZone = true
+  state.game.developZone = ['chromia_sphere']
+  state.game.market.piles[0] = { cardId: 'chromia_sphere', remaining: 7 }
+  player.bonusAether = 11
+  player.regularAetherSpent = 0
+  player.conditionalAetherEarned = {}
+  await stateField.fill(JSON.stringify(state))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.evaluate(() => {
+    const tracked = window as typeof window & { developSamples: Array<{ count: number; x: number }> }
+    tracked.developSamples = []
+    const started = performance.now()
+    const sample = () => {
+      const cards = document.querySelectorAll<HTMLElement>('.played-zone-develop [data-card-motion-key]')
+      if (cards[0]) tracked.developSamples.push({ count: cards.length, x: cards[0].getBoundingClientRect().x })
+      if (performance.now() - started < 1800) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  await page.locator('.market-grid [data-supply-card-id="chromia_sphere"]').first().click({ button: 'right' })
+  await expect(page.locator('.played-zone-develop [data-card-motion-key]')).toHaveCount(2)
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  const samples = await page.evaluate(() => (window as typeof window & {
+    developSamples: Array<{ count: number; x: number }>
+  }).developSamples)
+  const firstAdded = samples.find(sample => sample.count === 2)
+  expect(firstAdded).toBeDefined()
+  expect(Math.abs(firstAdded!.x - samples[0]!.x)).toBeLessThan(8)
+  expect(Math.abs(samples[samples.length - 1]!.x - samples[0]!.x)).toBeGreaterThan(5)
 })
 
 test('market purchase and Develop affordances respect two available Aether', async ({ page }) => {

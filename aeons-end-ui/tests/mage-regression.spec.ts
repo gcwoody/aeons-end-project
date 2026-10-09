@@ -25,6 +25,17 @@ async function resolveAttackIfNeeded(page: Page) {
 
 async function resolveStartupInterrupts(page: Page) {
   for (let attempt = 0; attempt < 20; attempt++) {
+    const transition = page.locator('.turn-transition-shield')
+    if (await transition.isVisible().catch(() => false)) {
+      await expect(transition).toHaveCount(0)
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await expect(page.locator('.nemesis-draw-flight-scene')).toHaveCount(0)
+      await reveal.click({ position: { x: 12, y: 12 } })
+      continue
+    }
     const continueDraw = page.getByRole('button', { name: 'Continue', exact: true })
     if (await continueDraw.isVisible().catch(() => false)) {
       await continueDraw.click()
@@ -870,16 +881,20 @@ test('hand stays inside its column and scrolls horizontally with the wheel', asy
       contentWidth,
     }
   })
-  const centered = await measureHand()
-  expect(Math.abs(centered.actualLeft - centered.expectedLeft)).toBeLessThan(2)
+  await expect.poll(async () => {
+    const centered = await measureHand()
+    return Math.abs(centered.actualLeft - centered.expectedLeft)
+  }).toBeLessThan(2)
 
   await applyDebugGameState(page, game => {
     for (const player of game.players) {
       player.hand = ['spark', 'crystal', 'spark', 'crystal', 'spark']
     }
   })
-  const stillCentered = await measureHand()
-  expect(Math.abs(stillCentered.actualLeft - stillCentered.expectedLeft)).toBeLessThan(2)
+  await expect.poll(async () => {
+    const centered = await measureHand()
+    return Math.abs(centered.actualLeft - centered.expectedLeft)
+  }).toBeLessThan(2)
 
   await applyDebugGameState(page, game => {
     for (const player of game.players) {

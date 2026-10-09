@@ -200,43 +200,349 @@ test('a resolved healing effect shows a green health feedback bubble', async ({ 
   await expect(page.locator('.damage-impact-gravehold')).toHaveClass(/damage-impact--healing/)
 })
 
-test('Play All Gems animates in sequence and waits for a card decision', async ({ page }) => {
+test('Play All Gems keeps a card in hand until its decision resolves, then animates it once', async ({ page }) => {
   await startCleanGame(page)
   // Keep the travel long enough to assert the intermediate state rather than
   // racing the end of the animation on a fast test machine.
-  await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 1200ms; }' })
+  await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 700ms; }' })
   await applyMainPhaseState(page, (_game, player) => {
-    player.hand = ['crystal', 'emerald_shard']
+    player.hand = ['crystal', 'sagestone']
+    player.knowledge = 1
     player.playedThisTurn = []
   })
 
   await page.getByRole('button', { name: 'Play All Gems' }).click()
-  await expect(page.locator('.card-flight-clone')).toBeVisible()
-  await expect(page.locator('.app')).toHaveClass(/card-motion-batch-active/)
-  await expect(page.locator('.card-motion-shield')).toBeVisible()
   const decision = page.locator('.app .decision-overlay')
-  await expect(decision).toHaveCount(1)
-  await expect(page.locator('.card-flight-clone')).toBeVisible()
-  await expect(page.locator('.app')).toHaveClass(/card-motion-batch-active/)
-  await expect(page.locator('.card-motion-shield')).toBeVisible()
-  await expect(decision).toBeHidden()
-  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toBeVisible()
-  await expect(page.locator('.played-zone-center [data-played-card-id="emerald_shard"]')).toBeHidden()
   await expect(decision).toBeVisible()
   await expect(page.locator('.card-flight-clone')).toHaveCount(0)
-  await expect(page.locator('.played-zone-center [data-played-card-id="emerald_shard"]')).toBeVisible()
+  await expect(page.locator('.hand [data-hand-card-id="sagestone"]')).toBeVisible()
+  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toBeVisible()
+  await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toBeHidden()
+
+  await page.getByRole('button', { name: 'No', exact: true }).click()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(1)
+  await expect(page.locator('.hand [data-hand-card-id="sagestone"]')).toBeHidden()
+  await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toBeHidden()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(0)
+  await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toBeVisible()
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  await page.keyboard.press('Control+z')
+  await expect(page.locator('.hand [data-hand-card-id="sagestone"]')).toBeVisible()
+  await expect(page.locator('.hand [data-hand-card-id="crystal"]')).toBeVisible()
+  await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toHaveCount(0)
 })
+
+test('a Gem played directly stays in hand until its optional effect resolves', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 500ms; }' })
+  await applyMainPhaseState(page, (_game, player) => {
+    player.hand = ['sagestone', 'crystal']
+    player.knowledge = 1
+    player.playedThisTurn = []
+  })
+
+  await page.locator('.hand [data-hand-card-index="0"]').click()
+  await expect(page.locator('.app .decision-overlay')).toBeVisible()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(0)
+  await expect(page.locator('.hand [data-hand-card-id="sagestone"]')).toBeVisible()
+  await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toBeHidden()
+
+  await page.getByRole('button', { name: 'No', exact: true }).click()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(1)
+  await expect(page.locator('.hand [data-hand-card-id="sagestone"]')).toBeHidden()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(0)
+  await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toBeVisible()
+})
+
+test('Play All Gems reflows an already played Sagestone as each Crystal lands', async ({ page }) => {
+  await startCleanGame(page)
+  await applyMainPhaseState(page, (_game, player) => {
+    player.hand = ['sagestone', 'crystal', 'crystal', 'crystal']
+    player.knowledge = 1
+    player.playedThisTurn = []
+  })
+
+  await page.locator('.hand [data-hand-card-id="sagestone"]').click()
+  await page.getByRole('button', { name: 'No', exact: true }).click()
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toBeVisible()
+
+  await page.evaluate(() => {
+    const trackedWindow = window as typeof window & { sagestoneReflowCrystalCounts: number[] }
+    trackedWindow.sagestoneReflowCrystalCounts = []
+    const originalAnimate = Element.prototype.animate
+    Element.prototype.animate = function (keyframes, options) {
+      if ((this as HTMLElement).dataset.playedCardId === 'sagestone') {
+        trackedWindow.sagestoneReflowCrystalCounts.push(
+          this.closest('[data-card-motion-row]')?.querySelectorAll('[data-played-card-id="crystal"]').length ?? 0,
+        )
+      }
+      return originalAnimate.call(this, keyframes, options)
+    }
+  })
+
+  await page.getByRole('button', { name: 'Play All Gems' }).click()
+  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toHaveCount(3)
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  const reflowCounts = await page.evaluate(() =>
+    (window as typeof window & { sagestoneReflowCrystalCounts: number[] }).sagestoneReflowCrystalCounts)
+  expect(reflowCounts).toEqual([1, 2, 3])
+})
+
+for (const { cardId, answer } of [
+  { cardId: 'sagestone', answer: 'No' },
+  { cardId: 'superior_crystal', answer: 'Gain 1 Aether' },
+  { cardId: 'focusing_orb', answer: 'Destroy this to let Gravehold gain 3 life' },
+]) {
+  test(`one undo returns a resolved ${cardId} decision play to the hand`, async ({ page }) => {
+    await startCleanGame(page)
+    await applyMainPhaseState(page, (game, player) => {
+      player.hand = [cardId, 'crystal']
+      player.playedThisTurn = []
+      player.knowledge = 1
+      game.gravehold.hp = 27
+    })
+
+    await page.locator(`.hand [data-hand-card-id="${cardId}"]`).click()
+    await expect(page.locator(`.hand [data-hand-card-id="${cardId}"]`)).toBeVisible()
+    await expect(page.locator(`.played-zone-center [data-played-card-id="${cardId}"]`)).toBeHidden()
+    await page.getByRole('button', { name: answer, exact: true }).click()
+    await expect(page.locator('.card-motion-shield')).toBeHidden()
+    await page.keyboard.press('Control+z')
+
+    await expect(page.locator(`.hand [data-hand-card-id="${cardId}"]`)).toBeVisible()
+    await expect(page.locator(`.played-zone-center [data-played-card-id="${cardId}"]`)).toHaveCount(0)
+    await expect(page.locator('.app .decision-overlay')).toHaveCount(0)
+  })
+}
+
+for (const previousDiscard of [[], ['spark']]) {
+  test(`Swap keeps the ${previousDiscard.length ? 'old' : 'empty'} Discard visible until its target lands`, async ({ page }) => {
+    await startCleanGame(page)
+    await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 100ms; --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
+    await applyMainPhaseState(page, (game, player) => {
+      game.hasSwapZone = true
+      player.hand = ['superior_crystal', 'crystal']
+      player.playedThisTurn = []
+      player.swapZone = ['infused_crystal', 'dim_crystal']
+      player.discard = [...previousDiscard]
+    })
+
+    const discard = page.locator('.player-discard-pile')
+    const swapSource = page.locator('.played-zone-swap [data-card-motion-card-id="superior_crystal"]')
+    const swapTargetSize = await page.locator('.played-zone-swap [data-card-motion-card-id="infused_crystal"]').boundingBox()
+    expect(swapTargetSize).not.toBeNull()
+    await page.locator('.hand [data-hand-card-id="superior_crystal"]').click()
+    await page.getByRole('button', { name: 'Gain 3 Aether and swap for Infused Crystal' }).click()
+
+    const heldSwapTarget = page.locator('.played-zone-swap [data-card-motion-held-key]')
+    await expect(page.locator('.card-flight-clone')).toHaveCount(1)
+    await expect(heldSwapTarget).toHaveCount(1)
+    await expect(heldSwapTarget).toBeVisible()
+    await expect(swapSource).toBeHidden()
+    await expect.poll(() => page.locator('.played-zone-swap [data-card-motion-card-id="dim_crystal"]')
+      .evaluate(card => card.getAnimations().some(animation => animation.playState === 'running'))).toBe(true)
+    await page.evaluate(() => {
+      const tracked = window as typeof window & { firstSwapReflow?: Animation }
+      tracked.firstSwapReflow = document.querySelector<HTMLElement>(
+        '.played-zone-swap [data-card-motion-card-id="dim_crystal"]',
+      )?.getAnimations().find(animation => animation.playState === 'running')
+    })
+    await expect(discard.locator('[data-discard-top-card="infused_crystal"]')).toHaveCount(0)
+    if (previousDiscard.length) {
+      await expect(discard.locator('[data-discard-top-card="spark"]')).toBeVisible()
+      await expect(discard.locator('.player-pile-count')).toHaveText('1')
+    } else {
+      await expect(discard.locator('.player-discard-top-card')).toHaveCount(0)
+      await expect(discard.locator('.player-empty-pile-label')).toHaveText('Discard 0')
+    }
+
+    await expect(swapSource).toBeVisible()
+    await expect(page.locator('.card-flight-clone')).toHaveCount(1)
+    await expect(heldSwapTarget).toHaveCount(0)
+    await expect.poll(() => page.locator('.played-zone-swap [data-card-motion-card-id="dim_crystal"]')
+      .evaluate(card => {
+        const tracked = window as typeof window & { firstSwapReflow?: Animation }
+        return card.getAnimations().some(animation => animation.playState === 'running' &&
+          animation !== tracked.firstSwapReflow)
+      })).toBe(true)
+    const flightTargetSize = await discard.locator('.player-discard-flight-target').boundingBox()
+    const discardSize = await discard.boundingBox()
+    expect(flightTargetSize).not.toBeNull()
+    expect(discardSize).not.toBeNull()
+    expect(flightTargetSize!.height).toBeCloseTo(discardSize!.height, 0)
+    expect(flightTargetSize!.width / flightTargetSize!.height)
+      .toBeCloseTo(swapTargetSize!.width / swapTargetSize!.height, 1)
+    await expect(discard.locator('[data-discard-top-card="infused_crystal"]')).toHaveCount(0)
+    await expect(page.locator('.card-motion-shield')).toBeHidden()
+    await expect(discard.locator('[data-discard-top-card="infused_crystal"]')).toBeVisible()
+    await expect(discard.locator('.player-pile-count')).toHaveText(String(previousDiscard.length + 1))
+  })
+}
+
+test('Swap keeps a surviving copy of an identical card stable through both row reflows', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    game.hasSwapZone = true
+    player.hand = ['superior_crystal']
+    player.playedThisTurn = []
+    player.swapZone = ['infused_crystal', 'infused_crystal', 'dim_crystal']
+    player.discard = []
+  })
+
+  const survivingCopy = page.locator('.played-zone-swap [data-card-motion-card-id="infused_crystal"]')
+  const originalKey = await survivingCopy.nth(1).getAttribute('data-card-motion-key')
+  expect(originalKey).toBeTruthy()
+  await page.locator('.hand [data-hand-card-id="superior_crystal"]').click()
+  await page.getByRole('button', { name: 'Gain 3 Aether and swap for Infused Crystal' }).first().click()
+
+  await expect(page.locator('.played-zone-swap [data-card-motion-held-key]')).toHaveCount(1)
+  await expect(survivingCopy).toHaveAttribute('data-card-motion-key', originalKey!)
+  await expect(page.locator('.played-zone-swap [data-card-motion-card-id="superior_crystal"]')).toBeVisible()
+  await expect(page.locator('.played-zone-swap [data-card-motion-held-key]')).toHaveCount(0)
+  await expect(survivingCopy).toHaveAttribute('data-card-motion-key', originalKey!)
+  await expect.poll(() => survivingCopy.evaluate(card =>
+    card.getAnimations().some(animation => animation.playState === 'running'))).toBe(true)
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  await expect(page.locator('.played-zone-swap [data-card-motion-card-id="infused_crystal"]')).toHaveCount(1)
+  await expect(survivingCopy).toHaveAttribute('data-card-motion-key', originalKey!)
+})
+
+test('a Swap effect without a decision also flies in before its target leaves', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    game.hasSwapZone = true
+    player.hand = ['dim_crystal']
+    player.playedThisTurn = []
+    player.swapZone = ['empty_crystal', 'infused_crystal']
+    player.discard = []
+  })
+
+  const heldTarget = page.locator('.played-zone-swap [data-card-motion-held-key]')
+  const incoming = page.locator('.played-zone-swap [data-card-motion-card-id="dim_crystal"]')
+  await page.locator('.hand [data-hand-card-id="dim_crystal"]').click()
+  await expect(heldTarget).toBeVisible()
+  await expect(incoming).toBeHidden()
+  await expect(page.locator('.player-discard-pile [data-discard-top-card="empty_crystal"]')).toHaveCount(0)
+  await expect(incoming).toBeVisible()
+  await expect(heldTarget).toHaveCount(0)
+  await expect(page.locator('.card-flight-clone')).toHaveCount(1)
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  await expect(page.locator('.player-discard-pile [data-discard-top-card="empty_crystal"]')).toBeVisible()
+})
+
+for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }]) {
+test(`Swap makes room on screen without a layout flash at ${viewport.width}px`, async ({ page }) => {
+  await startCleanGame(page)
+  await page.setViewportSize(viewport)
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 900ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    game.hasSwapZone = true
+    game.hasDevelopZone = true
+    game.developZone = ['chromia_sphere']
+    player.hand = ['superior_crystal']
+    player.playedThisTurn = []
+    player.swapZone = [
+      'infused_crystal', 'dim_crystal', 'empty_crystal',
+      'infused_spark', 'empty_spark', 'dim_spark',
+    ]
+    player.discard = []
+  })
+
+  await page.locator('.hand [data-hand-card-id="superior_crystal"]').click()
+  await page.evaluate(() => {
+    const tracked = window as typeof window & {
+      swapMotionSamples: Array<{
+        time: number
+        survivorX: number
+        developX: number
+        held: boolean
+        incomingVisible: boolean
+        incomingX: number | null
+        incomingKey: string | null
+      }>
+      stopSwapSampling: boolean
+    }
+    tracked.swapMotionSamples = []
+    tracked.stopSwapSampling = false
+    const sample = () => {
+      const survivor = document.querySelector<HTMLElement>(
+        '.played-zone-swap [data-card-motion-card-id="dim_crystal"]',
+      )
+      const develop = document.querySelector<HTMLElement>(
+        '.played-zone-develop [data-card-motion-card-id="chromia_sphere"]',
+      )
+      const incoming = document.querySelector<HTMLElement>(
+        '.played-zone-swap [data-card-motion-card-id="superior_crystal"]',
+      )
+      if (survivor && develop) tracked.swapMotionSamples.push({
+        time: performance.now(),
+        survivorX: survivor.getBoundingClientRect().x,
+        developX: develop.getBoundingClientRect().x,
+        held: !!document.querySelector('.played-zone-swap [data-card-motion-held-key]'),
+        incomingVisible: !!incoming && getComputedStyle(incoming).visibility === 'visible',
+        incomingX: incoming?.getBoundingClientRect().x ?? null,
+        incomingKey: incoming?.dataset.cardMotionKey ?? null,
+      })
+      if (!tracked.stopSwapSampling) requestAnimationFrame(sample)
+    }
+    requestAnimationFrame(sample)
+  })
+  await page.getByRole('button', { name: 'Gain 3 Aether and swap for Infused Crystal' }).click()
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  const samples = await page.evaluate(() => {
+    const tracked = window as typeof window & {
+      swapMotionSamples: Array<{
+        time: number
+        survivorX: number
+        developX: number
+        held: boolean
+        incomingVisible: boolean
+        incomingX: number | null
+        incomingKey: string | null
+      }>
+      stopSwapSampling: boolean
+    }
+    tracked.stopSwapSampling = true
+    return tracked.swapMotionSamples
+  })
+  const firstHeld = samples.find(sample => sample.held)
+  expect(firstHeld).toBeDefined()
+  expect(Math.abs(firstHeld!.survivorX - samples[0]!.survivorX)).toBeLessThan(8)
+  expect(samples.filter(sample => sample.held).length).toBeGreaterThan(4)
+  for (let index = 1; index < samples.length; index++) {
+    const previous = samples[index - 1]!
+    const current = samples[index]!
+    if (current.time - previous.time < 40) {
+      expect(Math.abs(current.survivorX - previous.survivorX)).toBeLessThan(15)
+      if (previous.incomingVisible && current.incomingVisible) {
+        expect(Math.abs(current.incomingX! - previous.incomingX!)).toBeLessThan(15)
+      }
+    }
+  }
+  expect(Math.max(...samples.map(sample => sample.developX)) -
+    Math.min(...samples.map(sample => sample.developX))).toBeLessThan(1)
+  const firstVisible = samples.findIndex(sample => sample.incomingVisible)
+  expect(firstVisible).toBeGreaterThan(0)
+  expect(samples.slice(firstVisible).every(sample => sample.incomingVisible)).toBe(true)
+  expect(new Set(samples.slice(firstVisible).map(sample => sample.incomingKey)).size).toBe(1)
+})
+}
 
 test('buying a supply card animates it into the top of the discard pile', async ({ page }) => {
   await startCleanGame(page)
-  await applyMainPhaseState(page, (_game, player) => {
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    game.market.piles[0] = { cardId: 'phosphor_nugget', remaining: 7 }
     player.bonusAether = 50
     player.regularAetherSpent = 0
     player.conditionalAetherEarned = {}
     player.condAetherSpent = {}
   })
 
-  const supply = page.locator('.market-grid [data-supply-card-id]').first()
+  const supply = page.locator('.market-grid [data-supply-card-id="phosphor_nugget"]').first()
   const cardId = await supply.getAttribute('data-supply-card-id')
   expect(cardId).toBeTruthy()
   await supply.click()

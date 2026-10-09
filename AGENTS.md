@@ -12,6 +12,8 @@ before making changes; do not duplicate their detailed rules here.
    the matching engine data/tests. Read `documents/wave9/collection-summary.md`
    only when checking the full Wave 9 collection.
 5. Read `design/wave9-plan.md` only when checking Wave 9 implementation status.
+6. When continuing work across conversations, read `HANDOFF.md` for a short
+   project snapshot; confirm details against the current code and guides.
 
 ## Non-negotiable project rules
 

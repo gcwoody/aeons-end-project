@@ -11,6 +11,17 @@ async function startGame(page: Page) {
   await page.getByRole('button', { name: 'Start Game' }).click()
 
   for (let attempt = 0; attempt < 20; attempt++) {
+    const transition = page.locator('.turn-transition-shield')
+    if (await transition.isVisible().catch(() => false)) {
+      await expect(transition).toHaveCount(0)
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await expect(page.locator('.nemesis-draw-flight-scene')).toHaveCount(0)
+      await reveal.click({ position: { x: 12, y: 12 } })
+      continue
+    }
     const continueButton = page.getByRole('button', { name: 'Continue', exact: true })
     if (await continueButton.isVisible().catch(() => false)) { await continueButton.click(); continue }
     const resolveCard = page.getByRole('button', { name: 'Resolve Card', exact: true })
@@ -307,8 +318,8 @@ test('a Market card gained to hand flies to its new rightmost slot while the han
       sourceCardOwnerId: player.id,
       sourceCardId: 'insatiable_avarice_btb',
       effectPlayerId: player.id,
-      remainingEffects: [],
-      awaiting: { kind: 'gain_card_from_market', cardType: 'gem', destination: 'hand' },
+      remainingEffects: [{ kind: 'move_gained_card', destination: 'hand' }],
+      awaiting: { kind: 'gain_card_from_market', cardType: 'gem', destination: 'discard_top' },
     }
   })
 
@@ -317,14 +328,12 @@ test('a Market card gained to hand flies to its new rightmost slot while the han
   const oldFirstCardLeft = await oldFirstCard.evaluate(element => element.getBoundingClientRect().left)
   await page.locator('[data-supply-card-id="crystal"]').click()
   await expect(page.locator('.card-flight-clone')).toHaveCount(1)
-  await expect(hand).toHaveClass(/hand-gain-reflow/)
   const oldCrystal = hand.locator('[data-hand-card-index="0"]')
   const newCrystal = hand.locator('[data-hand-card-index="2"]')
   await expect(oldCrystal).not.toHaveCSS('visibility', 'hidden')
   await expect(newCrystal).toHaveCSS('visibility', 'hidden')
   const shiftedFirstCardLeft = await oldFirstCard.evaluate(element => element.getBoundingClientRect().left)
   expect(shiftedFirstCardLeft).toBeLessThan(oldFirstCardLeft)
-  expect(await hand.evaluate(element => getComputedStyle(element).transitionProperty)).toContain('padding-left')
 
   await finishFlight(page)
   await expect(newCrystal).not.toHaveCSS('visibility', 'hidden')
@@ -356,7 +365,7 @@ test('an empty discard pile replaces its empty label with the arriving card and 
   })
 
   const discard = page.locator('.player-area').first().locator('.player-discard-pile')
-  await page.locator('[data-supply-card-id="rift_ring"]').click()
+  await page.locator('[data-supply-pile-index="0"]').click()
   await expect(page.locator('.card-flight-clone')).toHaveCount(1)
   await expect(discard.locator('.player-empty-pile-label')).toHaveText('Discard 0')
   await finishFlight(page)

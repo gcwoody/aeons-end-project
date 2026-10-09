@@ -148,6 +148,7 @@ watch(
   (current, previous) => {
     if (current.game !== previous.game) {
       clearAllHandIncreases()
+      clearAllChargeIncreases()
       return
     }
     if (current.selectedPlayer !== previous.selectedPlayer) clearHandIncrease(current.selectedPlayer)
@@ -205,6 +206,8 @@ const discardTopCard = computed(() => {
 const discardPileCount = computed(() => {
   return discardDisplayOverride.value?.count ?? player.value.discard.length
 })
+const pendingBoardDiscardArrival = computed(() =>
+  state.discardPileDisplayOverrides[player.value.id]?.boardArrival ?? null)
 const eligibleRecallActions = computed(() => getRecallActionsForPlayer(player.value.id))
 const hasRecallAction = computed(() => eligibleRecallActions.value.length > 0)
 const showPulseTokens = computed(() => !!state.game && getSupplyMechanics(state.game).includes('pulse_token'))
@@ -227,7 +230,7 @@ const controlPlayers = computed(() => players.value.map((candidate, playerIndex)
   hp: candidate.hp,
   charge: candidate.charge,
   chargeThreshold: candidate.chargeThreshold,
-  handCount: visibleHandCount(candidate),
+  handCount: candidate.hand.length + Number(state.handPlayPresentation?.playerId === candidate.id),
   destroyedCount: candidate.destroyedCards.length,
   handGain: handIncrease.value[candidate.id] ?? 0,
   chargeGain: chargeIncrease.value[candidate.id] ?? 0,
@@ -331,12 +334,6 @@ const conjureBreachChoice = (b: BreachState) => {
   return decision?.kind === 'select_conjure_breach'
     ? decision.candidates.find(choice => choice.playerId === player.value.id && choice.breachIndex === b.index) ?? null
     : null
-}
-
-function visibleHandCount(candidate: PlayerState): number {
-  const revealed = state.game?.pendingEffect?.conjuredCard
-  return candidate.hand.length + (state.game?.pendingDecision?.kind === 'select_conjure_breach'
-    && revealed?.playerId === candidate.id ? 1 : 0)
 }
 
 const canPrep = (b: BreachState, cardId = draggedSpellId.value ?? '') => {
@@ -476,20 +473,37 @@ const handCardDisplay = computed(() => {
   const presentation = state.handDiscardPresentation?.playerId === player.value.id
     ? state.handDiscardPresentation.cards
     : null
-  const cards = presentation ?? player.value.hand.map((cardId, handIndex) => ({
+  const cards: Array<{
+    cardId: string
+    handIndex: number
+    presentationKey?: string
+    heldForPlay?: boolean
+  }> = [...(presentation ?? player.value.hand.map((cardId, handIndex) => ({
     cardId, handIndex, presentationKey: undefined as string | undefined,
-  }))
-  return cards.map(({ cardId, handIndex, presentationKey }) => {
+  })))]
+  const heldPlay = state.handPlayPresentation?.playerId === player.value.id
+    ? state.handPlayPresentation
+    : null
+  if (heldPlay) {
+    cards.splice(Math.min(heldPlay.handIndex, cards.length), 0, {
+      cardId: heldPlay.cardId,
+      handIndex: heldPlay.handIndex,
+      presentationKey: heldPlay.presentationKey,
+      heldForPlay: true,
+    })
+  }
+  return cards.map(({ cardId, handIndex, presentationKey, heldForPlay }) => {
     const selection = boardCardChoice('hand', handIndex, cardId)
     return {
       cardId,
       handIndex,
       presentationKey,
+      heldForPlay: !!heldForPlay,
       typeClass: typeClass(cardId),
       isSpell: getCard(cardId).type === 'spell',
-      pending: !!selection,
-      selected: !!selection && isPendingBoardCardSelected(selection),
-      endTurnActionAttention: isEndTurnActionTarget(`hand-card:${player.value.id}:${handIndex}`),
+      pending: !heldForPlay && !!selection,
+      selected: !heldForPlay && !!selection && isPendingBoardCardSelected(selection),
+      endTurnActionAttention: !heldForPlay && isEndTurnActionTarget(`hand-card:${player.value.id}:${handIndex}`),
     }
   })
 })
@@ -671,52 +685,94 @@ function clickDevelopZoneCard(index: number) {
   developCard('develop_zone', index)
 }
 
-const swapZoneDisplay = computed(() => swapZoneOwners.value.map(owner => ({
-  id: owner.id,
-  cards: (owner.swapZone ?? []).map((cardId, index) => {
-    const selection = getBoardCardSelection(owner.id, 'swap_zone', index, cardId)
+const swapZoneDisplay = computed(() => swapZoneOwners.value.map(owner => {
+  const seen = new Map<string, number>()
+  const held = state.swapZoneDisplayHolds[owner.id]
+  const remembered = state.swapZoneCardKeys[owner.id]
+  const rememberedKeys = remembered?.cardIds.length === (owner.swapZone ?? []).length &&
+    remembered.cardIds.every((cardId, index) => cardId === owner.swapZone?.[index])
+    ? remembered.motionKeys
+    : null
+  const cards = (owner.swapZone ?? []).map((cardId, index) => {
+    const occurrence = seen.get(cardId) ?? 0
+    seen.set(cardId, occurrence + 1)
     return {
-      key: `swap-${owner.id}-${cardId}-${index}`,
+      cardId,
+      index,
+      motionKey: held?.survivorKeys[index] ?? rememberedKeys?.[index] ?? `swap-${owner.id}-${cardId}-${occurrence}`,
+      heldForDeparture: false,
+    }
+  })
+  if (held && !held.departing) {
+    cards.splice(Math.min(Math.max(0, held.index), cards.length), 0, {
+      cardId: held.cardId,
+      index: -1,
+      motionKey: held.motionKey,
+      heldForDeparture: true,
+    })
+  }
+  return {
+    id: owner.id,
+    cards: cards.map(({ cardId, index, motionKey, heldForDeparture }) => {
+      const selection = heldForDeparture ? null : getBoardCardSelection(owner.id, 'swap_zone', index, cardId)
+      return {
+        key: motionKey,
+        motionKey,
+        cardId,
+        index,
+        typeClass: typeClass(cardId),
+        heldForDeparture,
+        pending: !heldForDeparture && !!selection,
+        selected: !heldForDeparture && !!selection && isPendingBoardCardSelected(selection),
+      }
+    }),
+  }
+}))
+const playedZoneDisplay = computed(() => {
+  const seen = new Map<string, number>()
+  return player.value.playedThisTurn.map((cardId, index) => {
+    const selection = boardCardChoice('played_this_turn', index, cardId)
+    const occurrence = seen.get(cardId) ?? 0
+    seen.set(cardId, occurrence + 1)
+    return {
+      key: `${cardId}${index}`,
+      motionKey: `played-${player.value.id}-${cardId}-${occurrence}`,
+      ownerId: player.value.id,
       cardId,
       index,
       typeClass: typeClass(cardId),
+      preppedAction: isPreppedActionCard(index, cardId),
+      endTurnActionAttention: isEndTurnActionTarget(`played-card:${player.value.id}:${index}`),
       pending: !!selection,
       selected: !!selection && isPendingBoardCardSelected(selection),
     }
-  }),
-})))
-const playedZoneDisplay = computed(() => player.value.playedThisTurn.map((cardId, index) => {
-  const selection = boardCardChoice('played_this_turn', index, cardId)
-  return {
-    key: `${cardId}${index}`,
-    ownerId: player.value.id,
-    cardId,
-    index,
-    typeClass: typeClass(cardId),
-    preppedAction: isPreppedActionCard(index, cardId),
-    endTurnActionAttention: isEndTurnActionTarget(`played-card:${player.value.id}:${index}`),
-    pending: !!selection,
-    selected: !!selection && isPendingBoardCardSelected(selection),
-  }
-}))
+  })
+})
 const discardZoneDisplay = computed(() => state.discardRemaining.map((cardId, index) => ({
   key: `discard-slot-${index}`,
+  motionKey: `discard-slot-${index}`,
   cardId,
   index,
   typeClass: typeClass(cardId),
 })))
-const developZoneDisplay = computed(() => developZoneCards.value.map((cardId, index) => {
-  const actionAvailable = developZoneActionAvailable(index)
-  return {
-    key: `develop-${cardId}-${index}`,
-    cardId,
-    index,
-    typeClass: typeClass(cardId),
-    actionAvailable,
-    endTurnActionAttention: isEndTurnActionTarget(`develop-zone-card:${index}`),
-    title: actionAvailable ? `Develop for ${getCard(cardId).developCost ?? 0} Aether to gain this card` : undefined,
-  }
-}))
+const developZoneDisplay = computed(() => {
+  const seen = new Map<string, number>()
+  return developZoneCards.value.map((cardId, index) => {
+    const actionAvailable = developZoneActionAvailable(index)
+    const occurrence = seen.get(cardId) ?? 0
+    seen.set(cardId, occurrence + 1)
+    return {
+      key: `develop-${cardId}-${index}`,
+      motionKey: `develop-${cardId}-${occurrence}`,
+      cardId,
+      index,
+      typeClass: typeClass(cardId),
+      actionAvailable,
+      endTurnActionAttention: isEndTurnActionTarget(`develop-zone-card:${index}`),
+      title: actionAvailable ? `Develop for ${getCard(cardId).developCost ?? 0} Aether to gain this card` : undefined,
+    }
+  })
+})
 
 function startConjuredCardDrag(event: PointerEvent) {
   if (event.button !== 0 || !conjuredCard.value) return
@@ -1070,6 +1126,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
     </button>
 
     <PlayerZoneArea
+      :player-id="player.id"
       :has-swap-zone="hasSwapZone"
       :has-develop-zone="hasDevelopZone"
       :is-discard="isDiscard"
@@ -1098,6 +1155,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       :deck-count="deckPileCount"
       :discard-count="discardPileCount"
       :discard-top-card="discardTopCard"
+      :pending-board-discard-arrival="pendingBoardDiscardArrival"
       :recall-available="hasRecallAction"
       :recall-action-attention="recallActionAttention"
       :hand-cards="handCardDisplay"

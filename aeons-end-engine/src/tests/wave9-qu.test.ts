@@ -31,6 +31,7 @@ function testGiverFormSupplyGainAndRestore(): void {
   const ally = game.players[1]!
   qu.discard = []
   ally.deck = []
+  const handsBefore = JSON.stringify(game.players.map(player => player.hand))
 
   gainCard(game, qu.id, 'moonstone_shard', 'discard_top', 0)
   const offer = game.pendingDecision
@@ -41,6 +42,7 @@ function testGiverFormSupplyGainAndRestore(): void {
   answerPending(game, { kind: 'choose_optional', accepted: true })
   assertEqual(game.pendingDecision, null, 'Giver Form auto-selects Qu’s only ally without a second prompt')
   assertEqual(ally.deck[0], 'moonstone_shard', 'Giver Form puts the gained card on the ally deck')
+  assertEqual(JSON.stringify(game.players.map(player => player.hand)), handsBefore, 'Giver placement preserves every hand')
   assertEqual(qu.charge, 1, 'Giver Form grants Qu one charge')
   assertEqual(qu.mageFormSide, 'taker', 'Giver Form flips to Taker after placement')
 }
@@ -52,6 +54,7 @@ function testTakerFormTriggersWhenAllyGains(): void {
   qu.mageFormSide = 'taker'
   qu.deck = []
   ally.discard = []
+  const handsBefore = JSON.stringify(game.players.map(player => player.hand))
 
   gainCard(game, ally.id, 'moonstone_shard', 'discard_top', 0)
   const offer = game.pendingDecision
@@ -60,6 +63,7 @@ function testTakerFormTriggersWhenAllyGains(): void {
 
   answerPending(game, { kind: 'choose_optional', accepted: true })
   assertEqual(qu.deck[0], 'moonstone_shard', 'Taker Form places the gained card on Qu’s deck')
+  assertEqual(JSON.stringify(game.players.map(player => player.hand)), handsBefore, 'Taker placement preserves every hand')
   assertEqual(ally.charge, 1, 'Taker Form grants the gaining ally one charge')
   assertEqual(qu.mageFormSide, 'giver', 'Taker Form flips back to Giver after placement')
 }
@@ -70,6 +74,7 @@ function testEffectBasedSupplyGainTriggersGiverForm(): void {
   const ally = game.players[1]!
   qu.discard = []
   ally.deck = []
+  const handsBefore = JSON.stringify(game.players.map(player => player.hand))
 
   resolveEffects(game, qu.id, [{
     kind: 'gain_card', cardId: 'moonstone_shard', source: 'market',
@@ -78,6 +83,7 @@ function testEffectBasedSupplyGainTriggersGiverForm(): void {
   answerPending(game, { kind: 'choose_optional', accepted: true })
   assertEqual(game.pendingDecision, null, 'Effect-based Giver Form gain auto-selects its only ally')
   assertEqual(ally.deck[0], 'moonstone_shard', 'The effect-gained card can be placed on the ally deck')
+  assertEqual(JSON.stringify(game.players.map(player => player.hand)), handsBefore, 'Effect-based Giver placement preserves every hand')
 }
 
 function testWrongFormSideDoesNotOffer(): void {

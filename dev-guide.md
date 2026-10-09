@@ -2,7 +2,7 @@
 
 这是规则与数据开发的主要入口。先读 [README.md](README.md) 了解项目范围；改动前按工作内容再读本指南或 [UI 开发指南](ui/ui-guide.md)。
 
-更新时间：2026-10-05
+更新时间：2026-10-07
 
 ## 先记住这些
 
@@ -39,6 +39,8 @@ Wave 数据由各自的 `index.ts` 汇总，再通过引擎数据注册表提供
 | Breach 方向与费用 | `src/engine/breaches.ts` |
 | 目标、伤害和状态 | `src/engine/targets.ts`、`combat.ts`、`player-state.ts` |
 | 对局初始化与 Nemesis 回合 | `src/engine/game-setup.ts`、`nemesis-turn.ts`、`src/nemesis/` |
+| 卡牌实体及揭示记忆 | `src/engine/card-instances.ts`、`src/engine/decks.ts` |
+| 通用生命与 Charge 反馈事件 | `src/engine/health-feedback.ts`、`charge-feedback.ts` |
 | 效果运行与决策恢复 | `src/engine/effect-resolution.ts`、`decision-resolution.ts` |
 | 前端阶段与操作协调 | `aeons-end-ui/src/game/useGame.ts` |
 | 前端存档和撤销辅助逻辑 | `aeons-end-ui/src/game/game-persistence.ts` |
@@ -77,6 +79,7 @@ Wave 数据由各自的 `index.ts` 汇总，再通过引擎数据注册表提供
 - To Discard 代价上的后续抽牌（如 `drawAfter`）必须在同一轮引擎结算中完成，再把状态交给 UI 检查 Main Phase 是否可自动结束。
 - **Additional damage：** 额外伤害应作为原伤害实例的修正处理，不能误算成第二次独立伤害。
 - **伤害与治疗反馈：** 通用伤害/治疗结算函数按每次实际效果写入 `GameState.healthChangeEvents`，前端 `DamageFeedbackLayer` 按目标和数值显示气泡。新增效果必须复用这些结算函数；不要按卡牌 ID、触发来源或调用入口单独补气泡。
+- **动画与流程：** 如果动作会启动卡牌转移、Breach 旋转/翻开或 Nemesis 抽牌展示，阶段推进和自动结束必须等对应动画完成。批量动画期间要阻止重复输入；动画时间不能让引擎跳过尚未完成的决策或效果。
 
 ### Reveal 牌库的通用规则
 
@@ -113,7 +116,7 @@ Reveal Turn Order deck 时也使用共享补牌逻辑，但先洗混 Turn Order 
 
 ## 当前规则范围
 
-产品当前实现固定两名不同 Mage 对抗一名 Nemesis 的场景。Turn Order 一轮六个位置（每位 Mage 两个、Nemesis 两个）；1、3、4 人流程暂未实现。Wave 9 的资料收集与接入进度见 [design/wave9-plan.md](design/wave9-plan.md)。
+产品当前实现固定两名不同 Mage 对抗一名 Nemesis 的场景。Turn Order 一轮六个位置（每位 Mage 两个、Nemesis 两个）；1、3、4 人流程暂未实现。Wave 9 的 22 张 Basic Nemesis Cards 已加入共享基础牌池，Crooked Mask 已按 Wave 9 版本接入；其余未接入内容见 [design/wave9-plan.md](design/wave9-plan.md)。
 
 稳定玩家 ID、重复选择校验和当前 v3 本地存档格式都由引擎/前端数据类型管理；不要在新功能中写死 `p1/p2` 或绕过现有创建入口。
 

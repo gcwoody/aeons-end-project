@@ -103,7 +103,7 @@ const emit = defineEmits<{
               v-if="candidate.handGain > 0"
               :key="`hand-${candidate.id}-${candidate.handGain}`"
               class="status-change-bubble status-change-bubble--hand"
-              :aria-label="`${candidate.mageName} gained ${candidate.handGain} cards`"
+              :aria-label="`${candidate.mageName} gained ${candidate.handGain} ${candidate.handGain === 1 ? 'card' : 'cards'} to hand`"
             >+{{ candidate.handGain }}</span>
             <span
               v-if="candidate.chargeGain > 0"

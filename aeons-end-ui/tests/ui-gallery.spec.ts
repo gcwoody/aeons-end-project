@@ -3,7 +3,9 @@ import type { Locator, Page } from '@playwright/test'
 import { mkdir } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
-const screenshotRoot = resolve(process.cwd(), '..', 'ui', 'screenshots')
+const screenshotRoot = process.env.UI_GALLERY_SCREENSHOT_DIR
+  ? resolve(process.env.UI_GALLERY_SCREENSHOT_DIR)
+  : resolve(process.cwd(), '..', 'ui', 'screenshots')
 
 async function pointerDrag(page: Page, source: Locator, target: Locator): Promise<void> {
   const sourceBox = await source.boundingBox()
@@ -41,6 +43,9 @@ test.describe('UI Gallery', () => {
     await page.locator('[data-ui-gallery]').evaluate(element => element.scrollTo(0, element.scrollHeight))
     await expect(page.locator('[data-gallery-section="naming"]')).toBeInViewport()
     await page.locator('[data-ui-gallery]').evaluate(element => element.scrollTo(0, 0))
+    const handMotion = page.locator('[data-component="Hand.Motion"]')
+    await expect(handMotion.locator('.hand-card-entry')).toHaveCount(5)
+    await handMotion.screenshot({ path: resolve(screenshotRoot, 'hand-motion-1440x900.png') })
     await expect(page.locator('[data-component="Card.Pile"] .gallery-pile-card-back img')).toHaveCSS('object-fit', 'fill')
     await expect(page.locator('[data-component="Card.Mini"] .gallery-mini-card').first()).toHaveCSS('width', '78px')
     const miniCardRatio = await page.locator('[data-component="Card.Mini"] .gallery-mini-card').first().evaluate(element => {
@@ -70,14 +75,22 @@ test.describe('UI Gallery', () => {
     await expect(discardTargetButton).toContainText('5')
     await expect(discardTargetButton).not.toContainText('HP')
     const preppedSpellChoice = page.locator('[data-component="Decision.PreppedSpellChoicePanel"]')
-    await expect(preppedSpellChoice).toContainText('Selected 0/1')
     await expect(preppedSpellChoice.getByRole('button', { name: 'Skip' })).toBeVisible()
-    await expect(preppedSpellChoice.getByRole('button', { name: 'Confirm' })).toBeDisabled()
+    await expect(preppedSpellChoice.getByRole('button', { name: 'Confirm' })).toHaveCount(0)
+    await expect(preppedSpellChoice.locator('.stat')).toHaveCount(0)
+    const spellCardFits = await preppedSpellChoice.locator('.gallery-prepped-choice-card').evaluate(button => {
+      const card = button.querySelector('.card-surface')!.getBoundingClientRect()
+      const target = button.getBoundingClientRect()
+      return card.left >= target.left && card.right <= target.right
+    })
+    expect(spellCardFits).toBe(true)
+    await preppedSpellChoice.screenshot({
+      path: resolve(screenshotRoot, 'prepped-spell-choice-1440x900.png'),
+    })
     await preppedSpellChoice.locator('.gallery-prepped-choice-card').click()
-    await expect(preppedSpellChoice).toContainText('Selected 1/1')
-    await expect(preppedSpellChoice.getByRole('button', { name: 'Confirm' })).toBeEnabled()
+    await expect(preppedSpellChoice).toContainText('Spark cast.')
     await preppedSpellChoice.getByRole('button', { name: 'Skip' }).click()
-    await expect(preppedSpellChoice).toContainText('Selected 0/1')
+    await expect(preppedSpellChoice).toContainText('Skipped.')
     const emptyPile = page.locator('[data-component="Pile.Empty"] .ui-gallery-empty-pile')
     await expect(emptyPile).toHaveCSS('width', '122px')
     const emptyPileRatio = await emptyPile.evaluate(element => {
@@ -109,7 +122,7 @@ test.describe('UI Gallery', () => {
     })
     await page.locator('[data-ui-gallery]').evaluate(element => element.scrollTo(0, 0))
 
-    for (const sectionName of ['card-surfaces', 'piles-and-zones', 'modals', 'naming']) {
+    for (const sectionName of ['hand-motion', 'card-surfaces', 'piles-and-zones', 'modals', 'naming']) {
       await page.evaluate((name) => {
         document.querySelectorAll('[data-gallery-section]').forEach(section => {
           const element = section as HTMLElement

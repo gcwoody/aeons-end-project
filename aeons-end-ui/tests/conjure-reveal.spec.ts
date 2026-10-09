@@ -2,6 +2,17 @@ import { expect, test, type Page } from '@playwright/test'
 
 async function resolveStartupInterrupts(page: Page) {
   for (let attempt = 0; attempt < 20; attempt++) {
+    const transition = page.locator('.turn-transition-shield')
+    if (await transition.isVisible().catch(() => false)) {
+      await expect(transition).toHaveCount(0)
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await expect(page.locator('.nemesis-draw-flight-scene')).toHaveCount(0)
+      await reveal.click({ position: { x: 12, y: 12 } })
+      continue
+    }
     const next = page.getByRole('button', { name: /^(Continue|Resolve Card|Skip|Confirm|Attack .+|Gravehold)$/ }).first()
     if (!(await next.isVisible().catch(() => false))) return
     await next.click()
@@ -61,11 +72,12 @@ test('Conjure adds the revealed card to the hand display and allows Skip with no
   const modal = page.locator('.decision-modal')
   const revealedCard = page.locator('.hand .pending-conjure-card')
   await expect(revealedCard).toBeVisible()
-  await expect(revealedCard).toHaveCSS('border-color', 'rgb(230, 200, 79)')
+  await expect(revealedCard).toHaveClass(/game-highlight--choice/)
+  expect(await revealedCard.evaluate(element => getComputedStyle(element, '::after').borderTopColor)).toBe('rgb(242, 153, 74)')
   await revealedCard.hover()
-  await expect(revealedCard).toHaveCSS('border-color', 'rgb(230, 200, 79)')
+  expect(await revealedCard.evaluate(element => getComputedStyle(element, '::after').borderTopColor)).toBe('rgb(242, 153, 74)')
   await expect(revealedCard.locator('img[alt="Spark"]')).toBeVisible()
-  await expect(page.locator('.char-btn.sel .chand')).toContainText('Hand 2')
+  await expect(page.locator('.char-btn.sel .chand')).toContainText('Hand 1')
   await expect(modal.locator('.reveal-top-card')).toHaveCount(0)
   await expect(modal.getByRole('button', { name: 'Skip' })).toBeVisible()
   await expect(page.locator('.breach .decision-breach-target')).toHaveCount(0)
@@ -97,7 +109,7 @@ test('Conjure prepares the highlighted hand card by dragging it to an eligible B
   await page.mouse.down()
   await page.mouse.move(target!.x + target!.width / 2, target!.y + target!.height / 2, { steps: 8 })
   await expect(breach).toHaveClass(/drag-target/)
-  await expect(breach.locator('.breach-token-wrap')).toHaveCSS('outline-color', 'rgb(122, 162, 255)')
+  expect(await breach.locator('.breach-token-wrap').evaluate(element => getComputedStyle(element, '::after').borderTopColor)).toBe('rgb(122, 162, 255)')
   await expect(page.locator('.breach .decision-breach-target')).toHaveCount(0)
   await page.mouse.up()
 

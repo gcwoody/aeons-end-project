@@ -7,11 +7,12 @@
 ## 当前内容
 
 - 固定双人场景：两名不同的 Mage 对抗一名 Nemesis；目前没有账号、联机或跨设备同步。
-- 已接入 8 位 Wave 1 Mage、10 位 Wave 9 Mage，以及 Rageborne 和 Prince of Gluttons 两位 Nemesis。
-- 可使用 Wave 1 与 Wave 9 的 Gems、Relics、Spells 和 Wave 9 Trinket deck。Wave 9 Friends、Foes、Banners、Nemeses 与 Basic Nemesis Cards 目前仍是资料，尚未接入对局；详见 [Wave 9 状态](design/wave9-plan.md)。
+- 已接入 8 位 Wave 1 Mage、10 位 Wave 9 Mage，以及 Rageborne、Prince of Gluttons 和 Wave 9 重制版 Crooked Mask。
+- 可使用 Wave 1 与 Wave 9 的 Gems、Relics、Spells 和 Wave 9 Trinket deck。22 张 Wave 9 Basic Nemesis Cards 已并入所有 Nemesis 共用的基础牌池；游戏暂不提供按 Wave 筛选基础牌的设置。
+- Wave 9 的 Friends、Foes、Banners 和 Crooked Mask 以外的 Nemesis 尚未接入对局。详细状态见 [Wave 9 接入状态](design/wave9-plan.md)。
 - Setup 支持选择或随机选择 Mage/Nemesis、设置 Nemesis 难度，以及使用 Template 1 市场并逐槽替换卡牌。
 - 支持卡牌效果与目标决策、Breach、Nemesis Attack/Power/Minion、Unleash、存档恢复和最多 10 步的 Ctrl+Z 撤销。
-- 棋盘包含卡牌飞行、Breach Focus/Open、回合切换、Nemesis 抽牌翻面和受击反馈等动效；组件复用和样式约定见 [UI 开发指南](ui/ui-guide.md)。
+- 棋盘包含卡牌飞行、手牌平滑收拢、Breach Focus/Open、回合切换、Nemesis 抽牌翻面，以及伤害、治疗、抽牌和 Charge 反馈等效果；组件复用和样式约定见 [UI 开发指南](ui/ui-guide.md)。
 - Debug Tools（`Ctrl+D`）用于调整游戏状态、牌序和调试操作。
 
 存档只保存在当前浏览器的 `localStorage` 中；清除网站数据会删除存档。
@@ -82,6 +83,7 @@ design/                      当前 Wave 状态等少量仍有效的设计记录
 - 卡牌、Mage、Nemesis 与引擎规则：先读 [dev-guide.md](dev-guide.md)，再读对应的 `documents/` 资料和引擎数据/测试。
 - 布局、组件、弹窗、动效、拖拽和层级：[ui/ui-guide.md](ui/ui-guide.md)。
 - 只在检查 Wave 9 接入进度时阅读 [design/wave9-plan.md](design/wave9-plan.md)。
+- 跨对话继续项目时，可先读 [HANDOFF.md](HANDOFF.md) 获取简短进度摘要；它是快照，具体行为以当前代码和上述指南为准。
 
 ## 浏览器快捷键
 
@@ -89,7 +91,7 @@ design/                      当前 Wave 状态等少量仍有效的设计记录
 | --- | --- |
 | `Ctrl+Z` | 撤销最近操作，最多 10 步 |
 | `Ctrl+D` | 打开或关闭 Debug Tools |
-| `1`–`4` | 切换当前显示的 Mage |
+| `1`、`2` | 切换到对应玩家的 Mage 视角 |
 | `Tab` | 切换当前显示的玩家 |
 | `Q` / `W` | 查看当前 Mage 的抽牌堆 / 弃牌堆 |
 | `Space` | 确认可用的决策、确认 Nemesis 抽牌、确认待结算法术伤害，或推进支持空格操作的阶段 |

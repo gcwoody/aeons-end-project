@@ -58,7 +58,7 @@ test('Visionary Staff returns to the Mage who played it after an ally finishes d
   await expect(allyArea.locator('.hand .card')).toHaveCount(5)
 
   await page.evaluate(() => {
-    document.documentElement.style.setProperty('--hand-to-discard-flight-duration', '900ms')
+    document.documentElement.style.setProperty('--hand-to-pile-flight-duration', '900ms')
     document.documentElement.style.setProperty('--hand-card-reflow-duration', '500ms')
     const target = window as typeof window & {
       handReflowSamples?: Array<{

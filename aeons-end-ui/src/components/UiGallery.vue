@@ -11,6 +11,7 @@ import {
 } from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
+import HandMotionDemo from './HandMotionDemo.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardChoicePanel.vue'
 import ZoneScroller from './ZoneScroller.vue'
@@ -75,7 +76,6 @@ const galleryLifeChoices: PlayerLifeChoiceItem[] = [
 const galleryDamageTarget = ref('')
 const galleryLifeTarget = ref('')
 const galleryDiscardTarget = ref('')
-const galleryPreppedSpellSelected = ref(0)
 const galleryPreppedSpellResult = ref('')
 const galleryDiscardChoices: PlayerDiscardChoiceItem[] = [
   { target: { kind: 'player', playerId: 'gallery-jian' }, mageName: 'Jian', handCount: 5, tokenUrl: playerTurnOrderTokenUrl(1) },
@@ -170,18 +170,11 @@ function confirmGalleryPulseAmount() {
   modal.value = null
 }
 
-function toggleGalleryPreppedSpell() {
-  galleryPreppedSpellSelected.value = galleryPreppedSpellSelected.value ? 0 : 1
-  galleryPreppedSpellResult.value = ''
-}
-
-function confirmGalleryPreppedSpell() {
-  if (!galleryPreppedSpellSelected.value) return
-  galleryPreppedSpellResult.value = 'Spark cast confirmed.'
+function castGalleryPreppedSpell() {
+  galleryPreppedSpellResult.value = 'Spark cast.'
 }
 
 function skipGalleryPreppedSpell() {
-  galleryPreppedSpellSelected.value = 0
   galleryPreppedSpellResult.value = 'Skipped.'
 }
 
@@ -203,6 +196,14 @@ function reorderGalleryTurnOrder(keys: string[]) {
       </div>
       <a class="btn" href="/">Exit Gallery</a>
     </header>
+
+    <section class="ui-gallery-section" data-gallery-section="hand-motion">
+      <article class="ui-gallery-item" data-component="Hand.Motion">
+        <h2>Hand motion</h2>
+        <p class="ui-gallery-caption">Play, discard, add cards, scroll an overflowing hand, or switch Mage. Repeat actions during movement to inspect interrupted reflow.</p>
+        <HandMotionDemo />
+      </article>
+    </section>
 
     <section class="ui-gallery-section" data-gallery-section="card-surfaces">
       <div class="ui-gallery-section-heading">
@@ -472,28 +473,27 @@ function reorderGalleryTurnOrder(keys: string[]) {
       </article>
       <article class="ui-gallery-item" data-component="Decision.PreppedSpellChoicePanel">
         <h3>Decision.PreppedSpellChoicePanel</h3>
-        <p class="ui-gallery-caption">Choose an optional prepped spell on the board, then confirm or skip</p>
+        <p class="ui-gallery-caption">Click an optional prepped spell to cast it immediately, or skip</p>
         <div class="ui-gallery-surface gallery-prepped-choice-surface">
           <button
-            class="gallery-prepped-choice-card game-highlight"
-            :class="{ selected: galleryPreppedSpellSelected === 1, 'game-highlight--choice': galleryPreppedSpellSelected === 1 }"
+            class="gallery-prepped-choice-card game-highlight game-highlight--choice"
             type="button"
-            :aria-pressed="galleryPreppedSpellSelected === 1"
-            @click="toggleGalleryPreppedSpell"
+            aria-label="Cast Spark"
+            @click="castGalleryPreppedSpell"
           >
             <CardSurface card-id="spark" size="mini" />
           </button>
           <PreppedSpellChoicePanel
-            :selected-count="galleryPreppedSpellSelected"
+            :selected-count="0"
             :min="0"
             :max="1"
             :allow-skip="true"
+            :confirm-selection="false"
             @skip="skipGalleryPreppedSpell"
-            @confirm="confirmGalleryPreppedSpell"
           />
         </div>
         <p class="ui-gallery-ability-choice-selection">
-          {{ galleryPreppedSpellResult || 'Click the card to select it; Confirm casts it.' }}
+          {{ galleryPreppedSpellResult || 'Click the card to cast it immediately, or click Skip.' }}
         </p>
       </article>
       <p v-if="galleryInstantChoiceConfirmed" class="ui-gallery-ability-choice-selection" role="status">
@@ -816,8 +816,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .gallery-damage-unit .damage-allocation-badge { top: -10px; right: -10px; }
 .gallery-prepped-choice-surface { display: flex; min-height: 180px; flex-direction: column; align-items: center; justify-content: center; gap: 10px; }
 .gallery-prepped-choice-card { width: 62px; padding: 0; border: 2px solid transparent; border-radius: var(--card-radius); background: transparent; cursor: pointer; }
-.gallery-prepped-choice-card.selected { --game-highlight-color: var(--game-highlight-choice); }
-.gallery-prepped-choice-card .card-surface { width: 100%; aspect-ratio: var(--card-aspect-ratio); }
+.gallery-prepped-choice-card .card-surface { width: 100%; min-width: 0; height: auto; aspect-ratio: var(--card-aspect-ratio); }
 .gallery-life-choice-surface { min-height: 164px; }
 .ui-gallery-state-row {
   display: flex;

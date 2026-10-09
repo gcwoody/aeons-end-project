@@ -107,6 +107,11 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             class="pile"
             :data-supply-card-id="b.cardId"
             :data-supply-pile-index="b.pileIndex"
+            data-card-motion-zone="supply"
+            :data-card-motion-card-id="b.cardId"
+            data-card-motion-owner-id=""
+            :data-card-motion-key="`supply:${b.pileIndex}`"
+            :data-card-motion-count="b.remaining"
             :class="{
               'can-buy': canBuy && !marketDecision && b.affordable,
               'decision-market-choice': !!marketChoice(b.pileIndex),

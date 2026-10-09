@@ -1,8 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, onUpdated, ref, watch } from 'vue'
 import { getCard } from '@engine/data'
 import { playerCardBackUrl } from '../card-images'
-import { animateHandCardReflow, captureHandCardPositions } from '../game/card-flight'
+import HandCardRow from './HandCardRow.vue'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import FaceUpPileCard from './FaceUpPileCard.vue'
@@ -30,7 +29,7 @@ interface PlayerInPlayCardDisplay {
   powerTokens: number
 }
 
-const props = defineProps<{
+defineProps<{
   playerId: string
   mageType: string
   mageFormSide?: 'giver' | 'taker'
@@ -46,6 +45,7 @@ const props = defineProps<{
   deckCount: number
   discardCount: number
   discardTopCard: string | null
+  pendingBoardDiscardArrival: { cardId: string; count: number } | null
   recallAvailable: boolean
   recallActionAttention: boolean
   handCards: HandCardDisplay[]
@@ -67,223 +67,6 @@ const emit = defineEmits<{
   'open-discard': []
 }>()
 
-const handElement = ref<HTMLElement | null>(null)
-const handOffset = ref(0)
-const handGainReflowActive = ref(false)
-const handPlayerSwitchActive = ref(false)
-const handCardVisualKeys = ref<string[]>([])
-let previousHandCardVisuals: Array<{
-  cardId: string
-  handIndex: number
-  presentationKey?: string
-  visualKey: string
-}> = []
-let nextHandVisualKey = 0
-let handScrollTarget = 0
-let handScrollFrame: number | null = null
-let handAlignmentFrame: number | null = null
-let handResizeObserver: ResizeObserver | null = null
-let handGainReflowTimer: ReturnType<typeof setTimeout> | null = null
-let handVisualPlayerId: string | null = null
-let pendingHandReflowPositions: Map<string, { left: number; top: number }> | null = null
-let lastRenderedHandCardPositions = new Map<string, { left: number; top: number }>()
-
-function animateHandScroll() {
-  const hand = handElement.value
-  if (!hand) {
-    handScrollFrame = null
-    return
-  }
-  const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
-  handScrollTarget = Math.min(Math.max(0, handScrollTarget), maxScroll)
-  const distance = handScrollTarget - hand.scrollLeft
-  if (Math.abs(distance) < 0.5) {
-    hand.scrollLeft = handScrollTarget
-    handScrollFrame = null
-    return
-  }
-  hand.scrollLeft += distance * 0.2
-  handScrollFrame = requestAnimationFrame(animateHandScroll)
-}
-
-function handleHandWheel(event: WheelEvent) {
-  const target = event.target
-  const hand = target instanceof Element ? target.closest<HTMLElement>('.hand') : null
-  if (!hand || hand !== handElement.value || hand.scrollWidth <= hand.clientWidth || event.deltaY === 0) return
-  event.preventDefault()
-  event.stopPropagation()
-  if (handScrollFrame === null) handScrollTarget = hand.scrollLeft
-  const maxScroll = Math.max(0, hand.scrollWidth - hand.clientWidth)
-  handScrollTarget = Math.min(Math.max(0, handScrollTarget + event.deltaY * 1.1), maxScroll)
-  if (handScrollFrame === null) handScrollFrame = requestAnimationFrame(animateHandScroll)
-}
-
-function updateHandAlignment() {
-  if (handAlignmentFrame !== null) cancelAnimationFrame(handAlignmentFrame)
-  handAlignmentFrame = requestAnimationFrame(() => {
-    handAlignmentFrame = null
-    const hand = handElement.value
-    if (!hand || typeof window === 'undefined') return
-    const cards = [...hand.querySelectorAll<HTMLElement>('.card')]
-    const gap = Number.parseFloat(getComputedStyle(hand).gap) || 0
-    const cardWidth = cards.reduce((total, card) => total + card.getBoundingClientRect().width, 0)
-    const contentWidth = cardWidth + Math.max(0, cards.length - 1) * gap
-    const rightPadding = Number.parseFloat(getComputedStyle(hand).paddingRight) || 0
-    const handRect = hand.getBoundingClientRect()
-    const desiredOffset = window.innerWidth / 2 - handRect.left - contentWidth / 2
-    const maxOffset = Math.max(0, hand.clientWidth - rightPadding - contentWidth)
-    handOffset.value = Math.round(Math.min(Math.max(0, desiredOffset), maxOffset))
-  })
-}
-
-onMounted(() => {
-  window.addEventListener('resize', updateHandAlignment)
-  if (handElement.value && typeof ResizeObserver !== 'undefined') {
-    handResizeObserver = new ResizeObserver(updateHandAlignment)
-    handResizeObserver.observe(handElement.value)
-  }
-  void nextTick(() => {
-    updateHandAlignment()
-    requestAnimationFrame(() => { lastRenderedHandCardPositions = captureHandCardPositions(handElement.value) })
-  })
-})
-
-watch(
-  () => [props.mageType, props.handCards.map(card => card.cardId).join('|'), props.conjuredCard?.cardId],
-  () => nextTick(updateHandAlignment),
-)
-
-function reconcileHandCardVisualKeys() {
-  const cards = props.handCards
-  const previousPositions = lastRenderedHandCardPositions
-  const previousCardCount = previousHandCardVisuals.length
-  const playerChanged = handVisualPlayerId !== null && handVisualPlayerId !== props.playerId
-  const stagedDiscardPresentation = cards.some(card => !!card.presentationKey) &&
-    previousHandCardVisuals.some(card => !!card.presentationKey)
-  const keys: Array<string | undefined> = Array(cards.length)
-  const usedPrevious = new Set<number>()
-  const usedNext = new Set<number>()
-
-  // During a staged discard, source indexes remain stable even while the
-  // hand is being shortened one card at a time.
-  cards.forEach((card, nextIndex) => {
-    if (!card.presentationKey) return
-    const previousIndex = previousHandCardVisuals.findIndex((previous, index) =>
-      !usedPrevious.has(index) && previous.cardId === card.cardId && previous.handIndex === card.handIndex)
-    if (previousIndex < 0) return
-    keys[nextIndex] = previousHandCardVisuals[previousIndex]!.visualKey
-    usedPrevious.add(previousIndex)
-    usedNext.add(nextIndex)
-  })
-
-  const oldIndexes = previousHandCardVisuals.flatMap((_, index) => usedPrevious.has(index) ? [] : [index])
-  const newIndexes = cards.flatMap((_, index) => usedNext.has(index) ? [] : [index])
-  const rows = oldIndexes.length + 1
-  const columns = newIndexes.length + 1
-  const lengths = Array.from({ length: rows }, () => Array<number>(columns).fill(0))
-  for (let oldPosition = oldIndexes.length - 1; oldPosition >= 0; oldPosition--) {
-    for (let newPosition = newIndexes.length - 1; newPosition >= 0; newPosition--) {
-      const previous = previousHandCardVisuals[oldIndexes[oldPosition]!]!
-      const next = cards[newIndexes[newPosition]!]!
-      lengths[oldPosition]![newPosition] = previous.cardId === next.cardId
-        ? lengths[oldPosition + 1]![newPosition + 1]! + 1
-        : Math.max(lengths[oldPosition + 1]![newPosition]!, lengths[oldPosition]![newPosition + 1]!)
-    }
-  }
-  let oldPosition = 0
-  let newPosition = 0
-  while (oldPosition < oldIndexes.length && newPosition < newIndexes.length) {
-    const previousIndex = oldIndexes[oldPosition]!
-    const nextIndex = newIndexes[newPosition]!
-    if (previousHandCardVisuals[previousIndex]!.cardId === cards[nextIndex]!.cardId) {
-      keys[nextIndex] = previousHandCardVisuals[previousIndex]!.visualKey
-      oldPosition++
-      newPosition++
-    } else if (lengths[oldPosition + 1]![newPosition]! >= lengths[oldPosition]![newPosition + 1]!) {
-      oldPosition++
-    } else {
-      newPosition++
-    }
-  }
-
-  handCardVisualKeys.value = cards.map((card, index) => keys[index] ?? `hand-card-${++nextHandVisualKey}`)
-  previousHandCardVisuals = cards.map((card, index) => ({
-    cardId: card.cardId,
-    handIndex: card.handIndex ?? index,
-    presentationKey: card.presentationKey,
-    visualKey: handCardVisualKeys.value[index]!,
-  }))
-  handVisualPlayerId = props.playerId
-
-  if (!playerChanged && !stagedDiscardPresentation &&
-    cards.length !== previousCardCount && previousPositions.size > 0) {
-    pendingHandReflowPositions ??= new Map(previousPositions)
-  }
-}
-
-watch(
-  () => props.handCards.map(card => `${card.cardId}\u001f${card.handIndex ?? ''}\u001f${card.presentationKey ?? ''}`).join('\u001e'),
-  reconcileHandCardVisualKeys,
-  { immediate: true, flush: 'sync' },
-)
-
-const renderedHandCards = computed(() => props.handCards.map((card, index) => ({
-  ...card,
-  handIndex: card.handIndex ?? index,
-  visualKey: handCardVisualKeys.value[index] ?? `hand-card-${index}`,
-})))
-
-onUpdated(() => {
-  const positions = pendingHandReflowPositions
-  pendingHandReflowPositions = null
-  if (positions && !handPlayerSwitchActive.value) animateHandCardReflow(handElement.value, positions)
-  lastRenderedHandCardPositions = captureHandCardPositions(handElement.value)
-})
-
-watch(() => props.playerId, () => {
-  handPlayerSwitchActive.value = true
-  pendingHandReflowPositions = null
-  handGainReflowActive.value = false
-  if (handGainReflowTimer) clearTimeout(handGainReflowTimer)
-  handGainReflowTimer = null
-
-  // A different Mage's hand is a new view, not a set of cards moving within
-  // the same hand. Reset visual identity so TransitionGroup cannot animate the
-  // previous Mage's cards out while the new Mage's cards animate in.
-  previousHandCardVisuals = []
-  handCardVisualKeys.value = []
-  reconcileHandCardVisualKeys()
-
-  void nextTick(() => {
-    updateHandAlignment()
-    requestAnimationFrame(() => { handPlayerSwitchActive.value = false })
-  })
-}, { flush: 'sync' })
-
-watch(() => [props.playerId, props.handCards.length] as const, ([playerId, length], [previousPlayerId, previousLength]) => {
-  if (playerId !== previousPlayerId) return
-  if (length <= previousLength) return
-  handGainReflowActive.value = true
-  if (handGainReflowTimer) clearTimeout(handGainReflowTimer)
-  const durationToken = getComputedStyle(document.documentElement)
-    .getPropertyValue('--hand-gain-reflow-duration').trim()
-  const durationValue = Number.parseFloat(durationToken)
-  const duration = durationToken.endsWith('ms')
-    ? durationValue
-    : durationToken.endsWith('s') ? durationValue * 1000 : 220
-  handGainReflowTimer = setTimeout(() => {
-    handGainReflowActive.value = false
-    handGainReflowTimer = null
-  }, duration + 80)
-})
-
-onBeforeUnmount(() => {
-  window.removeEventListener('resize', updateHandAlignment)
-  handResizeObserver?.disconnect()
-  if (handAlignmentFrame !== null) cancelAnimationFrame(handAlignmentFrame)
-  if (handScrollFrame !== null) cancelAnimationFrame(handScrollFrame)
-  if (handGainReflowTimer) clearTimeout(handGainReflowTimer)
-})
 </script>
 
 <template>
@@ -387,60 +170,18 @@ onBeforeUnmount(() => {
       />
       <PileCountBadge :count="deckCount" label="Deck" />
     </div>
-    <div
-      ref="handElement"
-      class="hand"
-      :class="{
-        'hand-gain-reflow': handGainReflowActive,
-        'hand-player-switch': handPlayerSwitchActive,
-      }"
-      :style="{ '--hand-offset': `${handOffset}px` }"
-      @wheel="handleHandWheel"
-    >
-      <div
-        v-for="card in renderedHandCards"
-        :key="`${playerId}:${card.visualKey}`"
-        class="hand-card-entry"
-        :data-hand-card-visual-key="card.visualKey"
-      >
-        <CardHoverPreview :card-id="card.cardId">
-          <CardSurface
-            :card-id="card.cardId"
-            size="hand"
-            :data-hand-card-index="card.handIndex"
-            :data-hand-card-id="card.cardId"
-            data-card-flight-target="hand"
-            :class="[card.typeClass, {
-              dragging: draggingSpell && draggedSpellIndex === card.handIndex,
-              'spell-draggable': canActMain && card.isSpell,
-              'pending-board-card': card.pending,
-              'pending-board-card-selected': card.pending && card.selected,
-              'game-highlight': card.pending,
-              'game-highlight--choice': card.pending && !card.selected,
-              'game-highlight--selected': card.pending && card.selected,
-              'end-turn-attention': card.endTurnActionAttention,
-            }]"
-            :data-main-action-id="card.endTurnActionAttention ? `hand-card:${playerId}:${card.handIndex}` : undefined"
-            draggable="false"
-            @click="emit('click-hand-card', card.handIndex)"
-            @pointerdown="emit('start-hand-spell-drag', card.handIndex, $event)"
-          />
-        </CardHoverPreview>
-      </div>
-      <div v-if="conjuredCard" :key="`${playerId}:pending-conjured-spell`" class="hand-card-entry">
-        <CardHoverPreview :card-id="conjuredCard.cardId">
-          <CardSurface
-            :card-id="conjuredCard.cardId"
-            size="hand"
-            :class="[conjuredCard.typeClass, 'pending-board-card', 'pending-conjure-card', 'spell-draggable', 'game-highlight', 'game-highlight--choice', {
-              dragging: draggingSpell && draggingConjuredCard,
-            }]"
-            draggable="false"
-            @pointerdown="emit('start-conjured-spell-drag', $event)"
-          />
-        </CardHoverPreview>
-      </div>
-    </div>
+    <HandCardRow
+      :player-id="playerId"
+      :hand-cards="handCards"
+      :conjured-card="conjuredCard"
+      :can-act-main="canActMain"
+      :dragging-spell="draggingSpell"
+      :dragged-spell-index="draggedSpellIndex"
+      :dragging-conjured-card="draggingConjuredCard"
+      @click-hand-card="emit('click-hand-card', $event)"
+      @start-hand-spell-drag="(index, event) => emit('start-hand-spell-drag', index, event)"
+      @start-conjured-spell-drag="emit('start-conjured-spell-drag', $event)"
+    />
     <div
       class="discard-pile clickable player-discard-pile game-highlight"
       data-card-flight-zone="discard"
@@ -459,10 +200,31 @@ onBeforeUnmount(() => {
           :class="recallAvailable ? ['game-highlight', 'game-highlight--context'] : undefined"
           data-card-flight-target="discard"
           :data-discard-top-card="discardTopCard"
+          data-card-motion-zone="discard"
+          data-card-motion-from-zones="swap,develop"
+          data-card-motion-after-zones="swap"
+          :data-card-motion-arrival-count="discardCount"
+          :data-card-motion-card-id="discardTopCard"
+          :data-card-motion-owner-id="playerId"
+          :data-card-motion-key="`discard-${playerId}-top`"
           :card-id="discardTopCard"
           :image-alt="getCard(discardTopCard).name"
         />
       </CardHoverPreview>
+      <CardSurface
+        v-if="pendingBoardDiscardArrival"
+        :card-id="pendingBoardDiscardArrival.cardId"
+        base-class="player-pile-card"
+        size="pile"
+        class="player-discard-flight-target"
+        data-card-motion-zone="discard"
+        data-card-motion-from-zones="swap"
+        data-card-motion-after-zones="swap"
+        :data-card-motion-arrival-count="pendingBoardDiscardArrival.count"
+        :data-card-motion-card-id="pendingBoardDiscardArrival.cardId"
+        :data-card-motion-owner-id="playerId"
+        :data-card-motion-key="`discard-${playerId}-arrival`"
+      />
       <PileCountBadge :count="discardCount" label="Discard" />
     </div>
   </div>

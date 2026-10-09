@@ -29,7 +29,7 @@ import PlayerLifeChoice, { type PlayerLifeChoiceItem } from './PlayerLifeChoice.
 import PreppedSpellChoicePanel from './PreppedSpellChoicePanel.vue'
 
 const {
-  state, resolveDecision, confirmPendingPreppedSpells, skipPendingPreppedSpells,
+  state, resolveDecision, isImmediatePreppedSpellCast, confirmPendingPreppedSpells, skipPendingPreppedSpells,
   isBoardCardSelectionActive, confirmPendingBoardCards, skipPendingBoardCards,
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag, resetModalPosition } = useModalDrag()
@@ -39,6 +39,7 @@ const selectedTurnOrder = ref<number[]>([])
 const selectedTokenAmount = ref(0)
 
 const decision = computed(() => state.game?.pendingDecision ?? null)
+const immediatePreppedSpellCast = computed(isImmediatePreppedSpellCast)
 const decisionFormPreview = computed(() => {
   const preview = decision.value?.cardPreview
   if (!preview) return null
@@ -285,6 +286,13 @@ function collectiveZoneLabel(zone: CardChoice['zone']): string {
   return zone.replace(/_/g, ' ').toUpperCase()
 }
 
+function cardMotionZone(zone: CardChoice['zone']): string | undefined {
+  if (zone === 'played_this_turn') return 'played'
+  if (zone === 'swap_zone') return 'swap'
+  if (zone === 'hand' || zone === 'discard') return zone
+  return undefined
+}
+
 const selectionItems = computed<CardSelectionItem[]>(() => {
   if (decision.value?.kind === 'select_cards') {
     const current = decision.value
@@ -292,6 +300,10 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
       key: choiceKey(choice),
       cardId: choice.cardId,
       cardName: choice.cardName,
+      motionZone: cardMotionZone(choice.zone),
+      motionOwnerId: state.game?.pendingEffect?.effectPlayerId
+        ?? state.game?.pendingEffect?.sourcePlayerId
+        ?? state.selectedPlayer,
       groupKey: choice.zone,
       groupLabel: choice.zone === 'hand' ? 'HAND'
         : choice.zone === 'discard' ? 'DISCARD PILE'
@@ -314,6 +326,8 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
       key: collectiveChoiceKey(choice),
       cardId: choice.choice.cardId,
       cardName: choice.choice.cardName,
+      motionZone: cardMotionZone(choice.choice.zone),
+      motionOwnerId: choice.playerId,
       groupKey: choice.playerId,
       groupLabel: `${playerName(choice.playerId)} ${collectiveZoneLabel(choice.choice.zone)}`,
     }))
@@ -603,12 +617,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     @panel-pointerdown="startDrag"
   >
       <h2>{{ decisionPrompt(decision.prompt) }}</h2>
-      <p class="decision-hint">Select a highlighted prepped spell directly on any player board. You can switch players while this panel remains open.</p>
+      <p v-if="immediatePreppedSpellCast" class="decision-hint">Click a highlighted prepped spell on any player board to cast it, or skip. You can switch players while this panel remains open.</p>
+      <p v-else class="decision-hint">Select a highlighted prepped spell directly on any player board. You can switch players while this panel remains open.</p>
       <PreppedSpellChoicePanel
         :selected-count="state.pendingPreppedSpells.length"
         :min="decision.min"
         :max="decision.max"
         :allow-skip="decision.min === 0"
+        :confirm-selection="!immediatePreppedSpellCast"
         @skip="skipPendingPreppedSpells"
         @confirm="confirmPendingPreppedSpells"
       />

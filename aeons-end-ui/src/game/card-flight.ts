@@ -6,9 +6,49 @@ export interface CardFlightSnapshot {
   height: number
 }
 
+export interface CardRowPosition {
+  left: number
+  top: number
+  visible: boolean
+}
+
+export type CardRowPositionSnapshot = Map<string, CardRowPosition>
+
+export interface CardZoneMotionCardSnapshot {
+  zone: string
+  cardId: string
+  ownerId: string
+  key: string
+  amount: number
+  arrivalCount: number
+  flight: CardFlightSnapshot | null
+}
+
+export interface CardZoneMotionSnapshot {
+  rows: Array<{
+    key: string
+    element: HTMLElement
+    positions: CardRowPositionSnapshot
+  }>
+  cards: CardZoneMotionCardSnapshot[]
+  externalArrivals: Array<{ zone: string; cardId: string; ownerId: string; amount: number }>
+}
+
+export interface CardZoneMotionTransfer {
+  sourceZone: string
+  sourceKey: string
+  destinationZone: string
+  waitForZones: string[]
+  cardId: string
+  ownerId: string
+  flight: CardFlightSnapshot | null
+  destination: HTMLElement | null
+  destinationVisibilityBefore?: string
+}
+
 export type PlayerCardZone = 'hand' | 'deck' | 'discard'
 export type CardFlightDestinationMode = 'overlay' | 'replace'
-export type CardFlightTiming = 'standard' | 'hand-to-play-zone' | 'hand-to-discard' | 'discard-phase'
+export type CardFlightTiming = 'standard' | 'hand-to-play-zone' | 'hand-to-pile' | 'discard-phase'
 
 /**
  * Deck and discard pile surfaces represent persistent piles and stay visible
@@ -45,6 +85,7 @@ export interface CardZoneTransfer {
   playerId: string
   zone: PlayerCardZone
   zoneIndex: number
+  sourcePlayerId?: string
   sourceHandIndex?: number
   flight: CardFlightSnapshot | null
   timing?: CardFlightTiming
@@ -173,96 +214,412 @@ export function discardCardFlight(flight: CardFlightSnapshot | null) {
   flight?.clone.remove()
 }
 
-export type HandCardPositionSnapshot = Map<string, { left: number; top: number }>
+/** Hold a captured card in place while a decision is waiting for input. */
+export function holdCardFlightAtOrigin(flight: CardFlightSnapshot | null) {
+  if (!flight || typeof document === 'undefined') return
+  Object.assign(flight.clone.style, {
+    position: 'fixed',
+    left: `${flight.left}px`,
+    top: `${flight.top}px`,
+    width: `${flight.width}px`,
+    height: `${flight.height}px`,
+    margin: '0',
+    minWidth: '0',
+    maxWidth: 'none',
+    minHeight: '0',
+    maxHeight: 'none',
+    transform: 'translate3d(0, 0, 0) scale(1)',
+    transformOrigin: 'top left',
+  })
+  document.body.append(flight.clone)
+}
 
-/** Capture each visible hand slot by its stable visual identity before a reflow. */
-export function captureHandCardPositions(hand: HTMLElement | null): HandCardPositionSnapshot {
-  const positions: HandCardPositionSnapshot = new Map()
-  for (const entry of hand?.querySelectorAll<HTMLElement>('[data-hand-card-visual-key]') ?? []) {
-    const key = entry.dataset.handCardVisualKey
+/** Capture visible card rows and candidate card origins before a zone update. */
+export function captureCardZoneMotion(
+  root: ParentNode = document,
+  excludedElement: HTMLElement | null = null,
+): CardZoneMotionSnapshot {
+  const rows = [...root.querySelectorAll<HTMLElement>('[data-card-motion-row]')].map(element => ({
+    key: element.dataset.cardMotionRow ?? '',
+    element,
+    positions: captureCardRowPositions(element),
+  }))
+  const cards = [...root.querySelectorAll<HTMLElement>(
+    '[data-card-motion-zone][data-card-motion-card-id][data-card-motion-key]',
+  )].flatMap(element => {
+    if (element === excludedElement) return []
+    const zone = element.dataset.cardMotionZone
+    const cardId = element.dataset.cardMotionCardId
+    const key = element.dataset.cardMotionKey
+    if (!zone || !cardId || !key) return []
+    const ownerId = element.dataset.cardMotionOwnerId ?? ''
+    const rawAmount = Number(element.dataset.cardMotionCount)
+    const visibility = getComputedStyle(element).visibility
+    return [{
+      zone,
+      cardId,
+      ownerId,
+      key,
+      amount: Number.isFinite(rawAmount) ? Math.max(0, rawAmount) : 1,
+      arrivalCount: Number.isFinite(Number(element.dataset.cardMotionArrivalCount))
+        ? Math.max(0, Number(element.dataset.cardMotionArrivalCount)) : 1,
+      flight: visibility === 'hidden' ? null : captureCardFlight(element),
+    }]
+  })
+  return { rows, cards, externalArrivals: [] }
+}
+
+/** Account for a separately animated arrival omitted from the DOM snapshot. */
+export function recordCardZoneMotionArrival(
+  snapshot: CardZoneMotionSnapshot | null,
+  zone: string,
+  cardId: string,
+  ownerId: string,
+  amount = 1,
+) {
+  if (!snapshot || amount <= 0) return
+  snapshot.externalArrivals.push({ zone, cardId, ownerId, amount })
+}
+
+/** Remove a card handled by a dedicated flight from the generic zone snapshot. */
+export function discardCardZoneMotionSource(
+  snapshot: CardZoneMotionSnapshot | null,
+  zone: string,
+  cardId: string,
+  ownerId: string,
+  key: string,
+): boolean {
+  if (!snapshot) return false
+  const index = snapshot.cards.findIndex(card =>
+    card.zone === zone && card.cardId === cardId && card.ownerId === ownerId && card.key === key)
+  if (index < 0) return false
+  const [card] = snapshot.cards.splice(index, 1)
+  discardCardFlight(card?.flight ?? null)
+  return true
+}
+
+/** Resolve real card departures and arrivals after Vue has rendered the new zones. */
+export function resolveCardZoneMotion(
+  snapshot: CardZoneMotionSnapshot,
+  root: ParentNode = document,
+): CardZoneMotionTransfer[] {
+  const currentCards = [...root.querySelectorAll<HTMLElement>(
+    '[data-card-motion-zone][data-card-motion-card-id][data-card-motion-key]',
+  )].flatMap(element => {
+    const zone = element.dataset.cardMotionZone
+    const cardId = element.dataset.cardMotionCardId
+    const key = element.dataset.cardMotionKey
+    if (!zone || !cardId || !key) return []
+    return [{
+      zone,
+      cardId,
+      key,
+      ownerId: element.dataset.cardMotionOwnerId ?? '',
+      amount: Number.isFinite(Number(element.dataset.cardMotionCount))
+        ? Math.max(0, Number(element.dataset.cardMotionCount)) : 1,
+      arrivalCount: Number.isFinite(Number(element.dataset.cardMotionArrivalCount))
+        ? Math.max(0, Number(element.dataset.cardMotionArrivalCount)) : 1,
+      acceptedSourceZones: (element.dataset.cardMotionFromZones ?? '').split(',').map(value => value.trim()).filter(Boolean),
+      waitForZones: (element.dataset.cardMotionAfterZones ?? '').split(',').map(value => value.trim()).filter(Boolean),
+      element,
+    }]
+  })
+  const transfers: CardZoneMotionTransfer[] = []
+  const usedOrigins = new Set<CardZoneMotionCardSnapshot>()
+  const addedDestinations = currentCards.flatMap(card => {
+    const previous = snapshot.cards.find(before =>
+      before.zone === card.zone && before.cardId === card.cardId &&
+      before.ownerId === card.ownerId && before.key === card.key)
+    const arrivals = previous ? Math.max(0, card.arrivalCount - previous.arrivalCount) : 1
+    return Array.from({ length: arrivals }, () => ({ ...card }))
+  })
+  const usedDestinations = new Set<(typeof addedDestinations)[number]>()
+  const sourceZones = new Set(snapshot.cards.map(card => card.zone))
+  for (const sourceZone of sourceZones) {
+    const cardIds = new Set(snapshot.cards.filter(card => card.zone === sourceZone).map(card => card.cardId))
+    for (const cardId of cardIds) {
+      const sourceOwners = new Set(snapshot.cards
+        .filter(card => card.zone === sourceZone && card.cardId === cardId)
+        .map(card => card.ownerId))
+      for (const ownerId of sourceOwners) {
+        const sourceBefore = snapshot.cards.filter(card =>
+          card.zone === sourceZone && card.cardId === cardId && card.ownerId === ownerId)
+        const sourceAfter = currentCards.filter(card =>
+          card.zone === sourceZone && card.cardId === cardId && card.ownerId === ownerId)
+        const beforeAmount = sourceBefore.reduce((total, card) => total + card.amount, 0)
+        const afterAmount = sourceAfter.reduce((total, card) => total + card.amount, 0)
+        let departures = Math.max(0, beforeAmount - afterAmount)
+        const acceptedDestinations = () => addedDestinations.filter(card =>
+          card.cardId === cardId &&
+          card.acceptedSourceZones.includes(sourceZone) &&
+          (card.ownerId === ownerId || !ownerId || !card.ownerId) &&
+          !usedDestinations.has(card))
+        const externalArrivals = snapshot.externalArrivals
+          .filter(arrival => arrival.zone === sourceZone && arrival.cardId === cardId && arrival.ownerId === ownerId)
+          .reduce((total, arrival) => total + arrival.amount, 0)
+        if (externalArrivals > 0) {
+          departures += Math.min(externalArrivals, Math.max(0, acceptedDestinations().length - departures))
+        }
+        departures = Math.min(departures, acceptedDestinations().length)
+        while (departures > 0) {
+          const origin = sourceBefore.find(card => card.flight) ?? sourceBefore[0]
+          const destination = acceptedDestinations()[0]
+          if (!destination || !origin) break
+          const flight = usedOrigins.has(origin) ? cloneCardFlightSnapshot(origin.flight) : origin.flight
+          usedOrigins.add(origin)
+          usedDestinations.add(destination)
+          transfers.push({
+            sourceZone,
+            sourceKey: origin.key,
+            destinationZone: destination.zone,
+            waitForZones: destination.waitForZones,
+            cardId,
+            ownerId,
+            flight,
+            destination: destination.element,
+          })
+          departures--
+        }
+      }
+    }
+  }
+
+  const transferredFlights = new Set(transfers.map(transfer => transfer.flight).filter(Boolean))
+  snapshot.cards.forEach(card => {
+    if (card.flight && !transferredFlights.has(card.flight)) discardCardFlight(card.flight)
+  })
+  return transfers
+}
+
+function cloneCardFlightSnapshot(flight: CardFlightSnapshot | null): CardFlightSnapshot | null {
+  return flight ? {
+    clone: flight.clone.cloneNode(true) as HTMLElement,
+    left: flight.left,
+    top: flight.top,
+    width: flight.width,
+    height: flight.height,
+  } : null
+}
+
+export function discardCardZoneMotion(snapshot: CardZoneMotionSnapshot | null) {
+  snapshot?.cards.forEach(card => discardCardFlight(card.flight))
+}
+
+/** Animate board-zone flights in dependency order and reflow every affected row. */
+export async function animateCardZoneMotion(
+  transfers: readonly CardZoneMotionTransfer[],
+  zoneBarriers: ReadonlyMap<string, Promise<void>> = new Map(),
+  prepareTransfer?: (transfer: CardZoneMotionTransfer) => Promise<HTMLElement | null>,
+): Promise<void> {
+  const animateTransfer = async (transfer: CardZoneMotionTransfer) => {
+    const sourceRow = await prepareTransfer?.(transfer) ?? null
+    const flight = animateCardFlight(transfer.flight, transfer.destination, {
+      destinationMode: 'replace',
+      restoreDestinationVisibility: transfer.destinationVisibilityBefore,
+    })
+    if (sourceRow) {
+      await Promise.all([flight, waitForCardRowReflow(sourceRow)])
+      return
+    }
+    if (transfer.sourceZone !== 'hand' || !transfer.ownerId || typeof document === 'undefined') {
+      await flight
+      return
+    }
+    const playerArea = [...document.querySelectorAll<HTMLElement>('[data-player-area-id]')]
+      .find(element => element.dataset.playerAreaId === transfer.ownerId)
+    await Promise.all([flight, waitForHandCardReflow(playerArea?.querySelector<HTMLElement>('.hand') ?? null)])
+  }
+  const transfersByDestination = new Map<string, CardZoneMotionTransfer[]>()
+  for (const transfer of transfers) {
+    const destinationTransfers = transfersByDestination.get(transfer.destinationZone) ?? []
+    destinationTransfers.push(transfer)
+    transfersByDestination.set(transfer.destinationZone, destinationTransfers)
+  }
+
+  const settledZones = new Map<string, Promise<void>>()
+  const settlingZones = new Set<string>()
+  const settleZone = (zone: string): Promise<void> => {
+    const settled = settledZones.get(zone)
+    if (settled) return settled
+    // Zone sequencing is authored as a DAG. If a future route accidentally
+    // declares a cycle, break the cycle instead of leaving the action pending.
+    if (settlingZones.has(zone)) return Promise.resolve()
+    settlingZones.add(zone)
+    const zoneTransfers = transfersByDestination.get(zone) ?? []
+    const prerequisiteZones = new Set(zoneTransfers.flatMap(transfer => transfer.waitForZones))
+    const prerequisites = [...prerequisiteZones].map(settleZone)
+    const transfersByElement = new Map<HTMLElement | null, CardZoneMotionTransfer[]>()
+    for (const transfer of zoneTransfers) {
+      const destinationTransfers = transfersByElement.get(transfer.destination) ?? []
+      destinationTransfers.push(transfer)
+      transfersByElement.set(transfer.destination, destinationTransfers)
+    }
+    const zoneFlights = [...transfersByElement.values()].map(async destinationTransfers => {
+      for (const transfer of destinationTransfers) {
+        await Promise.all(transfer.waitForZones.map(settleZone))
+        await animateTransfer(transfer)
+      }
+    })
+    const barrier = zoneBarriers.get(zone)
+    const zoneSettled = Promise.all([
+      ...(barrier ? [barrier] : []),
+      ...prerequisites,
+      ...zoneFlights,
+    ]).then(() => undefined)
+    settledZones.set(zone, zoneSettled)
+    settlingZones.delete(zone)
+    return zoneSettled
+  }
+
+  const zones = new Set([
+    ...transfersByDestination.keys(),
+    ...zoneBarriers.keys(),
+  ])
+  await Promise.all([...zones].map(settleZone))
+}
+
+export type HandCardPositionSnapshot = CardRowPositionSnapshot
+
+const handReflowAnimations = new WeakMap<HTMLElement, Set<Animation>>()
+
+export function hasActiveHandCardReflow(hand: HTMLElement | null): boolean {
+  return !!hand && (handReflowAnimations.get(hand)?.size ?? 0) > 0
+}
+
+/** Identify the exact departing copy when a hand contains identical cards. */
+export function markHandCardDeparting(card: HTMLElement | null) {
+  const entry = card?.closest<HTMLElement>('[data-hand-card-visual-key]')
+  if (entry) entry.dataset.handCardDeparting = 'true'
+}
+
+export function cancelHandCardReflow(hand: HTMLElement | null) {
+  cancelCardRowReflow(hand)
+}
+
+/** Capture each visible card slot by its stable visual identity before a reflow. */
+export function captureCardRowPositions(
+  row: HTMLElement | null,
+  selector = '[data-card-motion-key]',
+  keyAttribute = 'data-card-motion-key',
+): CardRowPositionSnapshot {
+  const positions: CardRowPositionSnapshot = new Map()
+  for (const entry of row?.querySelectorAll<HTMLElement>(selector) ?? []) {
+    const key = entry.getAttribute(keyAttribute)
     if (!key) continue
     const rect = entry.getBoundingClientRect()
-    positions.set(key, { left: rect.left, top: rect.top })
+    positions.set(key, { left: rect.left, top: rect.top, visible: Number(getComputedStyle(entry).opacity) > 0 })
   }
   return positions
 }
 
-/** Smoothly move surviving hand cards from their previous screen positions. */
-export function animateHandCardReflow(hand: HTMLElement | null, previousPositions: HandCardPositionSnapshot) {
-  const rootStyle = getComputedStyle(document.documentElement)
-  const rawDuration = rootStyle.getPropertyValue('--hand-card-reflow-duration').trim()
-  const durationValue = Number.parseFloat(rawDuration)
-  const duration = rawDuration.endsWith('ms')
-    ? durationValue
-    : rawDuration.endsWith('s') ? durationValue * 1000 : 220
-  const easing = rootStyle.getPropertyValue('--card-flight-easing').trim()
-    || 'cubic-bezier(.22, .78, .24, 1)'
-
-  for (const entry of hand?.querySelectorAll<HTMLElement>('[data-hand-card-visual-key]') ?? []) {
-    const key = entry.dataset.handCardVisualKey
-    const previous = key ? previousPositions.get(key) : undefined
-    if (!previous || typeof entry.animate !== 'function') continue
-    const rect = entry.getBoundingClientRect()
-    const deltaX = previous.left - rect.left
-    const deltaY = previous.top - rect.top
-    if (Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) continue
-
-    const inverseTransform = `translate3d(${deltaX}px, ${deltaY}px, 0)`
-    entry.style.transform = inverseTransform
-    void entry.offsetWidth
-    const animation = entry.animate([
-      { transform: inverseTransform },
-      { transform: 'translate3d(0, 0, 0)' },
-    ], { duration, easing, fill: 'both' })
-    void animation.finished.then(() => {
-      animation.cancel()
-      if (entry.style.transform === inverseTransform) entry.style.removeProperty('transform')
-    }).catch(() => {
-      if (entry.style.transform === inverseTransform) entry.style.removeProperty('transform')
-    })
-  }
+export function captureHandCardPositions(hand: HTMLElement | null): HandCardPositionSnapshot {
+  return captureCardRowPositions(hand, '[data-hand-card-visual-key]', 'data-hand-card-visual-key')
 }
 
-/** Begin compressing the visible hand as one selected card starts flying out. */
-export function animateHandCardRemovalReflow(hand: HTMLElement | null, removedHandIndex: number): Promise<void> {
-  if (!hand) return Promise.resolve()
-  const entries = [...hand.querySelectorAll<HTMLElement>('.hand-card-entry')]
-  const removedEntry = entries.find(entry =>
-    Number(entry.querySelector<HTMLElement>('[data-hand-card-index]')?.dataset.handCardIndex) === removedHandIndex)
-  if (!removedEntry) return Promise.resolve()
+export function cancelCardRowReflow(row: HTMLElement | null) {
+  if (!row) return
+  for (const animation of handReflowAnimations.get(row) ?? []) animation.cancel()
+  handReflowAnimations.delete(row)
+}
 
-  const gap = Number.parseFloat(getComputedStyle(hand).gap) || 0
-  const shift = removedEntry.getBoundingClientRect().width + gap
+/** Smoothly move surviving cards from their previous screen positions. */
+export function animateCardRowReflow(
+  row: HTMLElement | null,
+  previousPositions: CardRowPositionSnapshot,
+  options: {
+    selector?: string
+    keyAttribute?: string
+    durationVariable?: string
+    gainingCards?: boolean
+    excludedKeys?: ReadonlySet<string>
+    animateNewCards?: boolean
+  } = {},
+) {
+  if (!row) return
+  const selector = options.selector ?? '[data-card-motion-key]'
+  const keyAttribute = options.keyAttribute ?? 'data-card-motion-key'
+  // Snapshot the visible positions before cancelling. Measure the new targets
+  // only after every previous transform has been removed.
+  cancelCardRowReflow(row)
   const rootStyle = getComputedStyle(document.documentElement)
-  const rawDuration = rootStyle.getPropertyValue('--hand-card-reflow-duration').trim()
+  const rawDuration = rootStyle.getPropertyValue(options.durationVariable ?? (options.gainingCards
+    ? '--hand-gain-reflow-duration' : '--hand-card-reflow-duration')).trim()
   const durationValue = Number.parseFloat(rawDuration)
   const duration = rawDuration.endsWith('ms')
     ? durationValue
-    : rawDuration.endsWith('s') ? durationValue * 1000 : 220
+    : rawDuration.endsWith('s') ? durationValue * 1000 : options.durationVariable ? 240 : 220
   const easing = rootStyle.getPropertyValue('--card-flight-easing').trim()
     || 'cubic-bezier(.22, .78, .24, 1)'
-  const animations: Promise<unknown>[] = []
 
-  for (const entry of entries) {
-    const cardIndex = Number(entry.querySelector<HTMLElement>('[data-hand-card-index]')?.dataset.handCardIndex)
-    if (!Number.isInteger(cardIndex) || cardIndex <= removedHandIndex) continue
+  const animations = new Set<Animation>()
+  handReflowAnimations.set(row, animations)
+  const targets = [...row.querySelectorAll<HTMLElement>(selector)]
+    .filter(entry => !options.excludedKeys?.has(entry.getAttribute(keyAttribute) ?? ''))
+    .map(entry => ({ entry, rect: entry.getBoundingClientRect() }))
+  const survivors = targets.flatMap((target, index) => {
+    const previous = previousPositions.get(target.entry.getAttribute(keyAttribute) ?? '')
+    return previous ? [{ ...target, previous, index }] : []
+  })
+  for (const [index, { entry, rect }] of targets.entries()) {
+    const key = entry.getAttribute(keyAttribute)
+    let previous = key ? previousPositions.get(key) : undefined
+    let revealAfterReflow = previous?.visible === false
+    if (!previous && survivors.length > 0) {
+      if (!options.animateNewCards) continue
+      // Extend the old row for appended cards (draw/gain/Conjure). Starting a
+      // new card at its centered final slot would overlap the sliding old row.
+      const neighbor = survivors.reduce((nearest, candidate) =>
+        Math.abs(candidate.index - index) < Math.abs(nearest.index - index) ? candidate : nearest)
+      previous = {
+        left: neighbor.previous.left + rect.left - neighbor.rect.left,
+        top: neighbor.previous.top + rect.top - neighbor.rect.top,
+        visible: true,
+      }
+      // Undo may insert a card into the middle of the row. Reveal it once its
+      // neighbors have made room rather than drawing over a surviving card.
+      revealAfterReflow = index > survivors[0]!.index && index < survivors[survivors.length - 1]!.index
+    }
+    if (!previous || typeof entry.animate !== 'function') continue
+    const deltaX = previous.left - rect.left
+    const deltaY = previous.top - rect.top
+    if (!revealAfterReflow && Math.abs(deltaX) < 0.5 && Math.abs(deltaY) < 0.5) continue
 
-    const inverseTransform = `translate3d(${shift}px, 0, 0)`
-    entry.style.transform = inverseTransform
-    void entry.offsetWidth
+    const inverseTransform = `translate3d(${deltaX}px, ${deltaY}px, 0)`
     const animation = entry.animate([
-      { transform: inverseTransform },
-      { transform: 'translate3d(0, 0, 0)' },
+      { transform: inverseTransform, ...(revealAfterReflow ? { opacity: 0 } : {}) },
+      { transform: 'translate3d(0, 0, 0)', ...(revealAfterReflow ? { opacity: 0 } : {}) },
     ], { duration, easing, fill: 'both' })
-    animations.push(animation.finished.then(() => {
-      animation.cancel()
-      if (entry.style.transform === inverseTransform) entry.style.removeProperty('transform')
-    }).catch(() => {
-      if (entry.style.transform === inverseTransform) entry.style.removeProperty('transform')
-    }))
-  }
+    animations.add(animation)
+      const cleanup = () => {
+        animations.delete(animation)
+        animation.cancel()
+      }
+      void animation.finished.then(cleanup, cleanup)
+    }
+}
 
-  return Promise.all(animations).then(() => undefined)
+export function animateHandCardReflow(
+  hand: HTMLElement | null,
+  previousPositions: HandCardPositionSnapshot,
+  gainingCards = false,
+) {
+  animateCardRowReflow(hand, previousPositions, {
+    selector: '[data-hand-card-visual-key]',
+    keyAttribute: 'data-hand-card-visual-key',
+    gainingCards,
+    animateNewCards: true,
+  })
+}
+
+export async function waitForCardRowReflow(row: HTMLElement | null): Promise<void> {
+  if (!row || typeof window === 'undefined') return
+  const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  await nextFrame()
+  while (row.isConnected) {
+    const animations = [...handReflowAnimations.get(row) ?? []]
+    if (animations.length === 0) return
+    await Promise.allSettled(animations.map(animation => animation.finished))
+  }
 }
 
 /** Fly a face-down Nemesis deck card to the reveal slot, then turn it face up. */
@@ -443,8 +800,8 @@ export async function animateCardFlight(
   const rootStyle = getComputedStyle(document.documentElement)
   const durationVariable = options.timing === 'hand-to-play-zone'
     ? '--hand-to-play-zone-flight-duration'
-    : options.timing === 'hand-to-discard'
-      ? '--hand-to-discard-flight-duration'
+    : options.timing === 'hand-to-pile'
+      ? '--hand-to-pile-flight-duration'
     : options.timing === 'discard-phase'
       ? '--discard-phase-flight-duration'
       : '--card-flight-duration'
@@ -475,35 +832,12 @@ export async function animateCardFlight(
 
 /** Wait for the hand's gain reflow so a flying card lands in its final rightmost slot. */
 export async function waitForHandGainReflow(hand: HTMLElement | null): Promise<void> {
-  if (!hand?.classList.contains('hand-gain-reflow') || typeof window === 'undefined') return
-
-  const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-  // The component recalculates its centering offset on the next frame after
-  // receiving the new hand. Let Vue apply that offset before measuring the slot.
-  await nextFrame()
-  await nextFrame()
-
-  const transitions = [
-    ...hand.getAnimations(),
-    ...[...hand.querySelectorAll<HTMLElement>('.hand-card-entry')]
-      .flatMap(element => element.getAnimations()),
-  ].filter(animation => animation.playState === 'running')
-  if (transitions.length > 0) await Promise.allSettled(transitions.map(animation => animation.finished))
+  await waitForHandCardReflow(hand)
 }
 
 /** Wait for the hand cards to finish sliding into the slots left by a removed card. */
 export async function waitForHandCardReflow(hand: HTMLElement | null): Promise<void> {
-  if (!hand || typeof window === 'undefined') return
-  const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
-  await nextFrame()
-  await nextFrame()
-  const transitions = [
-    ...hand.getAnimations(),
-    ...[...hand.querySelectorAll<HTMLElement>('.hand-card-entry')]
-      .flatMap(element => element.getAnimations()),
-  ]
-    .filter(animation => animation.playState === 'running')
-  if (transitions.length > 0) await Promise.allSettled(transitions.map(animation => animation.finished))
+  await waitForCardRowReflow(hand)
 }
 
 /** Fly a card into the hidden player deck, turning it to the player-card back on the way. */
@@ -511,7 +845,7 @@ export async function animateCardFlightToPlayerDeck(
   flight: CardFlightSnapshot | null,
   destination: HTMLElement | null,
   playerCardBackImageUrl: string,
-  options: { destinationMode?: CardFlightDestinationMode } = {},
+  options: { destinationMode?: CardFlightDestinationMode; timing?: CardFlightTiming } = {},
 ): Promise<void> {
   if (!flight || !destination || typeof document === 'undefined') {
     discardCardFlight(flight)
@@ -587,7 +921,10 @@ export async function animateCardFlightToPlayerDeck(
   }
 
   const rootStyle = getComputedStyle(document.documentElement)
-  const durationToken = rootStyle.getPropertyValue('--card-flight-duration').trim()
+  const durationVariable = options.timing === 'hand-to-pile'
+    ? '--hand-to-pile-flight-duration'
+    : '--card-flight-duration'
+  const durationToken = rootStyle.getPropertyValue(durationVariable).trim()
   const durationValue = Number.parseFloat(durationToken)
   const duration = durationToken.endsWith('ms')
     ? durationValue

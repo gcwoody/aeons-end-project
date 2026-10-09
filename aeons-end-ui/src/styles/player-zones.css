@@ -373,6 +373,18 @@
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--card-radius);
 }
+.player-discard-pile .player-discard-flight-target {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.player-discard-pile.is-empty .player-discard-flight-target {
+  top: calc(-1 * var(--pixel-border-width));
+  left: calc(-1 * var(--pixel-border-width));
+  width: calc(100% + 2 * var(--pixel-border-width));
+  height: calc(100% + 2 * var(--pixel-border-width));
+}
 .player-discard-top-card img {
   display: block;
   width: 100%;
@@ -488,14 +500,8 @@
   max-width: 100%;
   /* Reserve a few pixels above the cards so their hover lift is not clipped. */
   padding: var(--space-2) var(--space-2) 0 var(--hand-offset, 0px);
-  transition: padding-left var(--hand-card-reflow-duration) var(--card-flight-easing);
-}
-.hand.hand-gain-reflow {
-  transition: padding-left var(--hand-gain-reflow-duration) var(--card-flight-easing);
-}
-.hand.hand-player-switch,
-.hand.hand-player-switch.hand-gain-reflow {
-  transition: none;
+  /* Centering is part of the slot FLIP animation. A separate padding
+     transition would move its targets while the cards are already sliding. */
 }
 .hand:has(.card:hover) { z-index: var(--z-card-hover); }
 .app:has(.overlay, .decision-overlay) .hand:has(.card:hover) {

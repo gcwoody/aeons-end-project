@@ -6,8 +6,10 @@ const props = withDefaults(defineProps<{
   min: number
   max: number
   allowSkip?: boolean
+  confirmSelection?: boolean
 }>(), {
   allowSkip: false,
+  confirmSelection: true,
 })
 
 const emit = defineEmits<{
@@ -23,10 +25,10 @@ const canConfirm = computed(() =>
 
 <template>
   <div class="decision-footer prepped-spell-choice-footer">
-    <span class="stat">Selected {{ selectedCount }}/{{ max }}</span>
+    <span v-if="confirmSelection" class="stat">Selected {{ selectedCount }}/{{ max }}</span>
     <div class="prepped-spell-choice-actions">
       <button v-if="allowSkip" class="btn" type="button" @click="emit('skip')">Skip</button>
-      <button class="btn primary" type="button" :disabled="!canConfirm" @click="emit('confirm')">Confirm</button>
+      <button v-if="confirmSelection" class="btn primary" type="button" :disabled="!canConfirm" @click="emit('confirm')">Confirm</button>
     </div>
   </div>
 </template>
