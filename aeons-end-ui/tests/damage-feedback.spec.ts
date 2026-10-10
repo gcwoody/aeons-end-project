@@ -254,6 +254,42 @@ test('a Gem played directly stays in hand until its optional effect resolves', a
   await expect(page.locator('.played-zone-center [data-played-card-id="sagestone"]')).toBeVisible()
 })
 
+test('a held duplicate keeps the Played Zone layout until its decision resolves', async ({ page }) => {
+  await startCleanGame(page)
+  // Keep any (incorrect) reflow running long enough to catch a layout shift
+  // while the decision overlay is open.
+  await page.addStyleTag({ content: ':root { --card-zone-reflow-duration: 1000ms; }' })
+  await applyMainPhaseState(page, (_game, player) => {
+    player.hand = ['sagestone', 'sagestone']
+    player.knowledge = 1
+    player.playedThisTurn = []
+  })
+
+  await page.locator('.hand [data-hand-card-index="0"]').click()
+  await page.getByRole('button', { name: 'No', exact: true }).click()
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  const played = page.locator('.played-zone-center [data-played-card-id="sagestone"]')
+  await expect(played).toHaveCount(1)
+  const landed = await played.boundingBox()
+
+  await page.locator('.hand [data-hand-card-index="0"]').click()
+  await expect(page.locator('.app .decision-overlay')).toBeVisible()
+  await expect(page.locator('.hand [data-hand-card-id="sagestone"]')).toBeVisible()
+  // The held copy must not reserve a slot in the Played Zone yet: the first
+  // Sagestone stays visible, centered, and does not shift left before the decision.
+  await expect(played).toHaveCount(1)
+  await expect(played).toBeVisible()
+  const held = await played.boundingBox()
+  expect(Math.abs(held!.x - landed!.x)).toBeLessThan(0.5)
+  expect(Math.abs(held!.y - landed!.y)).toBeLessThan(0.5)
+
+  await page.getByRole('button', { name: 'No', exact: true }).click()
+  await expect(played).toHaveCount(2)
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  await expect(played.nth(0)).toBeVisible()
+  await expect(played.nth(1)).toBeVisible()
+})
+
 test('Play All Gems reflows an already played Sagestone as each Crystal lands', async ({ page }) => {
   await startCleanGame(page)
   await applyMainPhaseState(page, (_game, player) => {
@@ -319,7 +355,7 @@ for (const { cardId, answer } of [
 for (const previousDiscard of [[], ['spark']]) {
   test(`Swap keeps the ${previousDiscard.length ? 'old' : 'empty'} Discard visible until its target lands`, async ({ page }) => {
     await startCleanGame(page)
-    await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 100ms; --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
+    await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 100ms; --hand-to-swap-zone-flight-duration: 900ms; --swap-to-discard-flight-duration: 900ms; --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
     await applyMainPhaseState(page, (game, player) => {
       game.hasSwapZone = true
       player.hand = ['superior_crystal', 'crystal']
@@ -382,7 +418,7 @@ for (const previousDiscard of [[], ['spark']]) {
 
 test('Swap keeps a surviving copy of an identical card stable through both row reflows', async ({ page }) => {
   await startCleanGame(page)
-  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
+  await page.addStyleTag({ content: ':root { --hand-to-swap-zone-flight-duration: 900ms; --swap-to-discard-flight-duration: 900ms; --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
   await applyMainPhaseState(page, (game, player) => {
     game.hasSwapZone = true
     player.hand = ['superior_crystal']
@@ -411,7 +447,7 @@ test('Swap keeps a surviving copy of an identical card stable through both row r
 
 test('a Swap effect without a decision also flies in before its target leaves', async ({ page }) => {
   await startCleanGame(page)
-  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
+  await page.addStyleTag({ content: ':root { --hand-to-swap-zone-flight-duration: 900ms; --swap-to-discard-flight-duration: 900ms; --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
   await applyMainPhaseState(page, (game, player) => {
     game.hasSwapZone = true
     player.hand = ['dim_crystal']
@@ -433,11 +469,47 @@ test('a Swap effect without a decision also flies in before its target leaves', 
   await expect(page.locator('.player-discard-pile [data-discard-top-card="empty_crystal"]')).toBeVisible()
 })
 
+test('Swap flights use the dedicated swap duration tokens', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --hand-to-swap-zone-flight-duration: 250ms; --swap-to-discard-flight-duration: 150ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    game.hasSwapZone = true
+    player.hand = ['dim_crystal']
+    player.playedThisTurn = []
+    player.swapZone = ['empty_crystal', 'infused_crystal']
+    player.discard = []
+  })
+
+  await page.evaluate(() => {
+    const trackedWindow = window as typeof window & { swapFlightDurations: number[] }
+    trackedWindow.swapFlightDurations = []
+    const originalAnimate = Element.prototype.animate
+    Element.prototype.animate = function (keyframes, options) {
+      if ((this as HTMLElement).classList.contains('card-flight-clone')) {
+        trackedWindow.swapFlightDurations.push(Number((options as KeyframeAnimationOptions | undefined)?.duration ?? 0))
+      }
+      return originalAnimate.call(this, keyframes, options)
+    }
+  })
+
+  await page.locator('.hand [data-hand-card-id="dim_crystal"]').click()
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  await expect(page.locator('.played-zone-swap [data-card-motion-card-id="dim_crystal"]')).toBeVisible()
+  await expect(page.locator('.player-discard-pile [data-discard-top-card="empty_crystal"]')).toBeVisible()
+
+  const durations = await page.evaluate(() =>
+    (window as typeof window & { swapFlightDurations: number[] }).swapFlightDurations)
+  // Hand to Swap Zone and Swap Zone to Discard read their own tokens instead
+  // of the shared --card-flight-duration.
+  expect(durations).toContain(250)
+  expect(durations).toContain(150)
+})
+
 for (const viewport of [{ width: 1440, height: 900 }, { width: 1024, height: 768 }]) {
 test(`Swap makes room on screen without a layout flash at ${viewport.width}px`, async ({ page }) => {
   await startCleanGame(page)
   await page.setViewportSize(viewport)
-  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 900ms; }' })
+  await page.addStyleTag({ content: ':root { --hand-to-swap-zone-flight-duration: 900ms; --swap-to-discard-flight-duration: 900ms; --card-flight-duration: 900ms; --card-zone-reflow-duration: 900ms; }' })
   await applyMainPhaseState(page, (game, player) => {
     game.hasSwapZone = true
     game.hasDevelopZone = true
@@ -530,6 +602,141 @@ test(`Swap makes room on screen without a layout flash at ${viewport.width}px`, 
   expect(new Set(samples.slice(firstVisible).map(sample => sample.incomingKey)).size).toBe(1)
 })
 }
+
+test('a cast spell swapped into the Swap Zone holds the departing target in place', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; --card-zone-reflow-duration: 1200ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    game.hasSwapZone = true
+    game.nemesis.playArea = [{
+      cardId: 'haze_spewer', cardType: 'minion', placedAt: 123456,
+      instanceId: 'haze-spewer-spell-swap', enteredOnNemesisTurn: 0, lifeTokens: 5,
+    }]
+    player.swapZone = ['infused_crystal', 'dim_crystal', 'empty_crystal', 'infused_spark', 'empty_spark', 'dim_spark']
+    player.discard = []
+    player.playedThisTurn = []
+    player.hand = ['crystal']
+    for (const breach of player.breaches) {
+      breach.opened = false
+      breach.focusedThisTurn = false
+      breach.prepSpells = []
+      breach.preppedThisTurn = []
+      breach.preppedSpellFaceDown = []
+    }
+    player.breaches[0].opened = true
+    player.breaches[0].prepSpells = ['superior_spark']
+    player.breaches[0].preppedThisTurn = [false]
+    player.breaches[0].preppedSpellFaceDown = [false]
+  })
+  // Put the UI back into the Casting Phase so the prepped spell can be cast.
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const castingState = JSON.parse(await stateField.inputValue())
+  castingState.phase = 'casting'
+  castingState.game.currentPhase = 'casting'
+  await stateField.fill(JSON.stringify(castingState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame').click()
+  await page.getByRole('button', { name: 'Deal 3 damage and swap for Infused Spark' }).click()
+  await page.locator('[data-damage-target="minion:123456"]').click()
+
+  // The spell leaves the discard (its resolve spot) for the Swap Zone's
+  // rightmost slot while the swapped-out target stays visible in place.
+  const held = page.locator('.played-zone-swap [data-card-motion-held-key]')
+  await expect(held).toHaveCount(1)
+  await expect(held).toBeVisible()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(1)
+  await expect(page.locator('.player-discard-pile [data-discard-top-card]')).toHaveCount(0)
+
+  await expect(page.locator('.card-motion-shield')).toBeHidden({ timeout: 8000 })
+  await expect(page.locator('.played-zone-swap [data-card-motion-card-id]')).toHaveCount(6)
+  await expect(page.locator('.played-zone-swap [data-card-motion-card-id="superior_spark"]')).toBeVisible()
+  await expect(page.locator('.played-zone-swap [data-card-motion-card-id="infused_spark"]')).toHaveCount(0)
+  await expect(held).toHaveCount(0)
+  await expect(page.locator('.player-discard-pile [data-discard-top-card="infused_spark"]')).toBeVisible()
+})
+
+test('a hand card placed on the deck starts its flight before the deck shows the new count', async ({ page }) => {
+  await startCleanGame(page)
+  // The dedicated hand-to-deck-top duration both slows the flight enough to
+  // observe and proves the flight reads its own token.
+  await page.addStyleTag({ content: ':root { --hand-to-deck-top-flight-duration: 700ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    game.pendingDecision = {
+      id: 'vapor-wraith-top-deck',
+      playerId: player.id,
+      kind: 'select_cards',
+      source: 'hand',
+      min: 1,
+      max: 1,
+      prompt: 'Choose a card in hand to place on top of your deck',
+      candidates: [{ zone: 'hand', index: 1, cardId: 'spark', cardName: 'Spark' }],
+    }
+    game.pendingEffect = {
+      sourcePlayerId: player.id,
+      effectPlayerId: player.id,
+      awaiting: { kind: 'place_card_on_top_of_own_deck' },
+      remainingEffects: [],
+    }
+    player.hand = ['crystal', 'spark', 'focusing_orb']
+    player.deck = ['crystal']
+    player.discard = []
+    player.playedThisTurn = []
+  })
+
+  await expect(page.locator('.hand .pending-board-card')).toHaveCount(1)
+  await page.evaluate(() => {
+    const tracked = window as typeof window & {
+      deckTransferTimeline: Array<{
+        clone: boolean
+        handVisible: boolean
+        count: string | null
+        duration: number | null
+      }>
+    }
+    tracked.deckTransferTimeline = []
+    const probe = () => {
+      const handCard = document.querySelector<HTMLElement>('.hand [data-hand-card-id="spark"]')
+      const clone = document.querySelector<HTMLElement>('.card-flight-clone')
+      tracked.deckTransferTimeline.push({
+        clone: !!clone,
+        handVisible: !!handCard && getComputedStyle(handCard).visibility !== 'hidden',
+        count: document.querySelector('.player-deck-pile .player-pile-count')?.textContent ?? null,
+        duration: clone
+          ? Math.max(...clone.getAnimations().map(animation =>
+            Number((animation.effect as KeyframeEffect | null)?.getTiming().duration ?? 0)))
+          : null,
+      })
+      if (tracked.deckTransferTimeline.length < 200) requestAnimationFrame(probe)
+    }
+    requestAnimationFrame(probe)
+  })
+
+  await page.locator('.hand .pending-board-card').click()
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  const timeline = await page.evaluate(() =>
+    (window as typeof window & {
+      deckTransferTimeline: Array<{
+        clone: boolean
+        handVisible: boolean
+        count: string | null
+        duration: number | null
+      }>
+    }).deckTransferTimeline)
+
+  const firstClone = timeline.findIndex(frame => frame.clone)
+  const firstCountTwo = timeline.findIndex(frame => frame.count === '2')
+  const firstHandHidden = timeline.findIndex(frame => !frame.handVisible)
+  // The deck count must not reveal the new top card before the flight starts...
+  expect(firstClone).toBeGreaterThanOrEqual(0)
+  expect(Math.max(...timeline.map(frame => frame.duration ?? 0))).toBe(700)
+  expect(firstCountTwo).toBeGreaterThan(firstClone)
+  // ...and the card must leave the hand only once the flight clone is on screen.
+  expect(timeline[firstHandHidden]?.clone).toBe(true)
+})
 
 test('buying a supply card animates it into the top of the discard pile', async ({ page }) => {
   await startCleanGame(page)

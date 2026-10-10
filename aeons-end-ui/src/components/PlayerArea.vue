@@ -729,23 +729,36 @@ const swapZoneDisplay = computed(() => swapZoneOwners.value.map(owner => {
   }
 }))
 const playedZoneDisplay = computed(() => {
+  // While a played card is held in hand waiting for its own decision, keep the
+  // Played Zone layout as it was: the held copy must not reserve a slot or
+  // trigger a reflow until its decision resolves and it actually flies in.
+  // The pending state is what ends the hold in finishPendingPlayCardFlight.
+  const presentation = state.handPlayPresentation
+  const heldOccurrence = presentation?.playerId === player.value.id
+    && (!!state.game?.pendingDecision || !!state.game?.pendingEffect)
+    ? { cardId: presentation.cardId, occurrence: presentation.playedOccurrence }
+    : null
   const seen = new Map<string, number>()
-  return player.value.playedThisTurn.map((cardId, index) => {
-    const selection = boardCardChoice('played_this_turn', index, cardId)
+  return player.value.playedThisTurn.flatMap((cardId, index) => {
     const occurrence = seen.get(cardId) ?? 0
     seen.set(cardId, occurrence + 1)
-    return {
+    if (heldOccurrence && heldOccurrence.cardId === cardId && heldOccurrence.occurrence === occurrence) {
+      return []
+    }
+    const selection = boardCardChoice('played_this_turn', index, cardId)
+    return [{
       key: `${cardId}${index}`,
       motionKey: `played-${player.value.id}-${cardId}-${occurrence}`,
       ownerId: player.value.id,
       cardId,
       index,
+      occurrence,
       typeClass: typeClass(cardId),
       preppedAction: isPreppedActionCard(index, cardId),
       endTurnActionAttention: isEndTurnActionTarget(`played-card:${player.value.id}:${index}`),
       pending: !!selection,
       selected: !!selection && isPendingBoardCardSelected(selection),
-    }
+    }]
   })
 })
 const discardZoneDisplay = computed(() => state.discardRemaining.map((cardId, index) => ({

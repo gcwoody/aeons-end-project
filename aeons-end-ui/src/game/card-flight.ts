@@ -44,11 +44,19 @@ export interface CardZoneMotionTransfer {
   flight: CardFlightSnapshot | null
   destination: HTMLElement | null
   destinationVisibilityBefore?: string
+  timing?: CardFlightTiming
 }
 
 export type PlayerCardZone = 'hand' | 'deck' | 'discard'
 export type CardFlightDestinationMode = 'overlay' | 'replace'
-export type CardFlightTiming = 'standard' | 'hand-to-play-zone' | 'hand-to-pile' | 'discard-phase'
+export type CardFlightTiming =
+  | 'standard'
+  | 'hand-to-play-zone'
+  | 'hand-to-swap-zone'
+  | 'swap-to-discard'
+  | 'hand-to-deck-top'
+  | 'hand-to-pile'
+  | 'discard-phase'
 
 /**
  * Deck and discard pile surfaces represent persistent piles and stay visible
@@ -248,6 +256,10 @@ export function captureCardZoneMotion(
     '[data-card-motion-zone][data-card-motion-card-id][data-card-motion-key]',
   )].flatMap(element => {
     if (element === excludedElement) return []
+    // A card held in hand for a pending decision is presented UI, not real
+    // hand state. Its dedicated flight handles the move, so the generic zone
+    // motion must not treat it as a hand departure.
+    if (element.dataset.heldPlayCard === 'true') return []
     const zone = element.dataset.cardMotionZone
     const cardId = element.dataset.cardMotionCardId
     const key = element.dataset.cardMotionKey
@@ -377,6 +389,9 @@ export function resolveCardZoneMotion(
             ownerId,
             flight,
             destination: destination.element,
+            timing: sourceZone === 'swap' && destination.zone === 'discard'
+              ? 'swap-to-discard'
+              : undefined,
           })
           departures--
         }
@@ -416,6 +431,7 @@ export async function animateCardZoneMotion(
     const flight = animateCardFlight(transfer.flight, transfer.destination, {
       destinationMode: 'replace',
       restoreDestinationVisibility: transfer.destinationVisibilityBefore,
+      timing: transfer.timing,
     })
     if (sourceRow) {
       await Promise.all([flight, waitForCardRowReflow(sourceRow)])
@@ -800,6 +816,12 @@ export async function animateCardFlight(
   const rootStyle = getComputedStyle(document.documentElement)
   const durationVariable = options.timing === 'hand-to-play-zone'
     ? '--hand-to-play-zone-flight-duration'
+    : options.timing === 'hand-to-swap-zone'
+      ? '--hand-to-swap-zone-flight-duration'
+    : options.timing === 'swap-to-discard'
+      ? '--swap-to-discard-flight-duration'
+    : options.timing === 'hand-to-deck-top'
+      ? '--hand-to-deck-top-flight-duration'
     : options.timing === 'hand-to-pile'
       ? '--hand-to-pile-flight-duration'
     : options.timing === 'discard-phase'
@@ -838,6 +860,21 @@ export async function waitForHandGainReflow(hand: HTMLElement | null): Promise<v
 /** Wait for the hand cards to finish sliding into the slots left by a removed card. */
 export async function waitForHandCardReflow(hand: HTMLElement | null): Promise<void> {
   await waitForCardRowReflow(hand)
+}
+
+// Decode each card back once so repeated deck flights do not pause on the
+// image decode before their animation starts.
+const decodedCardBackPromises = new Map<string, Promise<void>>()
+function decodeCardBackOnce(imageUrl: string): Promise<void> {
+  const cached = decodedCardBackPromises.get(imageUrl)
+  if (cached) return cached
+  const image = new Image()
+  image.src = imageUrl
+  const promise = typeof image.decode === 'function'
+    ? image.decode().catch(() => undefined)
+    : Promise.resolve()
+  decodedCardBackPromises.set(imageUrl, promise)
+  return promise
 }
 
 /** Fly a card into the hidden player deck, turning it to the player-card back on the way. */
@@ -910,20 +947,15 @@ export async function animateCardFlightToPlayerDeck(
   })
   document.body.append(clone)
 
-  const decodedBack = new Image()
-  decodedBack.src = playerCardBackImageUrl
-  if (typeof decodedBack.decode === 'function') {
-    try {
-      await decodedBack.decode()
-    } catch {
-      // Continue the flight if the browser cannot eagerly decode the card back.
-    }
-  }
+  const decodedBack = decodeCardBackOnce(playerCardBackImageUrl)
+  await decodedBack
 
   const rootStyle = getComputedStyle(document.documentElement)
-  const durationVariable = options.timing === 'hand-to-pile'
-    ? '--hand-to-pile-flight-duration'
-    : '--card-flight-duration'
+  const durationVariable = options.timing === 'hand-to-deck-top'
+    ? '--hand-to-deck-top-flight-duration'
+    : options.timing === 'hand-to-pile'
+      ? '--hand-to-pile-flight-duration'
+      : '--card-flight-duration'
   const durationToken = rootStyle.getPropertyValue(durationVariable).trim()
   const durationValue = Number.parseFloat(durationToken)
   const duration = durationToken.endsWith('ms')
@@ -941,25 +973,33 @@ export async function animateCardFlightToPlayerDeck(
       { transform: 'translate3d(0, 0, 0) scale(1)' },
       { transform: `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})` },
     ], { duration, easing, fill: 'forwards' })
-    // Collapse at the midpoint and exchange faces while edge-on so the card
-    // back is shown upright instead of appearing mirrored.
+    // Collapse early and exchange faces while edge-on so the card back is
+    // shown upright instead of appearing mirrored. Keep the flip short and
+    // start it right after the launch so short flights do not feel delayed.
+    const flipDuration = Math.min(180, duration * .5)
+    const flipOptions: KeyframeAnimationOptions = {
+      duration: flipDuration,
+      delay: duration * .08,
+      easing: 'linear',
+      fill: 'forwards',
+    }
     const flip = face.animate([
       { transform: 'scaleX(1)', offset: 0 },
       { transform: 'scaleX(.015)', offset: .5 },
       { transform: 'scaleX(1)', offset: 1 },
-    ], { duration: Math.min(300, duration * .75), delay: duration * .18, easing: 'linear', fill: 'forwards' })
+    ], flipOptions)
     const hideFront = front?.animate([
       { opacity: 1, offset: 0 },
       { opacity: 1, offset: .47 },
       { opacity: 0, offset: .5 },
       { opacity: 0, offset: 1 },
-    ], { duration: Math.min(300, duration * .75), delay: duration * .18, easing: 'linear', fill: 'forwards' })
+    ], flipOptions)
     const showBack = back.animate([
       { opacity: 0, offset: 0 },
       { opacity: 0, offset: .5 },
       { opacity: 1, offset: .53 },
       { opacity: 1, offset: 1 },
-    ], { duration: Math.min(300, duration * .75), delay: duration * .18, easing: 'linear', fill: 'forwards' })
+    ], flipOptions)
     await Promise.all([
       movement.finished,
       flip.finished,

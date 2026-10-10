@@ -13,6 +13,7 @@ interface ZoneCardDisplay {
   cardId: string
   index: number
   typeClass: string
+  occurrence?: number
   pending?: boolean
   selected?: boolean
   preppedAction?: boolean
@@ -150,6 +151,7 @@ onBeforeUnmount(() => {
                 :data-card-motion-card-id="card.cardId"
                 :data-card-motion-owner-id="card.ownerId"
                 :data-card-motion-key="card.motionKey"
+                :data-card-motion-occurrence="card.occurrence"
                 :class="[card.typeClass, {
                   'prepped-action': card.preppedAction,
                   'pending-board-card': card.pending,

@@ -88,3 +88,62 @@ test("Sifter's Pearl shows the revealed card in the decision modal", async ({ pa
   await expect(page.locator('.reveal-top-card')).toHaveCount(0)
   await expect(page.locator('.decision-modal')).toHaveCount(0)
 })
+
+test("Sifter's Pearl keeps the fast hand-play flight after both reveal decisions", async ({ page }) => {
+  await page.goto('/')
+  await page.evaluate(() => localStorage.clear())
+  await page.reload()
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await openDebug(page)
+
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  // Play from the second player so the reveal popups switch the view away and
+  // back, which used to re-key the held hand card.
+  const player = debugState.game.players[1]
+  const ally = debugState.game.players[0]
+  debugState.selectedPlayer = player.id
+  debugState.phase = 'main'
+  debugState.game.currentTurn = player.id
+  debugState.game.currentPhase = 'main'
+  debugState.game.pendingDecision = null
+  debugState.game.pendingEffect = null
+  player.hand = ['sifters_pearl']
+  player.playedThisTurn = []
+  player.deck = ['jade', 'crystal']
+  player.discard = []
+  ally.deck = ['spark', 'crystal']
+  ally.discard = []
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 350ms; --card-flight-duration: 900ms; }' })
+  await page.evaluate(() => {
+    const tracked = window as typeof window & { pearlCloneDurations: number[] }
+    tracked.pearlCloneDurations = []
+    const originalAnimate = Element.prototype.animate
+    Element.prototype.animate = function (keyframes, options) {
+      if ((this as HTMLElement).classList.contains('card-flight-clone')) {
+        tracked.pearlCloneDurations.push(Number((options as KeyframeAnimationOptions | undefined)?.duration ?? 0))
+      }
+      return originalAnimate.call(this, keyframes, options)
+    }
+  })
+
+  await page.locator('.hand .card').filter({ has: page.locator("img[alt=\"Sifter's Pearl\"]") }).click()
+  for (let index = 0; index < 2; index++) {
+    const discard = page.getByRole('button', { name: 'Discard the revealed card' })
+    await expect(discard).toBeVisible({ timeout: 5000 })
+    await discard.click()
+  }
+
+  const played = page.locator('.played-zone-center [data-played-card-id="sifters_pearl"]')
+  await expect(played).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  const durations = await page.evaluate(() =>
+    (window as typeof window & { pearlCloneDurations: number[] }).pearlCloneDurations)
+  expect(durations).toContain(350)
+  expect(durations).not.toContain(900)
+})

@@ -4,7 +4,7 @@
 
 UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 
-更新时间：2026-10-08
+更新时间：2026-10-09
 
 ## 1. UI 与规则的边界
 
@@ -78,7 +78,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 - Breach 只有自身方向或开合状态改变时才播放动效。Focus 按当前方向顺时针旋转；Open 使用随开口方向调整翻转轴的 3D 翻面。动作动画结束后，回合自动结束和后续阶段才会继续。
 - Nemesis 抽牌从牌堆飞向中央时，背景同步渐暗；卡牌在移动途中横向收窄，在背面不可见时切换预加载正面，再展开。不要展示镜像的牌背，也不要在动画完成后再突然弹出另一张正面牌。
 - Nemesis 抽牌翻开后直接停在屏幕中央；点击卡牌、遮罩区域或按 Space 确认继续，不再额外弹出一个只含 Confirm 的窗口。开局第一张 Nemesis 牌也必须走同一动画流程。
-- 从玩家手牌放到自己或盟友牌堆顶的卡牌也要飞向目标牌堆，同时等待来源手牌收拢完成。Vapor Wraith 的 on-damage 选择和 Flailer 的盟友牌堆顶选择共用 `hand-to-pile` 动画时长。Conjure 跳过时，手牌区域中的临时揭示牌也飞回牌堆顶；真实 hand 状态不包含这张临时牌。其他从场上牌堆移动到玩家手牌、牌堆或弃牌堆的卡牌，统一使用 `src/game/card-flight.ts` 的 `captureCardZoneTransfer` / `resolveCardZoneTransfers` 和 `useGame.ts` 的区域目标动画。Supply 购买与 Nemesis 特殊牌堆获得 Corruption 都走这套逻辑；新增此类效果时复用它，并标记来源牌堆和玩家区域目标。落到玩家牌堆时使用 `overlay`，保留原有牌堆图像可见；只有落点是刚加入的手牌或弃牌顶牌时才使用 `replace` 暂时隐藏该张新牌，避免重复显示。手牌打出的 Gem/Relic 与弃牌阶段也使用卡牌飞行动画；弃牌动画以原弃牌顶牌为底图，Play All Gems 逐张播放，卡牌决策等当张卡飞完后再出现。
+- 从玩家手牌放到自己或盟友牌堆顶的卡牌也要飞向目标牌堆，同时等待来源手牌收拢完成。Vapor Wraith 的 on-damage 选择和 Flailer 的盟友牌堆顶选择共用 `hand-to-pile` 动画时长。Conjure 跳过时，手牌区域中的临时揭示牌也飞回牌堆顶；真实 hand 状态不包含这张临时牌。其他从场上牌堆移动到玩家手牌、牌堆或弃牌堆的卡牌，统一使用 `src/game/card-flight.ts` 的 `captureCardZoneTransfer` / `resolveCardZoneTransfers` 和 `useGame.ts` 的区域目标动画。Supply 购买与 Nemesis 特殊牌堆获得 Corruption 都走这套逻辑；新增此类效果时复用它，并标记来源牌堆和玩家区域目标。落到玩家牌堆时使用 `overlay`，保留原有牌堆图像可见；只有落点是刚加入的手牌或弃牌顶牌时才使用 `replace` 暂时隐藏该张新牌，避免重复显示。手牌打出的 Gem/Relic 与弃牌阶段也使用卡牌飞行动画；弃牌动画以原弃牌顶牌为底图，Play All Gems 逐张播放，卡牌决策等当张卡飞完后再出现。手牌打出的牌在等待自身决策期间保留在手牌展示，Played Zone 不为它渲染卡位或触发重排；决策全部结束后才腾出卡位并飞入。手牌放到牌堆顶（自己或盟友）也先保留在手牌展示，飞行动画开始的同时手牌收拢，牌堆数量在飞行落定后才更新，不能在动画开始前先跳到新数量。
 
 ### 决策和拖动
 
@@ -119,7 +119,10 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 | Breach 附着 Relic 露出量 | `--breach-attached-relic-offset-y: 18px`，正值向下 |
 | Focus/Open 动效 | `--breach-focus-duration: 280ms`、`--breach-open-duration: 560ms`、`--breach-open-perspective: 620px` |
 | 手牌飞入 Played Zone | `--hand-to-play-zone-flight-duration: 200ms` |
-| 手牌飞向牌堆或弃牌堆 | `--hand-to-pile-flight-duration: 200ms` |
+| 手牌飞入 Swap Zone | `--hand-to-swap-zone-flight-duration: 200ms` |
+| Swap Zone 飞入 Discard | `--swap-to-discard-flight-duration: 200ms` |
+| 手牌飞入牌堆顶（自己或盟友）；Conjure 回到牌堆顶 | `--hand-to-deck-top-flight-duration: 300ms` |
+| 手牌飞向弃牌堆 | `--hand-to-pile-flight-duration: 200ms` |
 | 弃牌阶段飞入 Discard | `--discard-phase-flight-duration: 200ms` |
 | 其他卡牌飞行动画（购买、其他牌区移动） | `--card-flight-duration: 600ms`、`--card-flight-easing` |
 | 手牌收拢/新增卡牌重排 | `--hand-card-reflow-duration: 220ms`、`--hand-gain-reflow-duration: 220ms` |

@@ -111,6 +111,9 @@ interface HandPlayPresentation {
   handIndex: number
   presentationKey: string
   motionKey: string
+  // Zero-based occurrence among same-name copies already in Played when this
+  // play started. Identifies the held copy without relying on DOM position.
+  playedOccurrence: number
 }
 interface PlayCardZoneBaseline {
   previousHandCount: number
@@ -1359,6 +1362,20 @@ function findLastMotionCard(zone: string, cardId: string, ownerId: PlayerId): HT
     (zone === 'develop' || element.dataset.cardMotionOwnerId === ownerId))
   return matches[matches.length - 1] ?? null
 }
+function findMotionCardByOccurrence(
+  zone: string,
+  cardId: string,
+  ownerId: PlayerId,
+  occurrence: number,
+): HTMLElement | null {
+  if (typeof document === 'undefined') return null
+  return [...document.querySelectorAll<HTMLElement>(
+    '[data-card-motion-zone][data-card-motion-card-id][data-card-motion-occurrence]',
+  )].find(element => element.dataset.cardMotionZone === zone &&
+    element.dataset.cardMotionCardId === cardId &&
+    element.dataset.cardMotionOwnerId === ownerId &&
+    Number(element.dataset.cardMotionOccurrence) === occurrence) ?? null
+}
 function capturePlayerZoneMotionBaseline(players: readonly PlayerState[]): PlayerZoneMotionBaseline[] {
   return players.map(player => ({
     id: player.id,
@@ -1398,7 +1415,9 @@ function holdSwapCardsMovingToDiscard(
   if (!snapshot) return
   for (const prior of before) {
     const player = after.find(candidate => candidate.id === prior.id)
-    if (!player || player.discard.length <= prior.discard.length) continue
+    // The discard can keep its size when a swap removes the resolving card
+    // from it, so detect departures per card instead of requiring growth.
+    if (!player) continue
     const removed = new Map<string, number>()
     const discardedBefore = new Map<string, number>()
     for (const cardId of prior.swapZone) removed.set(cardId, (removed.get(cardId) ?? 0) + 1)
@@ -1422,9 +1441,24 @@ function holdSwapCardsMovingToDiscard(
       if (existing?.current.boardArrival?.cardId === cardId &&
         existing.current.boardArrival.count === player.discard.length) continue
       const previous = existing ? existing.previous : state.discardPileDisplayOverrides[player.id]
+      // The resolving card can leave the discard for the Swap zone during the
+      // same action (a spell waiting in the discard). Exclude it from the
+      // pre-arrival surface so its own flight out of the pile stays visible
+      // and the generic motion can still detect the departure.
+      const displayDiscard = [...prior.discard]
+      for (const swapCardId of new Set(player.swapZone ?? [])) {
+        const gainedInSwap = (player.swapZone ?? []).filter(id => id === swapCardId).length -
+          prior.swapZone.filter(id => id === swapCardId).length
+        const lostFromDiscard = prior.discard.filter(id => id === swapCardId).length -
+          player.discard.filter(id => id === swapCardId).length
+        for (let remaining = Math.min(gainedInSwap, lostFromDiscard); remaining > 0; remaining--) {
+          const discardedIndex = displayDiscard.indexOf(swapCardId)
+          if (discardedIndex >= 0) displayDiscard.splice(discardedIndex, 1)
+        }
+      }
       const current: DiscardDisplayOverride = {
-        cardId: prior.discard[0] ?? null,
-        count: prior.discard.length,
+        cardId: displayDiscard[0] ?? null,
+        count: displayDiscard.length,
         boardArrival: { cardId, count: player.discard.length },
       }
       const previousSwap = existing ? existing.previousSwap : state.swapZoneDisplayHolds[player.id]
@@ -1499,6 +1533,12 @@ function findPlayCardDestination(
 }
 
 function findPendingPlayCardDestination(pending: PendingPlayCardFlight, zone: string | null): HTMLElement | null {
+  // Identify the held copy by its Played Zone occurrence. While it is held in
+  // hand it is not rendered, so this must not fall back to an earlier identical
+  // copy that has to stay visible.
+  if (zone === 'played') {
+    return findMotionCardByOccurrence(zone, pending.cardId, pending.ownerId, pending.previousPlayedCount)
+  }
   return findPlayCardDestination(pending.ownerId, pending.cardId, pending.motionKey, zone)
 }
 
@@ -1508,9 +1548,11 @@ function animatePlayCardFlight(
   zone: string,
   destinationVisibility = '',
 ): Promise<void> {
-  const timing = zone === 'deck' || zone === 'discard'
-    ? 'hand-to-pile'
-    : zone === 'swap' ? 'standard' : 'hand-to-play-zone'
+  const timing = zone === 'deck'
+    ? 'hand-to-deck-top'
+    : zone === 'discard'
+      ? 'hand-to-pile'
+      : zone === 'swap' ? 'hand-to-swap-zone' : 'hand-to-play-zone'
   if (zone === 'deck') {
     return animateCardFlightToPlayerDeck(flight, destination, playerCardBackUrl(), {
       destinationMode: 'overlay',
@@ -1566,8 +1608,11 @@ async function finishPendingPlayCardFlight(previous: UndoSnapshot | null): Promi
 
     const playerArea = findDataElement('data-player-area-id', pending.ownerId)
     const hand = playerArea?.querySelector<HTMLElement>('.hand') ?? null
-    const source = [...(playerArea?.querySelectorAll<HTMLElement>('[data-card-motion-key]') ?? [])]
-      .find(card => card.dataset.cardMotionKey === pending.motionKey) ?? null
+    // The held presentation card keeps its identity marker across view
+    // switches, while its visual motion key changes when the hand re-mounts.
+    const source = playerArea?.querySelector<HTMLElement>('.hand [data-held-play-card="true"]') ??
+      [...(playerArea?.querySelectorAll<HTMLElement>('[data-card-motion-key]') ?? [])]
+        .find(card => card.dataset.cardMotionKey === pending.motionKey) ?? null
     const flight = captureCardFlight(source)
     if (source) {
       markHandCardDeparting(source)
@@ -1773,7 +1818,7 @@ function resolveHandZoneTransfers(
       sourcePlayerId: item.playerId,
       sourceHandIndex: item.choice.index,
       flight: source?.flight ?? null,
-      timing: 'hand-to-pile',
+      timing: 'hand-to-deck-top',
       previousDeckTop: recipientBefore.deck[0] ?? null,
       previousDeckCount: recipientBefore.deck.length,
       previousDiscardTop: recipientBefore.discard[0] ?? null,
@@ -1959,9 +2004,11 @@ function queueCardZoneTransfers(transfers: CardZoneTransfer[]): Promise<void> {
       for (const transfer of animatedTransfers) {
         let destination = transferDestination(transfer)
         const stagedPresentation = state.handDiscardPresentation
-        if (transfer.zone === 'discard' && transfer.timing === 'hand-to-pile' &&
-          transfer.sourceHandIndex !== undefined && stagedPresentation?.playerId === transfer.playerId) {
-          const playerArea = findDataElement('data-player-area-id', transfer.playerId)
+        const stagedOwnerId = transfer.sourcePlayerId ?? transfer.playerId
+        if ((transfer.zone === 'discard' || transfer.zone === 'deck') &&
+          (transfer.timing === 'hand-to-pile' || transfer.timing === 'hand-to-deck-top') &&
+          transfer.sourceHandIndex !== undefined && stagedPresentation?.playerId === stagedOwnerId) {
+          const playerArea = findDataElement('data-player-area-id', stagedOwnerId)
           const hand = playerArea?.querySelector<HTMLElement>('.hand') ?? null
           const sourceElement = playerArea
             ? [...playerArea.querySelectorAll<HTMLElement>('[data-card-flight-target="hand"]')]
@@ -1972,19 +2019,26 @@ function queueCardZoneTransfers(transfers: CardZoneTransfer[]): Promise<void> {
           if (liveFlight) discardCardFlight(transfer.flight)
           const flight = liveFlight ?? transfer.flight
           if (sourceElement) sourceElement.style.visibility = 'hidden'
-          const flightAnimation = animateCardFlight(flight, destination?.element ?? null, {
-            destinationMode: destination?.destinationMode ?? 'overlay',
-            timing: 'hand-to-pile',
-          })
+          const destinationElement = destination?.element ?? null
+          const destinationMode = destination?.destinationMode ?? 'overlay'
+          const flightAnimation = transfer.zone === 'deck'
+            ? animateCardFlightToPlayerDeck(flight, destinationElement, playerCardBackUrl(), {
+              destinationMode,
+              timing: transfer.timing,
+            })
+            : animateCardFlight(flight, destinationElement, {
+              destinationMode,
+              timing: transfer.timing,
+            })
           const currentPresentation = state.handDiscardPresentation
-          if (currentPresentation?.playerId === transfer.playerId) {
+          if (currentPresentation?.playerId === stagedOwnerId) {
             currentPresentation.cards = currentPresentation.cards.filter(card =>
               card.handIndex !== transfer.sourceHandIndex)
             await nextTick()
           }
           // Start the hand's FLIP reflow as soon as the flying clone is on
           // screen. Waiting for the flight first leaves an empty slot visible
-          // until the card has already reached the discard pile.
+          // until the card has already reached its pile.
           await Promise.all([flightAnimation, waitForHandCardReflow(hand)])
           continue
         }
@@ -2009,7 +2063,8 @@ function queueCardZoneTransfers(transfers: CardZoneTransfer[]): Promise<void> {
             playerCardBackUrl(),
             { destinationMode: destination?.destinationMode ?? 'overlay', timing: transfer.timing },
           )
-          if (transfer.timing === 'hand-to-pile' && transfer.sourcePlayerId) {
+          if ((transfer.timing === 'hand-to-pile' || transfer.timing === 'hand-to-deck-top') &&
+            transfer.sourcePlayerId) {
             const sourceArea = findDataElement('data-player-area-id', transfer.sourcePlayerId)
             await Promise.all([
               deckFlight,
@@ -2293,12 +2348,15 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
     )
     : []
   const presentationPlayerId = state.selectedPlayer
-  const presentationPlayerBefore = HAND_DISCARD_EFFECT_KINDS.has(pendingEffect?.awaiting?.kind ?? '') &&
+  const handTransferKind = pendingEffect?.awaiting?.kind ?? ''
+  const presentationPlayerBefore = (HAND_DISCARD_EFFECT_KINDS.has(handTransferKind) ||
+    HAND_TO_DECK_EFFECT_KINDS.has(handTransferKind)) &&
     preferredHandZoneOrder.some(item => item.playerId === presentationPlayerId)
     ? state.game.players.find(player => player.id === presentationPlayerId)
     : undefined
   const presentationHandBefore = presentationPlayerBefore ? [...presentationPlayerBefore.hand] : []
   const presentationDiscardBefore = presentationPlayerBefore ? [...presentationPlayerBefore.discard] : []
+  const presentationMovesToDiscard = HAND_DISCARD_EFFECT_KINDS.has(handTransferKind)
   const gainPlacement = pendingGainPlacementFlight?.decisionId === pendingDecision.id
     ? pendingGainPlacementFlight
     : null
@@ -2341,9 +2399,17 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
   const messages = engineResolvePendingDecision(state.game, state.game.pendingDecision.id, answer)
   holdSwapCardsMovingToDiscard(previous ? cardZoneMotionsByUndo.get(previous) ?? null : null, zoneBaseline, state.game.players)
   if (presentationPlayerBefore) {
+    // Stage hand cards selected for a discard or a deck-top transfer so they
+    // stay rendered until their flights start; the flight then removes each
+    // card and reflows the hand. This also keeps the hand row unchanged while
+    // the board motion runs, so the flight is not delayed behind the reflow.
     const selectedCount = preferredHandZoneOrder.filter(item => item.playerId === presentationPlayerId).length
     const playerAfter = state.game.players.find(player => player.id === presentationPlayerId)
-    if (selectedCount > 0 && playerAfter && playerAfter.discard.length >= presentationDiscardBefore.length + selectedCount) {
+    const discardGainedSelected = !!playerAfter &&
+      playerAfter.discard.length >= presentationDiscardBefore.length + selectedCount
+    const handLostSelected = !!playerAfter &&
+      presentationHandBefore.length - playerAfter.hand.length >= selectedCount
+    if (selectedCount > 0 && (presentationMovesToDiscard ? discardGainedSelected : handLostSelected)) {
       state.handDiscardPresentation = {
         playerId: presentationPlayerId,
         cards: presentationHandBefore.map((cardId, handIndex) => ({
@@ -2389,7 +2455,7 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
         zone: 'deck',
         zoneIndex: 0,
         flight: conjureReturnFlight,
-        timing: 'hand-to-pile',
+        timing: 'hand-to-deck-top',
         previousDeckTop: conjureReturnDeckTop,
         previousDeckCount: conjureReturnDeckCount,
         previousDiscardTop: conjureReturnDiscardTop,
@@ -2515,6 +2581,7 @@ async function playCardWithMotion(cardIdx: number) {
         handIndex: cardIdx,
         presentationKey,
         motionKey,
+        playedOccurrence: playBaseline.previousPlayedCount,
       }
       discardCardFlight(flight)
       flight = null
@@ -2677,6 +2744,7 @@ export async function playAllGems() {
           handIndex,
           presentationKey,
           motionKey,
+          playedOccurrence: playBaseline.previousPlayedCount,
         }
         discardCardFlight(flight)
         await nextTick()

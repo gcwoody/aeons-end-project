@@ -51,6 +51,9 @@
   --hand-card-reflow-duration: 220ms;
   --card-zone-reflow-duration: 240ms;
   --hand-to-play-zone-flight-duration: 200ms;
+  --hand-to-swap-zone-flight-duration: 200ms;
+  --swap-to-discard-flight-duration: 200ms;
+  --hand-to-deck-top-flight-duration: 300ms;
   --hand-to-pile-flight-duration: 200ms;
   --discard-phase-flight-duration: 200ms;
   --card-flight-easing: cubic-bezier(.22, .78, .24, 1);
