@@ -7,6 +7,7 @@ import CardSurface from './CardSurface.vue'
 
 interface HandCardDisplay {
   cardId: string
+  instanceId?: string
   handIndex?: number
   presentationKey?: string
   typeClass: string
@@ -20,7 +21,7 @@ interface HandCardDisplay {
 const props = defineProps<{
   playerId: string
   handCards: HandCardDisplay[]
-  conjuredCard: { cardId: string; typeClass: string } | null
+  conjuredCard: { cardId: string; instanceId?: string; typeClass: string } | null
   canActMain: boolean
   draggingSpell: boolean
   draggedSpellIndex: number | null
@@ -29,6 +30,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   'click-hand-card': [index: number]
+  'click-conjured-card': []
   'start-hand-spell-drag': [index: number, event: PointerEvent]
   'start-conjured-spell-drag': [event: PointerEvent]
 }>()
@@ -38,6 +40,7 @@ const handCardVisualKeys = ref<string[]>([])
 let previousHandCardVisuals: Array<{
   cardId: string
   handIndex: number
+  instanceId?: string
   presentationKey?: string
   visualKey: string
 }> = []
@@ -51,6 +54,15 @@ let pendingHandReflowPositions: HandCardPositionSnapshot | null = null
 let handPlayerChanged = false
 let handGainingCards = false
 let lastHandLayout = ''
+
+function sameCardCopy(
+  left: { instanceId?: string; cardId: string },
+  right: { instanceId?: string; cardId: string },
+): boolean {
+  return left.instanceId && right.instanceId
+    ? left.instanceId === right.instanceId
+    : left.cardId === right.cardId
+}
 
 function animateHandScroll() {
   const hand = handElement.value
@@ -140,7 +152,7 @@ function reconcileHandCardVisualKeys() {
     if (!card.presentationKey) return
     const previousIndex = previousHandCardVisuals.findIndex((previous, index) =>
       !usedPrevious.has(index) && !departingKeys.has(previous.visualKey) &&
-      previous.cardId === card.cardId && previous.handIndex === card.handIndex)
+      sameCardCopy(previous, card) && previous.handIndex === card.handIndex)
     if (previousIndex < 0) return
     keys[nextIndex] = previousHandCardVisuals[previousIndex]!.visualKey
     usedPrevious.add(previousIndex)
@@ -157,7 +169,7 @@ function reconcileHandCardVisualKeys() {
     for (let newPosition = newIndexes.length - 1; newPosition >= 0; newPosition--) {
       const previous = previousHandCardVisuals[oldIndexes[oldPosition]!]!
       const next = cards[newIndexes[newPosition]!]!
-      lengths[oldPosition]![newPosition] = previous.cardId === next.cardId
+      lengths[oldPosition]![newPosition] = sameCardCopy(previous, next)
         ? lengths[oldPosition + 1]![newPosition + 1]! + 1
         : Math.max(lengths[oldPosition + 1]![newPosition]!, lengths[oldPosition]![newPosition + 1]!)
     }
@@ -167,7 +179,7 @@ function reconcileHandCardVisualKeys() {
   while (oldPosition < oldIndexes.length && newPosition < newIndexes.length) {
     const previousIndex = oldIndexes[oldPosition]!
     const nextIndex = newIndexes[newPosition]!
-    if (previousHandCardVisuals[previousIndex]!.cardId === cards[nextIndex]!.cardId) {
+    if (sameCardCopy(previousHandCardVisuals[previousIndex]!, cards[nextIndex]!)) {
       keys[nextIndex] = previousHandCardVisuals[previousIndex]!.visualKey
       oldPosition++
       newPosition++
@@ -181,6 +193,7 @@ function reconcileHandCardVisualKeys() {
   handCardVisualKeys.value = cards.map((card, index) => keys[index] ?? `hand-card-${++nextHandVisualKey}`)
   previousHandCardVisuals = cards.map((card, index) => ({
     cardId: card.cardId,
+    instanceId: card.instanceId,
     handIndex: card.handIndex ?? index,
     presentationKey: card.presentationKey,
     visualKey: handCardVisualKeys.value[index]!,
@@ -246,6 +259,7 @@ onBeforeUnmount(() => {
             size="hand"
             :data-hand-card-index="card.handIndex"
             :data-hand-card-id="card.cardId"
+            :data-card-instance-id="card.instanceId"
             :data-held-play-card="card.heldForPlay ? 'true' : undefined"
             data-card-flight-target="hand"
             data-card-motion-zone="hand"
@@ -276,10 +290,16 @@ onBeforeUnmount(() => {
           <CardSurface
             :card-id="conjuredCard.cardId"
             size="hand"
+            data-card-motion-zone="conjure"
+            :data-card-motion-card-id="conjuredCard.cardId"
+            :data-card-motion-owner-id="playerId"
+            :data-card-motion-key="`${playerId}:conjure:${conjuredCard.instanceId ?? conjuredCard.cardId}`"
+            :data-card-instance-id="conjuredCard.instanceId"
             :class="[conjuredCard.typeClass, 'pending-board-card', 'pending-conjure-card', 'spell-draggable', 'game-highlight', 'game-highlight--choice', {
               dragging: draggingSpell && draggingConjuredCard,
             }]"
             draggable="false"
+            @click="emit('click-conjured-card')"
             @pointerdown="emit('start-conjured-spell-drag', $event)"
           />
         </CardHoverPreview>

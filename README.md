@@ -81,6 +81,7 @@ design/                      当前 Wave 状态等少量仍有效的设计记录
 ## 开发入口
 
 - 卡牌、Mage、Nemesis 与引擎规则：先读 [dev-guide.md](dev-guide.md)，再读对应的 `documents/` 资料和引擎数据/测试。
+- 重要且易错的游戏规则与裁定：[game-rulings.md](game-rulings.md)。
 - 布局、组件、弹窗、动效、拖拽和层级：[ui/ui-guide.md](ui/ui-guide.md)。
 - 只在检查 Wave 9 接入进度时阅读 [design/wave9-plan.md](design/wave9-plan.md)。
 - 跨对话继续项目时，可先读 [HANDOFF.md](HANDOFF.md) 获取简短进度摘要；它是快照，具体行为以当前代码和上述指南为准。

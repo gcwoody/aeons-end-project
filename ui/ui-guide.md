@@ -56,6 +56,8 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 - Played Zone 始终显示。开局 Mage 或市场卡牌需要 Swap 时显示 Swap Zone；市场含有 Develop 卡牌时显示 Develop Zone。两种条件独立判断，区域对所有 Mage 视角可见。Swap 卡仍归其持有者，Develop 为共享区域。
 - Played、Swap、Develop 使用彼此分开的深色圆角区域。Swap 与 Develop 各占一份，Played 在单侧区域存在时占两份；两侧区域都存在时三等分。Swap/Develop 卡列在自己的区域内居中，Played 卡列始终以整行中心为中心并在空间不足时滚动。
 - 区域标题位于上边缘：Swap/Develop 标题居中对齐各自区域；Played 标题对齐整行中心，与 Played 卡列保持一致。
+- 手牌中的 Spell 可直接点击并自动准备到最右侧仍可接收法术的 Breach；拖动 Spell 到指定 Breach 时直接准备，不播放飞入动画。
+- Conjure 展示的法术可点击并自动准备到最右侧候选 Breach，也可拖动到指定候选 Breach；选择仍由 Conjure 决策处理。
 - Breach 上附着的 Relic 放在 Breach 下层并露出卡牌下方；Focus/Open 按钮要在附着牌上层。垂直露出量只改 `--breach-attached-relic-offset-y`。
 - Focus 合法时，悬停 Breach 图或对应 Focus 按钮，都要同时把图和按钮边线临时变成蓝色；由 `board-pile-interactions.css` 的共享配对悬停规则处理。
 
@@ -78,7 +80,11 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 - Breach 只有自身方向或开合状态改变时才播放动效。Focus 按当前方向顺时针旋转；Open 使用随开口方向调整翻转轴的 3D 翻面。动作动画结束后，回合自动结束和后续阶段才会继续。
 - Nemesis 抽牌从牌堆飞向中央时，背景同步渐暗；卡牌在移动途中横向收窄，在背面不可见时切换预加载正面，再展开。不要展示镜像的牌背，也不要在动画完成后再突然弹出另一张正面牌。
 - Nemesis 抽牌翻开后直接停在屏幕中央；点击卡牌、遮罩区域或按 Space 确认继续，不再额外弹出一个只含 Confirm 的窗口。开局第一张 Nemesis 牌也必须走同一动画流程。
-- 从玩家手牌放到自己或盟友牌堆顶的卡牌也要飞向目标牌堆，同时等待来源手牌收拢完成。Vapor Wraith 的 on-damage 选择和 Flailer 的盟友牌堆顶选择共用 `hand-to-pile` 动画时长。Conjure 跳过时，手牌区域中的临时揭示牌也飞回牌堆顶；真实 hand 状态不包含这张临时牌。其他从场上牌堆移动到玩家手牌、牌堆或弃牌堆的卡牌，统一使用 `src/game/card-flight.ts` 的 `captureCardZoneTransfer` / `resolveCardZoneTransfers` 和 `useGame.ts` 的区域目标动画。Supply 购买与 Nemesis 特殊牌堆获得 Corruption 都走这套逻辑；新增此类效果时复用它，并标记来源牌堆和玩家区域目标。落到玩家牌堆时使用 `overlay`，保留原有牌堆图像可见；只有落点是刚加入的手牌或弃牌顶牌时才使用 `replace` 暂时隐藏该张新牌，避免重复显示。手牌打出的 Gem/Relic 与弃牌阶段也使用卡牌飞行动画；弃牌动画以原弃牌顶牌为底图，Play All Gems 逐张播放，卡牌决策等当张卡飞完后再出现。手牌打出的牌在等待自身决策期间保留在手牌展示，Played Zone 不为它渲染卡位或触发重排；决策全部结束后才腾出卡位并飞入。手牌放到牌堆顶（自己或盟友）也先保留在手牌展示，飞行动画开始的同时手牌收拢，牌堆数量在飞行落定后才更新，不能在动画开始前先跳到新数量。
+- 从手牌飞向自己的牌库或弃牌堆时，牌堆表面等卡牌落地后再更新；手牌同时开始收拢。Vapor Wraith、Flailer 和 Conjure 回牌库顶都使用对应的统一飞行时长。Conjure 临时牌不计入真实手牌。
+- Conjure 牌进入 Breach 时复用手牌准备法术的飞行时长；飞行途中从正面翻到牌背，Breach 里的静态牌面要等飞行结束后才显示。
+- 其他牌区到玩家牌区的飞行由引擎的卡牌移动记录确定具体牌副和最终去向。Supply 新获得的牌用“创建记录”标识来源牌堆；Crooked Mask、Mage/Nemesis 专属牌堆等来源用牌副 ID 跟踪原卡。新增来源时，提供可见来源锚点并复用 `useGame.ts` 的移动队列，不要比较动作前后牌数来猜是哪张卡。
+- 决策窗口中展示的实体卡牌只是供玩家查看和选择的副本；选择确认后，无论规则把它移到哪个牌区，都直接更新最终位置，不从窗口或原牌区播放飞行。Supply 等没有实体牌副 ID 的卡牌选项仍按其真实牌堆来源处理。
+- 落到玩家牌库时保留现有牌堆图像；落到新加入的手牌或弃牌顶牌时暂时隐藏新渲染的静止卡面，避免飞行卡与目标卡重叠。手牌打出的 Gem/Relic 在等待决策期间继续显示在手牌中；决策结束后按引擎最终牌区飞行一次。Swap 先完成进场，再让旧牌飞向 Discard。弃牌阶段也逐张飞行，并等待飞行和手牌/牌区收拢完成后再继续。
 
 ### 决策和拖动
 
@@ -138,9 +144,9 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 
 手牌使用 `HandCardRow.vue` 的固定宽度卡槽直接参与横向布局。每次更新前捕获真实屏幕位置，更新后一次性确定居中与卡槽的最终位置，再用同一套 FLIP 动画移动。不要同时给手牌 padding 加 CSS 过渡或另外计算弃牌位移。新动画启动前取消该手牌的旧动画；完成、切换 Mage 和卸载时清理动画，不在卡槽上保留 inline transform。相同卡牌的打出/准备按实际离开的卡槽识别；批量弃牌保留源索引，结束后按剩余顺序恢复实时索引。
 
-Played、Swap、Develop 等牌区通过 `src/game/card-flight.ts` 的通用区域转移动效处理。可移动的卡面标记 `data-card-motion-zone`、卡牌 ID、玩家 ID 和稳定的视觉 key；目标卡面用 `data-card-motion-from-zones` 声明接受哪些来源。`data-card-motion-count` 可让单个来源元素表示堆叠牌数量，`data-card-motion-arrival-count` 可让持续存在的目标元素报告新增牌数，`data-card-motion-after-zones` 声明目标区域需等待哪些区域完成转移。`data-card-motion-row` 标记需要做 FLIP 重排的容器。引擎更新后，通用流程按区域增减识别卡牌转移、飞向新落点并重排原区域的剩余卡牌；新增牌区应提供这些标记并复用 `captureCardZoneMotion` / `resolveCardZoneMotion`，不要按卡牌 ID 新增飞行动画分支。供应堆以外的临时来源可直接复用 `captureCardFlight` 和 `animateCardFlight`，并与区域重排同时启动。Swap 使用区域依赖声明实现串行：牌先到 Swap Zone，Discard 等 Swap Zone 的转移动效完成后再接收交换目标。
+Played、Swap、Develop 等牌区根据引擎移动记录播放飞行和收拢。移动记录按牌副 ID 精确对应卡牌；同一动作里一张牌经过多个区域时，只播放一段从真实起点到最终落点的飞行。`data-card-motion-zone`、卡牌 ID、持有者、牌副 ID 和稳定视觉 key 标记可见卡牌；目标弃牌堆用 `data-card-motion-from-zones` 声明接收来源，`data-card-motion-after-zones` 声明先后顺序，`data-card-motion-row` 标记需要平滑收拢的牌列。Supply 来源使用牌堆索引和引擎创建记录。动作前捕获的内容只用于保存卡牌起点和牌列位置；卡牌移动不再由区域数量变化推断。不同来源的转移由各自的解析器识别，再进入同一个全局串行队列；队列按引擎移动序号播放，并遵守目标区域声明的先后依赖。Nemesis Deck 的下一张牌要在引擎推进前捕获牌堆来源，翻牌动画也进入此队列，避免前一批移动未结束时先显示新牌。队列共用移动 ID 防止同一移动被播放两次。新增可见牌区时，先给实体卡提供牌副 ID，再添加来源/目标标记并验证事件、落点和收拢效果。
 
-手牌打出或一次弃多张牌时，每张卡开始飞行后，剩余卡牌就同步平滑收拢；后续飞牌和自动阶段推进等待飞行与收拢均结束。多张牌仍按玩家选择顺序逐张处理。新增手牌与旧牌同步移动，飞入的新牌暂时隐藏到达目标；切换 Mage 直接替换整手牌并重置滚动。相关动画在 `src/game/card-flight.ts`，协调流程在 `src/game/useGame.ts`。Gallery 的 `Hand.Motion` 可以演示连续增删、逐张弃牌、溢出滚动和视角切换，包括打断前一段动画的操作。
+手牌打出或一次弃多张牌时，每张卡起飞后，剩余卡牌立即平滑收拢；后续飞牌、决策和自动阶段推进等待当前串行队列完成。多张牌按规则顺序逐张处理。一次转移所需的卡牌飞行、翻面和来源牌列收拢作为同一复合动效完成；独立转移不得并发启动。新手牌到达时会先隐藏静止卡面，避免重复显示；切换 Mage 时直接换整手牌并重置滚动。飞行、计时和牌列收拢由 `src/game/card-flight.ts` 提供，`src/game/useGame.ts` 按引擎移动记录安排动作。UI Gallery 的 `Hand.Motion` 可重复演示打牌、飞向弃牌堆、增牌、溢出滚动、切换 Mage，以及动画中再次操作。
 
 ## 6. 全局层级
 

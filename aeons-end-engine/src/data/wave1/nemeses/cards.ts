@@ -55,7 +55,7 @@ export const WAVE1_BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
     ...makeNemesisCard('agony_field', 'Agony Field', 'power', 1, { power: 2 }),
     nemesisEffects: powerResolved(
       unleash(),
-      { kind: 'discard_cards', source: 'hand', amount: 3, target: 'any_player' },
+      { kind: 'discard_cards', source: 'hand', amount: 3, target: 'any_player', targetAvailability: 'full_or_max' },
       { kind: 'draw_cards', amount: 1, target: 'self' },
     ),
     toDiscard: { costs: [{ kind: 'destroy_cards', source: 'hand', amount: 1, minCost: 2 }] },
@@ -94,7 +94,7 @@ export const WAVE1_BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
       {
         kind: 'choose_one', prompt: 'Choose the Awaken effect', options: [
           { id: 'rage', label: 'Unleash twice and damage Gravehold', effects: [unleash(2), { kind: 'deal_damage', amount: 3, target: 'gravehold' }] },
-          { id: 'return_minion', label: 'Return the most recently discarded Minion', effects: [{ kind: 'return_last_discarded_minion' }] },
+          { id: 'return_minion', label: 'Return the most recently discarded Minion', condition: { kind: 'nemesis_discard_minion_count', comparison: 'at_least', amount: 1 }, effects: [{ kind: 'return_last_discarded_minion' }] },
         ],
       },
     ),
@@ -121,14 +121,14 @@ export const WAVE1_BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
     nemesisEffects: persistent({
       kind: 'choose_one', prompt: 'Choose the Venomite effect', options: [
         { id: 'damage', label: 'Lowest-life player suffers 2 damage', effects: [lowestLifeDamage(2)] },
-        { id: 'discard', label: 'Discard a prepped spell costing 3 or more', effects: [{ kind: 'discard_prepped_spells', amount: 1, minCost: 3, target: 'any_player' }] },
+        { id: 'discard', label: 'Discard a prepped spell costing 3 or more', condition: { kind: 'has_prepped_spell', minCost: 3 }, effects: [{ kind: 'discard_prepped_spells', amount: 1, minCost: 3, target: 'any_player' }] },
       ],
     }),
   },
 
   doom_aegis: {
     ...makeNemesisCard('doom_aegis', 'Doom Aegis', 'power', 3, { power: 1 }),
-    nemesisEffects: powerResolved(mostChargesDamage(4), { kind: 'lose_all_charge', target: 'any_player' }),
+    nemesisEffects: powerResolved(mostChargesDamage(4), { kind: 'lose_all_charge', target: 'any_player', selection: 'most_charges' }),
     toDiscard: { costs: [{ kind: 'spend_aether', amount: 7 }] },
   },
   gather_darkness: {
@@ -142,13 +142,7 @@ export const WAVE1_BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
   jagged_one: { ...makeNemesisCard('jagged_one', 'Jagged One', 'minion', 3, { life: 14 }), nemesisEffects: persistent(unleash(2)) },
   obliterate: {
     ...makeNemesisCard('obliterate', 'Obliterate', 'attack', 3),
-    nemesisEffects: immediate(
-      unleash(2),
-      { kind: 'choose_one', prompt: 'Choose the Obliterate effect', options: [
-        { id: 'destroy', label: 'Destroy four cards in hand', effects: [{ kind: 'destroy_cards', source: 'hand', minAmount: 4, maxAmount: 4 }] },
-        { id: 'damage', label: 'Suffer 4 damage', effects: [mostBreachesDamage(4)] },
-      ] },
-    ),
+    nemesisEffects: immediate(unleash(2), { kind: 'obliterate_most_open_breach_player' }),
   },
   reality_rupture: {
     ...makeNemesisCard('reality_rupture', 'Reality Rupture', 'power', 3, { power: 1 }),
@@ -159,7 +153,7 @@ export const WAVE1_BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
     nemesisEffects: immediate({
       kind: 'choose_one', prompt: 'Choose the Sunder effect', options: [
         { id: 'damage', label: 'Damage Gravehold and the lowest-life player', effects: [{ kind: 'deal_damage', amount: 4, target: 'gravehold' }, lowestLifeDamage(4)] },
-        { id: 'shuffle', label: 'Shuffle Nemesis turn-order cards into the deck', effects: [{ kind: 'shuffle_nemesis_turn_order_cards' }] },
+        { id: 'shuffle', label: 'Shuffle Nemesis turn-order cards into the deck', condition: { kind: 'nemesis_turn_order_discard_count', comparison: 'at_least', count: 1 }, effects: [{ kind: 'shuffle_nemesis_turn_order_cards' }] },
       ],
     }),
   },
@@ -257,7 +251,7 @@ export const PRINCE_OF_GLUTTONS_UNIQUE_CARDS: Record<string, NemesisCardDef> = {
     nemesisEffects: immediate({
       kind: 'choose_one', prompt: 'Choose the Lobotomize effect', options: [
         { id: 'damage', label: 'Any player suffers 3 damage', effects: [anyPlayerDamage(3)] },
-        { id: 'devour', label: 'Devour three cards from a spell supply pile', effects: [{ kind: 'devour_market_cards', amount: 3, pile: 'choose', cardType: 'spell' }] },
+        { id: 'devour', label: 'Devour three cards from a spell supply pile', condition: { kind: 'has_nonempty_market_pile', cardType: 'spell' }, effects: [{ kind: 'devour_market_cards', amount: 3, pile: 'choose', cardType: 'spell' }] },
       ],
     }),
   },
@@ -266,7 +260,7 @@ export const PRINCE_OF_GLUTTONS_UNIQUE_CARDS: Record<string, NemesisCardDef> = {
     nemesisEffects: persistent({
       kind: 'choose_one', prompt: 'Choose the Thought Biter effect', options: [
         { id: 'damage', label: 'Any player suffers 2 damage', effects: [anyPlayerDamage(2)] },
-        { id: 'devour', label: 'Devour two cards from the least expensive relic supply pile', effects: [{ kind: 'devour_market_cards', amount: 2, pile: 'least_expensive', cardType: 'relic' }] },
+        { id: 'devour', label: 'Devour two cards from the least expensive relic supply pile', condition: { kind: 'has_nonempty_market_pile', cardType: 'relic' }, effects: [{ kind: 'devour_market_cards', amount: 2, pile: 'least_expensive', cardType: 'relic' }] },
       ],
     }),
   },

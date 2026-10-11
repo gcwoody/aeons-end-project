@@ -7,6 +7,9 @@ export interface LargeCardChoiceOption {
   cardName: string
   disabled?: boolean
   disabledReason?: string
+  motionZone?: string
+  motionOwnerId?: string
+  motionInstanceId?: string
 }
 
 defineProps<{
@@ -29,6 +32,12 @@ const emit = defineEmits<{
         :aria-label="`Choose ${choice.cardName}`"
         :disabled="choice.disabled"
         :title="choice.disabled ? choice.disabledReason : undefined"
+        :data-card-motion-zone="choice.motionZone"
+        :data-card-motion-card-id="choice.motionZone ? choice.cardId : undefined"
+        :data-card-motion-owner-id="choice.motionOwnerId"
+        :data-card-motion-key="choice.motionZone ? `decision-${choice.id}` : undefined"
+        :data-card-instance-id="choice.motionInstanceId"
+        :data-card-motion-suppress-flight="choice.motionInstanceId ? 'true' : undefined"
         @click="emit('choose', choice.id)"
       >
         <img

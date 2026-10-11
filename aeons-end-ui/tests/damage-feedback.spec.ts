@@ -80,6 +80,7 @@ async function applyMainPhaseState(page: Page, update: (game: any, player: any) 
   await stateField.fill(JSON.stringify(debugState))
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+  return { playerId: player.id as string, allyId: debugState.game.players[1].id as string }
 }
 
 test('casting a damaging spell shows localized damage feedback on the target', async ({ page }) => {
@@ -323,6 +324,146 @@ test('Play All Gems reflows an already played Sagestone as each Crystal lands', 
   const reflowCounts = await page.evaluate(() =>
     (window as typeof window & { sagestoneReflowCrystalCounts: number[] }).sagestoneReflowCrystalCounts)
   expect(reflowCounts).toEqual([1, 2, 3])
+})
+
+test('Play All Gems animates every Crystal in hand order, one flight at a time', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --hand-to-play-zone-flight-duration: 400ms; --hand-card-reflow-duration: 120ms; }' })
+  await applyMainPhaseState(page, (_game, player) => {
+    player.hand = ['crystal', 'crystal', 'crystal']
+    player.playedThisTurn = []
+  })
+
+  const expectedInstanceIds = await page.locator('.hand [data-hand-card-id="crystal"]').evaluateAll(cards =>
+    cards.map(card => card.getAttribute('data-card-instance-id')))
+  expect(expectedInstanceIds.every(Boolean)).toBe(true)
+
+  await page.evaluate(() => {
+    const trace = { started: [] as string[], maxActive: 0 }
+    const active = new Set<string>()
+    const clonesIn = (node: Node) => node instanceof HTMLElement
+      ? [...(node.matches('.card-flight-clone') ? [node] : []), ...node.querySelectorAll<HTMLElement>('.card-flight-clone')]
+      : []
+    const observer = new MutationObserver(records => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          for (const clone of clonesIn(node)) {
+            const instanceId = clone.dataset.cardFlightInstanceId
+            if (!instanceId) continue
+            trace.started.push(instanceId)
+            active.add(instanceId)
+            trace.maxActive = Math.max(trace.maxActive, active.size)
+          }
+        }
+        for (const node of record.removedNodes) {
+          for (const clone of clonesIn(node)) {
+            const instanceId = clone.dataset.cardFlightInstanceId
+            if (instanceId) active.delete(instanceId)
+          }
+        }
+      }
+    })
+    Object.assign(window, { playAllGemFlightTrace: trace, playAllGemFlightObserver: observer })
+    observer.observe(document.body, { childList: true, subtree: true })
+  })
+
+  await page.getByRole('button', { name: 'Play All Gems' }).click()
+  await expect(page.locator('.card-flight-clone')).toHaveCount(1)
+  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toHaveCount(3)
+  await expect(page.locator('.app')).not.toHaveClass(/card-motion-batch-active/)
+  await expect.poll(() => page.evaluate(() =>
+    (window as typeof window & { playAllGemFlightTrace: { started: string[] } }).playAllGemFlightTrace.started.length,
+  )).toBe(3)
+
+  const trace = await page.evaluate(() => {
+    const trackedWindow = window as typeof window & {
+      playAllGemFlightTrace: { started: string[]; maxActive: number }
+      playAllGemFlightObserver: MutationObserver
+    }
+    trackedWindow.playAllGemFlightObserver.disconnect()
+    return trackedWindow.playAllGemFlightTrace
+  })
+  expect(trace.started).toEqual(expectedInstanceIds)
+  expect(trace.maxActive).toBe(1)
+})
+
+test('A plays all Gems and does not trigger while help or a text field is active', async ({ page }) => {
+  await startCleanGame(page)
+  await applyMainPhaseState(page, (_game, player) => {
+    player.hand = ['crystal', 'crystal']
+    player.playedThisTurn = []
+  })
+
+  await page.getByRole('button', { name: 'Open game help' }).click()
+  await expect(page.getByText('Play all Gems in the current Mage\'s hand.')).toBeVisible()
+  await expect(page.getByText('Undo the last player operation, up to twenty steps.')).toBeVisible()
+  await page.keyboard.press('a')
+  await expect(page.locator('.hand [data-hand-card-id="crystal"]')).toHaveCount(2)
+  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Close game help' }).click()
+
+  await page.keyboard.press('Control+d')
+  const debugField = page.locator('.debug-panel textarea')
+  await expect(debugField).toBeVisible()
+  await debugField.focus()
+  await page.keyboard.press('a')
+  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toHaveCount(0)
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.keyboard.press('a')
+  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toHaveCount(2)
+  await expect(page.locator('.app')).not.toHaveClass(/card-motion-batch-active/)
+})
+
+test('Play All Gems resolves each Trinket gain before playing the next Gem', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 250ms; --hand-to-play-zone-flight-duration: 250ms; --hand-card-reflow-duration: 120ms; --card-zone-reflow-duration: 120ms; }' })
+  await applyMainPhaseState(page, (game, player) => {
+    player.hand = ['luminous_facet', 'crystal', 'crystal']
+    player.discard = []
+    player.playedThisTurn = []
+    game.trinketDeck = ['clouded_trinket']
+    game.trinketDeckRevealed = [false]
+  })
+
+  await page.evaluate(() => {
+    const luminousSrc = document.querySelector<HTMLImageElement>('.hand img[alt="Luminous Facet"]')?.src
+    const crystalSrc = document.querySelector<HTMLImageElement>('.hand img[alt="Crystal"]')?.src
+    const order: string[] = []
+    Object.assign(window, { playAllGemMotionOrder: order })
+    const observer = new MutationObserver(records => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue
+          const clones = [
+            ...(node.matches('.card-flight-clone') ? [node] : []),
+            ...node.querySelectorAll<HTMLElement>('.card-flight-clone'),
+          ]
+          for (const clone of clones) {
+            if (clone.querySelector('.card-flight-reveal-front')) {
+              order.push('trinket')
+              continue
+            }
+            const source = clone.querySelector<HTMLImageElement>('img')?.src
+            if (source === luminousSrc) order.push('luminous-facet')
+            else if (source === crystalSrc) order.push('crystal')
+          }
+        }
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+  })
+
+  await page.getByRole('button', { name: 'Play All Gems' }).click()
+  await expect(page.locator('.played-zone-center [data-played-card-id="luminous_facet"]')).toHaveCount(1)
+  await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toHaveCount(2)
+  await expect(page.locator('.app')).not.toHaveClass(/card-motion-batch-active/)
+
+  const motionOrder = await page.evaluate(() =>
+    (window as Window & { playAllGemMotionOrder?: string[] }).playAllGemMotionOrder ?? [])
+  expect(motionOrder.filter(event => event === 'crystal')).toHaveLength(2)
+  expect(motionOrder.indexOf('trinket')).toBeGreaterThan(motionOrder.indexOf('luminous-facet'))
+  expect(motionOrder.indexOf('trinket')).toBeLessThan(motionOrder.indexOf('crystal'))
 })
 
 for (const { cardId, answer } of [
@@ -738,6 +879,89 @@ test('a hand card placed on the deck starts its flight before the deck shows the
   expect(timeline[firstHandHidden]?.clone).toBe(true)
 })
 
+test('a hand card placed on an ally deck flies to its visible player control and reaches the deck top', async ({ page }) => {
+  await startCleanGame(page)
+  await page.addStyleTag({ content: ':root { --hand-to-deck-top-flight-duration: 700ms; }' })
+  const { playerId, allyId } = await applyMainPhaseState(page, (game, player) => {
+    const ally = game.players[1]
+    game.pendingDecision = {
+      id: 'flailer-ally-top-deck',
+      playerId: player.id,
+      kind: 'select_cards',
+      source: 'hand',
+      min: 1,
+      max: 1,
+      prompt: 'Choose a card in hand to place on top of an ally’s deck',
+      candidates: [{ zone: 'hand', index: 1, cardId: 'spark', cardName: 'Spark' }],
+    }
+    game.pendingEffect = {
+      sourcePlayerId: player.id,
+      effectPlayerId: player.id,
+      selectedActionPlayerId: player.id,
+      placementRecipientPlayerId: ally.id,
+      awaiting: { kind: 'place_hand_card_on_ally_deck' },
+      remainingEffects: [],
+    }
+    player.hand = ['crystal', 'spark', 'focusing_orb']
+    player.playedThisTurn = []
+    ally.deck = ['crystal']
+    ally.discard = []
+  })
+
+  const allyControl = page.locator(`[data-player-control-id="${allyId}"]`)
+  await expect(page.locator('.hand .pending-board-card')).toHaveCount(1)
+  await expect(allyControl).toBeVisible()
+  await page.evaluate(({ sourceId, targetId }) => {
+    const tracked = window as typeof window & {
+      allyDeckTimeline: Array<{ clone: boolean; handVisible: boolean; distance: number | null; duration: number | null }>
+    }
+    tracked.allyDeckTimeline = []
+    const source = document.querySelector<HTMLElement>(`[data-player-area-id="${sourceId}"]`)
+    const target = document.querySelector<HTMLElement>(`[data-player-control-id="${targetId}"]`)
+    const probe = () => {
+      const clone = document.querySelector<HTMLElement>('.card-flight-clone')
+      const card = source?.querySelector<HTMLElement>('.hand [data-hand-card-id="spark"]')
+      const cloneRect = clone?.getBoundingClientRect()
+      const targetRect = target?.getBoundingClientRect()
+      tracked.allyDeckTimeline.push({
+        clone: !!clone,
+        handVisible: !!card && getComputedStyle(card).visibility !== 'hidden',
+        distance: cloneRect && targetRect
+          ? Math.hypot(
+            cloneRect.x + cloneRect.width / 2 - targetRect.x - targetRect.width / 2,
+            cloneRect.y + cloneRect.height / 2 - targetRect.y - targetRect.height / 2,
+          )
+          : null,
+        duration: clone
+          ? Math.max(...clone.getAnimations().map(animation =>
+            Number((animation.effect as KeyframeEffect | null)?.getTiming().duration ?? 0)))
+          : null,
+      })
+      if (tracked.allyDeckTimeline.length < 200) requestAnimationFrame(probe)
+    }
+    requestAnimationFrame(probe)
+  }, { sourceId: playerId, targetId: allyId })
+
+  await page.locator('.hand .pending-board-card').click()
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+  const timeline = await page.evaluate(() =>
+    (window as typeof window & {
+      allyDeckTimeline: Array<{ clone: boolean; handVisible: boolean; distance: number | null; duration: number | null }>
+    }).allyDeckTimeline)
+  const firstClone = timeline.findIndex(frame => frame.clone)
+  const firstHandHidden = timeline.findIndex(frame => !frame.handVisible)
+  expect(Math.max(...timeline.map(frame => frame.duration ?? 0))).toBe(700)
+  expect(firstClone).toBeGreaterThanOrEqual(0)
+  expect(Math.min(...timeline.map(frame => frame.distance ?? Number.POSITIVE_INFINITY))).toBeLessThan(30)
+  expect(timeline[firstHandHidden]?.clone).toBe(true)
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const resolvedState = JSON.parse(await stateField.inputValue())
+  expect(resolvedState.game.players.find((player: { id: string }) => player.id === allyId).deck)
+    .toEqual(['spark', 'crystal'])
+})
+
 test('buying a supply card animates it into the top of the discard pile', async ({ page }) => {
   await startCleanGame(page)
   await page.addStyleTag({ content: ':root { --card-flight-duration: 900ms; }' })
@@ -814,6 +1038,49 @@ test('Discard Phase waits for each card flight before advancing the turn', async
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const resolved = JSON.parse(await page.locator('.debug-panel textarea').inputValue())
   expect(resolved.game.players[0].discard).toEqual(expect.arrayContaining(['crystal', 'spark', 'emerald_shard', 'vriswood_amber']))
+})
+
+test('Discard Order does not highlight or activate a Recall card after it enters the Discard', async ({ page }) => {
+  await startCleanGame(page)
+  await applyMainPhaseState(page, (game, player) => {
+    player.hand = []
+    player.playedThisTurn = ['atomized_ash', 'crystal']
+    player.discard = []
+    player.pulseTokens = 1
+    player.aetherTokens = 0
+    player.bonusAether = 0
+    player.charge = 0
+    game.supplyMechanics = ['pulse_token']
+    game.nemesis.playArea = []
+  })
+
+  await page.getByRole('button', { name: 'End Turn', exact: true }).click()
+  await expect(page.locator('.controls .phase')).toHaveText('Discard Phase · Card Order')
+  await page.locator('.played-zone-center [data-discard-phase-card-index="0"]').click()
+  await expect(page.locator('.played-zone-center [data-discard-phase-card-index="0"] img[alt="Crystal"]')).toBeVisible()
+
+  // A save created before phase synchronization can resume with the UI in
+  // Discard Order while the stored engine phase still says Main Phase.
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const debugState = JSON.parse(await stateField.inputValue())
+  debugState.phase = 'discard_order'
+  debugState.game.currentPhase = 'main'
+  await stateField.fill(JSON.stringify(debugState))
+  await page.getByRole('button', { name: 'Apply', exact: true }).click()
+  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+
+  await page.locator('.player-discard-pile').click()
+  await expect(page.locator('.pile-modal')).toBeVisible()
+  await expect(page.locator('.pile-modal .pile-card.recall-card-action')).toHaveCount(0)
+
+  await page.locator('.pile-modal .pile-card').filter({
+    has: page.locator('img[alt="Atomized Ash"]'),
+  }).click()
+  await expect(page.locator('.pile-modal')).toBeVisible()
+  await expect(page.locator('.controls .pulse-token-status')).toHaveAttribute('aria-label', '1 Pulse Tokens')
+  await expect(page.locator('.controls .phase')).toHaveText('Discard Phase · Card Order')
 })
 
 test('Undo after the next Mage starts returns to the beginning of Discard Phase', async ({ page }) => {

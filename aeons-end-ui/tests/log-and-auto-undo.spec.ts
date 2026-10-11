@@ -117,3 +117,43 @@ test('one undo reverses a purchase and its automatic transition to Discard Phase
   expect(restored.game.players[0].discard).not.toContain('phoenix_flame')
   expect(restored.game.market.piles[0]).toEqual({ cardId: 'phoenix_flame', remaining: 5 })
 })
+
+test('undo retains the most recent twenty player operations', async ({ page }) => {
+  await startGame(page)
+  let supplyCardId = ''
+  await editDebugState(page, current => {
+    const game = current.game
+    const player = game.players[0]
+    game.currentTurn = player.id
+    game.currentPhase = 'main'
+    current.phase = 'main'
+    current.selectedPlayer = player.id
+    player.hand = []
+    player.discard = []
+    player.playedThisTurn = []
+    player.bonusAether = 1000
+    player.regularAetherSpent = 0
+    player.conditionalAetherEarned = {}
+    player.condAetherSpent = {}
+    player.aetherTokens = 0
+    game.market.piles[0].remaining = 30
+    supplyCardId = game.market.piles[0].cardId
+  })
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 1ms; --card-zone-reflow-duration: 1ms; }' })
+
+  const supplyPile = page.locator('[data-supply-pile-index="0"]')
+  for (let purchase = 0; purchase < 21; purchase++) {
+    await supplyPile.click()
+    await expect(supplyPile.locator('.remaining')).toHaveText(String(29 - purchase))
+  }
+  await expect(page.locator('.card-motion-shield')).toBeHidden()
+
+  for (let undo = 0; undo < 20; undo++) await page.keyboard.press('Control+z')
+
+  await page.keyboard.press('Control+d')
+  const field = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const restored = JSON.parse(await field.inputValue())
+  expect(restored.game.market.piles[0].remaining).toBe(29)
+  expect(restored.game.players[0].discard).toEqual([supplyCardId])
+})

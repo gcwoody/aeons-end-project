@@ -107,6 +107,29 @@ function testSpellSwapSequence(): void {
   assertEqual(nook.swapZone?.[nook.swapZone.length - 1], 'superior_spark', 'Cast spells enter the Swap zone after swapping')
 }
 
+function testEmptySparkDealsNoDamageToMinions(): void {
+  const game = freshNookGame()
+  const nook = game.players[0]!
+  nook.hand = ['empty_spark']
+  game.nemesis.playArea = [{
+    cardId: 'glinting_stinger', cardType: 'minion', placedAt: 1,
+    instanceId: 'glinting-stinger:1', lifeTokens: 4,
+  }]
+  const nemesisHp = game.nemesis.hp
+
+  assert(prepSpell(game, nook.id, 'empty_spark', 1)?.includes('Prepped'), 'Empty Spark can be prepped')
+  castSpell(game, nook.id, 1)
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'select_damage_target', 'Empty Spark asks which target receives its zero-damage instance')
+  if (!decision || decision.kind !== 'select_damage_target') return
+  const minionTarget = decision.targets.find(target => target.kind === 'minion')
+  assert(minionTarget, 'The Minion is a legal Empty Spark target')
+  resolvePendingDecision(game, decision.id, { kind: 'select_damage_target', target: minionTarget })
+
+  assertEqual(game.nemesis.playArea[0]!.lifeTokens, 4, 'Empty Spark does not create damage against a Minion')
+  assertEqual(game.nemesis.hp, nemesisHp, 'Choosing a Minion for Empty Spark does not damage the Nemesis')
+}
+
 function testRuptureTimeAndEmptyCardDestruction(): void {
   const game = freshNookGame()
   const nook = game.players[0]!
@@ -147,6 +170,7 @@ function testRuptureTimeAndEmptyCardDestruction(): void {
 testNookSetup()
 testCrystalSwapSequence()
 testSpellSwapSequence()
+testEmptySparkDealsNoDamageToMinions()
 testRuptureTimeAndEmptyCardDestruction()
 
 console.log('Wave 9 Nook tests passed')

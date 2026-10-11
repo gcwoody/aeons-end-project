@@ -18,7 +18,7 @@ import { dismissTopmostOverlay } from './game/dismissible-overlays'
 const {
   state, undo, toggleDebug, selectPlayer, openPile, closePile,
   closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
-  toMainPhase, requestEndTurn, resolveDecision, canRequestEndTurn,
+  toMainPhase, requestEndTurn, resolveDecision, canRequestEndTurn, playAllGems,
 } = useGame()
 
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
@@ -60,6 +60,14 @@ function onKeydown(e: KeyboardEvent) {
     return
   }
   if (!state.game || e.ctrlKey || e.metaKey || e.altKey) return
+
+  if (e.key.toLowerCase() === 'a') {
+    if (e.repeat || isEditableTarget(e.target) || state.viewPile || state.helpOpen ||
+      state.exitPrompt || state.debugOpen || state.cardMotionBatchActive || state.turnTransitionActive) return
+    e.preventDefault()
+    void playAllGems()
+    return
+  }
 
   if (e.key === 'Tab') {
     // Keep native Tab behavior available while editing a field, but do not
@@ -286,8 +294,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <h3>Keyboard Shortcuts</h3>
           <div class="help-list">
             <div class="help-row"><kbd>ESC</kbd><span>Open the exit menu. Press it again to close an open dialog.</span></div>
-            <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to ten steps.</span></div>
+            <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to twenty steps.</span></div>
             <div class="help-row"><kbd>Ctrl + D</kbd><span>Toggle Debug Tools.</span></div>
+            <div class="help-row"><kbd>A</kbd><span>Play all Gems in the current Mage's hand.</span></div>
             <div class="help-row"><kbd>1–4</kbd><span>Switch the mage currently shown on the board.</span></div>
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>

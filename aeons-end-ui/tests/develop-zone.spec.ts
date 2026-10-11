@@ -18,6 +18,15 @@ async function resolveStartupInterrupts(page: import('@playwright/test').Page): 
   }
 }
 
+async function currentDiscardCount(page: import('@playwright/test').Page): Promise<number> {
+  const count = page.locator('.player-discard-pile .player-pile-count')
+  return await count.count() ? Number(await count.innerText()) : 0
+}
+
+function discardCountText(count: number): string {
+  return count > 0 ? String(count) : 'Discard 0'
+}
+
 test('Swap and Played zones stay public when Swap is the only side zone', async ({ page }) => {
   await startTestGame(page)
   await page.keyboard.press('Control+d')
@@ -172,11 +181,18 @@ test('Develop uses right-click from supply, both clicks from the shared zone, an
   await expect(chromiaPile.locator('.develop-cost-badge')).toHaveText('D 3')
   await chromiaPile.click({ button: 'right' })
   await expect(page.locator('.played-zone-develop .card')).toHaveCount(1)
+  await expect(page.locator('.played-zone-develop .card').first()).toHaveAttribute('data-card-instance-id', /.+/)
+  await expect(page.locator('.card-flight-clone')).toBeVisible()
   await expect(chromiaPile.locator('.remaining')).toHaveText('6')
 
   // A left click on a developable Supply pile still performs the normal buy.
+  const discardCountBeforeBuy = await currentDiscardCount(page)
   await chromiaPile.click()
   await expect(chromiaPile.locator('.remaining')).toHaveText('5')
+  const discardBadge = page.locator('.player-discard-pile .player-pile-count, .player-discard-pile .player-empty-pile-label')
+  await expect(discardBadge).toHaveText(discardCountText(discardCountBeforeBuy))
+  await expect(page.locator('.card-flight-clone')).toBeVisible()
+  await expect(discardBadge).toHaveText(discardCountText(discardCountBeforeBuy + 1))
   await expect(page.locator('.played-zone-develop .card')).toHaveCount(1)
 
   await page.keyboard.press('Control+d')
@@ -207,8 +223,13 @@ test('Develop uses right-click from supply, both clicks from the shared zone, an
   expect(developFrame.borderTopStyle).toBe('solid')
   expect(developFrame.borderTopColor).toBe('rgb(158, 206, 106)')
   await expect(developCards.first().locator('img')).toHaveCSS('border-top-left-radius', '7px')
+  await expect(developCards.first()).toHaveAttribute('data-card-instance-id', /.+/)
+  const discardCountBeforeDevelopGain = await currentDiscardCount(page)
   await developCards.first().click()
   await expect(developCards).toHaveCount(1)
+  await expect(discardBadge).toHaveText(discardCountText(discardCountBeforeDevelopGain))
+  await expect(page.locator('.card-flight-clone')).toBeVisible()
+  await expect(discardBadge).toHaveText(discardCountText(discardCountBeforeDevelopGain + 1))
   await developCards.first().click({ button: 'right' })
   await expect(developCards).toHaveCount(0)
   await expect(page.locator('.player-discard-pile .player-discard-top-card')).toBeVisible()

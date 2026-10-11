@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import type { CardChoice, CollectiveCardChoice, LifeTargetRef, PendingDecision, PendingDecisionAnswer, PlayerTargetRef, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
+import { getPlayerCardInstanceZone } from '@engine/engine'
+import type { CardChoice, CollectiveCardChoice, LifeTargetRef, PendingDecision, PendingDecisionAnswer, PlayerId, PlayerTargetRef, SpecificDeckPlacement, TurnOrderCardChoice } from '@engine/types'
 import {
   cardImageUrl,
   nemesisTurnOrderTokenUrl,
@@ -101,10 +102,37 @@ const largeCardChoices = computed<LargeCardChoiceOption[]>(() => {
     id: option.id,
     cardId: option.cardId,
     cardName: getCard(option.cardId).name,
+    ...gainedTrinketChoiceMotion(option.id),
     disabled: option.disabled,
     disabledReason: option.disabled ? 'This option is not available right now.' : undefined,
   }] : [])
 })
+
+function gainedTrinketChoiceMotion(optionId: string): Partial<Pick<LargeCardChoiceOption,
+  'motionZone' | 'motionOwnerId' | 'motionInstanceId'>> {
+  const game = state.game
+  const pendingEffect = game?.pendingEffect
+  const awaiting = pendingEffect?.awaiting
+  if (!game || awaiting?.kind !== 'choose_one') return {}
+
+  const option = awaiting.options.find(candidate => candidate.id === optionId)
+  const move = option?.effects.find(effect => effect.kind === 'move_gained_trinket_to_hand')
+  if (!move || move.kind !== 'move_gained_trinket_to_hand') return {}
+
+  const playerId = pendingEffect?.effectPlayerId ?? pendingEffect?.sourcePlayerId
+  if (!playerId) return {}
+
+  const sourceZone = getPlayerCardInstanceZone(game, playerId, move.source)
+  const sourceIndex = sourceZone.cards.indexOf(move.cardId)
+  const instanceId = sourceIndex >= 0 ? sourceZone.instanceIds[sourceIndex] : undefined
+  if (!instanceId) return {}
+
+  return {
+    motionZone: move.source,
+    motionOwnerId: playerId,
+    motionInstanceId: instanceId,
+  }
+}
 const isMageAbilityChoice = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'mage-ability',
 )
@@ -289,31 +317,42 @@ function collectiveZoneLabel(zone: CardChoice['zone']): string {
 function cardMotionZone(zone: CardChoice['zone']): string | undefined {
   if (zone === 'played_this_turn') return 'played'
   if (zone === 'swap_zone') return 'swap'
-  if (zone === 'hand' || zone === 'discard') return zone
-  return undefined
+  return zone
+}
+
+function cardMotionInstanceId(playerId: string, choice: CardChoice): string | undefined {
+  const game = state.game
+  if (!game) return undefined
+  const zone = getPlayerCardInstanceZone(game, playerId as PlayerId, choice.zone)
+  return zone.cards[choice.index] === choice.cardId ? zone.instanceIds[choice.index] : undefined
 }
 
 const selectionItems = computed<CardSelectionItem[]>(() => {
   if (decision.value?.kind === 'select_cards') {
     const current = decision.value
-    const items = current.candidates.map(choice => ({
-      key: choiceKey(choice),
-      cardId: choice.cardId,
-      cardName: choice.cardName,
-      motionZone: cardMotionZone(choice.zone),
-      motionOwnerId: state.game?.pendingEffect?.effectPlayerId
+    const items = current.candidates.map(choice => {
+      const motionOwnerId = state.game?.pendingEffect?.effectPlayerId
         ?? state.game?.pendingEffect?.sourcePlayerId
-        ?? state.selectedPlayer,
-      groupKey: choice.zone,
-      groupLabel: choice.zone === 'hand' ? 'HAND'
-        : choice.zone === 'discard' ? 'DISCARD PILE'
-          : choice.zone === 'deck' ? 'DECK'
-          : choice.zone === 'swap_zone' ? 'SWAP ZONE'
-            : choice.zone === 'specific_deck' ? specificDeckName.value : 'PLAYED THIS TURN',
-      disabled: choice.disabled,
-      disabledReason: choice.disabledReason ?? (choice.disabled ? 'Not enough Knowledge to install this upgrade.' : undefined),
-      highlight: choice.highlight ?? (selectedCardKeys.value.includes(choiceKey(choice)) ? undefined : current.targetHighlight),
-    }))
+        ?? state.selectedPlayer
+      return {
+        key: choiceKey(choice),
+        cardId: choice.cardId,
+        cardName: choice.cardName,
+        motionZone: cardMotionZone(choice.zone),
+        motionOwnerId,
+        motionInstanceId: cardMotionInstanceId(motionOwnerId, choice),
+        groupKey: choice.zone,
+        groupLabel: choice.zone === 'hand' ? 'HAND'
+          : choice.zone === 'discard' ? 'DISCARD PILE'
+            : choice.zone === 'deck' ? 'DECK'
+              : choice.zone === 'swap_zone' ? 'SWAP ZONE'
+                : choice.zone === 'specific_deck' ? specificDeckName.value
+                  : choice.zone === 'player_cards_in_play' ? 'PLAYER CARDS IN PLAY' : 'PLAYED THIS TURN',
+        disabled: choice.disabled,
+        disabledReason: choice.disabledReason ?? (choice.disabled ? 'Not enough Knowledge to install this upgrade.' : undefined),
+        highlight: choice.highlight ?? (selectedCardKeys.value.includes(choiceKey(choice)) ? undefined : current.targetHighlight),
+      }
+    })
     if (current.reorderable) {
       const order = new Map(selectedCardOrderKeys.value.map((key, index) => [key, index]))
       items.sort((a, b) => (order.get(a.key) ?? Number.MAX_SAFE_INTEGER) -
@@ -328,6 +367,7 @@ const selectionItems = computed<CardSelectionItem[]>(() => {
       cardName: choice.choice.cardName,
       motionZone: cardMotionZone(choice.choice.zone),
       motionOwnerId: choice.playerId,
+      motionInstanceId: cardMotionInstanceId(choice.playerId, choice.choice),
       groupKey: choice.playerId,
       groupLabel: `${playerName(choice.playerId)} ${collectiveZoneLabel(choice.choice.zone)}`,
     }))
@@ -581,6 +621,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
   <div
     v-else-if="decision?.kind === 'confirm_nemesis_draw'"
     class="decision-overlay nemesis-reveal-overlay nemesis-draw-reveal-screen"
+    :class="{ 'is-queued': state.nemesisDrawRevealQueued }"
     role="dialog"
     aria-modal="true"
     :aria-label="`${getCard(decision.cardId).name} revealed. Click anywhere or press Space to continue.`"
@@ -660,7 +701,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
       <h2>Conjure</h2>
       <p class="decision-hint">
         {{ decision.candidates.length > 0
-          ? 'Drag the highlighted card from your hand to a highlighted Breach, or skip to leave it on top of your deck.'
+          ? 'Click the highlighted card to prepare it in the rightmost eligible Breach, or drag it to a highlighted Breach. Skip to leave it on top of your deck.'
           : 'No eligible Breach is available. Skip to leave the highlighted card on top of your deck.' }}
       </p>
       <div class="decision-footer">

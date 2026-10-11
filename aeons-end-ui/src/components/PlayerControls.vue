@@ -198,15 +198,18 @@ const emit = defineEmits<{
     </div>
     <div class="controls-utility">
       <button
-        class="btn utility-icon-button"
-        aria-label="View destroyed cards"
-        title="Destroyed Cards"
+        class="btn utility-icon-button destroyed-cards-button"
+        :aria-label="`View destroyed cards (${players.find(candidate => candidate.selected)?.destroyedCount ?? 0})`"
+        :title="`Destroyed Cards: ${players.find(candidate => candidate.selected)?.destroyedCount ?? 0}`"
         :data-destroyed-card-count="players.find(candidate => candidate.selected)?.destroyedCount ?? 0"
         @click="emit('open-destroyed')"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path d="M4 7h16M9 7V4h6v3m3 0-.8 13H6.8L6 7m4 3v7m4-7v7" />
         </svg>
+        <span class="destroyed-card-count" aria-hidden="true">
+          {{ players.find(candidate => candidate.selected)?.destroyedCount ?? 0 }}
+        </span>
       </button>
       <button class="btn utility-icon-button help-button" aria-label="Open game help" title="Game Help" @click="emit('toggle-help')">?</button>
     </div>

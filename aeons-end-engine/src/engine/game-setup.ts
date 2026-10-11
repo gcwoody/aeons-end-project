@@ -8,7 +8,8 @@ import {
 import { getNemesisRules } from '../nemesis/registry'
 import { marketPileChoices } from '../nemesis/market'
 import { buildTrinketDeck } from '../data/wave9/special-decks/trinkets'
-import { initializeCardInstanceZone, markCardInstanceRevealed } from './card-instances'
+import { initializeCardInstanceZone, markCardInstanceHidden, markCardInstanceRevealed } from './card-instances'
+import { captureCardInstanceLocations } from './card-movement'
 import { shuffle } from './decks'
 import { clone } from './utilities'
 
@@ -202,6 +203,24 @@ export function createInitialGameState(
     markCardInstanceRevealed(game, instanceId)
   }
 
+  // Assign saved physical identities before setup effects can move cards.
+  captureCardInstanceLocations(game)
+  // The starting Mage deck has known contents and order. A later shuffle
+  // explicitly clears this memory for every copy in the deck.
+  for (const player of game.players) {
+    for (const instanceId of player.deckInstanceIds ?? []) {
+      markCardInstanceRevealed(game, instanceId)
+    }
+    if (scenario.nemesisType === 'crooked_mask' && scenario.nemesisDifficulty === 'increased') {
+      const lastIndex = player.deck.length - 1
+      const unseenCorruption = player.deckInstanceIds?.[lastIndex]
+      if (unseenCorruption && getCard(player.deck[lastIndex]!).type === 'corruption') {
+        // Increased Difficulty adds an unseen Corruption to the deck bottom.
+        markCardInstanceHidden(game, unseenCorruption)
+      }
+    }
+  }
+
   getNemesisRules(nemesisDef.rulesModuleId ?? nemesisDef.type)?.setup?.({
     game,
     definition: nemesisDef,
@@ -209,5 +228,7 @@ export function createInitialGameState(
     createDecision: (prompt, kind, details) => services.createDecision(game, prompt, kind, details),
   })
   if (!game.pendingDecision && !game.pendingEffect) services.resolveMageSetups(game)
+  // Setup may create or move cards; make every resulting zone identity-ready.
+  captureCardInstanceLocations(game)
   return game
 }

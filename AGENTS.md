@@ -7,12 +7,13 @@ before making changes; do not duplicate their detailed rules here.
 
 1. `README.md` — what the game currently includes and the common commands.
 2. `dev-guide.md` — engine rules, typed effects, data workflow, and tests.
-3. `ui/ui-guide.md` — the UI components, layout, interactions, and Gallery.
-4. For a card or Mage change, read only its source entry under `documents/` and
+3. `game-rulings.md` — important rules and rulings that are easy to misimplement.
+4. `ui/ui-guide.md` — the UI components, layout, interactions, and Gallery.
+5. For a card or Mage change, read only its source entry under `documents/` and
    the matching engine data/tests. Read `documents/wave9/collection-summary.md`
    only when checking the full Wave 9 collection.
-5. Read `design/wave9-plan.md` only when checking Wave 9 implementation status.
-6. When continuing work across conversations, read `HANDOFF.md` for a short
+6. Read `design/wave9-plan.md` only when checking Wave 9 implementation status.
+7. When continuing work across conversations, read `HANDOFF.md` for a short
    project snapshot; confirm details against the current code and guides.
 
 ## Non-negotiable project rules

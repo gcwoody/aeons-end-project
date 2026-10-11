@@ -512,6 +512,65 @@ test('Frostfire Maelstrom prepped highlight overlays the card without resizing i
   expect(imageSizeAfter).toEqual(imageSizeBefore)
 })
 
+test('Worldshift clears its consumed action highlight before auto-ending Main Phase', async ({ page }) => {
+  await resetSetup(page)
+  await page.getByLabel('Player 1').selectOption('jian')
+  await page.getByLabel('Player 2').selectOption('brama')
+  await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
+
+  await applyDebugGameState(page, game => {
+    const player = game.players[0]
+    game.currentTurn = player.id
+    game.currentPhase = 'main'
+    game.supplyMechanics = ['pulse_token']
+    game.nemesis.playArea = []
+    player.hand = []
+    player.playedThisTurn = ['crystal', 'emerald_shard']
+    player.discard = []
+    player.pulseTokens = 0
+    player.aetherTokens = 0
+    player.bonusAether = 0
+    player.charge = 0
+    player.turnEffects.usedPreppedEffects = []
+    player.breaches[0].opened = true
+    player.breaches[0].prepSpells = ['worldshift']
+    player.breaches[0].preppedThisTurn = [false]
+  }, 'main')
+
+  const spell = page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame')
+  const phase = page.locator('.controls .phase')
+  await expect(spell).toHaveClass(/game-highlight--available/)
+  await expect(page.locator('.controls .pulse-token-status')).toHaveAttribute('aria-label', '0 Pulse Tokens')
+  await page.evaluate(() => {
+    const spell = document.querySelector('.breach[data-breach-index="1"] .breach-spell-card-frame')!
+    const phase = document.querySelector('.controls .phase')!
+    const events: Array<{ highlightAvailable: boolean; phase: string }> = []
+    const observer = new MutationObserver(() => {
+      if (!spell.classList.contains('game-highlight--available')) {
+        events.push({ highlightAvailable: false, phase: phase.textContent?.trim() ?? '' })
+      }
+    })
+    observer.observe(spell, { attributes: true, attributeFilter: ['class'] })
+    ;(window as any).__worldshiftHighlightEvents = events
+    ;(window as any).__worldshiftHighlightObserver = observer
+  })
+
+  await spell.click()
+  await expect(page.locator('.controls .pulse-token-status')).toHaveAttribute('aria-label', '1 Pulse Tokens')
+  await expect(spell).not.toHaveClass(/game-highlight--available/)
+  await expect(phase).toHaveText('Discard Phase · Card Order')
+
+  const highlightEvents = await page.evaluate(() => {
+    ;(window as any).__worldshiftHighlightObserver.disconnect()
+    return (window as any).__worldshiftHighlightEvents
+  })
+  expect(highlightEvents).toContainEqual({
+    highlightAvailable: false,
+    phase: 'Main Phase · Action',
+  })
+})
+
 test('Focusing Orb exposes clickable orange focus buttons for effect targets', async ({ page }) => {
   await resetSetup(page)
   await page.getByLabel('Player 1').selectOption('jian')

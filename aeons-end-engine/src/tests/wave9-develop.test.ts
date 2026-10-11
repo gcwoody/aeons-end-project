@@ -4,6 +4,7 @@ import {
   resolveCardEffects,
 } from '../engine'
 import { createTwoPlayerScenario, getCard } from '../data'
+import { getSharedDevelopCardInstanceZone, withCardMoveTransaction } from '../engine/card-movement'
 
 declare const console: { log(...messages: unknown[]): void }
 
@@ -71,7 +72,15 @@ function testDevelopPaymentsAndBothTransitions(): void {
   player.aetherTokens = 1
   assertEqual(getDevelopActions(game, player.id).some(action => action.source === 'supply'), true,
     'Aether tokens can pay a Develop cost')
-  developCardFromSupply(game, player.id, game.market.piles.indexOf(pile))
+  const supplyIndex = game.market.piles.indexOf(pile)
+  const supplyDevelop = withCardMoveTransaction(game, 'develop', () =>
+    developCardFromSupply(game, player.id, supplyIndex),
+  )
+  const supplyCreate = supplyDevelop.events.find(event => event.kind === 'create')
+  assert(supplyCreate?.kind === 'create', 'Developing from Supply records the newly created card')
+  assertEqual(supplyCreate.source?.zone, 'supply', 'The created card fact records Supply as its source')
+  assertEqual(supplyCreate.source?.zoneId, `supply:${supplyIndex}`, 'The source fact names the exact Supply pile')
+  assertEqual(supplyCreate.destination.zone, 'develop', 'The new card fact names the shared Develop zone')
   assertEqual(player.aetherTokens, 0, 'Develop spends Aether tokens first')
   assertEqual(player.regularAetherSpent, 2, 'Develop spends the remaining unrestricted Aether')
   assertEqual(player.conditionalAetherEarned.gem, 1, 'Develop leaves conditional Aether untouched')
@@ -79,14 +88,33 @@ function testDevelopPaymentsAndBothTransitions(): void {
   assertEqual(getDevelopZoneCards(game).join(','), 'chromia_sphere', 'The developed copy enters the shared zone')
   assertEqual(player.discard.length, 0, 'Developing from supply does not gain the card')
 
+  player.bonusAether = 10
+  player.regularAetherSpent = 0
+  const marketBuy = withCardMoveTransaction(game, 'buy', () => buyCard(game, player.id, supplyIndex))
+  const boughtCreate = marketBuy.events.find(event => event.kind === 'create')
+  assert(boughtCreate?.kind === 'create', 'Buying from Supply records the new player card')
+  assertEqual(boughtCreate.source?.zone, 'supply', 'The bought card fact records Supply as its source')
+  assertEqual(boughtCreate.source?.zoneId, `supply:${supplyIndex}`, 'The bought card fact names the exact Supply pile')
+  assertEqual(boughtCreate.destination.zone, 'discard', 'A normal purchase creates the card on the player Discard')
+  assertEqual(pile.remaining, 5, 'Buying from Supply removes exactly one copy')
+
   player.bonusAether = 3
   player.regularAetherSpent = 0
   const zoneAction = getDevelopActions(game, player.id).find(action => action.source === 'develop_zone')
   assert(zoneAction, 'An affordable shared-zone card can be developed')
-  developCardFromZone(game, player.id, zoneAction.index)
+  const supplyRemainingBeforeZoneDevelop = pile.remaining
+  const developedInstanceId = getSharedDevelopCardInstanceZone(game).instanceIds[zoneAction.index]
+  const zoneDevelop = withCardMoveTransaction(game, 'develop', () =>
+    developCardFromZone(game, player.id, zoneAction.index),
+  )
+  const zoneMove = zoneDevelop.events.find(event => event.kind === 'move')
+  assert(zoneMove?.kind === 'move', 'Developing from the shared zone records its card movement')
+  assertEqual(zoneMove.source.zone, 'develop', 'The moved card fact names the shared Develop zone')
+  assertEqual(zoneMove.destination.zone, 'discard', 'The moved card fact names the player Discard')
+  assertEqual(zoneMove.instanceId, developedInstanceId, 'The card keeps its exact instance identity')
   assertEqual(getDevelopZoneCards(game).length, 0, 'Developing from the shared zone removes its copy')
   assertEqual(player.discard[0], 'chromia_sphere', 'Developing from the zone gains the card to discard')
-  assertEqual(pile.remaining, 6, 'Developing from the zone does not change supply count')
+  assertEqual(pile.remaining, supplyRemainingBeforeZoneDevelop, 'Developing from the zone does not change supply count')
 }
 
 function testDevelopAndGainTriggersResolveAtTheirCorrectSources(): void {

@@ -195,6 +195,7 @@ body.spell-dragging .card-hover-preview {
   pointer-events: auto;
   cursor: default;
 }
+.decision-overlay.nemesis-draw-reveal-screen.is-queued { visibility: hidden; }
 .nemesis-draw-reveal-screen .nemesis-reveal-card {
   width: min(320px, calc(100vw - 48px));
   max-height: calc(var(--viewport-height) - 48px);

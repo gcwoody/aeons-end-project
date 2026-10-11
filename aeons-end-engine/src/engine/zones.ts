@@ -1,14 +1,19 @@
-import type { CardMechanic, GameState, PlayerState } from '../types'
+import type { CardMechanic, CardMoveZoneAddress, GameState, PlayerState } from '../types'
 import { getCard, MAGES } from '../data'
 import { buildTrinketDeck } from '../data/wave9/special-decks/trinkets'
 import {
   createCardInstance, ensureCardInstanceZone, findCardInstanceId,
-  isCardInstanceRevealed, markCardInstanceRevealed, insertCardInstanceAt,
+  isCardInstanceRevealed, markCardInstanceRevealed,
   removeCardInstanceAt,
   resetCardInstancesAfterShuffle,
 } from './card-instances'
 import { shuffle } from './decks'
 import type { CardInstanceRef } from './card-instances'
+import {
+  createCardInZone, drawPlayerCardsToHand, getNemesisCardInstanceZone,
+  getPlayerCardInstanceZone, moveCardBetweenZones, placeTemporaryCardInZone,
+  recordCardReveal, recordCardShuffle, recordCardTemporary,
+} from './card-movement'
 
 export function getPlayer(game: GameState, id: string): PlayerState {
   return game.players.find(player => player.id === id)!
@@ -20,6 +25,16 @@ export function ensurePlayerDeckInstances(game: GameState, player: PlayerState):
     game, player.deck, player.deckInstanceIds, player.deckInstanceIds === undefined,
   )
   return player.deckInstanceIds
+}
+
+export function ensurePlayerHandInstances(game: GameState, player: PlayerState): string[] {
+  player.handInstanceIds = ensureCardInstanceZone(game, player.hand, player.handInstanceIds, true)
+  return player.handInstanceIds
+}
+
+export function ensurePlayerDiscardInstances(game: GameState, player: PlayerState): string[] {
+  player.discardInstanceIds = ensureCardInstanceZone(game, player.discard, player.discardInstanceIds, true)
+  return player.discardInstanceIds
 }
 
 /** A Mage deck card is face-up in its viewer only when its physical copy is known. */
@@ -36,31 +51,18 @@ export function preparePlayerDeckForRevealWithInstances(
 ): void {
   const instanceIds = ensurePlayerDeckInstances(game, player)
   if (amount > player.deck.length && player.discard.length > 0) {
-    const recycled = [...player.discard].reverse()
-    const recycledIds = ensureCardInstanceZone(game, recycled, undefined, true)
-    player.deck.push(...recycled)
-    instanceIds.push(...recycledIds)
-    player.discard.splice(0, player.discard.length)
+    const discard = getPlayerCardInstanceZone(game, player.id, 'discard')
+    for (let index = discard.cards.length - 1; index >= 0; index -= 1) {
+      const deck = getPlayerCardInstanceZone(game, player.id, 'deck')
+      moveCardBetweenZones(game, discard, index, deck, deck.cards.length, 'draw')
+    }
   }
-  for (const instanceId of instanceIds.slice(0, Math.max(0, amount))) {
+  for (const [index, instanceId] of instanceIds.slice(0, Math.max(0, amount)).entries()) {
     markCardInstanceRevealed(game, instanceId)
+    recordCardReveal(game, instanceId, player.deck[index]!, {
+      zoneId: `player:${player.id}:deck`, zone: 'deck', ownerId: player.id, index,
+    })
   }
-}
-
-/** Remove the top physical card from a Mage deck while keeping its identity aligned. */
-export function takePlayerDeckCard(game: GameState, player: PlayerState, reveal = true): string | undefined {
-  return takePlayerDeckCardAt(game, player, 0, reveal)
-}
-
-/** Remove a physical card from any indexed position in a Mage deck. */
-export function takePlayerDeckCardAt(
-  game: GameState, player: PlayerState, index: number, reveal = true,
-): string | undefined {
-  const instanceIds = ensurePlayerDeckInstances(game, player)
-  const removed = removeCardInstanceAt(game, player.deck, instanceIds, index)
-  if (!removed) return undefined
-  if (reveal) markCardInstanceRevealed(game, removed.instanceId)
-  return removed.cardId
 }
 
 /** Remove indexed copies while retaining their physical identities for reordering. */
@@ -73,6 +75,10 @@ export function takePlayerDeckInstancesAt(
     const card = removeCardInstanceAt(game, player.deck, instanceIds, index)
     if (!card) continue
     if (reveal) markCardInstanceRevealed(game, card.instanceId)
+    recordCardTemporary(game, card.instanceId, card.cardId,
+      { zoneId: `player:${player.id}:deck`, zone: 'deck', ownerId: player.id, index },
+      { zoneId: `temporary:deck_reveal:${player.id}`, zone: 'temporary', ownerId: player.id, index },
+      'reveal')
     removed.unshift(card)
   }
   return removed
@@ -82,20 +88,20 @@ export function takePlayerDeckInstancesAt(
 export function putPlayerDeckInstancesOnTop(
   game: GameState, player: PlayerState, cards: CardInstanceRef[],
 ): void {
-  const instanceIds = ensurePlayerDeckInstances(game, player)
-  player.deck.unshift(...cards.map(card => card.cardId))
-  instanceIds.unshift(...cards.map(card => card.instanceId))
+  const deck = getPlayerCardInstanceZone(game, player.id, 'deck')
+  cards.forEach((card, index) => placeTemporaryCardInZone(game, card.instanceId, card.cardId,
+    { zoneId: `temporary:deck_reveal:${player.id}`, zone: 'temporary', ownerId: player.id, index },
+    deck, index, 'reorder', card.revealed))
 }
 
 /** Put a known card on top/bottom of a Mage deck and track the new physical copy. */
 export function putPlayerCardInDeck(
   game: GameState, player: PlayerState, cardId: string, position: 'top' | 'bottom' = 'top',
+  source?: CardMoveZoneAddress,
 ): void {
-  const instanceIds = ensurePlayerDeckInstances(game, player)
-  const instance = createCardInstance(game, cardId, true)
+  const deck = getPlayerCardInstanceZone(game, player.id, 'deck')
   const index = position === 'top' ? 0 : player.deck.length
-  player.deck.splice(index, 0, cardId)
-  instanceIds.splice(index, 0, instance.instanceId)
+  createCardInZone(game, deck, cardId, index, 'gain', true, source)
 }
 
 /**
@@ -104,53 +110,47 @@ export function putPlayerCardInDeck(
  */
 export function shufflePlayerDiscardIntoDeck(game: GameState, player: PlayerState): void {
   const deckIds = ensurePlayerDeckInstances(game, player)
-  const discardInstances = player.discard.map(cardId => createCardInstance(game, cardId, true))
+  const discardIds = ensurePlayerDiscardInstances(game, player)
   const cards = [
     ...player.deck.map((cardId, index) => ({ cardId, instanceId: deckIds[index]! })),
-    ...player.discard.map((cardId, index) => ({ cardId, instanceId: discardInstances[index]!.instanceId })),
+    ...player.discard.map((cardId, index) => ({ cardId, instanceId: discardIds[index]! })),
   ]
   const shuffled = shuffle(cards)
   player.deck.splice(0, player.deck.length, ...shuffled.map(card => card.cardId))
   player.deckInstanceIds = shuffled.map(card => card.instanceId)
   player.discard.splice(0, player.discard.length)
+  player.discardInstanceIds!.splice(0, player.discardInstanceIds!.length)
   resetCardInstancesAfterShuffle(game, player.deckInstanceIds)
+  const deck = getPlayerCardInstanceZone(game, player.id, 'deck')
+  deck.instanceIds.forEach((instanceId, index) => {
+    recordCardShuffle(game, instanceId, deck.cards[index]!, { zoneId: deck.zoneId, zone: deck.zone, ownerId: deck.ownerId, index })
+  })
 }
 
 /** Shuffle a Mage's hand into their deck and forget every resulting position. */
 export function shufflePlayerHandIntoDeck(game: GameState, player: PlayerState): void {
   const deckIds = ensurePlayerDeckInstances(game, player)
-  const handInstances = player.hand.map(cardId => createCardInstance(game, cardId, true))
+  const handIds = ensurePlayerHandInstances(game, player)
   const cards = [
     ...player.deck.map((cardId, index) => ({ cardId, instanceId: deckIds[index]! })),
-    ...player.hand.map((cardId, index) => ({ cardId, instanceId: handInstances[index]!.instanceId })),
+    ...player.hand.map((cardId, index) => ({ cardId, instanceId: handIds[index]! })),
   ]
   const shuffled = shuffle(cards)
   player.deck.splice(0, player.deck.length, ...shuffled.map(card => card.cardId))
   player.deckInstanceIds = shuffled.map(card => card.instanceId)
   player.hand.splice(0, player.hand.length)
+  player.handInstanceIds!.splice(0, player.handInstanceIds!.length)
   player.handPreppedSpellInstanceIds = []
   resetCardInstancesAfterShuffle(game, player.deckInstanceIds)
+  const deck = getPlayerCardInstanceZone(game, player.id, 'deck')
+  deck.instanceIds.forEach((instanceId, index) => {
+    recordCardShuffle(game, instanceId, deck.cards[index]!, { zoneId: deck.zoneId, zone: deck.zone, ownerId: deck.ownerId, index })
+  })
 }
 
 /** Draw cards while preserving unknown deck positions and known recycled discards. */
 export function drawPlayerDeckCards(game: GameState, player: PlayerState, count: number): string[] {
-  const drawn: string[] = []
-  let deckIds = ensurePlayerDeckInstances(game, player)
-  while (drawn.length < Math.max(0, count)) {
-    if (player.deck.length === 0) {
-      if (player.discard.length === 0) break
-      const recycled = [...player.discard].reverse()
-      const recycledIds = ensureCardInstanceZone(game, recycled, undefined, true)
-      player.deck.push(...recycled)
-      deckIds.push(...recycledIds)
-      player.discard.splice(0, player.discard.length)
-    }
-    const card = takePlayerDeckCard(game, player, true)
-    if (!card) break
-    drawn.push(card)
-    deckIds = player.deckInstanceIds!
-  }
-  return drawn
+  return drawPlayerCardsToHand(game, player.id, count)
 }
 
 /** Return the mechanics printed on supply piles chosen during game setup. */
@@ -314,13 +314,9 @@ export function takeOwnedTrinketInstance(game: GameState, player: PlayerState, c
 
 /** Return a publicly seen Nemesis discard card to the top of its deck. */
 export function returnNemesisDiscardCardToDeck(game: GameState, discardIndex: number): string | undefined {
-  const removed = removeCardInstanceAt(
-    game, game.nemesis.discard, game.nemesis.discardInstanceIds ??= [], discardIndex,
-  )
-  if (!removed) return undefined
-  game.nemesis.deckInstanceIds = ensureCardInstanceZone(game, game.nemesis.deck, game.nemesis.deckInstanceIds)
-  insertCardInstanceAt(game, game.nemesis.deck, game.nemesis.deckInstanceIds, removed, 0, true)
-  return removed.cardId
+  const discard = getNemesisCardInstanceZone(game, 'nemesis_discard')
+  const deck = getNemesisCardInstanceZone(game, 'nemesis_deck')
+  return moveCardBetweenZones(game, discard, discardIndex, deck, 0, 'return', { reveal: true })?.cardId
 }
 
 export function ensureSharedDevelopZone(game: GameState): string[] {

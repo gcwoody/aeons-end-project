@@ -47,9 +47,12 @@
   --turn-order-arrival-scale: 7;
   --turn-order-arrival-opacity: .50;
   --card-flight-duration: 600ms;
+  --breach-to-discard-flight-duration: 180ms;
   --hand-gain-reflow-duration: 220ms;
   --hand-card-reflow-duration: 220ms;
+  --hand-draw-stagger-duration: 45ms;
   --card-zone-reflow-duration: 240ms;
+  --hand-to-breach-flight-duration: 220ms;
   --hand-to-play-zone-flight-duration: 200ms;
   --hand-to-swap-zone-flight-duration: 200ms;
   --swap-to-discard-flight-duration: 200ms;

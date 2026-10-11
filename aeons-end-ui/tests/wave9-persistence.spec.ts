@@ -112,6 +112,7 @@ test('Pulse, Recall usage, shared Develop, and Trinket knowledge survive Save & 
 
 test('Irradiax Lump chooses a gained Trinket by clicking its large card immediately', async ({ page }) => {
   await startJianGame(page)
+  await page.addStyleTag({ content: ':root { --card-flight-duration: 2200ms; }' })
   await applyDebugState(page, state => {
     const player = state.game.players[0]
     state.selectedPlayer = player.id
@@ -126,10 +127,44 @@ test('Irradiax Lump chooses a gained Trinket by clicking its large card immediat
     state.game.trinketDeck = ['clouded_trinket', 'golden_trinket']
     state.game.trinketDeckRevealed = [false, false]
   })
+  await page.evaluate(() => {
+    const samples: Array<{ frontSrc: string | null; hasBack: boolean; animationCount: number }> = []
+    Object.assign(window, { __trinketFlightSamples: samples })
+    const observer = new MutationObserver(records => {
+      for (const record of records) {
+        for (const node of record.addedNodes) {
+          if (!(node instanceof HTMLElement)) continue
+          const clones = [
+            ...(node.matches('.card-flight-clone') ? [node] : []),
+            ...node.querySelectorAll<HTMLElement>('.card-flight-clone'),
+          ]
+          for (const clone of clones) {
+            const front = clone.querySelector<HTMLImageElement>('.card-flight-reveal-front')
+            samples.push({
+              frontSrc: front?.src ?? null,
+              hasBack: !!clone.querySelector('.card-flight-reveal-back'),
+              animationCount: clone.querySelector('.card-flight-flip-face')?.getAnimations().length ?? 0,
+            })
+          }
+        }
+      }
+    })
+    observer.observe(document.body, { childList: true, subtree: true })
+  })
 
   await page.locator('.hand img[alt="Irradiax Lump"]').click()
   const dialog = page.getByRole('heading', { name: 'Choose a gained Trinket to put into your hand' })
   await expect(dialog).toBeVisible()
+  const choiceImageSources = await page.locator('.large-card-choice img').evaluateAll(images =>
+    images.map(image => (image as HTMLImageElement).src))
+  const flightSamples = await page.evaluate(() =>
+    (window as Window & { __trinketFlightSamples?: Array<{
+      frontSrc: string | null; hasBack: boolean; animationCount: number
+    }> }).__trinketFlightSamples ?? [])
+  const revealFlight = flightSamples.find(sample => sample.frontSrc && sample.hasBack)
+  expect(revealFlight).toBeDefined()
+  expect(choiceImageSources).toContain(revealFlight!.frontSrc)
+  expect(revealFlight!.animationCount).toBeGreaterThan(0)
   const choices = page.locator('.large-card-choice')
   await expect(choices).toHaveCount(2)
   const cloudedTrinket = choices.filter({ has: page.locator('img[alt="Clouded Trinket"]') })

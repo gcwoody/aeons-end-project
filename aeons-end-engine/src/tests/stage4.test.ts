@@ -235,6 +235,19 @@ function testStrikeEffectsAndMinionDamageRule(): void {
   const target = getDamageTargets(cauterizerGame, 'minion')[0]!
   dealDamage(cauterizerGame, target, 4)
   assertEqual(cauterizerGame.nemesis.playArea[0]!.lifeTokens, 2, 'Cauterizer caps each damage instance at one')
+
+  const ferrousBruteGame = nemesisGame()
+  ferrousBruteGame.nemesis.playArea = [{
+    cardId: 'ferrous_brute', cardType: 'minion', placedAt: 1,
+    instanceId: 'ferrous-brute:1', lifeTokens: 4,
+  }]
+  const bruteTarget = getDamageTargets(ferrousBruteGame, 'minion')[0]!
+  dealDamage(ferrousBruteGame, bruteTarget, 0)
+  assertEqual(ferrousBruteGame.nemesis.playArea[0]!.lifeTokens, 4,
+    'Zero damage remains zero against a Minion with per-instance damage reduction')
+  dealDamage(ferrousBruteGame, bruteTarget, 1)
+  assertEqual(ferrousBruteGame.nemesis.playArea[0]!.lifeTokens, 3,
+    'Positive damage still deals at least one after per-instance damage reduction')
 }
 
 function testMostExpensivePreppedSpellSelection(): void {

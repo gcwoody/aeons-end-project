@@ -274,7 +274,7 @@ onBeforeUnmount(() => {
             :enabled="presentation.specificDeck.enabled"
             :card-count="specificDeckCardCount"
             :back-image-url="nemesisSpecificDeckBackUrl(nemesis.type)"
-            :flight-source="nemesis.type === 'crooked_mask' ? 'corruption-deck' : undefined"
+            :flight-source="nemesis.type === 'crooked_mask' ? 'corruption-deck' : 'nemesis-specific-deck'"
             :display="presentation.specificDeck.display"
             :top-card-id="specificTopCard ?? undefined"
             :action-label="specificTopCardActionLabel"

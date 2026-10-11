@@ -1,6 +1,6 @@
 import type {
-  BreachChoice, CardEffectBlock, CardEffectCondition, CardEffectTrigger,
-  CardZone, GameState, PendingEffectResolution, PlayerState, PreppedSpellChoice,
+  BreachChoice, CardEffectBlock, CardEffectCondition, CardEffectOption, CardEffectTrigger,
+  CardZone, GameState, NemesisCardDef, PendingEffectResolution, PlayerState, PreppedSpellChoice,
 } from '../types'
 import { getCard, MAGES } from '../data'
 import { isPresentBreach } from './breaches'
@@ -13,6 +13,7 @@ import { getDoomOwner, getSelectedPlayerTargets } from './targets'
 export interface EffectConditionServices {
   hasRecallChoices(game: GameState, sourcePlayerId?: string): boolean
   getPreppedSpellChoices(game: GameState): PreppedSpellChoice[]
+  getPreppedSpellCost(game: GameState, playerId: string, breachIndex: number, spellIndex: number): number | null
   getBreachChoices(
     game: GameState,
     target: 'self' | 'ally' | 'any_player',
@@ -20,6 +21,22 @@ export interface EffectConditionServices {
   ): BreachChoice[]
   findPlayerCardInPlayIndex(player: PlayerState, cardId: string, preferredIndex?: number): number
   playerCardSupplyTarget(player: PlayerState, cardIndex: number): number | null
+}
+
+/** Resolve conditional OR choices, with an explicit best-effort fallback when none are fully resolvable. */
+export function availableCardEffectOptionIds(
+  options: CardEffectOption[],
+  conditionIsMet: (condition: CardEffectCondition) => boolean,
+): Set<string> {
+  const fullyResolvable = options.filter(option => !option.condition || conditionIsMet(option.condition))
+  if (fullyResolvable.length > 0) return new Set(fullyResolvable.map(option => option.id))
+
+  const fallbackOptions = options.filter(option => option.fallbackPriority !== undefined)
+  if (fallbackOptions.length === 0) return new Set(options.map(option => option.id))
+  const bestPriority = Math.max(...fallbackOptions.map(option => option.fallbackPriority!))
+  return new Set(fallbackOptions
+    .filter(option => option.fallbackPriority === bestPriority)
+    .map(option => option.id))
 }
 
 export function conditionMatches(
@@ -70,6 +87,30 @@ export function conditionMatches(
     const value = game.turnOrderDiscard.filter(cardId => cardId === 'nemesis').length
     return condition.comparison === 'equals' ? value === condition.count : value >= condition.count
   }
+  if (condition.kind === 'collective_hand_card_count') {
+    const value = game.players.reduce((total, owner) => total + owner.hand.filter(cardId => {
+      const card = getCard(cardId)
+      return (!condition.cardTypes || condition.cardTypes.includes(card.type)) &&
+        card.cost >= (condition.minCost ?? 0)
+    }).length, 0)
+    if (condition.comparison === 'equals') return value === condition.count
+    if (condition.comparison === 'at_most') return value <= condition.count
+    if (condition.comparison === 'greater_than') return value > condition.count
+    return value >= condition.count
+  }
+  if (condition.kind === 'has_nonempty_market_pile') {
+    return game.market.piles.some(pile => pile.remaining > 0 &&
+      (!condition.cardType || getCard(pile.cardId).type === condition.cardType))
+  }
+  if (condition.kind === 'any_player_charge') {
+    return game.players.some(owner => owner.charge >= Math.max(0, condition.amount))
+  }
+  if (condition.kind === 'has_bottom_nemesis_discard_attack_with_effect') {
+    const attackId = [...game.nemesis.discard].reverse().find(cardId => getCard(cardId).type === 'attack')
+    if (!attackId) return false
+    const attack = getCard(attackId) as NemesisCardDef
+    return attack.nemesisEffects?.some(block => block.trigger === 'immediately' && block.effects.length > 0) ?? false
+  }
   if (condition.kind === 'has_player_turn_order_card') {
     return Boolean(playerId && game.turnOrderDiscard.some(cardId => cardId === playerId))
   }
@@ -95,9 +136,11 @@ export function conditionMatches(
   }
   if (condition.kind === 'has_prepped_spell') {
     const sourceId = resolution?.sourcePlayerId ?? sourcePlayerId ?? playerId
-    return services.getPreppedSpellChoices(game).some(choice =>
-      condition.ownerScope !== 'ally' || choice.playerId !== sourceId,
-    )
+    return services.getPreppedSpellChoices(game).some(choice => {
+      if (condition.ownerScope === 'ally' && choice.playerId === sourceId) return false
+      const cost = services.getPreppedSpellCost(game, choice.playerId, choice.breachIndex, choice.spellIndex)
+      return cost !== null && cost >= (condition.minCost ?? 0)
+    })
   }
   if (condition.kind === 'spells_cast_this_turn') {
     const value = player.spellsCastThisTurn ?? 0
@@ -135,7 +178,11 @@ export function conditionMatches(
     })
   }
   if (condition.kind === 'has_unopened_breach') {
-    return player.breaches.some(breach => isPresentBreach(breach) && !breach.opened)
+    const sourceId = resolution?.sourcePlayerId ?? sourcePlayerId ?? playerId
+    const targetContext = condition.target === 'ally' ? sourceId : playerId
+    return getSelectedPlayerTargets(game, targetContext, condition.target ?? 'self').some(target =>
+      getPlayer(game, target.playerId).breaches.some(breach => isPresentBreach(breach) && !breach.opened),
+    )
   }
   if (condition.kind === 'all_breaches_opened') {
     const present = player.breaches.filter(isPresentBreach)
@@ -225,9 +272,11 @@ export function conditionMatches(
     value = player.breaches.filter(breach => isPresentBreach(breach) && breach.opened).length
     expected = condition.count
   } else if (condition.kind === 'prepped_spell_count') {
-    value = player.breaches
-      .filter(isPresentBreach)
-      .reduce((sum, breach) => sum + breach.prepSpells.length, 0)
+    value = services.getPreppedSpellChoices(game).filter(choice => {
+      if (choice.playerId !== player.id) return false
+      const cost = services.getPreppedSpellCost(game, choice.playerId, choice.breachIndex, choice.spellIndex)
+      return cost !== null && cost >= (condition.minCost ?? 0)
+    }).length
     expected = condition.count
   }
   if (condition.comparison === 'equals') return value === expected

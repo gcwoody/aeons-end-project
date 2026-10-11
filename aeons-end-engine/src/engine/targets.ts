@@ -38,6 +38,21 @@ export function getPlayerTargets(
   return game.players.map(player => ({ kind: 'player', playerId: player.id }))
 }
 
+/** Keep fully resolvable targets when any exist; otherwise keep the targets with the greatest available amount. */
+export function retainFullyResolvableOrMaximumTargets<T extends PlayerTargetRef>(
+  targets: T[],
+  requiredAmount: number,
+  availableAmount: (target: T) => number,
+): T[] {
+  if (targets.length === 0) return []
+  const required = Math.max(0, requiredAmount)
+  const amounts = targets.map(target => Math.max(0, availableAmount(target)))
+  const full = targets.filter((_, index) => amounts[index]! >= required)
+  if (full.length > 0) return full
+  const maximum = Math.max(...amounts)
+  return targets.filter((_, index) => amounts[index] === maximum)
+}
+
 export function getSelectedPlayerTargets(
   game: GameState,
   sourcePlayerId: string,

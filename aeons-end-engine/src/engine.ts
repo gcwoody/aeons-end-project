@@ -7,7 +7,7 @@ import {
   CardEffectTrigger, CardMechanic, PlayerTargetRef, PlayerTargetScope, PlayerSelectionRule, PlayerTurnEffects,
   PreppedSpellChoice, BreachChoice, TurnOrderCardChoice, MarketPileChoice, NemesisDifficulty, ScenarioConfig, PlayerId,
   NemesisCardDef, NemesisCardInPlay, NemesisDiscardCost, NemesisEffectTrigger,
-  NemesisResolutionState, PendingNemesisDiscard, EffectAmount, AdditionalDamage,
+  NemesisResolutionState, PendingNemesisDiscard, EffectAmount, AdditionalDamage, CardMoveZoneAddress,
 } from './types'
 import {
   getCard, MAGES, rageborne, getNemesisDefinition, COMMON_BREACH_OPEN_COSTS,
@@ -25,10 +25,9 @@ import {
 } from './engine/aether'
 import type { SpendType } from './engine/aether'
 import {
-  addCardToHand, addCardsToHand, ensurePlayerCollections, getPrepSpellLimit, getPlayerTurnEffects,
+  ensurePlayerCollections, getPrepSpellLimit, getPlayerTurnEffects,
   createPreppedSpellInstanceId, getZoneCards, hasUsedPreppedSpellEffect, isFaceDownPreppedSpell,
   MAX_PULSE_TOKENS, preppedSpellEffectMarker,
-  removeCardFromHand, removePreppedSpellAt,
 } from './engine/player-state'
 import {
   getSpellDamagePreview as previewSpellDamage,
@@ -62,6 +61,11 @@ import {
   createCardInstance, ensureCardInstanceZone, insertCardInstanceAt, markCardInstanceRevealed,
 } from './engine/card-instances'
 import {
+  createCardInZone, destroyCardFromZone, drawPlayerCardsToHand, getBreachCardInstanceZone,
+  getBreachAttachedRelicZone, getNemesisCardInstanceZone, getPlayerCardInstanceZone, getSharedDevelopCardInstanceZone,
+  moveCardBetweenZones, placeTemporaryCardInZone,
+} from './engine/card-movement'
+import {
   automaticallyAllocateDamage, effectTargetPlayerId, gainLife, getDamageTargets, getDoomOwner,
   getEffectPlayerTargets, getLifeTargets, getPlayerTargets, getSelectedDamagePlayerTargets,
   getSelectedPlayerTargets,
@@ -72,6 +76,7 @@ export { clone } from './engine/utilities'
 export { playerIdForMage } from './engine/game-setup'
 export { getLifeTargets, getPlayerTargets, gainLife, getDamageTargets } from './engine/targets'
 export { drawFromDeck, shuffle } from './engine/decks'
+export * from './engine/card-movement'
 export { getPrepSpellLimit, getPlayerTurnEffects, MAX_PULSE_TOKENS } from './engine/player-state'
 export {
   drawPlayerDeckCards, ensurePlayerDeckInstances, getDevelopZoneCards, getGameZoneVisibility, getPlayer, getSupplyMechanics,
@@ -318,27 +323,26 @@ function discardCollectiveCards(
     const player = getPlayer(g, item.playerId)
     return getZoneCards(player, item.choice.zone)[item.choice.index] === item.choice.cardId
   })
-  const grouped = new Map<string, CollectiveCardChoice[]>()
+  const grouped = new Map<string, Array<CollectiveCardChoice & { instanceId: string }>>()
   for (const item of valid) {
+    const source = getPlayerCardInstanceZone(g, item.playerId, item.choice.zone)
+    const instanceId = source.instanceIds[item.choice.index]
+    if (!instanceId) continue
     const group = grouped.get(item.playerId) ?? []
-    group.push(item)
+    group.push({ ...item, instanceId })
     grouped.set(item.playerId, group)
   }
   for (const [playerId, items] of grouped) {
-    const player = getPlayer(g, playerId)
-    const removed: string[] = []
-    for (const item of [...items].sort((a, b) => b.choice.index - a.choice.index)) {
-      const cardId = removeCardFromZone(player, item.choice.zone, item.choice.index)
-      if (cardId) removed.push(cardId)
+    const discard = getPlayerCardInstanceZone(g, playerId, 'discard')
+    const ordered = preserveSelectionOrder ? items : [...items].sort((a, b) => b.choice.index - a.choice.index)
+    for (const item of ordered) {
+      const source = getPlayerCardInstanceZone(g, playerId, item.choice.zone)
+      const sourceIndex = source.instanceIds.indexOf(item.instanceId)
+      if (sourceIndex < 0) continue
+      moveCardBetweenZones(g, source, sourceIndex, discard, 0, 'discard')
     }
-    if (!preserveSelectionOrder) for (const cardId of removed) player.discard.unshift(cardId)
   }
-  if (preserveSelectionOrder) {
-    // Treat the player's clicks as the discard sequence. The last selected
-    // card ends up on top because each discarded card is placed on top.
-    for (const item of valid) getPlayer(g, item.playerId).discard.unshift(item.choice.cardId)
-    return valid.map(item => item.choice.cardId)
-  }
+  if (preserveSelectionOrder) return valid.map(item => item.choice.cardId)
   return [...grouped.values()].flatMap(items =>
     [...items].sort((a, b) => b.choice.index - a.choice.index).map(item => item.choice.cardId),
   )
@@ -431,11 +435,16 @@ function destroyExhaustedBreach(g: GameState, choice: BreachChoice): string {
   // Keep all moved cards available in the discard pile. Their exact order is
   // immaterial to the rules, while unshifting preserves the normal discard
   // convention used by the rest of the engine.
-  for (const cardId of prepared) player.discard.unshift(cardId)
+  const source = getBreachCardInstanceZone(g, player.id, breach.index)
+  const discard = getPlayerCardInstanceZone(g, player.id, 'discard')
+  while (source.cards.length > 0) {
+    moveCardBetweenZones(g, source, 0, discard, 0, 'destroy')
+  }
   if (breach.attachedRelic) {
     const attached = breach.attachedRelic
-    getPlayer(g, attached.ownerId).discard.unshift(attached.cardId)
-    breach.attachedRelic = undefined
+    const attachedZone = getBreachAttachedRelicZone(g, player.id, breach.index)
+    const ownerDiscard = getPlayerCardInstanceZone(g, attached.ownerId, 'discard')
+    if (attachedZone) moveCardBetweenZones(g, attachedZone, 0, ownerDiscard, 0, 'destroy')
   }
   breach.prepSpells = []
   breach.preppedThisTurn = []
@@ -460,44 +469,18 @@ function discardPreppedSpellChoices(
   })
   const ordered = preserveSelectionOrder ? valid : [...valid].sort((a, b) =>
     a.playerId.localeCompare(b.playerId) || a.breachIndex - b.breachIndex || b.spellIndex - a.spellIndex)
-  const grouped = new Map<string, PreppedSpellChoice[]>()
-  for (const choice of ordered) {
-    const key = `${choice.playerId}:${choice.breachIndex}`
-    const group = grouped.get(key) ?? []
-    group.push(choice)
-    grouped.set(key, group)
+  const selected = ordered.flatMap(choice => {
+    const source = getBreachCardInstanceZone(g, choice.playerId, choice.breachIndex)
+    const instanceId = source.instanceIds[choice.spellIndex]
+    return instanceId ? [{ choice, instanceId }] : []
+  })
+  for (const item of selected) {
+    const source = getBreachCardInstanceZone(g, item.choice.playerId, item.choice.breachIndex)
+    const sourceIndex = source.instanceIds.indexOf(item.instanceId)
+    const discard = getPlayerCardInstanceZone(g, item.choice.playerId, 'discard')
+    if (sourceIndex >= 0) moveCardBetweenZones(g, source, sourceIndex, discard, 0, 'discard')
   }
-  for (const choicesInBreach of grouped.values()) {
-    for (const choice of [...choicesInBreach].sort((a, b) => b.spellIndex - a.spellIndex)) {
-      const breach = getPlayer(g, choice.playerId).breaches.find(item => item.index === choice.breachIndex)
-      if (breach) removePreppedSpellAt(breach, choice.spellIndex)
-    }
-  }
-  for (const choice of ordered) getPlayer(g, choice.playerId).discard.unshift(choice.cardId)
   return ordered.map(choice => choice.cardName)
-}
-
-export function removeCardFromZone(
-  p: PlayerState, zone: CardZone, index: number,
-): string | null {
-  if (zone === 'hand') return removeCardFromHand(p, index).cardId
-  const cards = getZoneCards(p, zone)
-  if (index < 0 || index >= cards.length) return null
-  return cards.splice(index, 1)[0] ?? null
-}
-
-/** Apply a card's replacement destination when it is destroyed. */
-function destroyOwnedCard(p: PlayerState, cardId: string, g?: GameState): void {
-  ensurePlayerCollections(p)
-  if (getCard(cardId).returnToSwapZoneOnDestroy) {
-    p.swapZone!.push(cardId)
-    return
-  }
-  if (getCard(cardId).type === 'corruption' && g?.nemesis.type === 'crooked_mask' && g.nemesis.corruptionDeck) {
-    returnCorruptionToBottom(g, cardId)
-    return
-  }
-  p.destroyedCards.push(cardId)
 }
 
 function cardNameMatchesAny(cardId: string, nameIncludes: string[]): boolean {
@@ -505,25 +488,11 @@ function cardNameMatchesAny(cardId: string, nameIncludes: string[]): boolean {
   return nameIncludes.some(fragment => name.includes(fragment))
 }
 
-/** Remove the physical card currently resolving so it can enter the Swap zone. */
-function removeResolvingCardForSwap(p: PlayerState, cardId: string): string | null {
-  const playedIndex = p.playedThisTurn.lastIndexOf(cardId)
-  if (playedIndex >= 0) return p.playedThisTurn.splice(playedIndex, 1)[0] ?? null
-
-  // A spell is moved to the top of its discard pile before its on-cast
-  // effects resolve, so its current copy is always found here.
-  const discardIndex = p.discard.indexOf(cardId)
-  if (discardIndex >= 0) return p.discard.splice(discardIndex, 1)[0] ?? null
-  return null
-}
-
-function gainSwapZoneCard(p: PlayerState, choice: CardChoice): string | null {
-  const swapZone = p.swapZone ?? (p.swapZone = [])
-  if (choice.zone !== 'swap_zone' || swapZone[choice.index] !== choice.cardId) return null
-  const cardId = swapZone.splice(choice.index, 1)[0]
-  if (!cardId) return null
-  p.discard.unshift(cardId)
-  return cardId
+function gainSwapZoneCard(g: GameState, p: PlayerState, choice: CardChoice): string | null {
+  const swapZone = getPlayerCardInstanceZone(g, p.id, 'swap_zone')
+  if (choice.zone !== 'swap_zone' || swapZone.cards[choice.index] !== choice.cardId) return null
+  const discard = getPlayerCardInstanceZone(g, p.id, 'discard')
+  return moveCardBetweenZones(g, swapZone, choice.index, discard, 0, 'gain')?.cardId ?? null
 }
 
 /** Place a Mage-specific card face-up in the Player cards in play area. */
@@ -533,12 +502,18 @@ function putPlayerCardIntoPlay(
     kind: 'restore_effect_context', sourcePlayerId: actorPlayerId,
     sourceCardOwnerId: actorPlayerId, effectPlayerId: actorPlayerId,
   },
+  instanceId?: string,
 ): CardEffect[] {
   const player = getPlayer(g, playerId)
   ensurePlayerCollections(player)
-  player.playerCardsInPlay!.push(cardId)
-  player.playerCardSupplyTargets!.push(null)
-  player.playerCardPowerTokens!.push(0)
+  const inPlay = getPlayerCardInstanceZone(g, player.id, 'player_cards_in_play')
+  if (instanceId && !inPlay.instanceIds.includes(instanceId)) {
+    placeTemporaryCardInZone(g, instanceId, cardId,
+      { zoneId: `temporary:specific_deck:${player.id}`, zone: 'temporary', ownerId: player.id, index: 0 },
+      inPlay, inPlay.cards.length, 'gain', true)
+  } else if (!instanceId) {
+    createCardInZone(g, inPlay, cardId, inPlay.cards.length, 'gain', true)
+  }
   return matchingBlocks(cardId, playerId, g, { kind: 'on_put_into_play' }, undefined,
     playerId, undefined, actorPlayerId).flatMap(block => {
       const contextualBlock = {
@@ -551,16 +526,6 @@ function putPlayerCardIntoPlay(
         contextualBlock, cardId, playerId, actorPlayerId, restoreContext,
       )
     })
-}
-
-function removePlayerCardFromPlay(p: PlayerState, cardId: string): boolean {
-  ensurePlayerCollections(p)
-  const index = p.playerCardsInPlay!.lastIndexOf(cardId)
-  if (index < 0) return false
-  p.playerCardsInPlay!.splice(index, 1)
-  p.playerCardSupplyTargets?.splice(index, 1)
-  p.playerCardPowerTokens?.splice(index, 1)
-  return true
 }
 
 function findPlayerCardInPlayIndex(
@@ -775,9 +740,9 @@ export function destroyCard(g: GameState, playerId: string, choice: CardChoice):
   const cards = getZoneCards(p, choice.zone)
   if (cards[choice.index] !== choice.cardId) return 'Card selection is no longer valid'
 
-  const cardId = removeCardFromZone(p, choice.zone, choice.index)
+  const sourceZone = getPlayerCardInstanceZone(g, p.id, choice.zone)
+  const cardId = destroyCardFromZone(g, sourceZone, choice.index)
   if (!cardId) return 'Card not found'
-  destroyOwnedCard(p, cardId, g)
   return getCard(cardId).returnToSwapZoneOnDestroy
     ? `${getCard(cardId).name} returns to the Swap zone`
     : `Destroyed ${getCard(cardId).name}`
@@ -800,23 +765,41 @@ export function gainCard(
   const card = getCard(cardId)
   if (!card) return `Unknown card: ${cardId}`
 
+  let marketSource: CardMoveZoneAddress | undefined
+
+  if (specificPile && getNemesisCardInstanceZone(g, 'strike_deck').cards[0] !== cardId) {
+    return 'The top specific-pile card is no longer available'
+  }
+
   if (marketPileIndex !== undefined) {
     const pile = g.market.piles[marketPileIndex]
     if (!pile || pile.cardId !== cardId) return 'Invalid market pile'
     if (pile.remaining <= 0) return 'Pile empty'
     pile.remaining--
+    marketSource = {
+      zoneId: `supply:${marketPileIndex}`,
+      zone: 'supply',
+      ownerId: null,
+      index: pile.remaining,
+    }
     if (usesDevouredPile(g) && g.market.piles.every(candidate => candidate.remaining <= 0)) {
       finishGame(g, 'nemesis')
     }
   }
-  if (specificPile) {
-    if (g.nemesis.strikeDeck[0] !== cardId) return 'The top specific-pile card is no longer available'
-    g.nemesis.strikeDeck.shift()
-  }
-
   const p = getPlayer(g, playerId)
-  if (destination === 'deck_top') putPlayerCardInDeck(g, p, cardId, 'top')
-  else p.discard.unshift(cardId)
+  if (specificPile) {
+    const source = getNemesisCardInstanceZone(g, 'strike_deck')
+    if (source.cards[0] !== cardId) return 'The top specific-pile card is no longer available'
+    const target = destination === 'deck_top'
+      ? getPlayerCardInstanceZone(g, playerId, 'deck')
+      : getPlayerCardInstanceZone(g, playerId, 'discard')
+    const moved = moveCardBetweenZones(g, source, 0, target, 0, 'gain')
+    if (!moved) return 'The top specific-pile card is no longer available'
+  } else if (destination === 'deck_top') {
+    putPlayerCardInDeck(g, p, cardId, 'top', marketSource)
+  } else {
+    createCardInZone(g, getPlayerCardInstanceZone(g, playerId, 'discard'), cardId, 0, 'gain', true, marketSource)
+  }
   const message = `Gained ${card.name} -> ${destination === 'deck_top' ? 'deck' : 'discard pile'}`
   if (!triggerEffects) return message
   const effectMessages = resolveCardEffects(g, playerId, cardId, { kind: 'on_gain' }, cardId)
@@ -859,11 +842,10 @@ export function gainFirethornTopCard(g: GameState, playerId: string): string | n
   const available = getSpendableAether(player, spendType)
   if (available < 5) return `Need 5 Aether, have ${available}`
   spendAether(player, 5, spendType)
-  player.specificDeckInstanceIds = ensureCardInstanceZone(g, player.specificDeck!, player.specificDeckInstanceIds)
-  player.specificDeckInstanceIds.shift()
-  player.specificDeck!.shift()
+  const specificDeck = getPlayerCardInstanceZone(g, player.id, 'specific_deck')
+  const discard = getPlayerCardInstanceZone(g, player.id, 'discard')
+  moveCardBetweenZones(g, specificDeck, 0, discard, 0, 'gain')
   forgetSpecificDeckCard(player, cardId)
-  player.discard.unshift(cardId)
   return `Gained ${getCard(cardId).name} from the Firethorn deck for 5 Aether`
 }
 
@@ -1032,6 +1014,7 @@ function effectPlayerId(g: GameState, resolution: PendingEffectResolution): stri
 const effectConditionServices: EffectConditionServices = {
   hasRecallChoices: (game, sourcePlayerId) => availableRecallChoices(game, true, sourcePlayerId).length > 0,
   getPreppedSpellChoices,
+  getPreppedSpellCost,
   getBreachChoices,
   findPlayerCardInPlayIndex,
   playerCardSupplyTarget,
@@ -1185,8 +1168,9 @@ function discardPendingSpellCast(g: GameState, resolution: PendingEffectResoluti
   const breach = owner.breaches.find(item => item.index === pending.breachIndex)
   if (breach?.prepSpells[pending.spellIndex] !== pending.cardId) return
 
-  removePreppedSpellAt(breach, pending.spellIndex)
-  owner.discard.unshift(pending.cardId)
+  const source = getBreachCardInstanceZone(g, owner.id, breach.index)
+  const discard = getPlayerCardInstanceZone(g, owner.id, 'discard')
+  moveCardBetweenZones(g, source, pending.spellIndex, discard, 0, 'cast_spell')
 }
 
 function describeSimultaneousEffect(effect: CardEffect): string {
@@ -1367,39 +1351,24 @@ function selectedChoicesAreCurrent(
   return true
 }
 
-function removeSelectedCards(g: GameState, playerId: string, choices: CardChoice[]): string[] {
-  const p = getPlayer(g, playerId)
-  const valid = choices.filter(choice => {
-    const cards = getZoneCards(p, choice.zone)
-    return cards[choice.index] === choice.cardId
-  })
-  const grouped = new Map<CardZone, CardChoice[]>()
-  for (const choice of valid) {
-    const group = grouped.get(choice.zone) ?? []
-    group.push(choice)
-    grouped.set(choice.zone, group)
-  }
-  const removed: string[] = []
-  for (const [zone, zoneChoices] of grouped) {
-    for (const choice of [...zoneChoices].sort((a, b) => b.index - a.index)) {
-      const cardId = removeCardFromZone(p, zone, choice.index)
-      if (cardId) removed.push(cardId)
-    }
-  }
-  return removed
-}
-
 function discardSelectedCards(
   g: GameState, playerId: string, choices: CardChoice[], preserveSelectionOrder = false,
 ): string[] {
   const p = getPlayer(g, playerId)
-  const selectedIds = choices.filter(choice =>
-    getZoneCards(p, choice.zone)[choice.index] === choice.cardId,
-  ).map(choice => choice.cardId)
-  const removed = removeSelectedCards(g, playerId, choices)
-  const orderedIds = preserveSelectionOrder ? selectedIds : removed
-  for (const cardId of orderedIds) p.discard.unshift(cardId)
-  return orderedIds
+  const selected = choices.flatMap(choice => {
+    if (getZoneCards(p, choice.zone)[choice.index] !== choice.cardId) return []
+    const source = getPlayerCardInstanceZone(g, playerId, choice.zone)
+    const instanceId = source.instanceIds[choice.index]
+    return instanceId ? [{ choice, instanceId }] : []
+  })
+  const ordered = preserveSelectionOrder ? selected : [...selected].sort((a, b) => b.choice.index - a.choice.index)
+  const discard = getPlayerCardInstanceZone(g, playerId, 'discard')
+  for (const item of ordered) {
+    const source = getPlayerCardInstanceZone(g, playerId, item.choice.zone)
+    const sourceIndex = source.instanceIds.indexOf(item.instanceId)
+    if (sourceIndex >= 0) moveCardBetweenZones(g, source, sourceIndex, discard, 0, 'discard')
+  }
+  return ordered.map(item => item.choice.cardId)
 }
 
 function returnSelectedCard(g: GameState, playerId: string, choice: CardChoice): string | null {
@@ -1407,10 +1376,10 @@ function returnSelectedCard(g: GameState, playerId: string, choice: CardChoice):
   if (choice.zone !== 'played_this_turn' || p.playedThisTurn[choice.index] !== choice.cardId) {
     return null
   }
-  const cardId = removeCardFromZone(p, choice.zone, choice.index)
-  if (!cardId) return null
-  addCardToHand(p, cardId)
-  return cardId
+  const played = getPlayerCardInstanceZone(g, playerId, 'played_this_turn')
+  const hand = getPlayerCardInstanceZone(g, playerId, 'hand')
+  const moved = moveCardBetweenZones(g, played, choice.index, hand, hand.cards.length, 'return')
+  return moved?.cardId ?? null
 }
 
 function createDecision(
@@ -1440,8 +1409,7 @@ function pauseEffect(
 
 export function drawCardsForPlayer(g: GameState, playerId: string, amount: number): number {
   const p = getPlayer(g, playerId)
-  const drawn = drawPlayerDeckCards(g, p, Math.max(0, amount))
-  addCardsToHand(p, drawn)
+  const drawn = drawPlayerCardsToHand(g, playerId, Math.max(0, amount))
   if (g.currentTurn === playerId && (g.currentPhase === 'casting' || g.currentPhase === 'main')) {
     p.corruptionsDrawnThisTurn ??= []
     p.corruptionsDrawnThisTurn.push(...drawn.filter(cardId => getCard(cardId).type === 'corruption'))
@@ -1525,7 +1493,6 @@ export interface EffectResolutionServices {
   dealNemesisTargetDamage: typeof dealNemesisTargetDamage,
   destroyCard: typeof destroyCard,
   destroyExhaustedBreach: typeof destroyExhaustedBreach,
-  destroyOwnedCard: typeof destroyOwnedCard,
   devourMarketPile: typeof devourMarketPile,
   discardCollectiveCards: typeof discardCollectiveCards,
   discardCompletedNemesisCard: typeof discardCompletedNemesisCard,
@@ -1588,10 +1555,6 @@ export interface EffectResolutionServices {
   queuePlayerExhaustion: typeof queuePlayerExhaustion,
   rememberSpecificDeckCard: typeof rememberSpecificDeckCard,
   rememberSpecificDeckTop: typeof rememberSpecificDeckTop,
-  removeCardFromHand: typeof removeCardFromHand,
-  removePlayerCardFromPlay: typeof removePlayerCardFromPlay,
-  removePreppedSpellAt: typeof removePreppedSpellAt,
-  removeResolvingCardForSwap: typeof removeResolvingCardForSwap,
   replenishTurnOrderDeckForReveal: typeof replenishTurnOrderDeckForReveal,
   resetBreachToStartingPosition: typeof resetBreachToStartingPosition,
   resolveSimultaneousEffectGroups: typeof resolveSimultaneousEffectGroups,
@@ -1634,7 +1597,6 @@ const runEffectResolution = createEffectResolver({
   dealNemesisTargetDamage,
   destroyCard,
   destroyExhaustedBreach,
-  destroyOwnedCard,
   devourMarketPile,
   discardCollectiveCards,
   discardCompletedNemesisCard,
@@ -1697,10 +1659,6 @@ const runEffectResolution = createEffectResolver({
   queuePlayerExhaustion,
   rememberSpecificDeckCard,
   rememberSpecificDeckTop,
-  removeCardFromHand,
-  removePlayerCardFromPlay,
-  removePreppedSpellAt,
-  removeResolvingCardForSwap,
   replenishTurnOrderDeckForReveal,
   resetBreachToStartingPosition,
   resolveSimultaneousEffectGroups,
@@ -2252,6 +2210,7 @@ export interface DecisionResolutionServices {
   checkGameOver: typeof checkGameOver
   checkPlayerDeath: typeof checkPlayerDeath
   collectBreachOpenedEffects: typeof collectBreachOpenedEffects
+  conditionMatches: typeof conditionMatches
   contextualizeCardEffectBlock: typeof contextualizeCardEffectBlock
   continueNemesisDiscard: typeof continueNemesisDiscard
   createDecision: typeof createDecision
@@ -2259,7 +2218,6 @@ export interface DecisionResolutionServices {
   dealDamage: typeof dealDamage
   dealNemesisTargetDamage: typeof dealNemesisTargetDamage
   destroyExhaustedBreach: typeof destroyExhaustedBreach
-  destroyOwnedCard: typeof destroyOwnedCard
   devourMarketPile: typeof devourMarketPile
   discardCollectiveCards: typeof discardCollectiveCards
   discardPreppedSpellChoices: typeof discardPreppedSpellChoices
@@ -2288,7 +2246,6 @@ export interface DecisionResolutionServices {
   recallBlockMarker: typeof recallBlockMarker
   rememberSpecificDeckCard: typeof rememberSpecificDeckCard
   rememberSpecificDeckTop: typeof rememberSpecificDeckTop
-  removeSelectedCards: typeof removeSelectedCards
   resetBreachToStartingPosition: typeof resetBreachToStartingPosition
   resolveDividedDamageAllocationAction: typeof resolveDividedDamageAllocationAction
   returnSelectedCard: typeof returnSelectedCard
@@ -2313,6 +2270,7 @@ const resolvePendingDecisionWithServices = createDecisionResolver({
   checkGameOver,
   checkPlayerDeath,
   collectBreachOpenedEffects,
+  conditionMatches,
   contextualizeCardEffectBlock,
   continueNemesisDiscard,
   createDecision,
@@ -2320,7 +2278,6 @@ const resolvePendingDecisionWithServices = createDecisionResolver({
   dealDamage,
   dealNemesisTargetDamage,
   destroyExhaustedBreach,
-  destroyOwnedCard,
   devourMarketPile,
   discardCollectiveCards,
   discardPreppedSpellChoices,
@@ -2349,7 +2306,6 @@ const resolvePendingDecisionWithServices = createDecisionResolver({
   recallBlockMarker,
   rememberSpecificDeckCard,
   rememberSpecificDeckTop,
-  removeSelectedCards,
   resetBreachToStartingPosition,
   resolveDividedDamageAllocationAction,
   returnSelectedCard,
@@ -2379,8 +2335,6 @@ const nemesisTurn = createNemesisTurnRuntime({
   getPreppedSpellCost,
   discardSelectedCards,
   drawCardsForPlayer,
-  removeSelectedCards,
-  destroyOwnedCard,
 })
 
 function ensureNemesisRuntime(g: GameState): void {
@@ -2439,8 +2393,8 @@ export function drawStrikeCard(g: GameState): string | null {
   return nemesisTurn.drawStrikeCard(g)
 }
 
-export function returnStrikeCardToDeck(g: GameState, cardId: string): void {
-  nemesisTurn.returnStrikeCardToDeck(g, cardId)
+export function returnStrikeCardToDeck(g: GameState, cardId: string, instanceId?: string): void {
+  nemesisTurn.returnStrikeCardToDeck(g, cardId, instanceId)
 }
 
 export function getNemesisDiscardActions(
@@ -2568,8 +2522,10 @@ export function playCard(
     }).join('; ')
   }
 
-  removeCardFromHand(p, idx)
-  p.playedThisTurn.push(cardId)
+  const hand = getPlayerCardInstanceZone(g, playerId, 'hand')
+  const played = getPlayerCardInstanceZone(g, playerId, 'played_this_turn')
+  const moved = moveCardBetweenZones(g, hand, idx, played, played.cards.length, 'play')
+  if (!moved) return 'Card not in hand'
   ensurePlayerCollections(p)
   p.cardPlayCountsThisTurn[cardId] = (p.cardPlayCountsThisTurn[cardId] ?? 0) + 1
 
@@ -2600,14 +2556,16 @@ export function prepSpell(
   if (!canPrepOnBreach(b, card.prepToClosedBreach === true)) return 'Cannot prep on this breach'
 
   ensurePlayerCollections(p)
-  const removed = removeCardFromHand(p, idx)
-  b.prepSpells.push(cardId)
+  const hand = getPlayerCardInstanceZone(g, playerId, 'hand')
+  const breachZone = getBreachCardInstanceZone(g, playerId, breachIndex)
+  const moved = moveCardBetweenZones(g, hand, idx, breachZone, breachZone.cards.length, 'prep_spell')
+  if (!moved) return 'Card not in hand'
   b.preppedThisTurn ??= []
   b.preppedThisTurn.push(true)
   b.preppedSpellFaceDown ??= []
   b.preppedSpellFaceDown.push(false)
   b.preppedSpellInstanceIds ??= []
-  b.preppedSpellInstanceIds.push(removed.preppedSpellInstanceId ?? createPreppedSpellInstanceId(p))
+  b.preppedSpellInstanceIds.push(moved.instanceId)
   return `Prepped ${card.name} on Breach ${toRoman(breachIndex)}`
 }
 
@@ -2750,7 +2708,13 @@ export function developCardFromSupply(g: GameState, playerId: string, pileIndex:
 
   spendAether(player, cost, 'general')
   pile.remaining--
-  ensureSharedDevelopZone(g).push(card.id)
+  const develop = getSharedDevelopCardInstanceZone(g)
+  createCardInZone(g, develop, card.id, develop.cards.length, 'develop', true, {
+    zoneId: `supply:${pileIndex}`,
+    zone: 'supply',
+    ownerId: null,
+    index: pile.remaining,
+  })
   const messages = [`Developed ${card.name} from the supply (${cost}a) -> Develop zone`]
   if (usesDevouredPile(g) && g.market.piles.every(candidate => candidate.remaining <= 0)) {
     finishGame(g, 'nemesis')
@@ -2775,9 +2739,11 @@ export function developCardFromZone(g: GameState, playerId: string, zoneIndex: n
   if (available < cost) return `Need ${cost} Aether to Develop ${card.name}, have ${available}`
 
   spendAether(player, cost, 'general')
-  zone.splice(zoneIndex, 1)
-  const gainMessage = gainCard(g, playerId, cardId, 'discard_top', undefined, false)
-  if (!gainMessage) return null
+  const develop = getSharedDevelopCardInstanceZone(g)
+  const discard = getPlayerCardInstanceZone(g, playerId, 'discard')
+  const moved = moveCardBetweenZones(g, develop, zoneIndex, discard, 0, 'develop')
+  if (!moved) return null
+  const gainMessage = `Gained ${card.name} -> discard pile`
   const effects = [
     ...matchingBlocks(cardId, playerId, g, { kind: 'on_gain' }).flatMap(block => block.effects),
     ...matchingBlocks(cardId, playerId, g, { kind: 'on_develop' }).flatMap(block => block.effects),
@@ -2951,6 +2917,7 @@ export function canActivateAbilityDuringMain(g: GameState, playerId: string): bo
 // ===== Draw Phase =====
 
 export function resolveDrawPhase(g: GameState, playerId: string): string[] {
+  g.currentPhase = 'draw'
   const p = getPlayer(g, playerId)
   const msgs: string[] = []
   const unusedAetherTokens = p.aetherTokens ?? 0
@@ -2974,8 +2941,11 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
     // subsequent continuation must not capture the same played cards again.
     p.pendingEndTurnCardIds = undefined
     // Move played cards to discard (reverse order = last played on top).
-    for (const cardId of [...p.playedThisTurn].reverse()) p.discard.unshift(cardId)
-    p.playedThisTurn = []
+    const played = getPlayerCardInstanceZone(g, p.id, 'played_this_turn')
+    const discard = getPlayerCardInstanceZone(g, p.id, 'discard')
+    while (played.cards.length > 0) {
+      moveCardBetweenZones(g, played, played.cards.length - 1, discard, 0, 'discard_phase')
+    }
     p.cardPlayCountsThisTurn = {}
     p.conditionalAetherEarned = {}
     p.regularAetherSpent = 0
@@ -3008,9 +2978,8 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
 
   // Draw to 5
   while (p.hand.length < 5) {
-    const drawn = drawPlayerDeckCards(g, p, 1)
-    if (drawn.length > 0) addCardToHand(p, drawn[0]!)
-    else break
+    const drawn = drawPlayerCardsToHand(g, p.id, 1)
+    if (drawn.length === 0) break
   }
   msgs.push(`Hand filled to ${p.hand.length}, Aether reset${unusedAetherTokens > 0 ? `; discarded ${unusedAetherTokens} unused Aether token${unusedAetherTokens === 1 ? '' : 's'}` : ''}`)
   p.spellsCastThisTurn = 0

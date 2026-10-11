@@ -4,6 +4,8 @@ import {
   getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellBreachTargets,
   getSpellDamagePreviewRange, getSupplyMechanics, getGameZoneVisibility, canGainCharge,
   getDevelopZoneCards, getDevelopActions, getTrinketDeckCards, isTrinketDeckCardRevealed,
+  getPlayerCardInstanceZone, getBreachCardInstanceZone, getBreachAttachedRelicZone,
+  getSharedDevelopCardInstanceZone,
 } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
 import { cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerTurnOrderTokenUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
@@ -193,8 +195,9 @@ const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order' && state.selectedPlayer === state.game?.currentTurn)
 const deckPileCount = computed(() => {
-  const override = state.deckDisplayOverride
-  return override?.playerId === player.value.id ? override.count : player.value.deck.length
+  const override = state.deckPileDisplayOverrides[player.value.id] ??
+    (state.deckDisplayOverride?.playerId === player.value.id ? state.deckDisplayOverride : null)
+  return override?.count ?? player.value.deck.length
 })
 const discardDisplayOverride = computed(() => state.discardPileDisplayOverrides[player.value.id] ??
   (state.discardTopDisplayOverride?.playerId === player.value.id ? state.discardTopDisplayOverride : null))
@@ -203,6 +206,9 @@ const discardTopCard = computed(() => {
     ? discardDisplayOverride.value.cardId
     : player.value.discard[0] ?? null
 })
+const discardTopInstanceId = computed(() => state.discardPileDisplayOverrides[player.value.id]
+  ? undefined
+  : state.game ? getPlayerCardInstanceZone(state.game, player.value.id, 'discard').instanceIds[0] : undefined)
 const discardPileCount = computed(() => {
   return discardDisplayOverride.value?.count ?? player.value.discard.length
 })
@@ -220,6 +226,12 @@ const mageDefinition = computed(() => MAGES[player.value?.mageType ?? ''])
 const gameZoneVisibility = computed(() => state.game
   ? getGameZoneVisibility(state.game)
   : { swap: false, develop: false })
+const breachCardInstanceIds = computed(() => state.game
+  ? Object.fromEntries(player.value.breaches.map(breach => [breach.index, {
+    spells: getBreachCardInstanceZone(state.game!, player.value.id, breach.index).instanceIds,
+    attachedRelic: getBreachAttachedRelicZone(state.game!, player.value.id, breach.index)?.instanceIds[0],
+  }]))
+  : {})
 const hasSwapZone = computed(() => gameZoneVisibility.value.swap)
 const hasDevelopZone = computed(() => gameZoneVisibility.value.develop)
 const developActions = computed(() => state.game ? getDevelopActions(state.game, state.selectedPlayer) : [])
@@ -230,7 +242,7 @@ const controlPlayers = computed(() => players.value.map((candidate, playerIndex)
   hp: candidate.hp,
   charge: candidate.charge,
   chargeThreshold: candidate.chargeThreshold,
-  handCount: candidate.hand.length + Number(state.handPlayPresentation?.playerId === candidate.id),
+  handCount: candidate.hand.length,
   destroyedCount: candidate.destroyedCards.length,
   handGain: handIncrease.value[candidate.id] ?? 0,
   chargeGain: chargeIncrease.value[candidate.id] ?? 0,
@@ -470,16 +482,23 @@ const typeClass = (cid: string) => {
 }
 
 const handCardDisplay = computed(() => {
+  const handInstanceIds = state.game
+    ? getPlayerCardInstanceZone(state.game, player.value.id, 'hand').instanceIds
+    : player.value.handInstanceIds ?? []
   const presentation = state.handDiscardPresentation?.playerId === player.value.id
     ? state.handDiscardPresentation.cards
     : null
   const cards: Array<{
     cardId: string
+    instanceId?: string
     handIndex: number
     presentationKey?: string
     heldForPlay?: boolean
   }> = [...(presentation ?? player.value.hand.map((cardId, handIndex) => ({
-    cardId, handIndex, presentationKey: undefined as string | undefined,
+    cardId,
+    instanceId: handInstanceIds[handIndex],
+    handIndex,
+    presentationKey: undefined as string | undefined,
   })))]
   const heldPlay = state.handPlayPresentation?.playerId === player.value.id
     ? state.handPlayPresentation
@@ -487,15 +506,17 @@ const handCardDisplay = computed(() => {
   if (heldPlay) {
     cards.splice(Math.min(heldPlay.handIndex, cards.length), 0, {
       cardId: heldPlay.cardId,
+      instanceId: heldPlay.instanceId,
       handIndex: heldPlay.handIndex,
       presentationKey: heldPlay.presentationKey,
       heldForPlay: true,
     })
   }
-  return cards.map(({ cardId, handIndex, presentationKey, heldForPlay }) => {
+  return cards.map(({ cardId, instanceId, handIndex, presentationKey, heldForPlay }) => {
     const selection = boardCardChoice('hand', handIndex, cardId)
     return {
       cardId,
+      instanceId,
       handIndex,
       presentationKey,
       heldForPlay: !!heldForPlay,
@@ -508,7 +529,11 @@ const handCardDisplay = computed(() => {
   })
 })
 const conjuredCardDisplay = computed(() => conjuredCard.value
-  ? { cardId: conjuredCard.value.cardId, typeClass: typeClass(conjuredCard.value.cardId) }
+  ? {
+    cardId: conjuredCard.value.cardId,
+    instanceId: conjuredCard.value.instanceId,
+    typeClass: typeClass(conjuredCard.value.cardId),
+  }
   : null)
 const playerCardsInPlayDisplay = computed(() => playerCardPlacementsInPlay.value.map((placement, index) => ({
   cardId: placement.cardId,
@@ -521,6 +546,11 @@ const playerCardsInPlayDisplay = computed(() => playerCardPlacementsInPlay.value
 
 const isFaceDownPreppedSpell = (b: BreachState, spellIndex: number) =>
   b.preppedSpellFaceDown?.[spellIndex] === true
+const isPendingConjureBreachArrival = (b: BreachState, spellIndex: number) => {
+  const pending = state.pendingConjureBreachArrival
+  return pending?.playerId === player.value.id && pending.breachIndex === b.index &&
+    breachCardInstanceIds.value[b.index]?.spells[spellIndex] === pending.instanceId
+}
 
 const draggedSpellPreviewUrl = computed(() => {
   const cardId = draggedSpellId.value
@@ -651,8 +681,27 @@ function clickHand(i: number) {
   }
   if (state.game?.pendingDecision) return
   if (!canActMain.value) return
-  // Spells are prepared exclusively by dragging them onto a breach.
-  if (getCard(cid).type !== 'spell') playCard(i)
+  if (getCard(cid).type === 'spell') {
+    const rightmostBreach = getSpellBreachTargets(state.game!, player.value.id, cid)
+      .sort((left, right) => right - left)[0]
+    if (rightmostBreach !== undefined) prepSpell(i, rightmostBreach)
+    return
+  }
+  playCard(i)
+}
+
+function clickConjuredCard() {
+  if (suppressSpellClick.value) {
+    suppressSpellClick.value = false
+    return
+  }
+  const decision = state.game?.pendingDecision
+  if (decision?.kind !== 'select_conjure_breach' || !conjuredCard.value ||
+    decision.cardId !== conjuredCard.value.cardId) return
+  const choice = decision.candidates
+    .filter(candidate => candidate.playerId === player.value.id)
+    .sort((left, right) => right.breachIndex - left.breachIndex)[0]
+  if (choice) void resolveDecision({ kind: 'select_conjure_breach', choice })
 }
 
 function startSpellPointerDrag(i: number, event: PointerEvent) {
@@ -698,6 +747,7 @@ const swapZoneDisplay = computed(() => swapZoneOwners.value.map(owner => {
     seen.set(cardId, occurrence + 1)
     return {
       cardId,
+      instanceId: state.game ? getPlayerCardInstanceZone(state.game, owner.id, 'swap_zone').instanceIds[index] ?? '' : '',
       index,
       motionKey: held?.survivorKeys[index] ?? rememberedKeys?.[index] ?? `swap-${owner.id}-${cardId}-${occurrence}`,
       heldForDeparture: false,
@@ -706,6 +756,7 @@ const swapZoneDisplay = computed(() => swapZoneOwners.value.map(owner => {
   if (held && !held.departing) {
     cards.splice(Math.min(Math.max(0, held.index), cards.length), 0, {
       cardId: held.cardId,
+      instanceId: held.instanceId,
       index: -1,
       motionKey: held.motionKey,
       heldForDeparture: true,
@@ -713,11 +764,12 @@ const swapZoneDisplay = computed(() => swapZoneOwners.value.map(owner => {
   }
   return {
     id: owner.id,
-    cards: cards.map(({ cardId, index, motionKey, heldForDeparture }) => {
+    cards: cards.map(({ cardId, instanceId, index, motionKey, heldForDeparture }) => {
       const selection = heldForDeparture ? null : getBoardCardSelection(owner.id, 'swap_zone', index, cardId)
       return {
         key: motionKey,
         motionKey,
+        instanceId,
         cardId,
         index,
         typeClass: typeClass(cardId),
@@ -736,19 +788,24 @@ const playedZoneDisplay = computed(() => {
   const presentation = state.handPlayPresentation
   const heldOccurrence = presentation?.playerId === player.value.id
     && (!!state.game?.pendingDecision || !!state.game?.pendingEffect)
-    ? { cardId: presentation.cardId, occurrence: presentation.playedOccurrence }
+    ? { instanceId: presentation.instanceId }
     : null
   const seen = new Map<string, number>()
+  const playedInstanceIds = state.game
+    ? getPlayerCardInstanceZone(state.game, player.value.id, 'played_this_turn').instanceIds
+    : player.value.playedThisTurnInstanceIds ?? []
   return player.value.playedThisTurn.flatMap((cardId, index) => {
+    const instanceId = playedInstanceIds[index] ?? ''
     const occurrence = seen.get(cardId) ?? 0
     seen.set(cardId, occurrence + 1)
-    if (heldOccurrence && heldOccurrence.cardId === cardId && heldOccurrence.occurrence === occurrence) {
+    if (heldOccurrence && heldOccurrence.instanceId === instanceId) {
       return []
     }
     const selection = boardCardChoice('played_this_turn', index, cardId)
     return [{
       key: `${cardId}${index}`,
       motionKey: `played-${player.value.id}-${cardId}-${occurrence}`,
+      instanceId,
       ownerId: player.value.id,
       cardId,
       index,
@@ -769,6 +826,7 @@ const discardZoneDisplay = computed(() => state.discardRemaining.map((cardId, in
   typeClass: typeClass(cardId),
 })))
 const developZoneDisplay = computed(() => {
+  const instanceIds = state.game ? getSharedDevelopCardInstanceZone(state.game).instanceIds : []
   const seen = new Map<string, number>()
   return developZoneCards.value.map((cardId, index) => {
     const actionAvailable = developZoneActionAvailable(index)
@@ -778,6 +836,7 @@ const developZoneDisplay = computed(() => {
       key: `develop-${cardId}-${index}`,
       motionKey: `develop-${cardId}-${occurrence}`,
       cardId,
+      instanceId: instanceIds[index] ?? '',
       index,
       typeClass: typeClass(cardId),
       actionAvailable,
@@ -903,7 +962,9 @@ function finishSpellPointerDrag(event: PointerEvent) {
         // A hand spell uses the normal prep flow even if the target Breach
         // already contains a spell. Multi-spell Breaches can still stack;
         // an existing spell is never replaced by a hand drag.
-        if (canPrep(breach, player.value.hand[spellIndex])) prepSpell(spellIndex, breach.index)
+        if (canPrep(breach, player.value.hand[spellIndex])) {
+          prepSpell(spellIndex, breach.index, { animate: false })
+        }
       }
     }
   }
@@ -1060,6 +1121,7 @@ const breachDisplayBindings = {
   effectFocusChoice,
   breachCosts,
   isFaceDownPreppedSpell,
+  isPendingConjureBreachArrival,
   isPendingPreppedSpellSelected,
   spellDamagePreviewLabel,
   isEndTurnActionTarget,
@@ -1097,6 +1159,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
     <PlayerBreachArea
       :owner-id="player.id"
       :breaches="player.breaches"
+      :card-instance-ids-by-breach="breachCardInstanceIds"
       :can-act-main="canActMain"
       :has-pending-decision="!!state.game?.pendingDecision"
       :dragging-spell="draggingSpell"
@@ -1131,6 +1194,8 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
             ? getCard(trinketDeckCards[0]).name
             : 'Trinket deck card back'"
           class="trinket-deck-top-card"
+          data-card-flight-source="trinket-deck"
+          data-card-flight-target="trinket-deck"
         >
           <span v-if="trinketDeckCards.length === 0">Trinket Deck</span>
         </CardSurface>
@@ -1168,6 +1233,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       :deck-count="deckPileCount"
       :discard-count="discardPileCount"
       :discard-top-card="discardTopCard"
+      :discard-top-instance-id="discardTopInstanceId"
       :pending-board-discard-arrival="pendingBoardDiscardArrival"
       :recall-available="hasRecallAction"
       :recall-action-attention="recallActionAttention"
@@ -1181,6 +1247,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       @open-specific-deck="openSpecificDeckPile"
       @click-player-card="clickPlayerCardInPlay"
       @click-hand-card="clickHand"
+      @click-conjured-card="clickConjuredCard"
       @start-hand-spell-drag="startSpellPointerDrag"
       @start-conjured-spell-drag="startConjuredCardDrag"
       @open-deck="openPile('deck')"

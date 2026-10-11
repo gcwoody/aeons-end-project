@@ -38,6 +38,7 @@ function activate() {
 <template>
   <section
     class="nemesis-pile-slot nemesis-specific-pile-asset"
+    :data-card-flight-source="flightSource"
     :class="{ 'is-unavailable': !enabled, 'is-empty': cardCount === 0, 'shows-face-up-card': display === 'face_up' }"
     :aria-label="label"
     :title="label"
@@ -66,7 +67,6 @@ function activate() {
         size="pile"
         :image-url="backImageUrl"
         :image-alt="`${label} card back`"
-        :data-card-flight-source="flightSource"
       />
       <span v-else class="nemesis-pile-placeholder">{{ enabled ? `${label} 0` : 'Not used' }}</span>
     </button>

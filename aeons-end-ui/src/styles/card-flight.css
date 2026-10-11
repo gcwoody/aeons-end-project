@@ -31,6 +31,8 @@
 
 .card-flight-flip-front { opacity: 1; }
 .card-flight-flip-back { opacity: 0; }
+.card-flight-reveal-front { opacity: 0; }
+.card-flight-reveal-back { opacity: 1; }
 
 .card-motion-shield {
   position: fixed;

@@ -1,4 +1,5 @@
 import { getCard } from '../data'
+import { createCardInZone, getNemesisCardInstanceZone } from '../engine/card-movement'
 import type { NemesisRuleModule } from './types'
 
 /** Prince of Gluttons-specific Devour behavior after the shared Unleash keyword. */
@@ -13,7 +14,7 @@ export const princeOfGluttonsRules: NemesisRuleModule = {
       const pile = game.market.piles[choice.pileIndex]!
       if (pile.remaining <= 0) continue
       pile.remaining--
-      game.nemesis.strikeDeck.unshift(pile.cardId)
+      createCardInZone(game, getNemesisCardInstanceZone(game, 'strike_deck'), pile.cardId, 0, 'setup')
     }
 
     const additionalChoices = game.nemesis.difficulty === 'increased'

@@ -61,7 +61,9 @@ test('Control Bar opens the selected Mage destroyed-card area', async ({ page })
     current.game.players[0].destroyedCards = ['crystal', 'spark']
   })
 
-  await page.getByRole('button', { name: 'View destroyed cards' }).click()
+  const destroyedCardsButton = page.getByRole('button', { name: 'View destroyed cards (2)' })
+  await expect(destroyedCardsButton).toContainText('2')
+  await destroyedCardsButton.click()
   const modal = page.locator('.pile-modal')
   await expect(modal.getByRole('heading', { name: 'Destroyed Cards' })).toBeVisible()
   await expect(modal.locator('img[alt="Crystal"]')).toBeVisible()

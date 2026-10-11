@@ -64,6 +64,12 @@ export function markCardInstanceRevealed(game: GameState, instanceId: string): v
   if (state) state.revealed = true
 }
 
+/** Explicitly hide a physical copy when a rule puts it into a hidden deck. */
+export function markCardInstanceHidden(game: GameState, instanceId: string): void {
+  const state = game.cardInstanceStates?.[instanceId]
+  if (state) state.revealed = false
+}
+
 /** A physical copy that entered a shuffled deck no longer has a known position. */
 export function resetCardInstancesAfterShuffle(game: GameState, instanceIds: string[]): void {
   // A shuffle hides the positions of copies inside this deck only. A matching

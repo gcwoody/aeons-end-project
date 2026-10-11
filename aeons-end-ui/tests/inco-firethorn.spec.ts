@@ -17,6 +17,7 @@ test('Inco buys the revealed Firethorn by clicking its pile', async ({ page }) =
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   const debugState = JSON.parse(await stateField.inputValue())
   const inco = debugState.game.players.find((player: { mageType: string }) => player.mageType === 'inco')
+  const firethornInstanceId = inco.specificDeckInstanceIds?.[0]
   inco.bonusAether = 5
   inco.regularAetherSpent = 0
   debugState.game.currentTurn = inco.id
@@ -34,6 +35,9 @@ test('Inco buys the revealed Firethorn by clicking its pile', async ({ page }) =
   await expect(firethornPile.locator('.specific-deck-gain-button')).toHaveCount(0)
   await expect(firethornPile.locator('.player-pile-count')).toHaveText('10')
   await firethornPile.click()
+  const flight = page.locator('.card-flight-clone')
+  await expect(flight).toBeVisible()
+  await expect(flight).toHaveAttribute('data-card-flight-instance-id', firethornInstanceId)
   await expect(firethornPile.locator('.player-pile-count')).toHaveText('9')
   await expect(page.locator('.pile-modal')).toHaveCount(0)
 })

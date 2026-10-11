@@ -37,6 +37,7 @@ interface BreachDisplayBindings {
   effectFocusChoice: (breach: BreachState) => unknown | null
   breachCosts: (breach: BreachState) => BreachActionCosts
   isFaceDownPreppedSpell: (breach: BreachState, spellIndex: number) => boolean
+  isPendingConjureBreachArrival: (breach: BreachState, spellIndex: number) => boolean
   isPendingPreppedSpellSelected: (choice: PreppedSpellChoice) => boolean
   spellDamagePreviewLabel: (breach: BreachState, spellIndex?: number) => string | null
   isEndTurnActionTarget: (targetId: string) => boolean
@@ -45,6 +46,7 @@ interface BreachDisplayBindings {
 const props = defineProps<{
   ownerId: string
   breaches: BreachState[]
+  cardInstanceIdsByBreach: Record<number, { spells: string[]; attachedRelic?: string }>
   canActMain: boolean
   hasPendingDecision: boolean
   draggingSpell: boolean
@@ -107,6 +109,11 @@ const emit = defineEmits<{
               size="hand"
               class="breach-attached-relic"
               :data-attached-relic-id="breach.attachedRelic.cardId"
+              data-card-motion-zone="breach"
+              :data-card-motion-card-id="breach.attachedRelic.cardId"
+              :data-card-motion-owner-id="ownerId"
+              :data-card-motion-key="`breach-${ownerId}-${breach.index}-attached`"
+              :data-card-instance-id="cardInstanceIdsByBreach[breach.index]?.attachedRelic"
               :image-alt="getCard(breach.attachedRelic.cardId).name"
             />
           </CardHoverPreview>
@@ -158,6 +165,7 @@ const emit = defineEmits<{
                 class="breach-spell-card-frame"
                 data-card-motion-zone="breach"
                 :data-card-motion-card-id="spellId"
+                :data-card-instance-id="cardInstanceIdsByBreach[breach.index]?.spells[spellIndex]"
                 :data-card-motion-owner-id="ownerId"
                 :data-card-motion-key="`breach-${ownerId}-${breach.index}-${spellIndex}`"
                 :class="{
@@ -167,6 +175,7 @@ const emit = defineEmits<{
                   'game-highlight--required': ui.isMustCastBreach(breach) || ui.isMandatoryPreppedEffect(breach, spellIndex) || ui.isRepeatCastConfirmation(breach, spellIndex),
                   'end-turn-attention': ui.isEndTurnActionTarget(`prepped-spell:${ownerId}:${breach.index}:${spellIndex}`),
                   'face-down-spell': ui.isFaceDownPreppedSpell(breach, spellIndex),
+                  'pending-conjure-arrival': ui.isPendingConjureBreachArrival(breach, spellIndex),
                   'castable-spell': ui.isCastableBreach(breach),
                   'must-cast-spell': ui.isMustCastBreach(breach),
                   'mandatory-prepped-effect': ui.isMandatoryPreppedEffect(breach, spellIndex),

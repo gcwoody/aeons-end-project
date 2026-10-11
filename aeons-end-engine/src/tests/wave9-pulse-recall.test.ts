@@ -116,10 +116,18 @@ function testRecallIsMainPhaseOnlyAndEachDuplicateCanBeUsedOnce(): void {
     assertEqual(getRecallActions(game, player.id).length, 0, 'Both used copies stop highlighting')
 
     resolveDrawPhase(game, player.id)
+    assertEqual(game.currentPhase, 'draw', 'Resolving the Draw Phase updates the engine phase')
     game.currentPhase = 'main'
     assertEqual(getRecallActions(game, player.id).length, 0, 'Recall remains unavailable if its condition is no longer met')
     player.pulseTokens = 2
     assertEqual(getRecallActions(game, player.id).length, 2, 'Recall usage resets for the next turn')
+
+    game.currentPhase = 'draw'
+    assertEqual(getRecallActions(game, player.id).length, 0, 'Recall is unavailable during Draw/Discard Order')
+    const drawPhaseMessages = activateRecall(game, player.id, 0)
+    assert(drawPhaseMessages.some(message => message.includes('Main Phase')),
+      'The engine rejects direct Recall activation during Draw/Discard Order')
+    assertEqual(player.pulseTokens, 2, 'Rejected Draw Phase Recall does not spend its payment')
 
     game.currentPhase = 'casting'
     assertEqual(getRecallActions(game, player.id).length, 0, 'Recall is unavailable outside the Main Phase')

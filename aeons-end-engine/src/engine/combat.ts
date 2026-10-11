@@ -4,6 +4,10 @@ import { isPresentBreach } from './breaches'
 import { getPlayer } from './zones'
 import { insertCardInstanceAt } from './card-instances'
 import { recordHealthChange } from './health-feedback'
+import {
+  destroyCardFromZone, getBreachAttachedRelicZone, getBreachCardInstanceZone,
+  getNemesisCardInstanceZone, getPlayerCardInstanceZone, moveCardBetweenZones, recordCardMove,
+} from './card-movement'
 
 export function damageNemesis(game: GameState, amount: number): void {
   const value = Math.max(0, amount)
@@ -38,7 +42,11 @@ export function dealDamage(game: GameState, target: DamageTargetRef, amount: num
   )
   if (!minion) return `Target ${target.label} is no longer in play`
   const definition = getCard(minion.cardId) as NemesisCardDef
-  const reducedValue = Math.max(1, value - Math.max(0, definition.damageReductionPerInstance ?? 0))
+  // Damage reduction cannot turn a positive hit into less than 1 damage, but
+  // it must not create damage when the original damage instance is zero.
+  const reducedValue = value > 0
+    ? Math.max(1, value - Math.max(0, definition.damageReductionPerInstance ?? 0))
+    : 0
   const resolvedValue = definition.damagePerInstance === undefined
     ? reducedValue
     : Math.min(reducedValue, Math.max(0, definition.damagePerInstance))
@@ -46,12 +54,17 @@ export function dealDamage(game: GameState, target: DamageTargetRef, amount: num
   recordHealthChange(game, { kind: 'damage', targetId: `minion:${minion.placedAt}`, amount: resolvedValue })
   minion.lifeTokens = Math.max(0, before - resolvedValue)
   if (minion.lifeTokens === 0) {
+    const playIndex = game.nemesis.playArea.indexOf(minion)
+    const instanceId = minion.instanceId ?? `${minion.cardId}:${minion.placedAt}`
     game.nemesis.playArea = game.nemesis.playArea.filter(card => card !== minion)
-    insertCardInstanceAt(game, game.nemesis.discard, game.nemesis.discardInstanceIds ??= [], {
-      cardId: minion.cardId,
-      instanceId: minion.instanceId ?? `${minion.cardId}:${minion.placedAt}`,
-      revealed: true,
+    const discard = getNemesisCardInstanceZone(game, 'nemesis_discard')
+    insertCardInstanceAt(game, discard.cards, discard.instanceIds, {
+      cardId: minion.cardId, instanceId, revealed: true,
     }, 0, true)
+    minion.instanceId = instanceId
+    recordCardMove(game, instanceId, minion.cardId,
+      { zoneId: 'nemesis:play_area', zone: 'nemesis_play_area', ownerId: 'nemesis', index: playIndex },
+      { zoneId: discard.zoneId, zone: discard.zone, ownerId: discard.ownerId, index: 0 }, 'effect')
     return `${target.label} takes ${before} damage and is defeated`
   }
   return `${target.label} takes ${before - minion.lifeTokens} damage (${minion.lifeTokens} life remaining)`
@@ -107,13 +120,17 @@ export function checkPlayerDeath(game: GameState, playerId: string, deferConsequ
       )
       if (openBreach) {
         openBreach.opened = false
+        const spells = getBreachCardInstanceZone(game, player.id, openBreach.index)
+        for (let index = spells.cards.length - 1; index >= 0; index -= 1) {
+          destroyCardFromZone(game, spells, index, 'destroy', false)
+        }
         openBreach.prepSpells = []
         openBreach.preppedThisTurn = []
         openBreach.preppedSpellFaceDown = []
-        openBreach.preppedSpellInstanceIds = []
         if (openBreach.attachedRelic) {
-          getPlayer(game, openBreach.attachedRelic.ownerId).discard.unshift(openBreach.attachedRelic.cardId)
-          openBreach.attachedRelic = undefined
+          const attachment = getBreachAttachedRelicZone(game, player.id, openBreach.index)
+          const discard = getPlayerCardInstanceZone(game, openBreach.attachedRelic.ownerId, 'discard')
+          if (attachment) moveCardBetweenZones(game, attachment, 0, discard, 0, 'destroy')
         }
         openBreach.present = false
       }

@@ -65,9 +65,17 @@ test('Nemesis turn continuation waits for Crooked Mask Corruption to fly to a Ma
   await page.locator('.player-target-option').first().click()
   const flight = page.locator('.card-flight-clone')
   await expect(flight).toBeVisible()
+  const flightInstanceId = await flight.getAttribute('data-card-flight-instance-id')
+  expect(flightInstanceId).toBeTruthy()
   await expect(page.locator('.turn-order-cards .slot.current')).toHaveAttribute('aria-label', 'NEM turn')
 
   await flight.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
   await expect(flight).toHaveCount(0)
   await expect(page.locator('.turn-order-cards .slot.current')).not.toHaveAttribute('aria-label', 'NEM turn')
+  await page.keyboard.press('Control+d')
+  const stateField = page.locator('.debug-panel textarea')
+  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
+  const settledGame = JSON.parse(await stateField.inputValue()).game
+  expect(settledGame.players.some((player: { deckInstanceIds?: string[] }) =>
+    player.deckInstanceIds?.includes(flightInstanceId!))).toBe(true)
 })

@@ -1,4 +1,4 @@
-import type { BreachState, CardZone, PlayerState, PlayerTurnEffects } from '../types'
+import type { CardZone, PlayerState, PlayerTurnEffects } from '../types'
 import { MAGES } from '../data'
 
 export const MAX_PULSE_TOKENS = 5
@@ -27,28 +27,6 @@ function ensureHandPreppedSpellInstanceIds(player: PlayerState): Array<string | 
   return player.handPreppedSpellInstanceIds
 }
 
-export function addCardToHand(player: PlayerState, cardId: string, preppedSpellInstanceId: string | null = null): void {
-  const instanceIds = ensureHandPreppedSpellInstanceIds(player)
-  player.hand.push(cardId)
-  instanceIds.push(preppedSpellInstanceId)
-}
-
-export function addCardsToHand(player: PlayerState, cardIds: string[]): void {
-  if (cardIds.length === 0) return
-  const instanceIds = ensureHandPreppedSpellInstanceIds(player)
-  player.hand.push(...cardIds)
-  instanceIds.push(...cardIds.map(() => null))
-}
-
-export function removeCardFromHand(player: PlayerState, index: number): { cardId: string | null; preppedSpellInstanceId: string | null } {
-  const instanceIds = ensureHandPreppedSpellInstanceIds(player)
-  if (index < 0 || index >= player.hand.length) return { cardId: null, preppedSpellInstanceId: null }
-  return {
-    cardId: player.hand.splice(index, 1)[0] ?? null,
-    preppedSpellInstanceId: instanceIds.splice(index, 1)[0] ?? null,
-  }
-}
-
 export function preppedSpellEffectMarker(instanceId: string, phase: string, blockIndex: number): string {
   return `prepped-spell:${instanceId}:${phase}:${blockIndex}`
 }
@@ -66,16 +44,6 @@ export function hasUsedPreppedSpellEffect(
   if (!usedMarkers.some(used => used.startsWith(legacyPrefix) && used.endsWith(legacySuffix))) return false
   usedMarkers.push(marker)
   return true
-}
-
-export function removePreppedSpellAt(breach: BreachState, spellIndex: number): string | null {
-  const cardId = breach.prepSpells[spellIndex]
-  if (!cardId) return null
-  breach.prepSpells.splice(spellIndex, 1)
-  breach.preppedThisTurn?.splice(spellIndex, 1)
-  breach.preppedSpellFaceDown?.splice(spellIndex, 1)
-  breach.preppedSpellInstanceIds?.splice(spellIndex, 1)
-  return cardId
 }
 
 export function ensurePlayerCollections(player: PlayerState): void {

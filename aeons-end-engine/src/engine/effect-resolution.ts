@@ -2,17 +2,23 @@ import type { BreachChoice, CardEffect, CardEffectOption, CardSelectionSource, C
 import type { SpendType } from './aether'
 import type { EffectResolutionServices } from '../engine'
 import { gainPlayerCharge } from './charge-feedback'
-import { addCardToHand, addCardsToHand } from './player-state'
 import {
-  drawPlayerDeckCards, preparePlayerDeckForRevealWithInstances, putPlayerCardInDeck,
+  getPlayer, preparePlayerDeckForRevealWithInstances, putPlayerCardInDeck,
   rememberOwnedTrinketInstance, returnCorruptionToBottom,
   shufflePlayerDiscardIntoDeck, shufflePlayerHandIntoDeck, takeCorruptionFromDeck,
-  takeOwnedTrinketInstance, takePlayerDeckCard,
+  takeOwnedTrinketInstance,
 } from './zones'
 import {
   createCardInstance, ensureCardInstanceZone, findCardInstanceId, insertCardInstanceAt, markCardInstanceRevealed,
   removeCardInstanceAt,
 } from './card-instances'
+import {
+  createCardInZone, destroyCardFromZone, getBreachCardInstanceZone,
+  drawPlayerCardsToHand, getNemesisCardInstanceZone, getPlayerCardInstanceZone, moveCardBetweenZones,
+  placeTemporaryCardInZone, recordCardDestruction, recordCardMove, recordCardTemporary,
+} from './card-movement'
+import { availableCardEffectOptionIds } from './effect-conditions'
+import { retainFullyResolvableOrMaximumTargets } from './targets'
 
 export function createEffectResolver(services: EffectResolutionServices) {
   const {
@@ -42,7 +48,6 @@ export function createEffectResolver(services: EffectResolutionServices) {
     dealNemesisTargetDamage,
     destroyCard,
     destroyExhaustedBreach,
-    destroyOwnedCard,
     devourMarketPile,
     discardCollectiveCards,
     discardCompletedNemesisCard,
@@ -103,10 +108,6 @@ export function createEffectResolver(services: EffectResolutionServices) {
     queuePlayerExhaustion,
     rememberSpecificDeckCard,
     rememberSpecificDeckTop,
-    removeCardFromHand,
-    removePlayerCardFromPlay,
-    removePreppedSpellAt,
-    removeResolvingCardForSwap,
     replenishTurnOrderDeckForReveal,
     resetBreachToStartingPosition,
     resolveSimultaneousEffectGroups,
@@ -172,14 +173,20 @@ export function createEffectResolver(services: EffectResolutionServices) {
       let gained = 0
       let missed = 0
       for (let index = 0; index < amount; index++) {
-        const corruptionId = takeCorruptionFromDeck(g)
+        const corruptionDeck = getNemesisCardInstanceZone(g, 'corruption_deck')
+        const corruptionId = corruptionDeck.cards[0]
         if (!corruptionId) {
           missed++
           continue
         }
-        if (effect.destination === 'hand') addCardToHand(recipient, corruptionId)
-        else if (effect.destination === 'deck_top') putPlayerCardInDeck(g, recipient, corruptionId, 'top')
-        else putPlayerCardInDeck(g, recipient, corruptionId, 'bottom')
+        const destination = effect.destination === 'hand'
+          ? getPlayerCardInstanceZone(g, recipient.id, 'hand')
+          : getPlayerCardInstanceZone(g, recipient.id, 'deck')
+        const destinationIndex = effect.destination === 'deck_bottom' ? destination.cards.length
+          : effect.destination === 'hand' ? destination.cards.length : 0
+        moveCardBetweenZones(g, corruptionDeck, 0, destination, destinationIndex, 'gain', {
+          hide: effect.destination !== 'hand',
+        })
         gained++
       }
       if (gained) messages.push(`${recipient.mageType} gains ${gained} Corruption(s) to ${effect.destination === 'hand' ? 'their hand' : `the ${effect.destination === 'deck_top' ? 'top' : 'bottom'} of their deck`}`)
@@ -201,11 +208,19 @@ export function createEffectResolver(services: EffectResolutionServices) {
       const targets = g.players.map(player => ({ kind: 'player' as const, playerId: player.id }))
       if (targets.length === 1) {
         const recipient = getPlayer(g, targets[0]!.playerId)
-        const corruptionId = takeCorruptionFromDeck(g)
+        const corruptionDeck = getNemesisCardInstanceZone(g, 'corruption_deck')
+        const corruptionId = corruptionDeck.cards[0]
         if (!corruptionId) messages.push(dealDamage(g, { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' }, 2))
-        else if (effect.destination === 'hand') addCardToHand(recipient, corruptionId)
-        else if (effect.destination === 'deck_top') putPlayerCardInDeck(g, recipient, corruptionId, 'top')
-        else putPlayerCardInDeck(g, recipient, corruptionId, 'bottom')
+        else {
+          const destination = effect.destination === 'hand'
+            ? getPlayerCardInstanceZone(g, recipient.id, 'hand')
+            : getPlayerCardInstanceZone(g, recipient.id, 'deck')
+          const destinationIndex = effect.destination === 'deck_bottom' ? destination.cards.length
+            : effect.destination === 'hand' ? destination.cards.length : 0
+          moveCardBetweenZones(g, corruptionDeck, 0, destination, destinationIndex, 'gain', {
+            hide: effect.destination !== 'hand',
+          })
+        }
         resolution.remainingCorruptionGains = remaining - 1
         addRemainingEffects(resolution, [effect])
         continue
@@ -267,8 +282,27 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'destroy_source_corruption' || effect.kind === 'return_source_corruption') {
-      const cardId = effect.kind === 'destroy_source_corruption' ? resolution.sourceCardId : effect.cardId
-      if (cardId && getCard(cardId).type === 'corruption' && g.nemesis.corruptionDeck) {
+      const resolving = effect.kind === 'destroy_source_corruption' ? resolution.resolvingCorruption : undefined
+      const cardId = resolving?.cardId ?? (effect.kind === 'destroy_source_corruption' ? resolution.sourceCardId : effect.cardId)
+      if (resolving) {
+        const source = {
+          zoneId: `temporary:corruption:${resolving.playerId}`,
+          zone: 'temporary' as const, ownerId: resolving.playerId, index: 0,
+        }
+        if (g.nemesis.type === 'crooked_mask' && g.nemesis.corruptionDeck) {
+          const corruption = getNemesisCardInstanceZone(g, 'corruption_deck')
+          placeTemporaryCardInZone(g, resolving.instanceId, resolving.cardId, source,
+            corruption, corruption.cards.length, 'return', true)
+          messages.push(`Returned ${getCard(resolving.cardId).name} to the bottom of the Corruption deck`)
+        } else {
+          const owner = getPlayer(g, resolving.playerId)
+          owner.destroyedCards.push(resolving.cardId)
+          owner.destroyedCardInstanceIds ??= []
+          owner.destroyedCardInstanceIds.push(resolving.instanceId)
+          recordCardDestruction(g, resolving.instanceId, resolving.cardId, source, 'destroy')
+        }
+        resolution.resolvingCorruption = undefined
+      } else if (cardId && getCard(cardId).type === 'corruption' && g.nemesis.corruptionDeck) {
         returnCorruptionToBottom(g, cardId)
         messages.push(`Returned ${getCard(cardId).name} to the bottom of the Corruption deck`)
       }
@@ -423,7 +457,11 @@ export function createEffectResolver(services: EffectResolutionServices) {
         const card = getCard(cardId)
         return card.type === 'gem' && card.name.trim().toLowerCase() === 'crystal' ? [index] : []
       })
-      for (const index of crystalIndices.sort((a, b) => b - a)) target.discard.unshift(target.hand.splice(index, 1)[0]!)
+      const handZone = getPlayerCardInstanceZone(g, target.id, 'hand')
+      const discardZone = getPlayerCardInstanceZone(g, target.id, 'discard')
+      for (const index of crystalIndices.sort((a, b) => b - a)) {
+        moveCardBetweenZones(g, handZone, index, discardZone, 0, 'discard')
+      }
       resolution.effectPlayerId = target.id
       resolution.selectedActionPlayerId = undefined
       messages.push(`${target.mageType} discards ${crystalIndices.length} Crystal(s)`)
@@ -437,13 +475,14 @@ export function createEffectResolver(services: EffectResolutionServices) {
     if (effect.kind === 'discard_nemesis_top_cards') {
       let tierThree = 0
       const discarded: string[] = []
+      const deck = getNemesisCardInstanceZone(g, 'nemesis_deck')
+      const discard = getNemesisCardInstanceZone(g, 'nemesis_discard')
       for (let index = 0; index < Math.max(0, effect.amount); index++) {
-        const removed = removeCardInstanceAt(g, g.nemesis.deck, g.nemesis.deckInstanceIds ??= [], 0)
-        const cardId = removed?.cardId
-        if (!cardId || !removed) break
+        const moved = moveCardBetweenZones(g, deck, 0, discard, 0, 'effect')
+        const cardId = moved?.cardId
+        if (!cardId || !moved) break
         discarded.push(cardId)
         if ((getCard(cardId) as NemesisCardDef).tier === 3) tierThree++
-        insertCardInstanceAt(g, g.nemesis.discard, g.nemesis.discardInstanceIds ??= [], removed, 0, true)
       }
       messages.push(discarded.length ? `Discarded ${discarded.map(id => getCard(id).name).join(', ')} from the Nemesis deck` : 'The Nemesis deck has no cards to discard')
       if (tierThree > 0) messages.push(dealDamage(g, { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' }, tierThree * effect.graveholdDamagePerTierThree))
@@ -455,12 +494,14 @@ export function createEffectResolver(services: EffectResolutionServices) {
         const requested = Math.max(0, effect.corruptionAmount)
         let gained = 0
         for (let index = 0; index < requested; index++) {
-          const corruptionId = takeCorruptionFromDeck(g)
+          const corruptionDeck = getNemesisCardInstanceZone(g, 'corruption_deck')
+          const corruptionId = corruptionDeck.cards[0]
           if (!corruptionId) {
             messages.push(dealDamage(g, { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' }, 2))
             continue
           }
-          putPlayerCardInDeck(g, recipient, corruptionId, 'top')
+          const deck = getPlayerCardInstanceZone(g, recipient.id, 'deck')
+          moveCardBetweenZones(g, corruptionDeck, 0, deck, 0, 'gain', { hide: true })
           gained++
         }
         if (gained) messages.push(`${recipient.mageType} gains ${gained} Corruption(s) on top of their deck`)
@@ -472,7 +513,11 @@ export function createEffectResolver(services: EffectResolutionServices) {
     if (effect.kind === 'discard_noncorruptions_and_gain_corruptions') {
       let targetId = resolution.selectedActionPlayerId
       if (!targetId) {
-        const targets = getPlayerTargets(g, currentPlayerId, 'any_player')
+        let targets = getPlayerTargets(g, currentPlayerId, 'any_player')
+        if (effect.targetAvailability === 'full_or_max') {
+          targets = retainFullyResolvableOrMaximumTargets(targets, effect.discardAmount, target =>
+            getCardChoices(g, target.playerId, 'hand').filter(choice => getCard(choice.cardId).type !== 'corruption').length)
+        }
         if (targets.length > 1) {
           const decision = createDecision(g, 'Choose a player to discard non-Corruption cards', 'select_player_target', { targets }, resolution.sourceCardId)
           messages.push(...pauseEffect(g, resolution, effect, decision))
@@ -555,16 +600,16 @@ export function createEffectResolver(services: EffectResolutionServices) {
         return messages
       }
       const removed = discardCollectiveCards(g, candidates)
-      const trinkets = ensureTrinketDeckState(g)
+      const trinketDeck = getNemesisCardInstanceZone(g, 'trinket_deck')
       for (let index = 0; index < removed.length; index++) {
         const selected = candidates[index]
-        const cardId = trinkets.cards.shift()
-        trinkets.revealed.shift()
-        const instanceId = trinkets.instanceIds.shift()
+        const cardId = trinketDeck.cards[0]
+        const instanceId = trinketDeck.instanceIds[0]
         if (selected && cardId) {
           const recipient = getPlayer(g, selected.playerId)
-          addCardToHand(recipient, cardId)
-          if (instanceId) rememberOwnedTrinketInstance(recipient, instanceId)
+          const hand = getPlayerCardInstanceZone(g, recipient.id, 'hand')
+          const moved = moveCardBetweenZones(g, trinketDeck, 0, hand, hand.cards.length, 'gain')
+          if (moved) rememberOwnedTrinketInstance(recipient, instanceId ?? moved.instanceId)
         }
       }
       messages.push(`Discarded ${removed.map(id => getCard(id).name).join(', ')}; each player gains a Trinket into hand`)
@@ -572,7 +617,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'return_three_minions_from_nemesis_discard') {
-      g.nemesis.discardInstanceIds ??= []
+      const nemesisDiscard = getNemesisCardInstanceZone(g, 'nemesis_discard')
       const selected = g.nemesis.discard.flatMap((cardId, index) => getCard(cardId).type === 'minion' ? [{ cardId, index }] : []).slice(0, 3)
       if (selected.length === 0) {
         messages.push('No Minions are in the Nemesis discard pile')
@@ -580,7 +625,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
       }
       const removedByIndex = new Map<number, { cardId: string; instanceId: string; revealed: boolean }>()
       for (const item of [...selected].sort((left, right) => right.index - left.index)) {
-        const removed = removeCardInstanceAt(g, g.nemesis.discard, g.nemesis.discardInstanceIds, item.index)
+        const removed = removeCardInstanceAt(g, nemesisDiscard.cards, nemesisDiscard.instanceIds, item.index)
         if (removed) removedByIndex.set(item.index, removed)
       }
       for (const item of selected) {
@@ -595,6 +640,10 @@ export function createEffectResolver(services: EffectResolutionServices) {
           enteredOnNemesisTurn: g.nemesis.nemesisTurnNumber, lifeTokens: definition.life ?? 0,
           ...(definition.nemesisTokens != null ? { nemesisTokens: definition.nemesisTokens } : {}),
         })
+        recordCardMove(g, removed.instanceId, item.cardId,
+          { zoneId: nemesisDiscard.zoneId, zone: 'nemesis_discard', ownerId: 'nemesis', index: item.index },
+          { zoneId: 'nemesis:play_area', zone: 'nemesis_play_area', ownerId: 'nemesis', index: g.nemesis.playArea.length - 1 },
+          'return')
       }
       messages.push(`Returned ${selected.map(item => getCard(item.cardId).name).join(', ')} to play without resolving Persistent`)
       continue
@@ -845,17 +894,19 @@ export function createEffectResolver(services: EffectResolutionServices) {
       }
       const recipient = getPlayer(g, targets[0]!.playerId)
       resolution.effectPlayerId = recipient.id
-      const { cards, revealed, instanceIds } = ensureTrinketDeckState(g)
+      const trinketDeck = getNemesisCardInstanceZone(g, 'trinket_deck')
       const amount = Math.max(0, Math.floor(effect.amount))
       const gainedCards: string[] = []
       for (let index = 0; index < amount; index++) {
-        const cardId = cards.shift()
+        const cardId = trinketDeck.cards[0]
         if (!cardId) break
-        revealed.shift()
-        const instanceId = instanceIds.shift()
-        if (instanceId) rememberOwnedTrinketInstance(recipient, instanceId)
-        if (effect.destination === 'deck_top') putPlayerCardInDeck(g, recipient, cardId, 'top')
-        else recipient.discard.unshift(cardId)
+        const instanceId = trinketDeck.instanceIds[0]
+        const targetZone = effect.destination === 'deck_top'
+          ? getPlayerCardInstanceZone(g, recipient.id, 'deck')
+          : getPlayerCardInstanceZone(g, recipient.id, 'discard')
+        const moved = moveCardBetweenZones(g, trinketDeck, 0, targetZone, 0, 'gain')
+        if (!moved) break
+        rememberOwnedTrinketInstance(recipient, instanceId ?? moved.instanceId)
         gainedCards.push(cardId)
       }
       const destination = effect.destination === 'deck_top' ? 'deck' : 'discard pile'
@@ -867,9 +918,10 @@ export function createEffectResolver(services: EffectResolutionServices) {
         const source: 'discard' | 'deck' = effect.destination === 'deck_top' ? 'deck' : 'discard'
         const choices = [...new Set(gainedCards)]
         if (choices.length === 1) {
-          const cardsInDestination = source === 'deck' ? recipient.deck : recipient.discard
-          const index = cardsInDestination.indexOf(choices[0]!)
-          if (index >= 0) addCardToHand(recipient, cardsInDestination.splice(index, 1)[0]!)
+          const sourceZone = getPlayerCardInstanceZone(g, recipient.id, source)
+          const index = sourceZone.cards.indexOf(choices[0]!)
+          const handZone = getPlayerCardInstanceZone(g, recipient.id, 'hand')
+          if (index >= 0) moveCardBetweenZones(g, sourceZone, index, handZone, handZone.cards.length, 'gain')
         } else {
           const chooseTrinket: CardEffect = {
             kind: 'choose_one',
@@ -905,7 +957,9 @@ export function createEffectResolver(services: EffectResolutionServices) {
         messages.push('The selected Trinket is no longer in its destination pile')
         continue
       }
-      addCardToHand(owner, source.splice(index, 1)[0]!)
+      const sourceZone = getPlayerCardInstanceZone(g, owner.id, effect.source)
+      const hand = getPlayerCardInstanceZone(g, owner.id, 'hand')
+      moveCardBetweenZones(g, sourceZone, index, hand, hand.cards.length, 'gain')
       messages.push(`${getCard(effect.cardId).name} is put into ${owner.mageType}'s hand`)
       continue
     }
@@ -924,15 +978,18 @@ export function createEffectResolver(services: EffectResolutionServices) {
       }
       const deckOwner = getPlayer(g,
         resolution.sourceCardOwnerId ?? resolution.sourcePlayerId ?? currentPlayerId)
-      const cardId = deckOwner.specificDeck?.shift()
+      const specificDeck = getPlayerCardInstanceZone(g, deckOwner.id, 'specific_deck')
+      const cardId = specificDeck.cards[0]
       if (!cardId) {
         messages.push(`${MAGES[deckOwner.mageType]?.specificDeckName ?? 'Mage-specific deck'} is empty`)
         continue
       }
       forgetSpecificDeckCard(deckOwner, cardId)
       const receiver = getPlayer(g, targets[0]!.playerId)
-      if (effect.destination === 'deck_top') putPlayerCardInDeck(g, receiver, cardId, 'top')
-      else receiver.discard.unshift(cardId)
+      const targetZone = effect.destination === 'deck_top'
+        ? getPlayerCardInstanceZone(g, receiver.id, 'deck')
+        : getPlayerCardInstanceZone(g, receiver.id, 'discard')
+      moveCardBetweenZones(g, specificDeck, 0, targetZone, 0, 'gain')
       messages.push(`${receiver.mageType} gains ${getCard(cardId).name} to their ${effect.destination === 'deck_top' ? 'deck' : 'discard pile'}`)
       continue
     }
@@ -957,11 +1014,10 @@ export function createEffectResolver(services: EffectResolutionServices) {
         continue
       }
       spendAether(p, 5, spendType)
-      p.specificDeckInstanceIds = ensureCardInstanceZone(g, p.specificDeck!, p.specificDeckInstanceIds)
-      p.specificDeckInstanceIds.shift()
-      p.specificDeck!.shift()
+      const specificDeck = getPlayerCardInstanceZone(g, p.id, 'specific_deck')
+      const discard = getPlayerCardInstanceZone(g, p.id, 'discard')
+      moveCardBetweenZones(g, specificDeck, 0, discard, 0, 'gain')
       forgetSpecificDeckCard(p, cardId)
-      p.discard.unshift(cardId)
       messages.push(`Gained ${getCard(cardId).name} from the Firethorn deck for 5 Aether`)
       continue
     }
@@ -975,12 +1031,8 @@ export function createEffectResolver(services: EffectResolutionServices) {
         continue
       }
       rememberSpecificDeckCard(g, deckOwner, cardId, 0)
-      const instanceIds = ensureCardInstanceZone(g, deckOwner.specificDeck!, deckOwner.specificDeckInstanceIds)
-      deckOwner.specificDeckInstanceIds = instanceIds
-      const topInstanceId = instanceIds.shift()
-      deckOwner.specificDeck!.shift()
-      deckOwner.specificDeck!.push(cardId)
-      if (topInstanceId) instanceIds.push(topInstanceId)
+      const specificDeck = getPlayerCardInstanceZone(g, deckOwner.id, 'specific_deck')
+      moveCardBetweenZones(g, specificDeck, 0, specificDeck, specificDeck.cards.length, 'reorder')
       rememberSpecificDeckTop(g, deckOwner)
       messages.push(`Put ${getCard(cardId).name} on the bottom of Tressa's Vault`)
       continue
@@ -1010,21 +1062,23 @@ export function createEffectResolver(services: EffectResolutionServices) {
       const incomingTop = owner.specificDeck![0]!
       rememberSpecificDeckCard(g, owner, incomingTop, 0)
       rememberSpecificDeckTop(g, owner)
-      const instanceIds = ensureCardInstanceZone(g, owner.specificDeck!, owner.specificDeckInstanceIds)
-      owner.specificDeckInstanceIds = instanceIds
-      instanceIds.shift()
-      const incoming = owner.specificDeck!.shift()!
-      owner.specificDeck!.push(chosen.cardId)
-      owner.specificDeckInstanceIds = ensureCardInstanceZone(g, owner.specificDeck!, instanceIds)
-      rememberSpecificDeckCard(g, owner, chosen.cardId, owner.specificDeck!.length - 1)
-      owner.playerCardsInPlay!.splice(chosen.index, 1)
-      owner.playerCardSupplyTargets?.splice(chosen.index, 1)
-      owner.playerCardPowerTokens?.splice(chosen.index, 1)
+      const specificDeck = getPlayerCardInstanceZone(g, owner.id, 'specific_deck')
+      const inPlay = getPlayerCardInstanceZone(g, owner.id, 'player_cards_in_play')
+      const returnedInstanceId = inPlay.instanceIds[chosen.index]
+      const incoming = moveCardBetweenZones(g, specificDeck, 0, inPlay, inPlay.cards.length, 'effect')
+      if (!incoming || !returnedInstanceId) {
+        messages.push('The level-3 Treasure or Vault card is no longer available')
+        continue
+      }
+      const returnedIndex = inPlay.instanceIds.indexOf(returnedInstanceId)
+      moveCardBetweenZones(g, inPlay, returnedIndex, specificDeck, specificDeck.cards.length, 'effect')
+      rememberSpecificDeckCard(g, owner, chosen.cardId, specificDeck.cards.length - 1)
       rememberSpecificDeckTop(g, owner)
       addRemainingEffects(resolution, putPlayerCardIntoPlay(
-        g, owner.id, incoming, resolution.sourcePlayerId ?? currentPlayerId, captureEffectContext(resolution),
+        g, owner.id, incoming.cardId, resolution.sourcePlayerId ?? currentPlayerId,
+        captureEffectContext(resolution), incoming.instanceId,
       ))
-      messages.push(`Exchanged ${chosen.cardName} for ${getCard(incoming).name} from Tressa's Vault`)
+      messages.push(`Exchanged ${chosen.cardName} for ${getCard(incoming.cardId).name} from Tressa's Vault`)
       continue
     }
 
@@ -1190,11 +1244,14 @@ export function createEffectResolver(services: EffectResolutionServices) {
       resolution.conjureTargetPlayerId = undefined
       const owner = getPlayer(g, conjurerId!)
       preparePlayerDeckForRevealWithInstances(g, owner, 1)
-      const cardId = takePlayerDeckCard(g, owner)
-      if (!cardId) {
+      const deck = getPlayerCardInstanceZone(g, owner.id, 'deck')
+      const removed = removeCardInstanceAt(g, deck.cards, deck.instanceIds, 0)
+      if (!removed) {
         messages.push(`${owner.mageType} has no card available to Conjure`)
         continue
       }
+      markCardInstanceRevealed(g, removed.instanceId)
+      const cardId = removed.cardId
       const candidates: BreachChoice[] = owner.breaches
         .filter(breach => canConjureToBreach(g, owner, breach, effect.breachEligibility))
         .map(breach => ({
@@ -1205,7 +1262,10 @@ export function createEffectResolver(services: EffectResolutionServices) {
           focusCount: breach.focusCount,
           focusToOpen: breach.focusToOpen,
         }))
-      resolution.conjuredCard = { playerId: owner.id, cardId }
+      resolution.conjuredCard = { playerId: owner.id, cardId, instanceId: removed.instanceId }
+      recordCardTemporary(g, removed.instanceId, cardId,
+        { zoneId: deck.zoneId, zone: 'deck', ownerId: owner.id, index: 0 },
+        { zoneId: `temporary:conjure:${owner.id}`, zone: 'temporary', ownerId: owner.id, index: 0 })
       const prompt = owner.id === currentPlayerId
         ? `Conjure: look at ${getCard(cardId).name} from the top of your deck`
         : `${owner.mageType} Conjures: look at ${getCard(cardId).name} from the top of their deck`
@@ -1262,7 +1322,9 @@ export function createEffectResolver(services: EffectResolutionServices) {
         messages.push('The source card is no longer in the discard pile')
         continue
       }
-      addCardToHand(owner, owner.discard.splice(index, 1)[0]!)
+      const discard = getPlayerCardInstanceZone(g, owner.id, 'discard')
+      const hand = getPlayerCardInstanceZone(g, owner.id, 'hand')
+      moveCardBetweenZones(g, discard, index, hand, hand.cards.length, 'return')
       messages.push(`Returned ${getCard(resolution.sourceCardId).name} to hand`)
       continue
     }
@@ -1319,12 +1381,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
       // Cast text. This mirrors the timing used for spells cast from Breaches.
       const discardThisCast = effect.remaining <= 1
       if (discardThisCast) {
-        const removed = removeCardFromHand(owner, index)
-        if (removed.cardId !== effect.cardId) {
+        const hand = getPlayerCardInstanceZone(g, owner.id, 'hand')
+        const discard = getPlayerCardInstanceZone(g, owner.id, 'discard')
+        const moved = moveCardBetweenZones(g, hand, index, discard, 0, 'cast_spell')
+        if (moved?.cardId !== effect.cardId) {
           messages.push('The selected ally spell is no longer in hand')
           continue
         }
-        owner.discard.unshift(removed.cardId)
       }
       const outerContext = captureEffectContext(resolution)
       const casterPlayerId = resolution.sourcePlayerId ?? currentPlayerId
@@ -1485,7 +1548,9 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'return_strike_card') {
-      returnStrikeCardToDeck(g, effect.cardId)
+      returnStrikeCardToDeck(g, effect.cardId, resolution.revealedStrikeCardInstanceId)
+      resolution.revealedStrikeCardId = undefined
+      resolution.revealedStrikeCardInstanceId = undefined
       messages.push(`Returned Strike ${getCard(effect.cardId).name} to the Strike deck`)
       continue
     }
@@ -1721,14 +1786,14 @@ export function createEffectResolver(services: EffectResolutionServices) {
         messages.push('The played Trinket is no longer available to return')
         continue
       }
-      owner.playedThisTurn.splice(playedIndex, 1)
-      const { cards, revealed, instanceIds } = ensureTrinketDeckState(g)
-      const returnedInstanceId = takeOwnedTrinketInstance(g, owner, cardId)
-        ?? createCardInstance(g, cardId, true).instanceId
-      markCardInstanceRevealed(g, returnedInstanceId)
-      cards.push(cardId)
-      revealed.push(true)
-      instanceIds.push(returnedInstanceId)
+      const played = getPlayerCardInstanceZone(g, owner.id, 'played_this_turn')
+      const trinketDeck = getNemesisCardInstanceZone(g, 'trinket_deck')
+      const returnedInstanceId = played.instanceIds[playedIndex]
+      if (returnedInstanceId) {
+        const ownedIndex = owner.trinketInstanceIds?.indexOf(returnedInstanceId) ?? -1
+        if (ownedIndex >= 0) owner.trinketInstanceIds!.splice(ownedIndex, 1)
+      }
+      moveCardBetweenZones(g, played, playedIndex, trinketDeck, trinketDeck.cards.length, 'return')
       messages.push(`Returned ${getCard(cardId).name} to the bottom of the Trinket deck`)
       continue
     }
@@ -1816,7 +1881,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'lose_all_charge') {
-      const targets = getEffectPlayerTargets(g, resolution, currentPlayerId, effect.target)
+      const targets = getEffectPlayerTargets(g, resolution, currentPlayerId, effect.target, effect.selection)
       if (targets.length > 1) {
         const decision = createDecision(g, 'Choose a player to lose all charge',
           'select_player_target', { targets }, resolution.sourceCardId,
@@ -1844,12 +1909,17 @@ export function createEffectResolver(services: EffectResolutionServices) {
       const placedAt = (g.nemesis.cardInstanceCounter ?? 0) + 1
       g.nemesis.cardInstanceCounter = placedAt
       createCardInstance(g, cardId, true, removed.instanceId)
+      const sourceIndex = index
       g.nemesis.playArea.push({
         cardId, cardType: 'minion', placedAt, instanceId: removed.instanceId,
         enteredOnNemesisTurn: g.nemesis.nemesisTurnNumber,
         lifeTokens: definition.life ?? 0,
         ...(definition.nemesisTokens != null ? { nemesisTokens: definition.nemesisTokens } : {}),
       })
+      recordCardMove(g, removed.instanceId, cardId,
+        { zoneId: 'nemesis:nemesis_discard', zone: 'nemesis_discard', ownerId: 'nemesis', index: sourceIndex },
+        { zoneId: 'nemesis:play_area', zone: 'nemesis_play_area', ownerId: 'nemesis', index: g.nemesis.playArea.length - 1 },
+        'return')
       messages.push(`Returned Minion ${definition.name} to play`)
       continue
     }
@@ -2003,8 +2073,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         return messages
       }
       const target = getPlayer(g, targets[0]!.playerId)
-      const drawnCards = drawPlayerDeckCards(g, target, Math.max(0, effect.drawAmount))
-      addCardsToHand(target, drawnCards)
+      const drawnCards = drawPlayerCardsToHand(g, target.id, Math.max(0, effect.drawAmount))
       if (g.currentTurn === target.id && (g.currentPhase === 'casting' || g.currentPhase === 'main')) {
         target.corruptionsDrawnThisTurn ??= []
         target.corruptionsDrawnThisTurn.push(...drawnCards.filter(cardId => getCard(cardId).type === 'corruption'))
@@ -2234,9 +2303,22 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'lose_charge') {
-      const amount = Math.min(Math.max(0, effect.amount), p.charge)
-      p.charge -= amount
-      messages.push(`${p.mageType} loses ${amount} charge (${p.charge}/${p.chargeThreshold})`)
+      let targets = getEffectPlayerTargets(g, resolution, currentPlayerId, effect.target ?? 'self')
+      if (effect.targetAvailability === 'full_or_max') {
+        targets = retainFullyResolvableOrMaximumTargets(targets, effect.amount, target =>
+          getPlayer(g, target.playerId).charge)
+      }
+      if (targets.length > 1) {
+        const decision = createDecision(g, 'Choose a player to lose charge', 'select_player_target',
+          { targets }, resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      const target = getPlayer(g, targets[0]?.playerId ?? currentPlayerId)
+      const amount = Math.min(Math.max(0, effect.amount), target.charge)
+      target.charge -= amount
+      messages.push(`${target.mageType} loses ${amount} charge (${target.charge}/${target.chargeThreshold})`)
       continue
     }
 
@@ -2262,7 +2344,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
         continue
       }
       const player = getPlayer(g, currentPlayerId)
-      removeCardFromHand(player, handIndex)
+      const hand = getPlayerCardInstanceZone(g, player.id, 'hand')
+      const played = getPlayerCardInstanceZone(g, player.id, 'played_this_turn')
+      const moved = moveCardBetweenZones(g, hand, handIndex, played, played.cards.length, 'play')
+      if (!moved) {
+        messages.push('The selected card is no longer available')
+        continue
+      }
       const times = Math.max(1, effect.times)
       const instances: CardEffect[] = []
       for (let index = 0; index < times; index++) {
@@ -2281,7 +2369,6 @@ export function createEffectResolver(services: EffectResolutionServices) {
       // Keep the physical card in the played area while its nested on-play
       // effects are resolving. This matters when the replay pauses for a
       // choice (for example Burning Opal) before Unstable Prism destroys it.
-      if (effect.recordPlay !== false) p.playedThisTurn.push(effect.cardId)
       ensurePlayerCollections(p)
       p.cardPlayCountsThisTurn[effect.cardId] = (p.cardPlayCountsThisTurn[effect.cardId] ?? 0) + 1
       const restoreContext = captureEffectContext(resolution)
@@ -2302,9 +2389,8 @@ export function createEffectResolver(services: EffectResolutionServices) {
         messages.push('Played card is no longer available to destroy')
         continue
       }
-      owner.playedThisTurn.splice(index, 1)
-      ensurePlayerCollections(owner)
-      destroyOwnedCard(owner, effect.cardId, g)
+      const played = getPlayerCardInstanceZone(g, owner.id, 'played_this_turn')
+      destroyCardFromZone(g, played, index)
       messages.push(getCard(effect.cardId).returnToSwapZoneOnDestroy
         ? `${getCard(effect.cardId).name} returns to the Swap zone`
         : `Destroyed ${getCard(effect.cardId).name}`)
@@ -2316,11 +2402,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
       // owner's Player cards in play area and must be destroyed there.
       const owner = getPlayer(g,
         effect.playerId ?? resolution.sourceCardOwnerId ?? resolution.sourcePlayerId ?? currentPlayerId)
-      if (!removePlayerCardFromPlay(owner, effect.cardId)) {
+      const inPlay = getPlayerCardInstanceZone(g, owner.id, 'player_cards_in_play')
+      const index = inPlay.cards.lastIndexOf(effect.cardId)
+      if (index < 0) {
         messages.push(`${getCard(effect.cardId).name} is no longer in Player cards in play`)
         continue
       }
-      destroyOwnedCard(owner, effect.cardId, g)
+      destroyCardFromZone(g, inPlay, index)
       messages.push(`Destroyed ${getCard(effect.cardId).name} from Player cards in play`)
       continue
     }
@@ -2364,22 +2452,29 @@ export function createEffectResolver(services: EffectResolutionServices) {
         messages.push('No card is available to swap')
         continue
       }
-      const sourceCard = removeResolvingCardForSwap(p, sourceCardId)
-      if (!sourceCard) {
+      const played = getPlayerCardInstanceZone(g, p.id, 'played_this_turn')
+      const discard = getPlayerCardInstanceZone(g, p.id, 'discard')
+      const swapZone = getPlayerCardInstanceZone(g, p.id, 'swap_zone')
+      const playedIndex = played.cards.lastIndexOf(sourceCardId)
+      const discardIndex = playedIndex >= 0 ? -1 : discard.cards.indexOf(sourceCardId)
+      const sourceZone = playedIndex >= 0 ? played : discard
+      const sourceIndex = playedIndex >= 0 ? playedIndex : discardIndex
+      const incoming = sourceIndex < 0
+        ? undefined
+        : moveCardBetweenZones(g, sourceZone, sourceIndex, swapZone, swapZone.cards.length, 'swap')
+      if (!incoming) {
         messages.push(`${getCard(sourceCardId).name} is no longer available to swap`)
         continue
       }
       ensurePlayerCollections(p)
-      const swapZone = p.swapZone!
-      swapZone.push(sourceCard)
-      const targetIndex = swapZone.indexOf(effect.cardId)
+      const targetIndex = swapZone.cards.indexOf(effect.cardId)
       if (targetIndex < 0) {
-        messages.push(`${getCard(sourceCard).name} enters the Swap zone; ${getCard(effect.cardId).name} is unavailable`)
+        messages.push(`${getCard(incoming.cardId).name} enters the Swap zone; ${getCard(effect.cardId).name} is unavailable`)
         continue
       }
-      const swappedCard = swapZone.splice(targetIndex, 1)[0]!
-      p.discard.unshift(swappedCard)
-      messages.push(`Swapped ${getCard(sourceCard).name} for ${getCard(swappedCard).name}`)
+      const movedOut = moveCardBetweenZones(g, swapZone, targetIndex, discard, 0, 'swap')
+      if (!movedOut) continue
+      messages.push(`Swapped ${getCard(incoming.cardId).name} for ${getCard(movedOut.cardId).name}`)
       continue
     }
 
@@ -2408,7 +2503,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         continue
       }
       if (candidates.length === 1) {
-        const cardId = gainSwapZoneCard(p, candidates[0]!)
+        const cardId = gainSwapZoneCard(g, p, candidates[0]!)
         if (cardId) messages.push(`Gained ${getCard(cardId).name} from the Swap zone`)
         continue
       }
@@ -2532,12 +2627,14 @@ export function createEffectResolver(services: EffectResolutionServices) {
     if (effect.kind === 'move_gained_card') {
       const gained = resolution.lastGainedCardId
       if (gained && p.discard[0] === gained) {
-        p.discard.shift()
+        const discard = getPlayerCardInstanceZone(g, p.id, 'discard')
         if (effect.destination === 'hand') {
-          addCardToHand(p, gained)
+          const hand = getPlayerCardInstanceZone(g, p.id, 'hand')
+          moveCardBetweenZones(g, discard, 0, hand, hand.cards.length, 'gain')
           messages.push(`Moved ${getCard(gained).name} to hand`)
         } else {
-          putPlayerCardInDeck(g, p, gained, 'top')
+          const deck = getPlayerCardInstanceZone(g, p.id, 'deck')
+          moveCardBetweenZones(g, discard, 0, deck, 0, 'gain')
           messages.push(`Moved ${getCard(gained).name} to the top of the deck`)
         }
       } else {
@@ -2649,7 +2746,15 @@ export function createEffectResolver(services: EffectResolutionServices) {
 
     if (effect.kind === 'discard_cards') {
       const targetScope = effect.target ?? 'self'
-      const targets = getEffectPlayerTargets(g, resolution, currentPlayerId, targetScope, effect.selection)
+      let targets = getEffectPlayerTargets(g, resolution, currentPlayerId, targetScope, effect.selection)
+      const candidatesFor = (targetId: string) => getCardChoices(g, targetId, effect.source)
+        .filter(choice => (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
+          (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
+          getCard(choice.cardId).cost >= (effect.minCost ?? 0))
+      if (effect.targetAvailability === 'full_or_max') {
+        targets = retainFullyResolvableOrMaximumTargets(targets, effect.maxAmount ?? effect.amount, target =>
+          candidatesFor(target.playerId).length)
+      }
       if (targets.length > 1) {
         let followupDrawAmount = 0
         if (!effect.restoreToSourceAfterSelection) {
@@ -2672,10 +2777,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
       }
       const discardPlayerId = targets[0]?.playerId ?? currentPlayerId
       resolution.effectPlayerId = discardPlayerId
-      const candidates = getCardChoices(g, discardPlayerId, effect.source)
-        .filter(choice => (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
-          (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
-          getCard(choice.cardId).cost >= (effect.minCost ?? 0))
+      const candidates = candidatesFor(discardPlayerId)
       const fixedAmount = effect.minAmount === undefined && effect.maxAmount === undefined
       const min = Math.min(Math.max(0, effect.minAmount ?? effect.amount), candidates.length)
       const max = Math.min(Math.max(min, effect.maxAmount ?? effect.amount), candidates.length)
@@ -2789,9 +2891,9 @@ export function createEffectResolver(services: EffectResolutionServices) {
         if (target.deck.length === 0 && target.discard.length > 0) {
           preparePlayerDeckForRevealWithInstances(g, target, 1)
         }
-        const cardId = takePlayerDeckCard(g, target)
+        const deck = getPlayerCardInstanceZone(g, target.id, 'deck')
+        const cardId = destroyCardFromZone(g, deck, 0)
         if (!cardId) break
-        destroyOwnedCard(target, cardId, g)
         destroyed.push(cardId)
       }
       messages.push(`${target.mageType} destroys ${destroyed.length} card(s) from the top of their deck`)
@@ -2958,8 +3060,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
 
     if (effect.kind === 'choose_one') {
       if (effect.options.length === 0) continue
+      const choicePlayerId = resolution.effectPlayerId ?? currentPlayerId
+      const availableOptionIds = availableCardEffectOptionIds(effect.options, condition =>
+        conditionMatches(g, choicePlayerId, condition, resolution))
       if (effect.options.length === 1) {
-        addRemainingEffects(resolution, effect.options[0]!.effects)
+        const option = effect.options[0]!
+        if (availableOptionIds.has(option.id)) addRemainingEffects(resolution, option.effects)
+        else messages.push('No effect option is currently available')
         continue
       }
       const options: CardEffectOption[] = effect.options
@@ -2969,7 +3076,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
             id: option.id,
             label: option.label,
             cardId: option.cardId,
-            disabled: option.condition ? !conditionMatches(g, currentPlayerId, option.condition, resolution) : false,
+            disabled: !availableOptionIds.has(option.id),
           })),
           layout: effect.layout,
         }, resolution.sourceCardId,
@@ -3086,17 +3193,17 @@ export function createEffectResolver(services: EffectResolutionServices) {
       if (pending) {
         const owner = getPlayer(g, pending.playerId)
         const breach = owner.breaches.find(item => item.index === pending.breachIndex)
-        let preppedInstanceId: string | null = null
         if ((pending.transferToAlly || pending.returnToCasterHand) &&
           breach?.prepSpells[pending.spellIndex] === pending.cardId) {
-          preppedInstanceId = breach.preppedSpellInstanceIds?.[pending.spellIndex] ?? null
-          removePreppedSpellAt(breach, pending.spellIndex)
-        }
-        if (pending.transferToAlly) {
-          addCardToHand(getPlayer(g, pending.destinationPlayerId ?? pending.playerId), pending.cardId, preppedInstanceId)
-        }
-        if (pending.returnToCasterHand) {
-          addCardToHand(getPlayer(g, pending.casterPlayerId ?? pending.playerId), pending.cardId, preppedInstanceId)
+          const instanceId = breach.preppedSpellInstanceIds?.[pending.spellIndex] ?? null
+          const source = getBreachCardInstanceZone(g, pending.playerId, pending.breachIndex)
+          const destinationPlayerId = pending.transferToAlly
+            ? pending.destinationPlayerId ?? pending.playerId
+            : pending.casterPlayerId ?? pending.playerId
+          const hand = getPlayerCardInstanceZone(g, destinationPlayerId, 'hand')
+          moveCardBetweenZones(g, source, pending.spellIndex, hand, hand.cards.length, 'return', {
+            handPreppedSpellInstanceId: instanceId,
+          })
         }
       }
       const continuedSelection = resolution.preppedSpellSelectionStack?.pop()

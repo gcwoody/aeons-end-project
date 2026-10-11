@@ -200,7 +200,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
     <section class="ui-gallery-section" data-gallery-section="hand-motion">
       <article class="ui-gallery-item" data-component="Hand.Motion">
         <h2>Hand motion</h2>
-        <p class="ui-gallery-caption">Play, discard, add cards, scroll an overflowing hand, or switch Mage. Repeat actions during movement to inspect interrupted reflow.</p>
+        <p class="ui-gallery-caption">Play a card, fly it to the discard pile, add cards, scroll an overflowing hand, or switch Mage. Repeat actions during movement to check how the shared flight and hand-shift animations finish.</p>
         <HandMotionDemo />
       </article>
     </section>

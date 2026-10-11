@@ -57,7 +57,7 @@ export type EffectComparison = 'equals' | 'at_least' | 'at_most' | 'greater_than
 export type CardEffectCondition =
   | { kind: 'all_of'; conditions: CardEffectCondition[] }
   | { kind: 'has_pulse_tokens'; amount: number; player?: 'source' | 'active' }
-  | { kind: 'has_prepped_spell'; ownerScope?: 'any_player' | 'ally' }
+  | { kind: 'has_prepped_spell'; ownerScope?: 'any_player' | 'ally'; minCost?: number }
   | {
       /** Number of matching copies currently in the shared Develop zone. */
       kind: 'develop_zone_card_count'
@@ -81,6 +81,8 @@ export type CardEffectCondition =
       kind: 'prepped_spell_count'
       comparison: EffectComparison
       count: number
+      /** Count only spells whose current rules cost meets this threshold. */
+      minCost?: number
     }
   | { kind: 'has_player_turn_order_card' }
   | {
@@ -89,8 +91,9 @@ export type CardEffectCondition =
       count: number
     }
   | {
-      /** True when the player still has a present breach that is not open. */
+      /** True when a matching player still has a present breach that is not open. */
       kind: 'has_unopened_breach'
+      target?: PlayerTargetScope
     }
   | { kind: 'all_breaches_opened' }
   | { kind: 'has_pulse_token_capacity' }
@@ -133,6 +136,10 @@ export type CardEffectCondition =
   | { kind: 'has_recall_in_any_discard' }
   | { kind: 'has_last_selected_card_cost'; comparison: EffectComparison; amount: number }
   | { kind: 'nemesis_discard_minion_count'; comparison: EffectComparison; amount: number }
+  | { kind: 'collective_hand_card_count'; comparison: EffectComparison; count: number; cardTypes?: CardType[]; minCost?: number }
+  | { kind: 'has_nonempty_market_pile'; cardType?: 'gem' | 'relic' | 'spell' }
+  | { kind: 'any_player_charge'; amount: number }
+  | { kind: 'has_bottom_nemesis_discard_attack_with_effect' }
 
 /** A conditional amount added to one existing damage instance. */
 export interface AdditionalDamage {
@@ -186,6 +193,50 @@ export type CardSelectionSource = 'hand' | 'discard' | 'deck' | 'hand_or_discard
 export type CardSelectionLayout = 'simple' | 'pile' | 'instant-card-choice'
 export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardGainDestination = 'discard_top' | 'deck_top'
+
+/** Stable rule-side zones used by card movement facts (never UI coordinates). */
+export type CardMoveZone =
+  | 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck'
+  | 'player_cards_in_play' | 'destroyed' | 'breach' | 'develop' | 'nemesis_deck'
+  | 'nemesis_discard' | 'nemesis_play_area' | 'nemesis_set_aside' | 'corruption_deck' | 'strike_deck'
+  | 'strike_discard' | 'trinket_deck' | 'supply' | 'temporary'
+
+export type CardMoveReason =
+  | 'play' | 'discard' | 'discard_cost' | 'discard_phase' | 'draw' | 'gain' | 'buy'
+  | 'develop' | 'swap' | 'prep_spell' | 'cast_spell' | 'recall' | 'destroy'
+  | 'return' | 'effect' | 'nemesis_turn' | 'setup' | 'shuffle' | 'reorder'
+  | 'reveal' | 'temporary'
+
+export interface CardMoveZoneAddress {
+  zoneId: string
+  zone: CardMoveZone
+  ownerId: string | null
+  index: number
+}
+
+interface CardMoveEventBase {
+  transactionId: string
+  eventId: string
+  sequence: number
+  instanceId: string
+  cardId: string
+  reason: CardMoveReason
+}
+
+export type CardMoveEvent =
+  | (CardMoveEventBase & { kind: 'move'; source: CardMoveZoneAddress; destination: CardMoveZoneAddress; moveId: string })
+  | (CardMoveEventBase & { kind: 'create'; source?: CardMoveZoneAddress; destination: CardMoveZoneAddress })
+  | (CardMoveEventBase & { kind: 'destroy'; source: CardMoveZoneAddress })
+  | (CardMoveEventBase & { kind: 'reorder'; zone: CardMoveZoneAddress; fromIndex: number; toIndex: number })
+  | (CardMoveEventBase & { kind: 'shuffle'; zone: CardMoveZoneAddress })
+  | (CardMoveEventBase & { kind: 'reveal'; zone: CardMoveZoneAddress })
+  | (CardMoveEventBase & { kind: 'temporary'; source?: CardMoveZoneAddress; destination: CardMoveZoneAddress })
+
+export interface CardMoveAuditIssue {
+  instanceId: string
+  cardId: string
+  message: string
+}
 
 export interface TokenAmountChoiceSummary {
   /** Sentence containing `{amount}`, rendered above the confirmation button. */
@@ -299,6 +350,8 @@ export interface PendingEffectResolution {
   nemesisResume?: boolean
   /** Auxiliary Nemesis card already removed from its deck and awaiting reveal confirmation. */
   revealedStrikeCardId?: string
+  /** Physical copy ID for the Strike held during its reveal and resolution. */
+  revealedStrikeCardInstanceId?: string
   /** Spell cast that remains on its breach until the cast effect sequence finishes. */
   pendingSpellCast?: PendingSpellCast
   /** Number/cost of cards selected by the previous optional card effect. */
@@ -322,7 +375,9 @@ export interface PendingEffectResolution {
   /** Recipient chosen for a card-placement effect. */
   placementRecipientPlayerId?: PlayerId
   /** Card revealed by Conjure while waiting for a Breach choice. */
-  conjuredCard?: { playerId: PlayerId; cardId: string }
+  conjuredCard?: { playerId: PlayerId; cardId: string; instanceId?: string }
+  /** Corruption temporarily removed from hand while its nested effects resolve. */
+  resolvingCorruption?: { playerId: PlayerId; cardId: string; instanceId: string }
   /** Selected recipient for a target-scoped Conjure, without changing its effect source. */
   conjureTargetPlayerId?: PlayerId
   /** Ability owner whose resolution should fire on_ability_resolved hooks. */
@@ -604,6 +659,8 @@ export interface CardEffectOption {
   cardId?: string
   /** Optional dynamic rule used to determine whether this choice is available. */
   condition?: CardEffectCondition
+  /** Used only when every option's full-resolution condition fails. Highest rank wins. */
+  fallbackPriority?: number
 }
 
 /** Effects that trigger together, grouped by the card or mat that produced them. */
@@ -677,7 +734,7 @@ export type CardEffect =
   | { kind: 'focus_breach_for_different_player' }
   | { kind: 'discard_nemesis_top_cards'; amount: number; graveholdDamagePerTierThree: number }
   | { kind: 'afflict_two_players_with_corruptions'; corruptionAmount: number }
-  | { kind: 'discard_noncorruptions_and_gain_corruptions'; discardAmount: number; corruptionAmount: number; destination: 'hand' | 'deck_top' | 'deck_bottom' }
+  | { kind: 'discard_noncorruptions_and_gain_corruptions'; discardAmount: number; corruptionAmount: number; destination: 'hand' | 'deck_top' | 'deck_bottom'; targetAvailability?: 'full_or_max' }
   | { kind: 'discard_noncorruption_cards'; amount: number }
   | { kind: 'deal_player_damage_by_last_selected_cost'; divisor: number; roundUp?: boolean; target: DamagePlayerTargetScope }
   | { kind: 'look_at_top_card_may_destroy' }
@@ -885,6 +942,8 @@ export type CardEffect =
       cardIds?: string[]
       target?: PlayerTargetScope
       selection?: PlayerSelectionRule
+      /** Prefer targets able to complete the full amount; if none can, retain those with the most eligible cards. */
+      targetAvailability?: 'full_or_max'
       /** Restore the effect to its source Mage after a player-targeted discard. */
       restoreToSourceAfterSelection?: boolean
     }
@@ -905,7 +964,7 @@ export type CardEffect =
       maxGems: number
       reductionPerGem: number
     }
-  | { kind: 'lose_all_charge'; target: PlayerTargetScope }
+  | { kind: 'lose_all_charge'; target: PlayerTargetScope; selection?: PlayerSelectionRule }
   | { kind: 'return_last_discarded_minion' }
   | { kind: 'shuffle_nemesis_turn_order_cards' }
   | {
@@ -948,7 +1007,7 @@ export type CardEffect =
   | { kind: 'destroy_played_card'; cardId: string; playerId?: PlayerId }
   /** Remove a face-up Mage-specific card from the Player cards in play area. */
   | { kind: 'destroy_player_card_in_play'; cardId: string; playerId?: PlayerId }
-  | { kind: 'lose_charge'; amount: number; target?: PlayerTargetScope }
+  | { kind: 'lose_charge'; amount: number; target?: PlayerTargetScope; targetAvailability?: 'full_or_max' }
   | {
       /** Internal choice to order effects that triggered from distinct sources at once. */
       kind: 'resolve_simultaneous_effects'
@@ -1236,7 +1295,7 @@ export interface BreachState {
   installedUpgrades?: string[]
   /** Relic attached beneath this Breach token. ownerId is the Breach owner,
    * whose discard pile receives the relic if the attachment is removed. */
-  attachedRelic?: { cardId: string; ownerId: PlayerId }
+  attachedRelic?: { cardId: string; ownerId: PlayerId; instanceId?: string }
   /** Permanent extra spell capacity from installed upgrades. */
   prepSpellLimitBonus?: number
   /** Breaches such as Stake's Prototype cannot be destroyed. */
@@ -1272,14 +1331,22 @@ export interface PlayerState {
   /** Stable identities for physical card copies in the draw deck. */
   deckInstanceIds?: string[]
   hand: string[]
+  /** Stable identities for physical card copies currently in hand. */
+  handInstanceIds?: string[]
   /** Identity carried in hand for a spell returned from a Breach this turn. */
   handPreppedSpellInstanceIds?: Array<string | null>
   /** Monotonic source for stable identities assigned when spells are first prepped. */
   preppedSpellInstanceCounter?: number
   discard: string[]
+  /** Stable identities for physical card copies in discard. */
+  discardInstanceIds?: string[]
   playedThisTurn: string[]
+  /** Stable identities for physical card copies played this turn. */
+  playedThisTurnInstanceIds?: string[]
   /** Mage-specific face-up cards waiting to be swapped into the deck. */
   swapZone?: string[]
+  /** Stable identities for physical copies in the Mage-specific Swap zone. */
+  swapZoneInstanceIds?: string[]
   /** @deprecated Legacy per-player Develop contents are migrated to GameState.developZone. */
   developZone?: string[]
   /** Face-down Mage-specific deck, such as Dezmodia's Stash. */
@@ -1302,6 +1369,8 @@ export interface PlayerState {
   trinketInstanceIds?: string[]
   /** Face-up Mage cards placed into play; later cards are placed on top. */
   playerCardsInPlay?: string[]
+  /** Stable identities for face-up Mage cards currently in play. */
+  playerCardsInPlayInstanceIds?: string[]
   /** Supply pile index for each corresponding card in playerCardsInPlay. */
   playerCardSupplyTargets?: Array<number | null>
   /** Power-token count for each corresponding card in playerCardsInPlay. */
@@ -1327,6 +1396,8 @@ export interface PlayerState {
   exhausted: boolean
   /** Cards permanently removed from this player's deck cycle. */
   destroyedCards: string[]
+  /** Stable identities for cards permanently removed from the deck cycle. */
+  destroyedCardInstanceIds?: string[]
   /** Temporary effects and once-per-turn markers, reset during draw phase. */
   turnEffects: PlayerTurnEffects
   /** Corruption cards drawn into hand this turn, awaiting end-of-Main-Phase resolution. */
@@ -1359,6 +1430,9 @@ export interface NemesisState {
   discardInstanceIds?: string[]
   strikeDeckInstanceIds?: string[]
   strikeDiscardInstanceIds?: string[]
+  /** Strike copy temporarily outside the auxiliary deck while a direct draw resolves. */
+  resolvingStrikeCardId?: string
+  resolvingStrikeCardInstanceId?: string
   /** Dark Conclusion waits beside the turn-order deck until its reset trigger. */
   turnOrderDeckResetCardId?: string
   turnOrderDeckResetCardInstanceId?: string
@@ -1418,6 +1492,8 @@ export interface GameState {
   market: MarketState
   /** Shared public Develop zone; cards here are not part of the supply. */
   developZone?: string[]
+  /** Stable identities aligned with the shared Develop zone. */
+  developZoneInstanceIds?: string[]
   /** Shared Wave 9 Trinket deck, top card first. */
   trinketDeck?: string[]
   /** Per-copy reveal memory aligned with trinketDeck (top card at index 0). */

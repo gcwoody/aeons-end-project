@@ -16,6 +16,7 @@ export interface CardSelectionItem {
   highlight?: 'required' | 'choice'
   motionZone?: string
   motionOwnerId?: string
+  motionInstanceId?: string
 }
 
 const props = defineProps<{
@@ -118,6 +119,8 @@ function toggleAfterClick(key: string): void {
             :data-card-motion-zone="choice.motionZone"
             :data-card-motion-card-id="choice.motionZone ? choice.cardId : undefined"
             :data-card-motion-owner-id="choice.motionOwnerId"
+            :data-card-instance-id="choice.motionInstanceId"
+            :data-card-motion-suppress-flight="choice.motionInstanceId ? 'true' : undefined"
             :data-card-motion-key="choice.motionZone ? `decision-${choice.key}` : undefined"
             :data-sort-key="choice.key"
             :title="choice.disabled ? choice.disabledReason : undefined"
@@ -167,6 +170,8 @@ function toggleAfterClick(key: string): void {
                 :data-card-motion-zone="choice.motionZone"
                 :data-card-motion-card-id="choice.motionZone ? choice.cardId : undefined"
                 :data-card-motion-owner-id="choice.motionOwnerId"
+                :data-card-instance-id="choice.motionInstanceId"
+                :data-card-motion-suppress-flight="choice.motionInstanceId ? 'true' : undefined"
                 :data-card-motion-key="choice.motionZone ? `decision-${choice.key}` : undefined"
                 :title="choice.disabled ? choice.disabledReason : undefined"
                 @click="toggle(choice.key)"

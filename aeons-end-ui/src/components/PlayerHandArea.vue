@@ -11,6 +11,7 @@ import TokenBadge from './TokenBadge.vue'
 
 interface HandCardDisplay {
   cardId: string
+  instanceId?: string
   handIndex?: number
   presentationKey?: string
   typeClass: string
@@ -45,11 +46,12 @@ defineProps<{
   deckCount: number
   discardCount: number
   discardTopCard: string | null
-  pendingBoardDiscardArrival: { cardId: string; count: number } | null
+  discardTopInstanceId?: string
+  pendingBoardDiscardArrival: { cardId: string; count: number; instanceId: string; sourceZone: string } | null
   recallAvailable: boolean
   recallActionAttention: boolean
   handCards: HandCardDisplay[]
-  conjuredCard: { cardId: string; typeClass: string } | null
+  conjuredCard: { cardId: string; instanceId?: string; typeClass: string } | null
   canActMain: boolean
   draggingSpell: boolean
   draggedSpellIndex: number | null
@@ -61,6 +63,7 @@ const emit = defineEmits<{
   'open-specific-deck': []
   'click-player-card': [index: number]
   'click-hand-card': [index: number]
+  'click-conjured-card': []
   'start-hand-spell-drag': [index: number, event: PointerEvent]
   'start-conjured-spell-drag': [event: PointerEvent]
   'open-deck': []
@@ -81,6 +84,7 @@ const emit = defineEmits<{
     <div
       v-if="hasSpecificDeck"
       class="deck-pile clickable player-specific-deck-pile game-highlight"
+      data-card-flight-source="mage-specific-deck"
       :class="{ 'has-cards': specificDeckCards.length > 0, 'is-empty': specificDeckCards.length === 0, 'end-turn-attention': specificDeckActionAttention }"
       :data-main-action-id="specificDeckActionAttention ? `specific-deck:${playerId}` : undefined"
       :aria-label="canBuyFirethorn ? 'Buy the top Firethorn for 5 Aether' : `Open ${specificDeckName}`"
@@ -179,6 +183,7 @@ const emit = defineEmits<{
       :dragged-spell-index="draggedSpellIndex"
       :dragging-conjured-card="draggingConjuredCard"
       @click-hand-card="emit('click-hand-card', $event)"
+      @click-conjured-card="emit('click-conjured-card')"
       @start-hand-spell-drag="(index, event) => emit('start-hand-spell-drag', index, event)"
       @start-conjured-spell-drag="emit('start-conjured-spell-drag', $event)"
     />
@@ -201,12 +206,12 @@ const emit = defineEmits<{
           data-card-flight-target="discard"
           :data-discard-top-card="discardTopCard"
           data-card-motion-zone="discard"
-          data-card-motion-from-zones="swap,develop"
+          data-card-motion-from-zones="swap,develop,breach,played"
           data-card-motion-after-zones="swap"
-          :data-card-motion-arrival-count="discardCount"
           :data-card-motion-card-id="discardTopCard"
           :data-card-motion-owner-id="playerId"
           :data-card-motion-key="`discard-${playerId}-top`"
+          :data-card-instance-id="discardTopInstanceId"
           :card-id="discardTopCard"
           :image-alt="getCard(discardTopCard).name"
         />
@@ -218,12 +223,12 @@ const emit = defineEmits<{
         size="pile"
         class="player-discard-flight-target"
         data-card-motion-zone="discard"
-        data-card-motion-from-zones="swap"
-        data-card-motion-after-zones="swap"
-        :data-card-motion-arrival-count="pendingBoardDiscardArrival.count"
+        :data-card-motion-from-zones="pendingBoardDiscardArrival.sourceZone"
+        :data-card-motion-after-zones="pendingBoardDiscardArrival.sourceZone === 'swap' ? 'swap' : undefined"
         :data-card-motion-card-id="pendingBoardDiscardArrival.cardId"
         :data-card-motion-owner-id="playerId"
         :data-card-motion-key="`discard-${playerId}-arrival`"
+        :data-card-instance-id="pendingBoardDiscardArrival.instanceId"
       />
       <PileCountBadge :count="discardCount" label="Discard" />
     </div>

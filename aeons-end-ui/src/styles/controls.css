@@ -172,6 +172,18 @@
   stroke-linejoin: round;
   stroke-width: 1.8;
 }
+.destroyed-cards-button {
+  display: inline-flex;
+  gap: 4px;
+  width: auto;
+  padding-inline: 6px;
+}
+.destroyed-card-count {
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
 .help-button {
   min-width: 32px;
   padding-left: 4px;

@@ -11,6 +11,7 @@ interface ZoneCardDisplay {
   motionKey: string
   ownerId?: string
   cardId: string
+  instanceId?: string
   index: number
   typeClass: string
   occurrence?: number
@@ -104,6 +105,7 @@ onBeforeUnmount(() => {
                 :data-card-motion-card-id="card.heldForDeparture ? undefined : card.cardId"
                 :data-card-motion-owner-id="card.heldForDeparture ? undefined : owner.id"
                 :data-card-motion-key="card.motionKey"
+                :data-card-instance-id="card.instanceId"
                 :data-card-motion-held-key="card.heldForDeparture ? card.motionKey : undefined"
                 :class="[card.typeClass, {
                   'pending-board-card': card.pending,
@@ -151,6 +153,7 @@ onBeforeUnmount(() => {
                 :data-card-motion-card-id="card.cardId"
                 :data-card-motion-owner-id="card.ownerId"
                 :data-card-motion-key="card.motionKey"
+                :data-card-instance-id="card.instanceId"
                 :data-card-motion-occurrence="card.occurrence"
                 :class="[card.typeClass, {
                   'prepped-action': card.preppedAction,
@@ -183,6 +186,7 @@ onBeforeUnmount(() => {
               data-card-motion-from-zones="supply"
               :data-card-motion-card-id="card.cardId"
               data-card-motion-owner-id=""
+              :data-card-instance-id="card.instanceId"
               :data-card-motion-key="card.motionKey"
               :class="[card.typeClass, {
                 'develop-action-available': card.actionAvailable,
