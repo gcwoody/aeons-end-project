@@ -1,4 +1,49 @@
 import { expect, test } from '@playwright/test'
+import { cardMotionChangesFace } from '../src/game/card-motion-policy'
+
+test('card flights flip only when their source and destination show different faces', () => {
+  expect(cardMotionChangesFace('corruption_deck', 'deck')).toBe(false)
+  expect(cardMotionChangesFace('hand', 'deck')).toBe(true)
+  expect(cardMotionChangesFace('corruption_deck', 'discard')).toBe(true)
+  expect(cardMotionChangesFace('discard', 'played')).toBe(false)
+  expect(cardMotionChangesFace('conjure', 'breach', true)).toBe(true)
+})
+
+test('pile counts advance once per card at the departure and arrival boundaries', async ({ page }) => {
+  await page.goto('/')
+  const result = await page.evaluate(async () => {
+    const { createCardPileMotionDisplaySession } = await import('/src/game/card-pile-motion-display.ts')
+    let overrides: Record<string, { count: number; motionId: number }> = {}
+    const events = ['copy-1', 'copy-2'].map((instanceId, index) => ({
+      kind: 'move', transactionId: 'transaction-1', eventId: `event-${index + 1}`,
+      moveId: `move-${index + 1}`, sequence: index + 1, instanceId,
+      cardId: 'crystal', reason: 'buy',
+      source: { zoneId: 'supply:0', zone: 'supply', index },
+      destination: { zoneId: 'player:p1:deck', zone: 'deck', ownerId: 'p1', index },
+    }))
+    const session = createCardPileMotionDisplaySession({
+      get: () => overrides,
+      set: value => { overrides = value },
+    }, events as never, { 'supply:0': 3, 'player:p1:deck': 2 }, new Set(['copy-1', 'copy-2']))
+    const counts = () => [overrides['supply:0']?.count, overrides['player:p1:deck']?.count]
+    const frames = [counts()]
+    session.depart('copy-1')
+    frames.push(counts())
+    session.arrive('copy-1')
+    frames.push(counts())
+    session.depart('copy-2')
+    frames.push(counts())
+    session.arrive('copy-2')
+    frames.push(counts())
+    session.finish()
+    return { frames, cleared: Object.keys(overrides).length === 0 }
+  })
+
+  expect(result).toEqual({
+    frames: [[5, 0], [4, 0], [4, 1], [3, 1], [3, 2]],
+    cleared: true,
+  })
+})
 
 test('captured card flights contain only card artwork, without market badges or highlights', async ({ page }) => {
   await page.goto('/')
@@ -33,7 +78,8 @@ test('captured card flights contain only card artwork, without market badges or 
 test('board card flight follows the recorded physical card identity', async ({ page }) => {
   await page.goto('/')
   const result = await page.evaluate(async () => {
-    const { captureCardZoneMotion, discardCardZoneMotion, resolveCardZoneMotionFromEvents } = await import('/src/game/card-flight.ts')
+    const { captureCardZoneMotion } = await import('/src/game/card-flight.ts')
+    const { discardCardZoneMotion, resolveCardZoneMotionFromEvents } = await import('/src/game/card-zone-motion.ts')
     const source = document.createElement('div')
     source.style.cssText = 'position:fixed;left:24px;top:24px;width:100px;height:140px'
     source.innerHTML = '<img src="/player-card%20back.jpg" alt="">'
@@ -88,8 +134,9 @@ test('board card flight follows the recorded physical card identity', async ({ p
 test('cards shown in a decision window do not fly from the modal to a destination zone', async ({ page }) => {
   await page.goto('/')
   const result = await page.evaluate(async () => {
-    const { captureCardFlight, captureCardZoneMotion, discardCardZoneMotion, resolveCardZoneMotionFromEvents } =
-      await import('/src/game/card-flight.ts')
+    const { captureCardFlight, captureCardZoneMotion } = await import('/src/game/card-flight.ts')
+    const { discardCardZoneMotion, resolveCardZoneMotionFromEvents } =
+      await import('/src/game/card-zone-motion.ts')
     const source = document.createElement('div')
     source.style.cssText = 'position:fixed;left:24px;top:24px;width:100px;height:140px'
     source.innerHTML = '<img src="/player-card%20back.jpg" alt="">'

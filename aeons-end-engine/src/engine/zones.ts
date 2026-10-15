@@ -267,6 +267,13 @@ export function isNemesisDeckCardRevealed(game: GameState, index: number): boole
   return isCardInstanceRevealed(game, game.nemesis.deckInstanceIds[index])
 }
 
+/** Face memory for cards in a Nemesis-specific deck, including mixed-visibility decks. */
+export function isNemesisSpecificDeckCardRevealed(game: GameState, index: number): boolean {
+  const deck = game.nemesis.strikeDeck
+  game.nemesis.strikeDeckInstanceIds = ensureCardInstanceZone(game, deck, game.nemesis.strikeDeckInstanceIds)
+  return isCardInstanceRevealed(game, game.nemesis.strikeDeckInstanceIds[index])
+}
+
 /** Shared face-visibility rule for Mage-specific decks with remembered cards. */
 export function isSpecificDeckCardRevealed(game: GameState, playerId: string, index: number): boolean {
   const player = game.players.find(candidate => candidate.id === playerId)

@@ -1,4 +1,22 @@
-import type { CardMoveEvent, CardMoveZone } from '@engine/types'
+import {
+  cardZoneFlightDestinationMode,
+  resolveCardFlightDestinationMode,
+  resolveCardFlightTiming,
+  resolveCardMotionDuration,
+  resolveCardMotionEasing,
+} from './card-motion-policy'
+import type { CardFlightDestinationMode, CardFlightTiming, PlayerCardZone } from './card-motion-policy'
+
+export {
+  cardZoneFlightDestinationMode,
+  resolveCardFlightDestinationMode,
+  resolveCardFlightTiming,
+} from './card-motion-policy'
+export type {
+  CardFlightDestinationMode,
+  CardFlightTiming,
+  PlayerCardZone,
+} from './card-motion-policy'
 
 export interface CardFlightSnapshot {
   clone: HTMLElement
@@ -34,72 +52,6 @@ export interface CardZoneMotionSnapshot {
   cards: CardZoneMotionCardSnapshot[]
 }
 
-export interface CardZoneMotionTransfer {
-  sourceZone: string
-  sourceKey: string
-  destinationZone: string
-  sourceInstanceId?: string
-  destinationInstanceId?: string
-  moveId?: string
-  moveIds?: string[]
-  sequence?: number
-  waitForZones: string[]
-  cardId: string
-  ownerId: string
-  flight: CardFlightSnapshot | null
-  destination: HTMLElement | null
-  /** Flip a face-up source to the card back while it flies to a face-down zone. */
-  faceDownOnArrival?: boolean
-  destinationVisibilityBefore?: string
-  /** Settle the visible destination under the clone before the clone is removed. */
-  afterFlight?: () => void | Promise<void>
-  timing?: CardFlightTiming
-}
-
-export type PlayerCardZone = 'hand' | 'deck' | 'discard'
-export type CardFlightDestinationMode = 'overlay' | 'replace'
-export type CardFlightTiming =
-  | 'standard'
-  | 'breach-to-discard'
-  | 'hand-to-breach'
-  | 'hand-to-play-zone'
-  | 'hand-to-swap-zone'
-  | 'swap-to-discard'
-  | 'hand-to-deck-top'
-  | 'hand-to-pile'
-  | 'discard-phase'
-
-interface CardFlightTimingConfig {
-  durationVariable: string
-  fallbackDurationMs: number
-}
-
-const cardFlightTimingConfig: Record<CardFlightTiming, CardFlightTimingConfig> = {
-  standard: { durationVariable: '--card-flight-duration', fallbackDurationMs: 600 },
-  'breach-to-discard': { durationVariable: '--breach-to-discard-flight-duration', fallbackDurationMs: 300 },
-  'hand-to-breach': { durationVariable: '--hand-to-breach-flight-duration', fallbackDurationMs: 280 },
-  'hand-to-play-zone': { durationVariable: '--hand-to-play-zone-flight-duration', fallbackDurationMs: 360 },
-  'hand-to-swap-zone': { durationVariable: '--hand-to-swap-zone-flight-duration', fallbackDurationMs: 360 },
-  'swap-to-discard': { durationVariable: '--swap-to-discard-flight-duration', fallbackDurationMs: 360 },
-  'hand-to-deck-top': { durationVariable: '--hand-to-deck-top-flight-duration', fallbackDurationMs: 300 },
-  'hand-to-pile': { durationVariable: '--hand-to-pile-flight-duration', fallbackDurationMs: 200 },
-  'discard-phase': { durationVariable: '--discard-phase-flight-duration', fallbackDurationMs: 200 },
-}
-
-/** Resolve duration and easing once for every card flight renderer. */
-export function resolveCardFlightTiming(timing: CardFlightTiming = 'standard') {
-  const config = cardFlightTimingConfig[timing]
-  const rootStyle = getComputedStyle(document.documentElement)
-  const token = rootStyle.getPropertyValue(config.durationVariable).trim()
-  const value = Number.parseFloat(token)
-  const duration = token.endsWith('ms')
-    ? value
-    : token.endsWith('s') ? value * 1000 : config.fallbackDurationMs
-  const easing = rootStyle.getPropertyValue('--card-flight-easing').trim()
-    || 'cubic-bezier(.22, .78, .24, 1)'
-  return { duration, easing, durationVariable: config.durationVariable }
-}
-
 function fitCardFlightToTarget(
   flight: Pick<CardFlightSnapshot, 'left' | 'top' | 'width' | 'height'>,
   target: DOMRect,
@@ -115,35 +67,6 @@ function fitCardFlightToTarget(
   }
 }
 
-/**
- * Deck and discard pile surfaces represent persistent piles and stay visible
- * while a card is added. A newly rendered hand card is temporarily replaced
- * by the flying copy to avoid showing the same card twice.
- */
-export function cardZoneFlightDestinationMode(
-  zone: string,
-  targetIsNewCard: boolean,
-): CardFlightDestinationMode {
-  return zone === 'deck' || zone === 'discard' || zone === 'trinket_deck' || !targetIsNewCard
-    ? 'overlay'
-    : 'replace'
-}
-
-/** Keep persistent player piles visible even when a caller requests replacement. */
-export function resolveCardFlightDestinationMode(
-  destination: HTMLElement,
-  requestedMode: CardFlightDestinationMode = 'replace',
-): CardFlightDestinationMode {
-  const destinationZone = destination.dataset.cardMotionZone ??
-    destination.dataset.cardFlightZone ?? destination.dataset.cardFlightTarget
-  const pileAncestor = destination.closest<HTMLElement>(
-    '[data-card-flight-target="deck"], [data-card-flight-target="discard"], [data-card-flight-target="trinket-deck"], [data-card-flight-zone="deck"], [data-card-flight-zone="discard"]',
-  )
-  if (destinationZone === 'deck' || destinationZone === 'discard' ||
-    destinationZone === 'trinket-deck' || pileAncestor) return 'overlay'
-  return requestedMode
-}
-
 export interface CardMoveSourceSnapshot {
   flight: CardFlightSnapshot | null
   players: Array<{
@@ -155,10 +78,13 @@ export interface CardMoveSourceSnapshot {
 }
 
 export interface CardZoneTransfer {
+  sequence?: number
   moveId?: string
   moveIds?: string[]
   instanceId?: string
   cardId: string
+  sourceZoneId?: string
+  destinationZoneId?: string
   playerId: string
   zone: PlayerCardZone
   zoneIndex: number
@@ -169,6 +95,8 @@ export interface CardZoneTransfer {
   /** Reveal a card captured face-down as it arrives in a face-up player zone. */
   revealOnArrival?: boolean
   timing?: CardFlightTiming
+  arrivalDestination?: HTMLElement | null
+  arrivalDestinationVisibilityBefore?: string
   previousDeckTop: string | null
   previousDeckCount: number
   previousDiscardTop: string | null
@@ -339,293 +267,6 @@ export function discardCardZoneMotionSource(
   return true
 }
 
-/** Map rule-side zones to the visible names used by card surfaces. */
-const motionZoneByEngineZone: Partial<Record<CardMoveZone, string>> = {
-  hand: 'hand',
-  deck: 'deck',
-  discard: 'discard',
-  played_this_turn: 'played',
-  swap_zone: 'swap',
-  specific_deck: 'specific_deck',
-  player_cards_in_play: 'player_cards_in_play',
-  breach: 'breach',
-  develop: 'develop',
-  supply: 'supply',
-  nemesis_deck: 'nemesis_deck',
-  nemesis_discard: 'nemesis_discard',
-  nemesis_play_area: 'nemesis_play_area',
-  nemesis_set_aside: 'nemesis_set_aside',
-  corruption_deck: 'corruption_deck',
-  strike_deck: 'strike_deck',
-  strike_discard: 'strike_discard',
-  trinket_deck: 'trinket_deck',
-  destroyed: 'destroyed',
-  temporary: 'conjure',
-}
-
-export interface CardZoneMotionEventResolution {
-  transfers: CardZoneMotionTransfer[]
-}
-
-function eventDestination(
-  root: ParentNode,
-  event: Extract<CardMoveEvent, { kind: 'move' | 'create' }>,
-  zone: string,
-  sourceZone: string,
-): HTMLElement | null {
-  const instanceDestination = [...root.querySelectorAll<HTMLElement>('[data-card-instance-id][data-card-motion-zone]')]
-    .find(element => element.dataset.cardInstanceId === event.instanceId &&
-      element.dataset.cardMotionZone === zone)
-  if (instanceDestination) return instanceDestination
-  if (zone === 'discard') {
-    const eligible = [...root.querySelectorAll<HTMLElement>(
-      '[data-card-motion-zone="discard"][data-card-motion-card-id][data-card-motion-owner-id]',
-    )].filter(element => element.dataset.cardMotionCardId === event.cardId &&
-      element.dataset.cardMotionOwnerId === (event.destination.ownerId ?? '') &&
-      (element.dataset.cardMotionFromZones ?? '').split(',').map(value => value.trim()).includes(sourceZone))
-    return eligible.find(element => element.dataset.cardMotionKey?.endsWith('-arrival')) ?? eligible[0] ?? null
-  }
-  if (zone === 'deck') {
-    return [...root.querySelectorAll<HTMLElement>('[data-card-flight-target="deck"]')]
-      .find(element => element.closest<HTMLElement>('[data-player-area-id]')?.dataset.playerAreaId === event.destination.ownerId) ?? null
-  }
-  if (zone === 'trinket_deck') {
-    return [...root.querySelectorAll<HTMLElement>('[data-card-flight-target="trinket-deck"]')][0] ?? null
-  }
-  return null
-}
-
-/** Resolve visible card movement from exact engine facts and physical card identity. */
-export function resolveCardZoneMotionFromEvents(
-  snapshot: CardZoneMotionSnapshot,
-  events: readonly CardMoveEvent[],
-  root: ParentNode = document,
-  alreadyClaimedMoveIds: ReadonlySet<string> = new Set(),
-): CardZoneMotionEventResolution {
-  const relevant = events.filter((event): event is Extract<CardMoveEvent, { kind: 'move' }> =>
-    event.kind === 'move' &&
-      !!motionZoneByEngineZone[event.source.zone] && !!motionZoneByEngineZone[event.destination.zone] &&
-      snapshot.cards.some(card => card.instanceId === event.instanceId) &&
-      !alreadyClaimedMoveIds.has(event.moveId) &&
-      // Recycling a player's discard pile updates the piles without flying
-      // each card back into the deck.
-      !(event.source.zone === 'discard' && event.destination.zone === 'deck') &&
-      // These routes have their own exact, ordered flight queue.
-      !(event.source.zone === 'hand' && ['deck', 'discard'].includes(event.destination.zone)) &&
-      !(event.reason === 'discard_phase' && event.source.zone === 'played_this_turn' && event.destination.zone === 'discard') &&
-      !(event.source.zone === 'temporary' && event.destination.zone === 'deck'),
-  ).sort((left, right) => left.sequence - right.sequence)
-  const supplyDevelopCreations = events.filter((event): event is Extract<CardMoveEvent, { kind: 'create' }> =>
-    event.kind === 'create' && event.reason === 'develop' &&
-      event.source?.zone === 'supply' && event.destination.zone === 'develop',
-  ).sort((left, right) => left.sequence - right.sequence)
-  const byInstance = new Map<string, typeof relevant>()
-  for (const event of relevant) {
-    const prior = byInstance.get(event.instanceId) ?? []
-    prior.push(event)
-    byInstance.set(event.instanceId, prior)
-  }
-
-  const transfers: CardZoneMotionTransfer[] = []
-  const usedOrigins = new Set<CardZoneMotionCardSnapshot>()
-  const transferredFlights = new Set<CardFlightSnapshot>()
-  const takeOriginFlight = (origin: CardZoneMotionCardSnapshot) => {
-    const flight = usedOrigins.has(origin) ? cloneCardFlightSnapshot(origin.flight) : origin.flight
-    usedOrigins.add(origin)
-    if (flight) transferredFlights.add(flight)
-    return flight
-  }
-  for (const [instanceId, moves] of byInstance) {
-    const first = moves[0]!
-    const last = moves[moves.length - 1]!
-    const sourceZone = motionZoneByEngineZone[first.source.zone]!
-    const origins = snapshot.cards.filter(card => card.instanceId === instanceId && card.zone === sourceZone)
-    const origin = origins.find(card => card.key.startsWith('decision-')) ?? origins[0]
-    if (!origin?.flight) continue
-    const destinationZone = motionZoneByEngineZone[last.destination.zone]!
-    const destination = eventDestination(root, last, destinationZone, sourceZone)
-    if (!destination) {
-      discardCardFlight(origin.flight)
-      continue
-    }
-    transfers.push({
-      sourceZone,
-      sourceKey: origin.key,
-      sourceInstanceId: instanceId,
-      destinationInstanceId: destination.dataset.cardInstanceId ?? '',
-      destinationZone,
-      waitForZones: (destination.dataset.cardMotionAfterZones ?? '').split(',').map(value => value.trim()).filter(Boolean),
-      cardId: last.cardId,
-      ownerId: first.source.ownerId ?? last.destination.ownerId ?? '',
-      moveId: last.moveId,
-      moveIds: moves.map(move => move.moveId),
-      sequence: first.sequence,
-      flight: takeOriginFlight(origin),
-      destination,
-      timing: sourceZone === 'breach' && destinationZone === 'discard'
-        ? 'breach-to-discard'
-        : sourceZone === 'swap' && destinationZone === 'discard'
-          ? 'swap-to-discard'
-          : sourceZone === 'hand' && destinationZone === 'swap'
-            ? 'hand-to-swap-zone'
-            : ['hand', 'conjure'].includes(sourceZone) && destinationZone === 'breach'
-              ? 'hand-to-breach'
-              : sourceZone === 'hand' && destinationZone === 'played'
-                ? 'hand-to-play-zone'
-                : undefined,
-      faceDownOnArrival: sourceZone === 'conjure' && destinationZone === 'breach',
-    })
-  }
-  for (const event of supplyDevelopCreations) {
-    const sourceZone = motionZoneByEngineZone[event.source!.zone]!
-    const laterMoves = events.filter((candidate): candidate is Extract<CardMoveEvent, { kind: 'move' }> =>
-      candidate.kind === 'move' && candidate.instanceId === event.instanceId &&
-        candidate.sequence > event.sequence,
-    ).sort((left, right) => left.sequence - right.sequence)
-    const finalMove = laterMoves.at(-1)
-    if (finalMove && finalMove.destination.zone !== 'develop') continue
-    const terminalEvent = finalMove ?? event
-    const origins = snapshot.cards.filter(card =>
-      card.zone === sourceZone && card.key === event.source!.zoneId && card.cardId === event.cardId,
-    )
-    const origin = origins.find(card => !usedOrigins.has(card)) ?? origins[0]
-    if (!origin?.flight) continue
-    const destinationZone = motionZoneByEngineZone[terminalEvent.destination.zone]!
-    if (destinationZone !== 'develop') continue
-    const destination = eventDestination(root, terminalEvent, destinationZone, sourceZone)
-    if (!destination) {
-      discardCardFlight(origin.flight)
-      continue
-    }
-    transfers.push({
-      sourceZone,
-      sourceKey: origin.key,
-      sourceInstanceId: origin.instanceId,
-      destinationInstanceId: terminalEvent.instanceId,
-      destinationZone,
-      waitForZones: (destination.dataset.cardMotionAfterZones ?? '').split(',').map(value => value.trim()).filter(Boolean),
-      cardId: event.cardId,
-      ownerId: terminalEvent.destination.ownerId ?? '',
-      moveId: finalMove?.moveId ?? `create:${event.eventId}`,
-      moveIds: finalMove ? [event.eventId, finalMove.moveId] : [`create:${event.eventId}`],
-      sequence: event.sequence,
-      flight: takeOriginFlight(origin),
-      destination,
-    })
-  }
-  snapshot.cards.forEach(card => {
-    if (card.flight && !transferredFlights.has(card.flight)) discardCardFlight(card.flight)
-  })
-  return { transfers }
-}
-
-function cloneCardFlightSnapshot(flight: CardFlightSnapshot | null): CardFlightSnapshot | null {
-  return flight ? {
-    clone: flight.clone.cloneNode(true) as HTMLElement,
-    left: flight.left,
-    top: flight.top,
-    width: flight.width,
-    height: flight.height,
-  } : null
-}
-
-export function discardCardZoneMotion(snapshot: CardZoneMotionSnapshot | null) {
-  snapshot?.cards.forEach(card => discardCardFlight(card.flight))
-}
-
-/** Animate board-zone flights in engine order, honoring authored zone dependencies. */
-export async function animateCardZoneMotion(
-  transfers: readonly CardZoneMotionTransfer[],
-  zoneBarriers: ReadonlyMap<string, Promise<void>> = new Map(),
-  prepareTransfer?: (transfer: CardZoneMotionTransfer) => Promise<HTMLElement | null>,
-  faceDownImageUrl?: string,
-): Promise<void> {
-  const animateTransfer = async (transfer: CardZoneMotionTransfer) => {
-    const sourceRow = await prepareTransfer?.(transfer) ?? null
-    const options = {
-      destinationMode: cardZoneFlightDestinationMode(transfer.destinationZone, true),
-      restoreDestinationVisibility: transfer.destinationVisibilityBefore,
-      afterFlight: transfer.afterFlight,
-      timing: transfer.timing,
-    }
-    const flight = transfer.faceDownOnArrival && faceDownImageUrl
-      ? animateCardFlightWithFaceDownReveal(transfer.flight, transfer.destination, faceDownImageUrl, {
-        destinationMode: options.destinationMode,
-        afterFlight: options.afterFlight,
-        timing: options.timing,
-      })
-      : animateCardFlight(transfer.flight, transfer.destination, options)
-    if (sourceRow) {
-      await Promise.all([flight, waitForCardRowReflow(sourceRow)])
-      return
-    }
-    if (!['hand', 'conjure'].includes(transfer.sourceZone) || !transfer.ownerId || typeof document === 'undefined') {
-      await flight
-      return
-    }
-    const playerArea = [...document.querySelectorAll<HTMLElement>('[data-player-area-id]')]
-      .find(element => element.dataset.playerAreaId === transfer.ownerId)
-    await Promise.all([flight, waitForHandCardReflow(playerArea?.querySelector<HTMLElement>('.hand') ?? null)])
-  }
-  const transfersByDestination = new Map<string, CardZoneMotionTransfer[]>()
-  for (const transfer of transfers) {
-    const destinationTransfers = transfersByDestination.get(transfer.destinationZone) ?? []
-    destinationTransfers.push(transfer)
-    transfersByDestination.set(transfer.destinationZone, destinationTransfers)
-  }
-
-  const settledZones = new Map<string, Promise<void>>()
-  const settlingZones = new Set<string>()
-  const settledTransfers = new Map<CardZoneMotionTransfer, Promise<void>>()
-  const settlingTransfers = new Set<CardZoneMotionTransfer>()
-  let settleZone!: (zone: string) => Promise<void>
-  let settleTransfer!: (transfer: CardZoneMotionTransfer) => Promise<void>
-  settleZone = (zone: string): Promise<void> => {
-    const settled = settledZones.get(zone)
-    if (settled) return settled
-    // Zone sequencing is authored as a DAG. If a future route accidentally
-    // declares a cycle, break the cycle instead of leaving the action pending.
-    if (settlingZones.has(zone)) return Promise.resolve()
-    settlingZones.add(zone)
-    const zoneSettled = (async () => {
-      try {
-        const barrier = zoneBarriers.get(zone)
-        if (barrier) await barrier
-        const zoneTransfers = [...(transfersByDestination.get(zone) ?? [])]
-          .sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0))
-        for (const transfer of zoneTransfers) await settleTransfer(transfer)
-      } finally {
-        settlingZones.delete(zone)
-      }
-    })()
-    settledZones.set(zone, zoneSettled)
-    return zoneSettled
-  }
-  settleTransfer = (transfer: CardZoneMotionTransfer): Promise<void> => {
-    const settled = settledTransfers.get(transfer)
-    if (settled) return settled
-    if (settlingTransfers.has(transfer)) return Promise.resolve()
-    settlingTransfers.add(transfer)
-    const transferSettled = (async () => {
-      try {
-        const barrier = zoneBarriers.get(transfer.destinationZone)
-        if (barrier) await barrier
-        for (const zone of transfer.waitForZones) await settleZone(zone)
-        await animateTransfer(transfer)
-      } finally {
-        settlingTransfers.delete(transfer)
-      }
-    })()
-    settledTransfers.set(transfer, transferSettled)
-    return transferSettled
-  }
-
-  const orderedTransfers = [...transfers]
-    .sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0))
-  for (const transfer of orderedTransfers) await settleTransfer(transfer)
-  for (const zone of zoneBarriers.keys()) await settleZone(zone)
-}
-
 export type HandCardPositionSnapshot = CardRowPositionSnapshot
 
 const handReflowAnimations = new WeakMap<HTMLElement, Set<Animation>>()
@@ -689,20 +330,11 @@ export function animateCardRowReflow(
   // Snapshot the visible positions before cancelling. Measure the new targets
   // only after every previous transform has been removed.
   cancelCardRowReflow(row)
-  const rootStyle = getComputedStyle(document.documentElement)
-  const rawDuration = rootStyle.getPropertyValue(options.durationVariable ?? (options.gainingCards
-    ? '--hand-gain-reflow-duration' : '--hand-card-reflow-duration')).trim()
-  const durationValue = Number.parseFloat(rawDuration)
-  const duration = rawDuration.endsWith('ms')
-    ? durationValue
-    : rawDuration.endsWith('s') ? durationValue * 1000 : options.durationVariable ? 240 : 220
-  const rawStagger = rootStyle.getPropertyValue('--hand-draw-stagger-duration').trim()
-  const staggerValue = Number.parseFloat(rawStagger)
-  const staggerDuration = rawStagger.endsWith('ms')
-    ? staggerValue
-    : rawStagger.endsWith('s') ? staggerValue * 1000 : 45
-  const easing = rootStyle.getPropertyValue('--card-flight-easing').trim()
-    || 'cubic-bezier(.22, .78, .24, 1)'
+  const durationVariable = options.durationVariable ?? (options.gainingCards
+    ? '--hand-gain-reflow-duration' : '--hand-card-reflow-duration')
+  const duration = resolveCardMotionDuration(durationVariable)
+  const staggerDuration = resolveCardMotionDuration('--hand-draw-stagger-duration')
+  const easing = resolveCardMotionEasing()
 
   const animations = new Set<Animation>()
   handReflowAnimations.set(row, animations)
@@ -854,17 +486,10 @@ export async function animateCardRevealFlight(
     }
   }
 
-  const cssDuration = (variable: string, fallback: number) => {
-    const raw = getComputedStyle(document.documentElement).getPropertyValue(variable).trim()
-    const value = Number.parseFloat(raw)
-    if (!Number.isFinite(value)) return fallback
-    return raw.endsWith('ms') ? value : raw.endsWith('s') ? value * 1000 : fallback
-  }
-  const duration = cssDuration('--nemesis-draw-flight-duration', 300)
-  const flipDuration = cssDuration('--nemesis-draw-flip-duration', 320)
+  const duration = resolveCardMotionDuration('--nemesis-draw-flight-duration')
+  const flipDuration = resolveCardMotionDuration('--nemesis-draw-flip-duration')
   const flipStartDelay = Math.round(duration * 0.45)
-  const easing = getComputedStyle(document.documentElement)
-    .getPropertyValue('--card-flight-easing').trim() || 'cubic-bezier(.22, .78, .24, 1)'
+  const easing = resolveCardMotionEasing()
   const translateX = target.left - left
   const translateY = target.top - top
   const scaleX = target.width / width

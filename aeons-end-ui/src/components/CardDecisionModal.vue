@@ -16,7 +16,9 @@ import { createTurnOrderLabels, turnOrderActorLabel } from '../game/turn-order-l
 import { useModalDrag } from '../game/useModalDrag'
 import { displayMageName, formatMageNamesInText } from '../game/display-name'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
+import CardDistributionPanel from './CardDistributionPanel.vue'
 import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardChoicePanel.vue'
+import CenteredDecisionPrompt from './CenteredDecisionPrompt.vue'
 import ModalBase from './ModalBase.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
 import CardSurface from './CardSurface.vue'
@@ -39,7 +41,10 @@ const selectedCardOrderKeys = ref<string[]>([])
 const selectedTurnOrder = ref<number[]>([])
 const selectedTokenAmount = ref(0)
 
-const decision = computed(() => state.game?.pendingDecision ?? null)
+const decision = computed(() => {
+  const current = state.game?.pendingDecision ?? null
+  return current && state.pendingPlayCardDecisionRelease?.decisionId === current.id ? null : current
+})
 const immediatePreppedSpellCast = computed(isImmediatePreppedSpellCast)
 const decisionFormPreview = computed(() => {
   const preview = decision.value?.cardPreview
@@ -63,9 +68,19 @@ const boardCardDecision = computed<DirectBoardCardDecision | null>(() => {
   if (!current || !isDirectBoardCardDecision.value) return null
   return current.kind === 'select_cards' || current.kind === 'select_collective_cards' ? current : null
 })
+const distributionPlayers = computed(() => decision.value?.kind === 'distribute_cards'
+  ? decision.value.players.map(playerId => ({ playerId, mageName: playerName(playerId) }))
+  : [])
 const isDirectMarketDecision = computed(() =>
-  decision.value?.kind === 'select_market_pile' || decision.value?.kind === 'select_setup_devour_pile',
+  decision.value?.kind === 'select_market_pile' || decision.value?.kind === 'select_setup_devour_pile' ||
+  decision.value?.kind === 'select_setup_supply_replacement',
 )
+const marketDecisionPreviewCardIds = computed(() => decision.value?.kind === 'select_setup_supply_replacement'
+  ? decision.value.previewCardIds ?? [decision.value.replacementCardId]
+  : [])
+const marketDecisionMessage = computed(() => decision.value?.kind === 'select_setup_supply_replacement'
+  ? 'Select a highlighted Supply pile in the Market. The cards shown here will replace your choice.'
+  : 'Select a highlighted supply pile directly in the Market.')
 const isLargeSpecificDeckSelection = computed(() =>
   decision.value?.kind === 'select_cards'
     && decision.value.source === 'specific_deck'
@@ -547,6 +562,10 @@ function answer(kind: PendingDecisionAnswer) {
   resolveDecision(kind)
 }
 
+function confirmCardDistribution(assignments: Array<{ instanceId: string; playerId: PlayerId }>) {
+  answer({ kind: 'distribute_cards', assignments })
+}
+
 function choosePlayerDamageTarget(target: PlayerTargetRef) {
   answer({ kind: 'select_player_target', target })
 }
@@ -633,19 +652,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     </div>
   </div>
 
-  <ModalBase
+  <CenteredDecisionPrompt
     v-if="isDirectMarketDecision"
-    overlay-class="decision-overlay non-blocking-decision-overlay non-blocking-market-selection-overlay"
-    :blocking="true"
-    v-model:panel-ref="modalEl"
-    panel-class="decision-modal non-blocking-selection-modal draggable-modal"
-    :panel-style="modalStyle"
-    :dragging="dragging"
-    @panel-pointerdown="startDrag"
-  >
-      <h2>{{ decisionPrompt(decision?.prompt ?? '') }}</h2>
-      <p class="decision-hint">Select a highlighted supply pile directly in the Market.</p>
-  </ModalBase>
+    :title="decisionPrompt(decision?.prompt ?? '')"
+    :message="marketDecisionMessage"
+    :preview-card-ids="marketDecisionPreviewCardIds"
+  />
 
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spells'"
@@ -737,11 +749,40 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
   </ModalBase>
 
   <ModalBase
-    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'select_damage_target' && decision.kind !== 'allocate_divided_damage'"
+    v-if="decision?.kind === 'confirm_oracle_nemesis_damage_target'"
     overlay-class="decision-overlay"
     :blocking="true"
     v-model:panel-ref="modalEl"
-    :panel-class="isMageAbilityChoice ? 'decision-modal mage-ability-modal draggable-modal' : 'decision-modal draggable-modal'"
+    panel-class="decision-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
+    <h2>{{ decisionPrompt(decision.prompt) }}</h2>
+    <div class="decision-options">
+      <button
+        class="btn primary decision-option"
+        @click="answer({ kind: 'confirm_oracle_nemesis_damage_target', accepted: true })"
+      >
+        Yes
+      </button>
+      <button
+        class="btn decision-option"
+        @click="answer({ kind: 'confirm_oracle_nemesis_damage_target', accepted: false })"
+      >
+        No
+      </button>
+    </div>
+  </ModalBase>
+
+  <ModalBase
+    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'select_setup_supply_replacement' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'confirm_oracle_nemesis_damage_target' && decision.kind !== 'select_damage_target' && decision.kind !== 'allocate_divided_damage'"
+    overlay-class="decision-overlay"
+    :blocking="true"
+    v-model:panel-ref="modalEl"
+    :panel-class="decision.kind === 'distribute_cards'
+      ? 'decision-modal card-distribution-modal draggable-modal'
+      : isMageAbilityChoice ? 'decision-modal mage-ability-modal draggable-modal' : 'decision-modal draggable-modal'"
     :panel-style="{ ...modalStyle, '--decision-columns': decisionColumns }"
     :dragging="dragging"
     @panel-pointerdown="startDrag"
@@ -872,6 +913,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         v-else-if="isInstantCardChoice"
         :choices="instantCardChoices"
         @choose="chooseInstantCardChoice"
+      />
+
+      <CardDistributionPanel
+        v-else-if="decision.kind === 'distribute_cards'"
+        :key="decision.id"
+        :cards="decision.cards"
+        :players="distributionPlayers"
+        @confirm="confirmCardDistribution"
       />
 
       <CardSelectionPanel

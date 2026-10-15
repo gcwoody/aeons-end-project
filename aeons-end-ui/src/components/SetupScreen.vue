@@ -40,6 +40,7 @@ const nemesisWaveOptions = computed(() => nemesisOptions.value.filter(nemesis =>
 const nemesisPickerOptions = computed(() => nemesisOptions.value.filter(nemesis => (nemesis.wave ?? 1) === nemesisPickerWave.value))
 const duplicateMage = computed(() => state.mage1 === state.mage2)
 const marketCards = computed(() => Object.values(ALL_MARKET_CARDS)
+  .filter(card => !card.setupOnlyNemesisSupplyFor)
   .sort((a, b) => a.type.localeCompare(b.type) || a.cost - b.cost || a.name.localeCompare(b.name)))
 const marketSlotLabels = ['Gem 1', 'Gem 2', 'Gem 3', 'Relic 1', 'Relic 2', 'Spell 1', 'Spell 2', 'Spell 3', 'Spell 4']
 const marketSlotTypes = MARKET_SLOT_TYPES
@@ -81,7 +82,8 @@ const nemesisPickerTitle = 'Choose Nemesis'
 const marketSetupValid = computed(() => state.marketSlots.length === 9
   && new Set(state.marketSlots).size === 9
   && state.marketSlots.every((cardId, index) =>
-    !!ALL_MARKET_CARDS[cardId] && ALL_MARKET_CARDS[cardId].type === marketSlotTypes[index]))
+    !!ALL_MARKET_CARDS[cardId] && !ALL_MARKET_CARDS[cardId].setupOnlyNemesisSupplyFor
+    && ALL_MARKET_CARDS[cardId].type === marketSlotTypes[index]))
 
 function randomChoice<T>(items: T[]): T | undefined {
   return items[Math.floor(Math.random() * items.length)]

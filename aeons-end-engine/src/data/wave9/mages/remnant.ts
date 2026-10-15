@@ -20,7 +20,7 @@ export const REMNANT_CARDS: Record<string, CardDef> = {
         {
           kind: 'choose_optional',
           prompt: 'Have an ally discard a card to gain 2 Breach Aether?',
-          disableIfUnavailable: true,
+          skipIfUnavailable: true,
           effects: [
             {
               kind: 'discard_cards',

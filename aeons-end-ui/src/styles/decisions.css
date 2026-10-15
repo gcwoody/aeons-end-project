@@ -31,6 +31,43 @@
   padding: 14px 20px;
 }
 .non-blocking-selection-modal h2 { margin-bottom: 4px; font-size: 18px; }
+.centered-decision-overlay { align-items: center; padding: 12px; }
+.centered-decision-modal {
+  width: fit-content;
+  min-width: min(300px, calc(100vw - 32px));
+  max-width: min(720px, calc(100vw - 32px));
+  padding: 14px 20px;
+  text-align: center;
+}
+.centered-decision-modal:has(.centered-decision-preview-cards) {
+  width: min(760px, calc(100vw - 32px));
+  padding: 22px 26px;
+}
+.centered-decision-modal h2 {
+  max-width: none;
+  margin-bottom: 8px;
+}
+.centered-decision-modal .decision-hint { margin: 0 auto 12px; }
+.centered-decision-preview-cards {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px;
+  margin: 16px 0 18px;
+}
+.centered-decision-preview-card {
+  flex: 0 0 auto;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--card-radius);
+}
+.centered-decision-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 14px;
+}
 .non-blocking-selection-modal .decision-hint { margin-bottom: 6px; font-size: 12px; }
 .non-blocking-market-selection-overlay {
   align-items: center;
@@ -77,6 +114,9 @@
 .decision-modal:has(.card-selection-panel.large-cards.no-group-labels),
 .decision-modal:has(.large-card-choice-panel) {
   width: min(620px, calc(100vw - 32px));
+}
+.decision-modal.card-distribution-modal {
+  width: min(900px, calc(100vw - 32px));
 }
 .decision-form-card {
   margin: 14px auto 0;

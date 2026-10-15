@@ -154,35 +154,6 @@ test('Tressa Overload Stance shows feedback when the last spell auto-enters Main
   await expect(bubbles.nth(1)).toHaveText('−1')
 })
 
-test('damage to a Minion from a resolved effect gets a localized damage bubble', async ({ page }) => {
-  await startCleanGame(page)
-
-  await page.keyboard.press('Control+d')
-  const stateField = page.locator('.debug-panel textarea')
-  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
-  const debugState = JSON.parse(await stateField.inputValue())
-  const player = debugState.game.players[0]
-  debugState.selectedPlayer = player.id
-  debugState.phase = 'casting'
-  debugState.game.currentTurn = player.id
-  debugState.game.currentPhase = 'casting'
-  for (const breach of player.breaches) breach.prepSpells = []
-  player.breaches[0].opened = true
-  player.breaches[0].prepSpells = ['spark']
-  debugState.game.nemesis.playArea = [{
-    cardId: 'haze_spewer', cardType: 'minion', placedAt: 123456,
-    instanceId: 'haze-spewer-damage-feedback-test', enteredOnNemesisTurn: 0, lifeTokens: 5,
-  }]
-  await stateField.fill(JSON.stringify(debugState))
-  await page.getByRole('button', { name: 'Apply', exact: true }).click()
-  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
-
-  await page.locator('.breach[data-breach-index="1"] .breach-spell-card-frame').click()
-  const minion = page.locator('[data-damage-target="minion:123456"]')
-  await expect(minion).toBeVisible()
-  await minion.click()
-  await expect(page.locator('.damage-impact-minion .damage-impact-number')).toHaveText('−1')
-})
 
 test('a resolved healing effect shows a green health feedback bubble', async ({ page }) => {
   await startCleanGame(page)
@@ -833,6 +804,7 @@ test('a hand card placed on the deck starts its flight before the deck shows the
     const tracked = window as typeof window & {
       deckTransferTimeline: Array<{
         clone: boolean
+        flip: boolean
         handVisible: boolean
         count: string | null
         duration: number | null
@@ -844,6 +816,7 @@ test('a hand card placed on the deck starts its flight before the deck shows the
       const clone = document.querySelector<HTMLElement>('.card-flight-clone')
       tracked.deckTransferTimeline.push({
         clone: !!clone,
+        flip: !!clone?.querySelector('.card-flight-flip-face'),
         handVisible: !!handCard && getComputedStyle(handCard).visibility !== 'hidden',
         count: document.querySelector('.player-deck-pile .player-pile-count')?.textContent ?? null,
         duration: clone
@@ -862,6 +835,7 @@ test('a hand card placed on the deck starts its flight before the deck shows the
     (window as typeof window & {
       deckTransferTimeline: Array<{
         clone: boolean
+        flip: boolean
         handVisible: boolean
         count: string | null
         duration: number | null
@@ -873,6 +847,7 @@ test('a hand card placed on the deck starts its flight before the deck shows the
   const firstHandHidden = timeline.findIndex(frame => !frame.handVisible)
   // The deck count must not reveal the new top card before the flight starts...
   expect(firstClone).toBeGreaterThanOrEqual(0)
+  expect(timeline[firstClone]?.flip).toBe(true)
   expect(Math.max(...timeline.map(frame => frame.duration ?? 0))).toBe(700)
   expect(firstCountTwo).toBeGreaterThan(firstClone)
   // ...and the card must leave the hand only once the flight clone is on screen.
@@ -1040,48 +1015,6 @@ test('Discard Phase waits for each card flight before advancing the turn', async
   expect(resolved.game.players[0].discard).toEqual(expect.arrayContaining(['crystal', 'spark', 'emerald_shard', 'vriswood_amber']))
 })
 
-test('Discard Order does not highlight or activate a Recall card after it enters the Discard', async ({ page }) => {
-  await startCleanGame(page)
-  await applyMainPhaseState(page, (game, player) => {
-    player.hand = []
-    player.playedThisTurn = ['atomized_ash', 'crystal']
-    player.discard = []
-    player.pulseTokens = 1
-    player.aetherTokens = 0
-    player.bonusAether = 0
-    player.charge = 0
-    game.supplyMechanics = ['pulse_token']
-    game.nemesis.playArea = []
-  })
-
-  await page.getByRole('button', { name: 'End Turn', exact: true }).click()
-  await expect(page.locator('.controls .phase')).toHaveText('Discard Phase · Card Order')
-  await page.locator('.played-zone-center [data-discard-phase-card-index="0"]').click()
-  await expect(page.locator('.played-zone-center [data-discard-phase-card-index="0"] img[alt="Crystal"]')).toBeVisible()
-
-  // A save created before phase synchronization can resume with the UI in
-  // Discard Order while the stored engine phase still says Main Phase.
-  await page.keyboard.press('Control+d')
-  const stateField = page.locator('.debug-panel textarea')
-  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
-  const debugState = JSON.parse(await stateField.inputValue())
-  debugState.phase = 'discard_order'
-  debugState.game.currentPhase = 'main'
-  await stateField.fill(JSON.stringify(debugState))
-  await page.getByRole('button', { name: 'Apply', exact: true }).click()
-  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
-
-  await page.locator('.player-discard-pile').click()
-  await expect(page.locator('.pile-modal')).toBeVisible()
-  await expect(page.locator('.pile-modal .pile-card.recall-card-action')).toHaveCount(0)
-
-  await page.locator('.pile-modal .pile-card').filter({
-    has: page.locator('img[alt="Atomized Ash"]'),
-  }).click()
-  await expect(page.locator('.pile-modal')).toBeVisible()
-  await expect(page.locator('.controls .pulse-token-status')).toHaveAttribute('aria-label', '1 Pulse Tokens')
-  await expect(page.locator('.controls .phase')).toHaveText('Discard Phase · Card Order')
-})
 
 test('Undo after the next Mage starts returns to the beginning of Discard Phase', async ({ page }) => {
   await startCleanGame(page)

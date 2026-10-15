@@ -1,9 +1,10 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount } from 'vue'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, playerCardBackUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
+import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, playerCardBackUrl, playerDeckCardBackUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
 import {
   getTrinketDeckCards, isCorruptionDeckCardRevealed, isNemesisDeckCardRevealed,
+  isNemesisSpecificDeckCardRevealed,
   isPlayerDeckCardRevealed,
   isSpecificDeckCardRevealed, isTrinketDeckCardRevealed,
 } from '@engine/engine'
@@ -147,6 +148,10 @@ function recallActionAvailable(index: number, cardId: string): boolean {
 function isFaceVisible(cardId: string, index: number): boolean {
   if (isTrinketDeck.value) return state.game ? isTrinketDeckCardRevealed(state.game, index) : false
   if (isCorruptionDeck.value) return state.game ? isCorruptionDeckCardRevealed(state.game, index) : false
+  if (state.viewPile === 'nemesis_specific' &&
+    getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.cardVisibility === 'per_instance') {
+    return state.game ? isNemesisSpecificDeckCardRevealed(state.game, index) : false
+  }
   if (state.viewPile === 'nemesis_deck') return state.game ? isNemesisDeckCardRevealed(state.game, index) : false
   if (state.viewPile === 'deck') {
     return state.game && displayPlayer.value
@@ -159,6 +164,17 @@ function isFaceVisible(cardId: string, index: number): boolean {
       : false
   }
   return !isNemesisFaceDown.value
+}
+
+function cardBackImage(cardId: string): string | undefined {
+  if (state.viewPile === 'deck' || state.viewPile === 'discard') return playerDeckCardBackUrl(cardId)
+  return faceDownBackImage.value
+}
+
+function cardBackImageAlt(cardId: string): string {
+  return cardBackImage(cardId) === trinketDeckBackUrl()
+    ? 'Trinket deck card back'
+    : `${title.value} card back`
 }
 
 function specificCardImage(cardId: string): string | undefined {
@@ -224,17 +240,17 @@ function specificCardImage(cardId: string): string | undefined {
           </CardHoverPreview>
           <CardHoverPreview
             v-else
-            :image-url="faceDownBackImage"
-            :image-alt="`${title} card back`"
+            :image-url="cardBackImage(cid)"
+            :image-alt="cardBackImageAlt(cid)"
           >
             <CardSurface
               base-class="pile-card"
               size="pile"
               class="pile-card-image pile-unknown-card"
-              :image-url="faceDownBackImage"
-              :image-alt="`${title} card back`"
+              :image-url="cardBackImage(cid)"
+              :image-alt="cardBackImageAlt(cid)"
             >
-              <span v-if="!faceDownBackImage">Unknown card</span>
+              <span v-if="!cardBackImage(cid)">Unknown card</span>
             </CardSurface>
           </CardHoverPreview>
           </template>

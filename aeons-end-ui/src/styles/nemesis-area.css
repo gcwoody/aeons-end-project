@@ -185,6 +185,25 @@
   --game-highlight-layer: 2;
   --game-highlight-width: var(--damage-target-mat-border-width);
 }
+.nemesis-area :is(.nemesis-play-card, .nemesis-mat-wrap):is(
+  .game-highlight--context,
+  .game-highlight--available,
+  .game-highlight--choice,
+  .game-highlight--selected,
+  .game-highlight--required
+)::after {
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+.nemesis-area :is(.nemesis-play-card, .nemesis-mat-wrap):is(
+  .game-highlight--context,
+  .game-highlight--available,
+  .game-highlight--choice,
+  .game-highlight--selected,
+  .game-highlight--required
+):hover::after {
+  background-color: color-mix(in srgb, var(--game-highlight-color) 7%, transparent);
+  box-shadow: inset 0 0 14px color-mix(in srgb, var(--game-highlight-color) 13%, transparent);
+}
 .damage-allocation-badge { position: absolute; top: 7px; right: 7px; z-index: 3; display: grid; place-items: center; min-width: 32px; height: 32px; padding: 0 6px; border: 2px solid #fff; border-radius: 999px; background: #c9363e; color: #fff; box-shadow: 0 2px 7px rgba(0, 0, 0, .65); font-size: 15px; font-weight: 900; line-height: 1; pointer-events: none; }
 .nemesis-mat-image {
   display: block;
@@ -303,12 +322,16 @@
 .nemesis-card-track { min-width: 100%; width: max-content; height: 100%; min-height: 0; display: flex; align-items: stretch; justify-content: flex-start; gap: 10px; }
 .nemesis-play-card { position: relative; flex: 0 0 auto; width: auto; height: 100%; aspect-ratio: var(--card-aspect-ratio); min-height: 0; max-height: 100%; border: var(--pixel-border-width) solid transparent; border-radius: 7px; background: transparent; overflow: visible; transition: border-color var(--transition-border); z-index: 1; cursor: pointer; }
 .nemesis-stationed-card { cursor: default; }
+.nemesis-stationed-card.effect-target,
+.nemesis-stationed-card.damage-target { cursor: pointer; }
 .nemesis-play-card.game-highlight { --game-highlight-layer: 2; }
 .nemesis-play-card.damage-target { --game-highlight-width: var(--damage-target-card-border-width); }
 .nemesis-play-card.discardable { cursor: pointer; }
 .nemesis-play-card > img { display: block; width: 100%; height: 100%; object-fit: cover; border-radius: 6px; }
 .nemesis-card-meta { position: absolute; right: 3px; bottom: 3px; left: 3px; display: flex; justify-content: space-between; align-items: center; gap: 3px; pointer-events: none; }
 .nemesis-card-token-counter { position: absolute; top: 3px; left: 3px; z-index: 3; pointer-events: none; }
+.nemesis-under-card-stack { position: absolute; right: 4px; bottom: 4px; z-index: 4; display: flex; align-items: flex-start; padding-left: 12px; }
+.nemesis-under-card { width: 34px; height: auto; aspect-ratio: var(--card-aspect-ratio); margin-left: -12px; overflow: hidden; border: 1px solid var(--border); border-radius: 4px; box-shadow: 0 2px 4px rgba(0, 0, 0, .35); }
 .nemesis-card-counter {
   display: inline-flex;
   align-items: center;

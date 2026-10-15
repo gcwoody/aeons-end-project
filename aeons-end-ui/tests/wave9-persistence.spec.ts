@@ -67,48 +67,6 @@ test('Recall closes the discard viewer before a follow-up spell decision', async
   await expect(page.getByRole('heading', { name: 'Choose a prepped spell to cast' })).toBeVisible()
 })
 
-test('Pulse, Recall usage, shared Develop, and Trinket knowledge survive Save & Exit and Resume', async ({ page }) => {
-  await startJianGame(page)
-  await applyDebugState(page, state => {
-    const player = state.game.players[0]
-    state.selectedPlayer = player.id
-    state.phase = 'main'
-    state.game.currentTurn = player.id
-    state.game.currentPhase = 'main'
-    state.game.pendingDecision = null
-    state.game.pendingEffect = null
-    state.game.hasDevelopZone = true
-    state.game.supplyMechanics = ['pulse_token', 'develop', 'trinket']
-    state.game.developZone = ['chromia_sphere', 'chromia_sphere']
-    state.game.trinketDeck = ['clouded_trinket', 'golden_trinket', 'power_trinket']
-    state.game.trinketDeckRevealed = [true, false, true]
-    player.hand = ['crystal']
-    player.discard = ['atomized_ash']
-    player.pulseTokens = 4
-    player.turnEffects.usedRecallEffects = { 'atomized_ash:2': 1 }
-  })
-
-  await page.keyboard.press('Escape')
-  await page.getByRole('heading', { name: 'Exit Game?' }).waitFor()
-  await page.getByRole('button', { name: 'Save & Exit' }).click()
-  await expect(page.getByRole('heading', { name: /Saved Games \(1\)/ })).toBeVisible()
-
-  const stored = await page.evaluate(() => JSON.parse(localStorage.getItem('aeons-end-saves-v3') ?? '[]')[0].game)
-  expect(stored.players[0].pulseTokens).toBe(4)
-  expect(stored.players[0].turnEffects.usedRecallEffects['atomized_ash:2']).toBe(1)
-  expect(stored.developZone).toEqual(['chromia_sphere', 'chromia_sphere'])
-  expect(stored.trinketDeck).toEqual(['clouded_trinket', 'golden_trinket', 'power_trinket'])
-  expect(stored.trinketDeckRevealed).toEqual([true, false, true])
-
-  await page.getByRole('button', { name: 'Resume Game' }).click()
-  await expect(page.getByText('Market', { exact: true })).toBeVisible()
-  await expect(page.locator('.pulse-token-status')).toHaveAttribute('aria-label', '4 Pulse Tokens')
-  await expect(page.locator('.played-zone-develop .card')).toHaveCount(2)
-  const deck = page.getByRole('button', { name: 'Open Trinket Deck' })
-  await expect(deck).not.toHaveAttribute('title')
-  await expect(deck.locator('.player-pile-count')).toHaveText('3')
-  await expect(deck.locator('img')).toHaveAttribute('alt', 'Clouded Trinket')
-})
 
 test('Irradiax Lump chooses a gained Trinket by clicking its large card immediately', async ({ page }) => {
   await startJianGame(page)

@@ -75,7 +75,7 @@ export const TRESSA_CARDS: Record<string, CardDef> = {
     effects: [{
       kind: 'choose_optional',
       prompt: 'Discard a card to focus your closed breach with the lowest focus cost?',
-      disableIfUnavailable: true,
+      skipIfUnavailable: true,
       effects: [
         { kind: 'discard_cards', source: 'hand', amount: 1, minAmount: 1, maxAmount: 1 },
         { kind: 'focus_breach', target: 'self', selection: 'lowest_focus_cost' },

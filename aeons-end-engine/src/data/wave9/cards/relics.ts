@@ -17,7 +17,7 @@ export const omenLoop: RelicCard = {
     trigger: { kind: 'on_play' }, effects: [
       { kind: 'destroy_cards', source: 'self' },
       { kind: 'reveal_turn_order_deck' },
-      { kind: 'choose_optional', prompt: 'Lose 1 Pulse token to let an ally draw a card?', acceptCondition: { kind: 'all_of', conditions: [
+      { kind: 'choose_optional', prompt: 'Lose 1 Pulse token to let an ally draw a card?', skipIfUnavailable: true, acceptCondition: { kind: 'all_of', conditions: [
         { kind: 'has_pulse_tokens', amount: 1 },
         { kind: 'has_unopened_breach', target: 'ally' },
       ] }, effects: [

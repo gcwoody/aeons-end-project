@@ -224,6 +224,7 @@ export const worldshift = makeSpell('worldshift', 'Worldshift', 6, [
       {
         kind: 'choose_optional',
         prompt: "Lose 2 Pulse tokens to focus an ally's Breach?",
+        skipIfUnavailable: true,
         acceptCondition: { kind: 'all_of', conditions: [
           { kind: 'has_pulse_tokens', amount: 2 },
           { kind: 'has_focusable_breach', target: 'ally' },

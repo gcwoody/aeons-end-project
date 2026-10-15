@@ -1,5 +1,8 @@
-import type { CardChoice, CardEffect, CardSelectionSource, GameState, PendingDecisionAnswer } from '../types'
-import { getCard, MAGES } from '../data'
+import type {
+  CardChoice, CardEffect, CardSelectionSource, DamageTargetDecisionContinuation,
+  DamageTargetRef, GameState, PendingDecisionAnswer,
+} from '../types'
+import { getCard, getStartingSupplyPileCount, MAGES } from '../data'
 import { isPresentBreach } from './breaches'
 import { marketPileChoices } from '../nemesis/market'
 import { shuffle } from './decks'
@@ -17,7 +20,7 @@ import {
 } from './zones'
 import {
   effectTargetPlayerId, gainLife, getDamageTargets, getEffectPlayerTargets, getPlayerTargets,
-  getSelectedPlayerTargets, retainFullyResolvableOrMaximumTargets,
+  getSelectedDamagePlayerTargets, getSelectedPlayerTargets, retainFullyResolvableOrMaximumTargets,
 } from './targets'
 import { availableCardEffectOptionIds } from './effect-conditions'
 import type { DecisionResolutionServices } from '../engine'
@@ -79,6 +82,7 @@ export function createDecisionResolver(services: DecisionResolutionServices) {
     putPlayerCardIntoPlay,
     queuePlayerExhaustion,
     recallBlockMarker,
+    resolveMageSetups,
     rememberSpecificDeckCard,
     rememberSpecificDeckTop,
     resetBreachToStartingPosition,
@@ -97,9 +101,72 @@ function resolvePendingDecision(
   g: GameState, decisionId: string, answer: PendingDecisionAnswer,
 ): string[] {
   const decision = g.pendingDecision
+
+  function pauseForOracleNemesisTargetWarning(
+    resumeDecision: DamageTargetDecisionContinuation,
+    target: DamageTargetRef,
+  ): boolean {
+    const spellCardId = g.pendingEffect?.pendingSpellCast?.cardId
+    if (target.kind !== 'nemesis' || g.nemesis.type !== 'oracle_of_filth' ||
+      g.oracleOfFilthDamageTargetWarningConfirmed || !spellCardId || getCard(spellCardId).type !== 'spell') {
+      return false
+    }
+    g.pendingDecision = createDecision(
+      g,
+      'All non-Vortex Blast spell cards deal 0 damage to the Nemesis. Are you sure you want to target the Nemesis?',
+      'confirm_oracle_nemesis_damage_target',
+      { target, resumeDecision },
+      g.pendingEffect?.sourceCardId,
+    )
+    return true
+  }
+
+  if (decision?.kind === 'confirm_oracle_nemesis_damage_target') {
+    if (decision.id !== decisionId || answer.kind !== 'confirm_oracle_nemesis_damage_target') {
+      return ['Invalid Nemesis damage target confirmation']
+    }
+    const resumeDecision = decision.resumeDecision
+    const stillAvailable = decision.target.kind === 'nemesis' &&
+      resumeDecision.targets.some(target => target.kind === 'nemesis' && target.id === decision.target.id)
+    if (!stillAvailable || !g.pendingEffect ||
+      (g.pendingEffect.awaiting?.kind !== 'deal_damage' &&
+        g.pendingEffect.awaiting?.kind !== 'deal_damage_divided')) {
+      return ['The Nemesis damage target is no longer available']
+    }
+    if (!answer.accepted) {
+      g.pendingDecision = resumeDecision
+      return ['Nemesis damage target selection cancelled']
+    }
+    g.oracleOfFilthDamageTargetWarningConfirmed = true
+    g.pendingDecision = resumeDecision
+    if (resumeDecision.kind === 'select_damage_target') {
+      return resolvePendingDecision(g, resumeDecision.id, {
+        kind: 'select_damage_target', target: decision.target,
+      })
+    }
+    return resolvePendingDecision(g, resumeDecision.id, {
+      kind: 'allocate_divided_damage', action: 'add', targetId: decision.target.id,
+    })
+  }
+
+  if (decision?.kind === 'select_damage_target' && answer.kind === 'select_damage_target') {
+    if (decision.id !== decisionId) return ['Stale card decision']
+    const target = decision.targets.find(candidate => candidate.id === answer.target.id)
+    if (!target) return ['Invalid damage target']
+    if (pauseForOracleNemesisTargetWarning(decision, target)) {
+      return ['Confirmation required before targeting the Nemesis']
+    }
+  }
+
   if (decision?.kind === 'allocate_divided_damage') {
     if (decision.id !== decisionId || answer.kind !== 'allocate_divided_damage') {
       return ['Invalid divided damage allocation action']
+    }
+    if (answer.action === 'add') {
+      const target = decision.targets.find(candidate => candidate.id === answer.targetId)
+      if (target && pauseForOracleNemesisTargetWarning(decision, target)) {
+        return ['Confirmation required before targeting the Nemesis']
+      }
     }
     return resolveDividedDamageAllocationAction(g, decision, answer)
   }
@@ -117,15 +184,19 @@ function resolvePendingDecision(
 
     const messages = devourMarketPile(g, choice.pileIndex, 1)
     const remainingChoices = decision.remainingChoices - 1
-    if (g.gameOver || remainingChoices <= 0) {
+    if (g.gameOver) {
       g.pendingDecision = null
       return [...messages, 'Increased difficulty setup complete']
+    }
+    if (remainingChoices <= 0) {
+      g.pendingDecision = null
+      return [...messages, 'Increased difficulty setup complete', ...resolveMageSetups(g)]
     }
 
     const candidates = marketPileChoices(g).filter(candidate => candidate.remaining > 0)
     if (candidates.length === 0) {
       g.pendingDecision = null
-      return [...messages, 'No supply piles remain to complete setup']
+      return [...messages, 'No supply piles remain to complete setup', ...resolveMageSetups(g)]
     }
     g.pendingDecision = createDecision(g,
       `Choose a supply pile to Devour (${remainingChoices} remaining)`,
@@ -133,6 +204,57 @@ function resolvePendingDecision(
       { candidates, remainingChoices },
     )
     return messages
+  }
+  if (decision?.kind === 'select_setup_supply_replacement') {
+    if (decision.id !== decisionId || answer.kind !== 'select_setup_supply_replacement') {
+      return ['Invalid setup supply replacement choice']
+    }
+    const choice = decision.candidates.find(candidate =>
+      candidate.pileIndex === answer.choice.pileIndex && candidate.cardId === answer.choice.cardId,
+    )
+    const pile = choice ? g.market.piles[choice.pileIndex] : null
+    const replacementCard = getCard(decision.replacementCardId)
+    if (!choice || !pile || pile.cardId !== choice.cardId || pile.remaining <= 0 ||
+      getCard(choice.cardId).setupOnlyNemesisSupplyFor ||
+      replacementCard.setupOnlyNemesisSupplyFor !== g.nemesis.type) {
+      return ['The selected supply pile is no longer available for replacement']
+    }
+    pile.cardId = decision.replacementCardId
+    pile.remaining = getStartingSupplyPileCount(replacementCard)
+    const mechanics = [...new Set(g.market.piles.flatMap(marketPile => {
+      const card = getCard(marketPile.cardId)
+      return [...(card.mechanics ?? []), ...(card.developCost === undefined ? [] : ['develop' as const])]
+    }))]
+    g.supplyMechanics = mechanics
+    g.hasSwapZone = mechanics.includes('swap') || g.players.some(player =>
+      MAGES[player.mageType]?.hasSwapZone === true || (MAGES[player.mageType]?.swapZone?.length ?? 0) > 0,
+    )
+    g.hasDevelopZone = mechanics.includes('develop') || g.players.some(player =>
+      MAGES[player.mageType]?.hasDevelopZone === true,
+    )
+
+    if (decision.nextReplacementCardId) {
+      const candidates = marketPileChoices(g).filter(candidate =>
+        candidate.remaining > 0 && !getCard(candidate.cardId).setupOnlyNemesisSupplyFor,
+      )
+      if (candidates.length > 0) {
+        g.pendingDecision = createDecision(g,
+          'Choose a supply pile to replace with Abyssal Vial',
+          'select_setup_supply_replacement',
+          {
+            candidates,
+            replacementCardId: decision.nextReplacementCardId,
+            ...(decision.previewCardIds ? { previewCardIds: decision.previewCardIds } : {}),
+          },
+        )
+        return [`Replaced ${getCard(choice.cardId).name} with ${getCard(decision.replacementCardId).name}`]
+      }
+    }
+    g.pendingDecision = null
+    return [
+      `Replaced ${getCard(choice.cardId).name} with ${getCard(decision.replacementCardId).name}`,
+      ...resolveMageSetups(g),
+    ]
   }
   if (decision?.kind === 'confirm_nemesis_draw') {
     if (decision.id !== decisionId || answer.kind !== 'confirm_nemesis_draw' || !answer.accepted) {
@@ -289,7 +411,7 @@ function resolvePendingDecision(
         conditionMatches(g, effectPlayerId(g, resolution), condition, resolution))
       if (!available.has(answer.optionId)) {
         restore()
-        return ['This choice is no longer available']
+        return ['This choice is not available']
       }
     }
     if (selected?.disabled && effect.kind !== 'choose_one') {
@@ -669,6 +791,44 @@ function resolvePendingDecision(
     }
     const message = destroyExhaustedBreach(g, current)
     return [message, ...runEffectResolution(g, resolution)]
+  } else if (answer.kind === 'distribute_cards') {
+    if (decision.kind !== 'distribute_cards' || effect.kind !== 'distribute_nemesis_specific_deck_cards' ||
+      decision.source !== 'nemesis_specific_deck' || decision.destination !== effect.destination) {
+      restore()
+      return ['Decision answer has the wrong type']
+    }
+    const expectedInstanceIds = decision.cards.map(card => card.instanceId)
+    const assignedInstanceIds = answer.assignments.map(assignment => assignment.instanceId)
+    const validAssignments = answer.assignments.length === decision.cards.length &&
+      new Set(assignedInstanceIds).size === assignedInstanceIds.length &&
+      expectedInstanceIds.every(instanceId => assignedInstanceIds.includes(instanceId)) &&
+      answer.assignments.every(assignment => decision.players.includes(assignment.playerId))
+    if (!validAssignments) {
+      restore()
+      return ['Assign every displayed card to a player before confirming']
+    }
+    const source = getNemesisCardInstanceZone(g, 'strike_deck')
+    const cardsAreCurrent = decision.cards.every(card => {
+      const index = source.instanceIds.indexOf(card.instanceId)
+      return index >= 0 && source.cards[index] === card.cardId
+    })
+    if (!cardsAreCurrent) {
+      restore()
+      return ['One or more Vortex cards are no longer available to distribute']
+    }
+    for (const assignment of answer.assignments) {
+      const card = decision.cards.find(candidate => candidate.instanceId === assignment.instanceId)!
+      const index = source.instanceIds.indexOf(card.instanceId)
+      const destination = getPlayerCardInstanceZone(g, assignment.playerId,
+        effect.destination === 'deck_top' ? 'deck' : 'discard')
+      moveCardBetweenZones(g, source, index, destination, 0, 'gain',
+        effect.destination === 'deck_top' ? { hide: true } : { reveal: true })
+    }
+    const summary = answer.assignments.map(assignment => {
+      const card = decision.cards.find(candidate => candidate.instanceId === assignment.instanceId)!
+      return `${getCard(card.cardId).name} to ${getPlayer(g, assignment.playerId).mageType}`
+    })
+    return [`Players distribute ${summary.join(', ')}`, ...runEffectResolution(g, resolution)]
   } else if (answer.kind === 'select_cards') {
     if (decision.kind !== 'select_cards') return ['Decision answer has the wrong type']
     const selected = answer.choices
@@ -685,6 +845,37 @@ function resolvePendingDecision(
     if (!selectedChoicesAreCurrent(g, selectionOwnerId, decision.candidates, selected)) {
       restore()
       return ['Card selection is no longer valid']
+    }
+    if (effect.kind === 'move_cards_to_nemesis_specific_deck') {
+      const blocked = g.nemesis.playArea.some(card =>
+        (getCard(card.cardId) as import('../types').NemesisCardDef).blocksPlacementIntoSpecificDeck === true,
+      )
+      const validSelection = selected.every(choice =>
+        cardChoiceMatches(choice, effect.source) &&
+        (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
+        (!effect.cardNames || effect.cardNames.includes(getCard(choice.cardId).name)) &&
+        (!effect.cardTypes || effect.cardTypes.includes(getCard(choice.cardId).type)),
+      )
+      if (blocked || !validSelection) {
+        restore()
+        return [blocked
+          ? 'Cards cannot be placed into the Nemesis specific deck right now'
+          : 'Choose only eligible cards for the Nemesis specific deck']
+      }
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const moved: string[] = []
+      for (const choice of orderedByZoneRemoval(selected)) {
+        const source = getPlayerCardInstanceZone(g, currentPlayerId, choice.zone)
+        const card = moveCardBetweenZones(g, source, choice.index, vortex, 0, 'effect', { reveal: true })
+        if (card) moved.push(card.cardId)
+      }
+      resolution.lastSelectedCardCount = moved.length
+      return [
+        moved.length > 0
+          ? `Placed ${moved.map(cardId => getCard(cardId).name).join(', ')} into the Nemesis specific deck`
+          : 'No cards were placed into the Nemesis specific deck',
+        ...runEffectResolution(g, resolution),
+      ]
     }
     if (effect.kind === 'resolve_corruptions') {
       const choice = selected[0]
@@ -1393,7 +1584,8 @@ function resolvePendingDecision(
         effect.kind !== 'gain_specific_deck_top' && effect.kind !== 'destroy_cards' &&
         effect.kind !== 'reveal_firethorns' && effect.kind !== 'reveal_top_card_to_hand_if_spell' &&
         effect.kind !== 'resolve_mage_form_supply_gain' && effect.kind !== 'draw_and_discard_cards' &&
-        effect.kind !== 'conjure')) {
+        effect.kind !== 'conjure' && effect.kind !== 'expunge_nemesis_specific_deck' &&
+        effect.kind !== 'gain_nemesis_specific_deck_cards')) {
       restore()
       return ['Decision answer has the wrong type']
     }
@@ -1403,6 +1595,39 @@ function resolvePendingDecision(
       return ['Invalid player target']
     }
     const player = getPlayer(g, target.playerId)
+    if (effect.kind === 'deal_player_damage' && effect.preferTargetWithCardNamesInHand?.length) {
+      let eligibleTargets = effect.target === 'doom_owner'
+        ? getSelectedDamagePlayerTargets(g, effectPlayerId(g, resolution), effect.target, effect.selection)
+        : getEffectPlayerTargets(g, resolution, effectPlayerId(g, resolution), effect.target, effect.selection)
+      const playersWithRequiredCards = eligibleTargets.filter(candidate =>
+        getPlayer(g, candidate.playerId).hand.some(cardId =>
+          effect.preferTargetWithCardNamesInHand!.includes(getCard(cardId).name),
+        ),
+      )
+      if (playersWithRequiredCards.length > 0) eligibleTargets = playersWithRequiredCards
+      if (!eligibleTargets.some(candidate => candidate.playerId === target.playerId)) {
+        restore()
+        return ['Choose a player with an eligible card in hand, if one is available']
+      }
+    }
+    if (effect.kind === 'expunge_nemesis_specific_deck') {
+      if (!g.players.some(candidate => candidate.id === target.playerId)) {
+        restore()
+        return ['Choose a Mage to receive the first Vortex card']
+      }
+      resolution.vortexExpungeStartPlayerId = target.playerId
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} will receive the first Vortex card`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'gain_nemesis_specific_deck_cards' && effect.recipient === 'choose') {
+      if (!g.players.some(candidate => candidate.id === target.playerId)) {
+        restore()
+        return ['Choose a player to gain cards from the Nemesis specific deck']
+      }
+      resolution.selectedActionPlayerId = target.playerId
+      addRemainingEffects(resolution, [effect])
+      return [`${player.mageType} will gain cards from the Nemesis specific deck`, ...runEffectResolution(g, resolution)]
+    }
     if (effect.kind === 'gain_corruptions') {
       if (!getEffectPlayerTargets(g, resolution, effectPlayerId(g, resolution), effect.target ?? 'self')
         .some(item => item.playerId === target.playerId)) {

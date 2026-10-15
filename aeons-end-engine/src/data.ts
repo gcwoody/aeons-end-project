@@ -95,6 +95,9 @@ export function validateMarketSetup(config?: MarketSetupConfig): string | null {
   for (const [index, cardId] of config.slots.entries()) {
     const card = ALL_MARKET_CARDS[cardId]
     if (!card) return `Unknown market card: ${cardId}`
+    if (card.setupOnlyNemesisSupplyFor) {
+      return `${card.name} is added during ${NEMESES[card.setupOnlyNemesisSupplyFor]?.name ?? 'Nemesis'} setup and cannot be selected as an initial market pile`
+    }
     if (card.type !== MARKET_SLOT_TYPES[index]) {
       return `${card.name} cannot be placed in ${MARKET_SLOT_TYPES[index]} slot ${index + 1}`
     }
@@ -129,7 +132,7 @@ export function resolveMarketCardIds(config?: MarketSetupConfig, random: RandomS
     if (resolvedError) throw new Error(`Template 1 resolved slots are invalid: ${resolvedError}`)
     return [...config.slots]
   }
-  const cards = Object.values(ALL_MARKET_CARDS)
+  const cards = Object.values(ALL_MARKET_CARDS).filter(card => !card.setupOnlyNemesisSupplyFor)
   const gems = pickRandom(cards.filter(card => card.type === 'gem' && card.cost <= 3), 1, random)
     .concat(pickRandom(cards.filter(card => card.type === 'gem' && card.cost === 4), 1, random))
     .concat(pickRandom(cards.filter(card => card.type === 'gem' && card.cost >= 5), 1, random))
@@ -146,6 +149,11 @@ export function resolveMarketCardIds(config?: MarketSetupConfig, random: RandomS
 
 export function getCard(id: string): CardDef {
   return INITIAL_CARDS[id] ?? ALL_MARKET_CARDS[id] ?? ALL_NEMESIS_CARDS[id]
+}
+
+/** Standard starting supply size for a market pile. */
+export function getStartingSupplyPileCount(card: CardDef): number {
+  return card.type === 'gem' ? 7 : 5
 }
 
 /** Resolve wave-specific artwork for the shared Crystal and Spark starters. */

@@ -62,7 +62,7 @@ import {
 } from './engine/card-instances'
 import {
   createCardInZone, destroyCardFromZone, drawPlayerCardsToHand, getBreachCardInstanceZone,
-  getBreachAttachedRelicZone, getNemesisCardInstanceZone, getPlayerCardInstanceZone, getSharedDevelopCardInstanceZone,
+  getBreachAttachedRelicZone, getNemesisCardInstanceZone, getNemesisCardStackZone, getPlayerCardInstanceZone, getSharedDevelopCardInstanceZone,
   moveCardBetweenZones, placeTemporaryCardInZone,
 } from './engine/card-movement'
 import {
@@ -82,7 +82,8 @@ export {
   drawPlayerDeckCards, ensurePlayerDeckInstances, getDevelopZoneCards, getGameZoneVisibility, getPlayer, getSupplyMechanics,
   isPlayerDeckCardRevealed, putPlayerCardInDeck,
   getTrinketDeckCards, isTrinketDeckCardRevealed, isCorruptionDeckCardRevealed,
-  isNemesisDeckCardRevealed, isSpecificDeckCardRevealed, returnNemesisDiscardCardToDeck,
+  isNemesisDeckCardRevealed, isNemesisSpecificDeckCardRevealed,
+  isSpecificDeckCardRevealed, returnNemesisDiscardCardToDeck,
 } from './engine/zones'
 export {
   getAllRemainingConditional, getConditionalAetherByType, getRemainingConditionalAether, getTotalAether,
@@ -287,6 +288,7 @@ export function getCardChoices(
   if (source === 'played_gem_this_turn') {
     addZone('played_this_turn', cardId => getCard(cardId).type === 'gem')
   }
+  if (source === 'played_this_turn') addZone('played_this_turn')
   if (source === 'swap_zone') addZone('swap_zone')
   if (source === 'specific_deck') addZone('specific_deck')
   if (source === 'player_cards_in_play') addZone('player_cards_in_play')
@@ -916,6 +918,9 @@ function amountValue(
   if (amount.kind === 'per_empty_market_pile') {
     return Math.max(0, amount.base + emptyMarketPileCount(g) * amount.amountPerPile)
   }
+  if (amount.kind === 'per_specific_deck_card_cost') {
+    return Math.max(0, amount.base + g.nemesis.strikeDeck.reduce((total, cardId) => total + getCard(cardId).cost, 0))
+  }
   if (amount.kind === 'last_selection_cost') {
     return Math.max(0, resolution?.lastSelectedCardCost ?? 0)
   }
@@ -1320,20 +1325,65 @@ function findOptionalCardSelection(
   return null
 }
 
-/** Whether an opt-in effect has at least one card available for its nested selection. */
-function optionalCardSelectionAvailable(g: GameState, playerId: string, effects: CardEffect[]): boolean {
+function findOptionalPreppedSpellCast(
+  effects: CardEffect[],
+): Extract<CardEffect, { kind: 'cast_prepped_spell' }> | null {
+  for (const effect of effects) {
+    if (effect.kind === 'cast_prepped_spell' && effect.source !== 'selected_prepped_spell') return effect
+    if (effect.kind === 'conditional' || effect.kind === 'choose_optional') {
+      const nested = findOptionalPreppedSpellCast(effect.effects)
+      if (nested) return nested
+    }
+    if (effect.kind === 'choose_one') {
+      const nested = effect.options
+        .map(option => findOptionalPreppedSpellCast(option.effects))
+        .find(Boolean)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
+/** Whether an opt-in effect has an available card or spell for its nested selection. */
+function optionalEffectAvailable(
+  g: GameState,
+  playerId: string,
+  effects: CardEffect[],
+  sourcePlayerId = playerId,
+): boolean {
   const selection = findOptionalCardSelection(effects)
-  if (!selection) return true
-  if (selection.kind === 'destroy_cards' && (selection.maxAmount ?? 1) <= 0) return false
-  const targets = getSelectedPlayerTargets(
-    g, playerId, selection.target ?? 'self',
-    'selection' in selection ? selection.selection : undefined,
-  )
-  return targets.some(target => getCardChoices(g, target.playerId, selection.source as CardSelectionSource)
-    .some(choice => (!('cardType' in selection) || !selection.cardType || getCard(choice.cardId).type === selection.cardType) &&
-      (!('cardTypes' in selection) || !selection.cardTypes || selection.cardTypes.includes(getCard(choice.cardId).type)) &&
-      (!('cardIds' in selection) || !selection.cardIds || selection.cardIds.includes(choice.cardId)) &&
-      getCard(choice.cardId).cost >= (selection.minCost ?? 0)))
+  if (selection) {
+    if (selection.kind === 'destroy_cards' && (selection.maxAmount ?? 1) <= 0) return false
+    const targets = getSelectedPlayerTargets(
+      g, playerId, selection.target ?? 'self',
+      'selection' in selection ? selection.selection : undefined,
+    )
+    const hasEligibleCard = targets.some(target => getCardChoices(g, target.playerId, selection.source as CardSelectionSource)
+      .some(choice => (!('cardType' in selection) || !selection.cardType || getCard(choice.cardId).type === selection.cardType) &&
+        (!('cardTypes' in selection) || !selection.cardTypes || selection.cardTypes.includes(getCard(choice.cardId).type)) &&
+        (!('cardIds' in selection) || !selection.cardIds || selection.cardIds.includes(choice.cardId)) &&
+        getCard(choice.cardId).cost >= (selection.minCost ?? 0)))
+    if (!hasEligibleCard) return false
+  }
+
+  const spellCast = findOptionalPreppedSpellCast(effects)
+  if (spellCast) {
+    const hasEligibleSpell = getPreppedSpellChoices(g).some(choice => {
+      if (spellCast.source === 'prepped_spell_prepped_this_turn') {
+        const owner = getPlayer(g, choice.playerId)
+        const breach = owner.breaches.find(item => item.index === choice.breachIndex)
+        if (breach?.preppedThisTurn?.[choice.spellIndex] !== true) return false
+      }
+      if (spellCast.ownerScope === 'ally' && choice.playerId === sourcePlayerId) return false
+      if (spellCast.ownerScope === 'self' && choice.playerId !== sourcePlayerId) return false
+      const cost = getPreppedSpellCost(g, choice.playerId, choice.breachIndex, choice.spellIndex)
+      return cost !== null && (spellCast.minCost === undefined || cost >= spellCast.minCost) &&
+        (spellCast.maxCost === undefined || cost <= spellCast.maxCost)
+    })
+    if (!hasEligibleSpell) return false
+  }
+
+  return true
 }
 
 function selectedChoicesAreCurrent(
@@ -1425,12 +1475,22 @@ function dealNemesisTargetDamage(
     ? g.nemesis.playArea.find(card => card.cardType === 'minion' && card.placedAt === target.placedAt)
     : undefined
   const before = minion?.lifeTokens ?? 0
-  const message = dealDamage(g, target, amount)
-  if (!minion || before <= (minion.lifeTokens ?? 0)) return message
+  const message = dealDamage(g, target, amount, resolution.sourceCardId)
+  if (!minion) return message
 
   const actorId = resolution.sourcePlayerId
-  const onDamage = (getCard(minion.cardId) as NemesisCardDef).onDamage ?? []
-  if (!actorId || onDamage.length === 0) return message
+  const dealtDamage = before > (minion.lifeTokens ?? 0)
+  const definition = getCard(minion.cardId) as NemesisCardDef
+  const onDamage = dealtDamage ? definition.onDamage ?? [] : []
+  const onSpellDamage = amount > 0 && resolution.pendingSpellCast ? definition.onSpellDamage ?? [] : []
+  if (before > 0 && (minion.lifeTokens ?? 0) === 0 && definition.gainCardsUnderneathOnDefeat && actorId) {
+    const stacked = getNemesisCardStackZone(g, minion)
+    const discard = getPlayerCardInstanceZone(g, actorId, 'discard')
+    for (let index = stacked.cards.length - 1; index >= 0; index--) {
+      moveCardBetweenZones(g, stacked, index, discard, 0, 'effect', { reveal: true })
+    }
+  }
+  if (!actorId || (onDamage.length === 0 && onSpellDamage.length === 0)) return message
 
   const outerContext = captureEffectContext(resolution)
   addRemainingEffects(resolution, [
@@ -1440,11 +1500,12 @@ function dealNemesisTargetDamage(
       sourceCardOwnerId: undefined,
       sourceCardId: minion.cardId,
       effectPlayerId: actorId,
-      pendingSpellCast: undefined,
+      pendingSpellCast: resolution.pendingSpellCast ? { ...resolution.pendingSpellCast } : undefined,
       spellDamageBonus: undefined,
       spellAdditionalDamageBonus: undefined,
     },
     ...onDamage,
+    ...onSpellDamage,
     outerContext,
   ])
   return message
@@ -1545,7 +1606,7 @@ export interface EffectResolutionServices {
   marketPileChoices: typeof marketPileChoices,
   matchingBlocks: typeof matchingBlocks,
   moveGainedSupplyCardToDeck: typeof moveGainedSupplyCardToDeck,
-  optionalCardSelectionAvailable: typeof optionalCardSelectionAvailable,
+  optionalEffectAvailable: typeof optionalEffectAvailable,
   pauseEffect: typeof pauseEffect,
   pauseRevealTopCard: typeof pauseRevealTopCard,
   pendingDecision: typeof pendingDecision,
@@ -1649,7 +1710,7 @@ const runEffectResolution = createEffectResolver({
   marketPileChoices,
   matchingBlocks,
   moveGainedSupplyCardToDeck,
-  optionalCardSelectionAvailable,
+  optionalEffectAvailable,
   pauseEffect,
   pauseRevealTopCard,
   pendingDecision,
@@ -1995,8 +2056,11 @@ function manualActionHasAvailableChoice(
         g, playerId, option.condition, undefined, sourceCardId, sourceCardIndex, sourcePlayerId,
       ))
     }
-    if (effect.kind === 'choose_optional' && effect.disableIfUnavailable && (
-      !optionalCardSelectionAvailable(g, playerId, effect.effects) ||
+    if (effect.kind === 'choose_optional' && (effect.disableIfUnavailable || effect.skipIfUnavailable) && (
+      !optionalEffectAvailable(g, playerId, effect.effects, sourcePlayerId) ||
+      (effect.skipIfUnavailable && effect.acceptCondition !== undefined && !conditionMatches(
+        g, playerId, effect.acceptCondition, undefined, sourceCardId, sourceCardIndex, sourcePlayerId,
+      )) ||
       !manualActionHasAvailableChoice(
         g, playerId, effect.effects, sourceCardId, sourceCardIndex, sourcePlayerId,
       )
@@ -2248,6 +2312,7 @@ export interface DecisionResolutionServices {
   rememberSpecificDeckTop: typeof rememberSpecificDeckTop
   resetBreachToStartingPosition: typeof resetBreachToStartingPosition
   resolveDividedDamageAllocationAction: typeof resolveDividedDamageAllocationAction
+  resolveMageSetups: typeof resolveMageSetups
   returnSelectedCard: typeof returnSelectedCard
   runEffectResolution: typeof runEffectResolution
   selectedChoicesAreCurrent: typeof selectedChoicesAreCurrent
@@ -2308,6 +2373,7 @@ const resolvePendingDecisionWithServices = createDecisionResolver({
   rememberSpecificDeckTop,
   resetBreachToStartingPosition,
   resolveDividedDamageAllocationAction,
+  resolveMageSetups,
   returnSelectedCard,
   runEffectResolution,
   selectedChoicesAreCurrent,
@@ -2322,8 +2388,8 @@ export function resolvePendingDecision(g: GameState, decisionId: string, answer:
   return resolvePendingDecisionWithServices(g, decisionId, answer)
 }
 const nemesisTurn = createNemesisTurnRuntime({
-  conditionMatches: (game, playerId, condition) =>
-    conditionMatches(game, playerId, condition),
+  conditionMatches: (game, playerId, condition, sourceCardId) =>
+    conditionMatches(game, playerId, condition, undefined, sourceCardId),
   runEffectResolution: (game, resolution) => runEffectResolution(game, resolution),
   resolveEffects,
   createDecision,

@@ -2,7 +2,7 @@
 
 这是规则与数据开发的主要入口。先读 [README.md](README.md) 了解项目范围，再读 [重要规则与裁定](game-rulings.md) 确认易错规则；改动前按工作内容再读本指南或 [UI 开发指南](ui/ui-guide.md)。
 
-更新时间：2026-10-07
+更新时间：2026-10-13
 
 ## 先记住这些
 
@@ -19,6 +19,8 @@ aeons-end-engine/src/engine/      按职责拆分的共享规则模块
 aeons-end-engine/src/nemesis/     Nemesis 专属 setup、触发和回合规则
 aeons-end-engine/src/engine.ts    引擎对外入口和玩家/阶段操作 API
 aeons-end-ui/src/game/            响应式状态、阶段协调、存档和撤销
+aeons-end-ui/src/game/card-motion-*.ts  卡牌动效规则、展示暂存、排队和等待
+aeons-end-ui/src/game/card-zone-motion.ts  按引擎移动事实安排牌区转移
 aeons-end-ui/src/components/      Vue 展示与交互组件
 aeons-end-ui/src/styles/          按职责拆分的 CSS
 aeons-end-ui/tests/               Playwright 浏览器测试
@@ -46,6 +48,23 @@ Wave 数据由各自的 `index.ts` 汇总，再通过引擎数据注册表提供
 | 前端存档和撤销辅助逻辑 | `aeons-end-ui/src/game/game-persistence.ts` |
 | UI 组件、CSS 与 Gallery | `aeons-end-ui/src/components/`、`src/styles/`、`UiGallery.vue` |
 | 规则和浏览器回归 | `aeons-end-engine/src/tests/`、`aeons-end-ui/tests/` |
+
+### 卡牌动效代码入口
+
+卡牌去向由引擎决定。引擎会记录本次移动的是哪一张实体卡、从哪里移到哪里；这些记录只供本次界面更新使用，不是另一套游戏规则。前端不再通过动作前后的牌区数量变化来猜测移动。
+
+`useGame.ts` 仍然负责连接玩家操作、引擎和界面动效。飞行、翻面、牌堆暂存等具体工作已经按职责拆到独立模块中：
+
+| 需要修改的内容 | 代码入口 |
+| --- | --- |
+| 从引擎移动记录整理出手牌或棋盘牌区的移动 | `card-motion-projection.ts`、`card-zone-motion.ts` |
+| 找到卡牌当前显示位置和目标牌区 | `card-motion-regions.ts`、`useGame.ts` |
+| 决定飞行速度、缓动、落地显示方式和是否翻面 | `card-motion-policy.ts`、`card-images.ts` |
+| 执行一次飞行、翻面或牌列收拢 | `card-motion-flight.ts`、`card-flight.ts` |
+| 逐项播放卡牌移动，并等待相关动画结束 | `card-motion-queue.ts`、`card-motion-wait.ts`、`breach-motion.ts` |
+| 暂存牌堆顶牌、手牌、Swap 区和飞行中的卡面 | `card-motion-display.ts`、`card-motion-board-display.ts`、`card-motion-hand-display.ts`、`card-motion-visibility.ts` |
+
+新增移动路线时，应按起点和终点补充通用处理，并检查同名卡牌副本、牌背方向、落地时机和连续操作；不要按单张卡牌 ID 增加通用动效特例。完整行为约定和 Gallery 示例见 [UI 开发指南](ui/ui-guide.md) 的“卡牌动效结构”部分。`useGame.ts` 仍是较大的游戏操作协调文件；涉及已有动效职责时，先检查上表对应模块，避免把基础动画规则继续塞回协调入口。
 
 ## 效果来源与卡牌归属
 
@@ -79,7 +98,7 @@ Wave 数据由各自的 `index.ts` 汇总，再通过引擎数据注册表提供
 - To Discard 代价上的后续抽牌（如 `drawAfter`）必须在同一轮引擎结算中完成，再把状态交给 UI 检查 Main Phase 是否可自动结束。
 - **Additional damage：** 额外伤害应作为原伤害实例的修正处理，不能误算成第二次独立伤害。
 - **伤害与治疗反馈：** 通用伤害/治疗结算函数按每次实际效果写入 `GameState.healthChangeEvents`，前端 `DamageFeedbackLayer` 按目标和数值显示气泡。新增效果必须复用这些结算函数；不要按卡牌 ID、触发来源或调用入口单独补气泡。
-- **动画与流程：** 如果动作会启动卡牌转移、Breach 旋转/翻开或 Nemesis 抽牌展示，阶段推进和自动结束必须等对应动画完成。批量动画期间要阻止重复输入；动画时间不能让引擎跳过尚未完成的决策或效果。
+- **动画与流程：** 卡牌转移动效使用独立模块和共享串行队列；动作要推进阶段、继续翻开 Nemesis 卡牌或接受下一次操作前，必须等所需的卡牌移动、牌列整理和 Breach 动画结束。引擎先决定规则结果，UI 只延后展示或后续操作，不改变卡牌去向。详见本指南的“卡牌动效代码入口”和 [UI 开发指南](ui/ui-guide.md)。
 
 ### Reveal 牌库的通用规则
 
@@ -129,9 +148,9 @@ npm test
 cd ..\aeons-end-ui
 npx vue-tsc --noEmit
 npm run build
-npm run test:e2e
+npm run test:e2e -- --workers=2
 ```
 
-`npm run build` 会先生成图片导入映射。Playwright 适合验证交互、决策、几何位置与动画状态；最终观感仍需在桌面浏览器中检查。不要仅为迎合窄屏而增加布局分支；目标窗口见 [UI 开发指南](ui/ui-guide.md)。
+`npm run build` 会先生成图片导入映射。Playwright 适合验证交互、决策、几何位置与动画状态；最终观感仍需在桌面浏览器中检查。当前 E2E 回归基线及已知复跑差异见 [E2E 基线记录](aeons-end-ui/tests/E2E_BASELINE.md)。不要仅为迎合窄屏而增加布局分支；目标窗口见 [UI 开发指南](ui/ui-guide.md)。
 
 牌库数组 `[0]` 是顶牌：抽牌用 `shift()`，放到弃牌堆顶用 `unshift()`。用户可见文字用英文；代码标识符和注释用英文，内部说明文档可用中文。

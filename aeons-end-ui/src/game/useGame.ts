@@ -40,20 +40,45 @@ import type {
 import { displayMageName, formatMageNamesInText } from './display-name'
 import { getNemesisPresentation } from './nemesis-presentation'
 import { waitForBreachMotions } from './breach-motion'
-import { cardImageUrl, playerCardBackUrl } from '../card-images'
+import { cardImageUrl, playerDeckCardBackUrl } from '../card-images'
 import {
-  animateCardFlight, animateCardFlightWithReveal, animateCardFlightToPlayerDeck, animateCardRevealFlight, animateCardZoneMotion, captureCardFlight, captureCardZoneMotion, captureCardMoveSourceSnapshot,
+  captureCardFlight, captureCardZoneMotion, captureCardMoveSourceSnapshot,
   getDecisionPresentedCardInstanceIds,
-  captureCardRowPositions, discardCardZoneMotion, holdCardFlightAtOrigin,
-  resolveCardFlightDestinationMode, resolveCardZoneMotionFromEvents,
+  captureCardRowPositions, holdCardFlightAtOrigin,
+  resolveCardFlightDestinationMode,
   hasActiveHandCardReflow, markHandCardDeparting,
   discardCardZoneMotionSource,
   discardCardFlight, discardCardMoveSourceSnapshot,
   waitForCardRowReflow, waitForHandCardReflow, waitForHandGainReflow,
 } from './card-flight'
-import type { CardFlightSnapshot, CardZoneMotionSnapshot, CardZoneMotionTransfer, CardZoneTransfer, CardMoveSourceSnapshot } from './card-flight'
-import { projectPileArrival, resolveHandCardZoneTransfers } from './card-motion-projection'
+import type { CardFlightSnapshot, CardZoneMotionSnapshot, CardZoneTransfer, CardMoveSourceSnapshot } from './card-flight'
+import { animateCardZoneMotion, discardCardZoneMotion, resolveCardZoneMotionFromEvents } from './card-zone-motion'
+import type { CardZoneMotionTransfer } from './card-zone-motion'
+import { resolveCardMotionPolicy } from './card-motion-policy'
+import { resolveHandCardZoneTransfers } from './card-motion-projection'
+import { createCardMotionPileDisplay } from './card-motion-display'
+import type { DiscardPileDisplayValue, PileDisplayBaseline } from './card-motion-display'
+import {
+  captureCardPileCounts,
+  createCardPileMotionDisplaySession,
+} from './card-pile-motion-display'
+import type {
+  CardPileMotionDisplaySession,
+  CardPileMotionRoute,
+} from './card-pile-motion-display'
+import { createCardMotionHandDisplay } from './card-motion-hand-display'
+import type {
+  HandDiscardPresentation,
+  HandPlayPresentation,
+  PendingPlayCardFlight,
+} from './card-motion-hand-display'
+import { animateCardMotionFlight } from './card-motion-flight'
 import { resolvePlayerCardRegionAnchor } from './card-motion-regions'
+import { createCardMotionQueue } from './card-motion-queue'
+import { createCardMotionWaiter } from './card-motion-wait'
+import { createCardMotionVisibilityHolds } from './card-motion-visibility'
+import { createCardMotionBoardDisplay } from './card-motion-board-display'
+import type { PlayerZoneMotionBaseline, SwapZoneCardKeys, SwapZoneDisplayHold } from './card-motion-board-display'
 import {
   clearGameSaves, cloneGameState, cloneUndoSnapshot, createUndoSnapshot, readGameSaves,
   summarizeGameSave, undoSnapshotsEqual, writeGameSaves,
@@ -118,74 +143,14 @@ interface HandZoneSelection {
   choice: CardChoice
   destinationPlayerId?: PlayerId
 }
-interface HandDiscardPresentationCard {
-  cardId: string
-  instanceId: string
-  handIndex: number
-  presentationKey: string
-}
-interface HandPlayPresentation {
-  playerId: PlayerId
-  cardId: string
-  instanceId: string
-  handIndex: number
-  presentationKey: string
-  motionKey: string
-}
-interface PendingPlayCardFlight {
-  ownerId: PlayerId
-  cardId: string
-  instanceId: string
-  handIndex: number
-  motionKey: string
-  presentationKey: string
-  hiddenDestination: HTMLElement | null
-  hiddenDestinationZone: string | null
-  hiddenDestinationKey: string | null
-  hiddenDestinationVisibility: string
-}
-interface PlayerZoneMotionBaseline {
-  id: PlayerId
-  swapZone: string[]
-  swapZoneInstanceIds: string[]
-  discard: string[]
-  discardInstanceIds: string[]
-}
-interface DiscardDisplayOverride {
-  cardId: string | null
-  count: number
-  boardArrival?: { cardId: string; count: number; instanceId: string; sourceZone: string }
-}
-interface SwapZoneDisplayHold {
-  cardId: string
-  instanceId: string
-  index: number
-  motionKey: string
-  survivorKeys: string[]
-  departing: boolean
-}
-interface SwapZoneCardKeys {
-  cardIds: string[]
-  motionKeys: string[]
-}
-interface BoardDiscardDisplayHold {
-  playerId: PlayerId
-  previous: DiscardDisplayOverride | undefined
-  current: DiscardDisplayOverride
-  previousSwap: SwapZoneDisplayHold | undefined
-  currentSwap: SwapZoneDisplayHold | undefined
-}
-interface HandPileDisplayOverrideBaseline {
-  discard: Record<PlayerId, DiscardDisplayOverride | undefined>
-  deck: Record<PlayerId, { cardId: string | null; count: number } | undefined>
-}
+type DiscardDisplayOverride = DiscardPileDisplayValue
 const handZoneTransfersByUndo = new WeakMap<UndoSnapshot, HandZoneTransferSnapshot>()
 const cardMoveTransactionsByUndo = new WeakMap<UndoSnapshot, ReturnType<typeof beginCardMoveTransaction>>()
 const cardMoveEventsByUndo = new WeakMap<UndoSnapshot, CardMoveEvent[]>()
 const resolvedHandTransfersByUndo = new WeakMap<UndoSnapshot, CardZoneTransfer[]>()
-const handPileDisplayOverridesByUndo = new WeakMap<UndoSnapshot, HandPileDisplayOverrideBaseline>()
+const resolvedExternalTransfersByUndo = new WeakMap<UndoSnapshot, CardZoneTransfer[]>()
+const resolvedMarketTransfersByUndo = new WeakMap<UndoSnapshot, CardZoneTransfer[]>()
 const pendingBoardHandFlights = new Map<string, CardFlightSnapshot | null>()
-let pendingPlayCardFlight: PendingPlayCardFlight | null = null
 interface MarketPileTransferSnapshot {
   pileIndex: number
   cardId: string
@@ -193,21 +158,14 @@ interface MarketPileTransferSnapshot {
 const marketPileTransfersByUndo = new WeakMap<UndoSnapshot, MarketPileTransferSnapshot[]>()
 const cardZoneMotionsByUndo = new WeakMap<UndoSnapshot, CardZoneMotionSnapshot>()
 const cardZoneMotionGatesByUndo = new WeakMap<UndoSnapshot, Map<string, Promise<void>>>()
-const boardDiscardHoldsByMotion = new WeakMap<CardZoneMotionSnapshot, Map<PlayerId, BoardDiscardDisplayHold>>()
 const damageImpactTimers = new Map<number, ReturnType<typeof setTimeout>>()
 const DAMAGE_IMPACT_DURATION_MS = 1600
 let turnTransitionSequence = 0
 let activeActionCaptureDepth = 0
 let activeActionCaptureCompletion: Promise<void> = Promise.resolve()
 let resolveActiveActionCaptureCompletion: (() => void) | null = null
-let cardZoneTransferAnimationQueue: Promise<void> = Promise.resolve()
-// Queue callbacks run asynchronously. Snapshot mutable values before enqueueing
-// so later state cleanup cannot change the inputs an animation will receive.
-function enqueueCardMotion(runMotion: () => Promise<void>): Promise<void> {
-  const queuedMotion = cardZoneTransferAnimationQueue.then(runMotion, runMotion)
-  cardZoneTransferAnimationQueue = queuedMotion.catch(() => undefined)
-  return queuedMotion
-}
+const cardMotionQueue = createCardMotionQueue()
+const enqueueCardMotion = cardMotionQueue.enqueue
 const activeCardMoveClaims = new Set<string>()
 let automaticDecisionViewRestore: { returnPlayerId: PlayerId; autoSelectedPlayerId: PlayerId } | null = null
 const HAND_DISCARD_EFFECT_KINDS = new Set([
@@ -228,12 +186,18 @@ const state = reactive({
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
   deckDisplayOverride: null as { playerId: PlayerId; cardId: string | null; count: number } | null,
   deckPileDisplayOverrides: {} as Partial<Record<PlayerId, { cardId: string | null; count: number }>>,
+  cardPileCountOverrides: {} as Record<string, { count: number; motionId: number }>,
   discardTopDisplayOverride: null as { playerId: PlayerId; cardId: string | null; count: number } | null,
   discardPileDisplayOverrides: {} as Partial<Record<PlayerId, DiscardDisplayOverride>>,
   swapZoneDisplayHolds: {} as Partial<Record<PlayerId, SwapZoneDisplayHold>>,
   swapZoneCardKeys: {} as Partial<Record<PlayerId, SwapZoneCardKeys>>,
-  handDiscardPresentation: null as { playerId: PlayerId; cards: HandDiscardPresentationCard[] } | null,
+  handDiscardPresentation: null as HandDiscardPresentation | null,
   handPlayPresentation: null as HandPlayPresentation | null,
+  pendingPlayCardDecisionRelease: null as {
+    instanceId: string
+    decisionId: string
+    revealedInPlayedZone: boolean
+  } | null,
   drawPhaseHandGainTotals: {} as Record<PlayerId, number>, // UI-only counts excluded from Mage draw feedback
   damageImpacts: [] as DamageImpact[], // UI-only combat feedback; never saved with the game
   cardMotionBatchActive: false,
@@ -266,6 +230,43 @@ const state = reactive({
   marketMode: 'template1' as MarketSetupConfig['mode'],
   marketSlots: resolveMarketCardIds({ mode: 'template1', slots: [] }),
 })
+const cardMotionPileDisplay = createCardMotionPileDisplay({
+  getDiscard: () => toRaw(state.discardPileDisplayOverrides),
+  setDiscard: value => { state.discardPileDisplayOverrides = value },
+  getDeck: () => toRaw(state.deckPileDisplayOverrides),
+  setDeck: value => { state.deckPileDisplayOverrides = value },
+}, reportCardMotionIssue)
+const cardPileMotionDisplayAccess = {
+  get: () => toRaw(state.cardPileCountOverrides),
+  set: (value: typeof state.cardPileCountOverrides) => { state.cardPileCountOverrides = value },
+}
+const cardMotionHandDisplay = createCardMotionHandDisplay({
+  getDiscardPresentation: () => state.handDiscardPresentation,
+  setDiscardPresentation: value => { state.handDiscardPresentation = value },
+  getPlayPresentation: () => state.handPlayPresentation,
+  setPlayPresentation: value => { state.handPlayPresentation = value },
+})
+const cardMotionVisibilityHolds = createCardMotionVisibilityHolds()
+const cardMotionBoardDisplay = createCardMotionBoardDisplay({
+  getDiscard: () => toRaw(state.discardPileDisplayOverrides),
+  setDiscard: value => { state.discardPileDisplayOverrides = value },
+  getSwapHolds: () => toRaw(state.swapZoneDisplayHolds),
+  setSwapHolds: value => { state.swapZoneDisplayHolds = value },
+  getSwapCardKeys: () => toRaw(state.swapZoneCardKeys),
+  setSwapCardKeys: value => { state.swapZoneCardKeys = value },
+}, holdCardFlightAtOrigin, () => nextTick())
+const waitForCardMotions = createCardMotionWaiter({
+  queue: cardMotionQueue,
+  waitForBreachMotions,
+  nextTick,
+  getHand: () => typeof document === 'undefined'
+    ? null
+    : document.querySelector<HTMLElement>('.hand'),
+  hasActiveHandCardReflow,
+  waitForHandCardReflow,
+  isMotionBlocked: () => state.cardMotionBatchActive,
+  setMotionBlocked: blocked => { state.cardMotionBatchActive = blocked },
+})
 let cardMotionBatchLocks = 0
 function beginCardMotionBatch(): () => void {
   cardMotionBatchLocks++
@@ -278,6 +279,7 @@ function beginCardMotionBatch(): () => void {
     state.cardMotionBatchActive = cardMotionBatchLocks > 0
   }
 }
+
 let storedSaves: StoredSave[] = []
 // A newly started game must not become a save record until the player chooses
 // Save & Exit. Resumed games keep the existing auto-save behavior.
@@ -297,6 +299,7 @@ function boardCardSelectionKey(selection: BoardCardSelection): string {
   return `${playerId}:${choice.zone}:${choice.index}:${choice.cardId}`
 }
 function usesBoardCardSelection(decision = state.game?.pendingDecision): boolean {
+  if (decision && state.pendingPlayCardDecisionRelease?.decisionId === decision.id) return false
   if (decision?.kind === 'select_cards') {
     return decision.candidates.length > 0 && decision.candidates.every(choice =>
       choice.zone === 'hand' || choice.zone === 'played_this_turn' || choice.zone === 'swap_zone')
@@ -715,36 +718,179 @@ function prepareHandDeparturePresentation(previous: UndoSnapshot) {
   )
   resolvedHandTransfersByUndo.set(previous, transfers)
   stageHandDepartures(transfers, snapshot)
-  stageHandPileDisplayOverrides(previous, transfers)
+  stageActionPileDisplayOverrides(previous, transfers)
 }
-function stageHandPileDisplayOverrides(previous: UndoSnapshot, transfers: readonly CardZoneTransfer[]) {
-  const arrivals = transfers.filter(transfer =>
-    !!transfer.flight && (transfer.zone === 'discard' || transfer.zone === 'deck'),
+function stageActionPileDisplayOverrides(previous: UndoSnapshot, transfers: readonly CardZoneTransfer[]) {
+  cardMotionPileDisplay.stageAction(previous, transfers)
+}
+
+function holdActionPileDisplayOverrides(previous: UndoSnapshot) {
+  const game = previous.game
+  if (!game) return
+  cardMotionPileDisplay.holdAction(
+    previous,
+    game.players,
+    state.discardTopDisplayOverride,
+    state.deckDisplayOverride,
   )
-  if (arrivals.length === 0) return
-  const priorDiscard = { ...toRaw(state.discardPileDisplayOverrides) }
-  const priorDeck = { ...toRaw(state.deckPileDisplayOverrides) }
-  const nextDiscard = { ...priorDiscard }
-  const nextDeck = { ...priorDeck }
+}
+
+function finalizeActionPileDisplayOverrides(
+  previous: UndoSnapshot,
+  transfers: readonly CardZoneTransfer[],
+): PileDisplayBaseline | undefined {
+  return cardMotionPileDisplay.finalizeAction(previous, transfers)
+}
+
+function prepareActionPileTransfers(previous: UndoSnapshot, cardMoveEvents: readonly CardMoveEvent[]) {
+  if (!state.game) return
+  const externalCaptures = cardZoneTransfersByUndo.get(previous)
+  if (externalCaptures && !resolvedExternalTransfersByUndo.has(previous)) {
+    cardZoneTransfersByUndo.delete(previous)
+    resolvedExternalTransfersByUndo.set(previous,
+      resolveExternalCardMoveTransfers(externalCaptures, cardMoveEvents, state.game))
+  }
+  const marketCaptures = marketPileTransfersByUndo.get(previous)
+  if (marketCaptures && !resolvedMarketTransfersByUndo.has(previous)) {
+    marketPileTransfersByUndo.delete(previous)
+    resolvedMarketTransfersByUndo.set(previous,
+      resolveMarketPileTransfers(marketCaptures, state.game, cardMoveEvents))
+  }
+  stageActionPileDisplayOverrides(previous, [
+    ...(resolvedExternalTransfersByUndo.get(previous) ?? []),
+    ...(resolvedMarketTransfersByUndo.get(previous) ?? []),
+  ])
+}
+
+async function hideActionHandArrivals(previous: UndoSnapshot) {
+  const arrivals = [
+    ...(resolvedExternalTransfersByUndo.get(previous) ?? []),
+    ...(resolvedMarketTransfersByUndo.get(previous) ?? []),
+  ].filter(transfer => transfer.zone === 'hand' && transfer.flight && transfer.instanceId)
+  if (arrivals.length === 0 || typeof document === 'undefined') return
+  await nextTick()
   for (const transfer of arrivals) {
-    if (transfer.zone === 'discard' && nextDiscard[transfer.playerId] === undefined) {
-      nextDiscard[transfer.playerId] = {
-        cardId: transfer.previousDiscardTop,
-        count: transfer.previousDiscardCount,
-      }
+    const existing = cardMotionVisibilityHolds.get(previous, transfer.instanceId!)
+    if (existing) {
+      transfer.arrivalDestination = existing.element
+      transfer.arrivalDestinationVisibilityBefore = existing.visibility
+      continue
     }
-    if (transfer.zone === 'deck' && nextDeck[transfer.playerId] === undefined) {
-      nextDeck[transfer.playerId] = {
-        cardId: transfer.previousDeckTop,
-        count: transfer.previousDeckCount,
-      }
+    const playerArea = findDataElement('data-player-area-id', transfer.playerId)
+    const destination = playerArea
+      ? [...playerArea.querySelectorAll<HTMLElement>('[data-card-flight-target="hand"][data-card-instance-id]')]
+        .find(element => element.dataset.cardInstanceId === transfer.instanceId) ?? null
+      : null
+    if (!destination) continue
+    const hold = cardMotionVisibilityHolds.hold(previous, transfer.instanceId!, destination)
+    transfer.arrivalDestination = destination
+    transfer.arrivalDestinationVisibilityBefore = hold.visibility
+  }
+}
+
+async function hideActionNewHandArrivals(previous: UndoSnapshot) {
+  const game = state.game
+  if (!game || typeof document === 'undefined') return
+  const initialHandInstances = new Set(previous.game.players.flatMap(player =>
+    getPlayerCardInstanceZone(previous.game, player.id, 'hand').instanceIds))
+  const externalInstances = new Set([
+    ...(cardZoneTransfersByUndo.get(previous) ?? []).flatMap(capture => capture.instances
+      .filter(instance => !!capture.snapshot.flight).map(instance => instance.instanceId)),
+    ...(resolvedExternalTransfersByUndo.get(previous) ?? []).flatMap(transfer =>
+      transfer.flight && transfer.instanceId ? [transfer.instanceId] : []),
+  ])
+  const marketCardIds = new Set([
+    ...(marketPileTransfersByUndo.get(previous) ?? [])
+      .filter(capture => !!capture.snapshot.flight).map(capture => capture.cardId),
+    ...(resolvedMarketTransfersByUndo.get(previous) ?? [])
+      .filter(transfer => !!transfer.flight).map(transfer => transfer.cardId),
+  ])
+  const candidates = game.players.flatMap(player => {
+    const hand = getPlayerCardInstanceZone(game, player.id, 'hand')
+    return hand.instanceIds.flatMap((instanceId, index) => {
+      if (initialHandInstances.has(instanceId)) return []
+      const cardId = hand.cards[index]
+      if (!cardId) return []
+      return externalInstances.has(instanceId) || marketCardIds.has(cardId) ||
+        pendingGainPlacementFlight?.instanceId === instanceId
+        ? [{ playerId: player.id, instanceId }]
+        : []
+    })
+  })
+  if (candidates.length === 0) return
+  await nextTick()
+  for (const candidate of candidates) {
+    if (cardMotionVisibilityHolds.get(previous, candidate.instanceId)) continue
+    const playerArea = findDataElement('data-player-area-id', candidate.playerId)
+    const destination = playerArea
+      ? [...playerArea.querySelectorAll<HTMLElement>('[data-card-flight-target="hand"][data-card-instance-id]')]
+        .find(element => element.dataset.cardInstanceId === candidate.instanceId) ?? null
+      : null
+    if (!destination) continue
+    cardMotionVisibilityHolds.hold(previous, candidate.instanceId, destination)
+  }
+}
+
+function attachActionHandArrivalHolds(previous: UndoSnapshot, transfers: readonly CardZoneTransfer[]) {
+  const holds = cardMotionVisibilityHolds.take(previous)
+  if (holds.size === 0) return
+  const transferByInstance = new Map<string, CardZoneTransfer>()
+  for (const transfer of transfers) {
+    if (transfer.zone === 'hand' && transfer.instanceId) {
+      transferByInstance.set(transfer.instanceId, transfer)
     }
   }
-  handPileDisplayOverridesByUndo.set(previous, { discard: priorDiscard, deck: priorDeck })
-  state.discardPileDisplayOverrides = nextDiscard
-  state.deckPileDisplayOverrides = nextDeck
+  for (const [key, hold] of holds) {
+    if (typeof key !== 'string') {
+      hold.element.style.visibility = hold.visibility
+      continue
+    }
+    const instanceId = key
+    const transfer = transferByInstance.get(instanceId)
+    if (transfer?.flight) {
+      transfer.arrivalDestination = hold.element
+      transfer.arrivalDestinationVisibilityBefore = hold.visibility
+    } else {
+      hold.element.style.visibility = hold.visibility
+    }
+  }
 }
-function finishAction(previous: UndoSnapshot | null, preferredHandZoneOrder: readonly HandZoneSelection[] = []): Promise<void> {
+
+async function hideActionBoardArrivals(previous: UndoSnapshot, events: readonly CardMoveEvent[]) {
+  const motion = cardZoneMotionsByUndo.get(previous)
+  const visibleZones: Record<string, string> = {
+    played_this_turn: 'played',
+    swap_zone: 'swap',
+    breach: 'breach',
+    develop: 'develop',
+    player_cards_in_play: 'player_cards_in_play',
+  }
+  const finalMoves = new Map<string, Extract<CardMoveEvent, { kind: 'move' }>>()
+  for (const event of events) {
+    if (event.kind === 'move') finalMoves.set(event.instanceId, event)
+  }
+  const arrivals = [...finalMoves.values()].filter(event =>
+    !!visibleZones[event.destination.zone] &&
+    !!motion?.cards.some(card => card.instanceId === event.instanceId && card.flight &&
+      card.zone !== visibleZones[event.destination.zone]),
+  )
+  if (!motion || arrivals.length === 0 || typeof document === 'undefined') return
+  await nextTick()
+  for (const arrival of arrivals) {
+    const destinationZone = visibleZones[arrival.destination.zone]
+    const destination = [...document.querySelectorAll<HTMLElement>('[data-card-instance-id][data-card-motion-zone]')]
+      .find(element => element.dataset.cardInstanceId === arrival.instanceId &&
+        element.dataset.cardMotionZone === destinationZone)
+    if (!destination || cardMotionVisibilityHolds.get(motion, destination)) continue
+    cardMotionVisibilityHolds.hold(motion, destination, destination)
+  }
+}
+
+function finishAction(
+  previous: UndoSnapshot | null,
+  preferredHandZoneOrder: readonly HandZoneSelection[] = [],
+  options: { preserveUndoBoundary?: boolean } = {},
+): Promise<void> {
   if (!previous) return Promise.resolve()
   activeActionCaptureDepth = Math.max(0, activeActionCaptureDepth - 1)
   const cardMoveEvents = finishActionMovementCapture(previous)
@@ -752,14 +898,23 @@ function finishAction(previous: UndoSnapshot | null, preferredHandZoneOrder: rea
   if (!state.game) {
     const boardMotion = cardZoneMotionsByUndo.get(previous) ?? null
     discardCardZoneMotion(boardMotion)
-    releaseBoardDiscardDisplayHolds(boardMotion)
+    cardMotionVisibilityHolds.restore(previous)
+    if (boardMotion) cardMotionVisibilityHolds.restore(boardMotion)
+    cardMotionBoardDisplay.release(boardMotion)
     cardZoneMotionsByUndo.delete(previous)
     discardExternalCardMoveSources(cardZoneTransfersByUndo.get(previous) ?? [])
     cardZoneTransfersByUndo.delete(previous)
     const handZoneCapture = handZoneTransfersByUndo.get(previous)
-    handZoneCapture?.cards.forEach(card => discardCardFlight(card.flight))
+    const resolvedHandTransfers = resolvedHandTransfersByUndo.get(previous)
+    if (resolvedHandTransfers) resolvedHandTransfers.forEach(transfer => discardCardFlight(transfer.flight))
+    else handZoneCapture?.cards.forEach(card => discardCardFlight(card.flight))
     handZoneTransfersByUndo.delete(previous)
-    handPileDisplayOverridesByUndo.delete(previous)
+    resolvedHandTransfersByUndo.delete(previous)
+    resolvedExternalTransfersByUndo.get(previous)?.forEach(transfer => discardCardFlight(transfer.flight))
+    resolvedExternalTransfersByUndo.delete(previous)
+    resolvedMarketTransfersByUndo.get(previous)?.forEach(transfer => discardCardFlight(transfer.flight))
+    resolvedMarketTransfersByUndo.delete(previous)
+    cardMotionPileDisplay.cancelAction(previous)
     discardMarketPileTransfers(marketPileTransfersByUndo.get(previous) ?? [])
     marketPileTransfersByUndo.delete(previous)
     completeActiveActionCaptureIfSettled()
@@ -769,24 +924,32 @@ function finishAction(previous: UndoSnapshot | null, preferredHandZoneOrder: rea
   const boardMotion = cardZoneMotionsByUndo.get(previous) ?? null
   if (boardMotion) {
     const boardZoneBaseline = capturePlayerZoneMotionBaseline(previous.game)
-    holdSwapCardsMovingToDiscard(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
-    holdDevelopCardsMovingToDiscard(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
-    holdBoardCardsMovingToDiscard(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
+    cardMotionBoardDisplay.holdDiscardArrivals(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
   }
   cardZoneMotionsByUndo.delete(previous)
-  const externalCardTransfers = cardZoneTransfersByUndo.get(previous)
-  if (externalCardTransfers) {
-    cardZoneTransfersByUndo.delete(previous)
-    transfers.push(...resolveExternalCardMoveTransfers(externalCardTransfers, cardMoveEvents, state.game))
+  const resolvedExternalTransfers = resolvedExternalTransfersByUndo.get(previous)
+  if (resolvedExternalTransfers) {
+    resolvedExternalTransfersByUndo.delete(previous)
+    transfers.push(...resolvedExternalTransfers)
+  } else {
+    const externalCardTransfers = cardZoneTransfersByUndo.get(previous)
+    if (externalCardTransfers) {
+      cardZoneTransfersByUndo.delete(previous)
+      transfers.push(...resolveExternalCardMoveTransfers(externalCardTransfers, cardMoveEvents, state.game))
+    }
   }
-  const marketTransfers = marketPileTransfersByUndo.get(previous)
-  if (marketTransfers) {
-    marketPileTransfersByUndo.delete(previous)
-    transfers.push(...resolveMarketPileTransfers(marketTransfers, state.game, cardMoveEvents))
+  const resolvedMarketTransfers = resolvedMarketTransfersByUndo.get(previous)
+  if (resolvedMarketTransfers) {
+    resolvedMarketTransfersByUndo.delete(previous)
+    transfers.push(...resolvedMarketTransfers)
+  } else {
+    const marketTransfers = marketPileTransfersByUndo.get(previous)
+    if (marketTransfers) {
+      marketPileTransfersByUndo.delete(previous)
+      transfers.push(...resolveMarketPileTransfers(marketTransfers, state.game, cardMoveEvents))
+    }
   }
   const handZoneCapture = handZoneTransfersByUndo.get(previous)
-  const handPileDisplayBaseline = handPileDisplayOverridesByUndo.get(previous)
-  handPileDisplayOverridesByUndo.delete(previous)
   if (handZoneCapture) {
     handZoneTransfersByUndo.delete(previous)
     const resolved = resolvedHandTransfersByUndo.get(previous)
@@ -794,33 +957,73 @@ function finishAction(previous: UndoSnapshot | null, preferredHandZoneOrder: rea
     cardMoveEventsByUndo.delete(previous)
     transfers.push(...(resolved ?? resolveHandCardZoneTransfers(handZoneCapture, cardMoveEvents, reportCardMotionIssue)))
   }
+  attachActionHandArrivalHolds(previous, transfers)
   stageHandDepartures(transfers, handZoneCapture ?? null)
+  const handPileDisplayBaseline = finalizeActionPileDisplayOverrides(previous, transfers)
   const boardMotionGates = cardZoneMotionGatesByUndo.get(previous)
   cardZoneMotionGatesByUndo.delete(previous)
+  const pileMotionDisplay = createCardPileMotionSession(cardMoveEvents, boardMotion, transfers)
   const boardFlight = boardMotion
-    ? queueCardZoneMotion(boardMotion, boardMotionGates, cardMoveEvents).finally(() => releaseBoardDiscardDisplayHolds(boardMotion))
+    ? queueCardZoneMotion(boardMotion, boardMotionGates, cardMoveEvents, pileMotionDisplay)
+      .finally(() => cardMotionBoardDisplay.release(boardMotion))
     : Promise.resolve()
   // Install pile projections synchronously, before the rule-state update can
   // paint its final deck/discard counts. The transfer queue waits for board
   // motion before starting the flights themselves.
   const cardFlight = transfers.length > 0
-    ? queueCardZoneTransfers(transfers, boardFlight, handPileDisplayBaseline)
-    : boardFlight
+    ? queueCardZoneTransfers(transfers, boardFlight, handPileDisplayBaseline, pileMotionDisplay)
+    : boardFlight.then(() => {
+      if (handPileDisplayBaseline) cardMotionPileDisplay.restoreBaseline(handPileDisplayBaseline)
+    })
+  const settledCardFlight = cardFlight.finally(() => pileMotionDisplay.finish())
   if (state.game.gameOver) state.phase = 'gameover'
   const current = snapshot()
-  if (undoSnapshotsEqual(previous, current)) {
+  if (!options.preserveUndoBoundary && undoSnapshotsEqual(previous, current)) {
     const undoIndex = undoStack.indexOf(previous)
     if (undoIndex >= 0) undoStack.splice(undoIndex, 1)
   }
   completeActiveActionCaptureIfSettled()
-  return cardFlight
+  return settledCardFlight
+}
+
+function createCardPileMotionSession(
+  events: readonly CardMoveEvent[],
+  boardMotion: CardZoneMotionSnapshot | null,
+  transfers: readonly CardZoneTransfer[],
+): CardPileMotionDisplaySession {
+  const animatedInstanceIds = new Set<string>()
+  boardMotion?.cards.forEach(card => {
+    if (card.flight) animatedInstanceIds.add(card.instanceId)
+  })
+  const routes: CardPileMotionRoute[] = []
+  for (const transfer of transfers) {
+    const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
+    if (!instanceId) continue
+    if (transfer.flight) animatedInstanceIds.add(instanceId)
+    routes.push({
+      instanceId,
+      cardId: transfer.cardId,
+      sourceZoneId: transfer.sourceZoneId,
+      destinationZoneId: transfer.destinationZoneId ?? `player:${transfer.playerId}:${transfer.zone}`,
+    })
+  }
+  return createCardPileMotionDisplaySession(
+    cardPileMotionDisplayAccess,
+    events,
+    state.game ? captureCardPileCounts(state.game) : {},
+    animatedInstanceIds,
+    routes,
+  )
 }
 
 function queueCardZoneMotion(
   snapshot: CardZoneMotionSnapshot,
   zoneBarriers: ReadonlyMap<string, Promise<void>> = new Map(),
   cardMoveEvents: readonly CardMoveEvent[] = [],
+  pileMotionDisplay?: CardPileMotionDisplaySession,
 ): Promise<void> {
+  const ownsPileMotionDisplay = !pileMotionDisplay
+  const activePileMotionDisplay = pileMotionDisplay ?? createCardPileMotionSession(cardMoveEvents, snapshot, [])
   const prepareTransfer = async (transfer: CardZoneMotionTransfer): Promise<HTMLElement | null> => {
     const held = state.swapZoneDisplayHolds[transfer.ownerId]
     if (transfer.sourceZone !== 'swap' || held?.motionKey !== transfer.sourceKey || held.departing) return null
@@ -862,6 +1065,14 @@ function queueCardZoneMotion(
         })
         return true
       })
+      for (const transfer of transfers) {
+        const earlyArrivalHold = transfer.destination
+          ? cardMotionVisibilityHolds.get(snapshot, transfer.destination)
+          : undefined
+        if (earlyArrivalHold) {
+          transfer.destinationVisibilityBefore = earlyArrivalHold.visibility
+        }
+      }
       const pendingConjureArrival = state.pendingConjureBreachArrival
       const hasConjureArrivalMove = pendingConjureArrival && cardMoveEvents.some(event =>
         event.kind === 'move' && event.instanceId === pendingConjureArrival.instanceId &&
@@ -883,27 +1094,7 @@ function queueCardZoneMotion(
       for (const transfer of transfers) {
         if (transfer.destinationZone !== 'discard' ||
           !transfer.destination?.dataset.cardMotionKey?.endsWith('-arrival')) continue
-        transfer.afterFlight = async () => {
-          const playerId = transfer.ownerId
-          const hold = boardDiscardHoldsByMotion.get(snapshot)?.get(playerId)
-          const arrival = hold?.current.boardArrival
-          if (!hold || !arrival || arrival.sourceZone !== transfer.sourceZone ||
-            arrival.instanceId !== transfer.sourceInstanceId ||
-            toRaw(state.discardPileDisplayOverrides[playerId]) !== hold.current) return
-
-          // Show the settled top card underneath the finished flight clone
-          // before that clone is removed, avoiding a one-frame flash of the
-          // previous discard top.
-          const settled: DiscardDisplayOverride = {
-            cardId: arrival.cardId,
-            count: arrival.count,
-          }
-          hold.current = settled
-          state.discardPileDisplayOverrides = {
-            ...toRaw(state.discardPileDisplayOverrides), [playerId]: settled,
-          }
-          await nextTick()
-        }
+        transfer.afterFlight = () => cardMotionBoardDisplay.settleArrival(snapshot, transfer)
       }
       const waitingDestinations = new Map<HTMLElement, {
         visibility: string
@@ -914,7 +1105,8 @@ function queueCardZoneMotion(
         let destinationState = waitingDestinations.get(transfer.destination)
         if (!destinationState) {
           destinationState = {
-            visibility: transfer.destination.style.visibility,
+            visibility: cardMotionVisibilityHolds.get(snapshot, transfer.destination)?.visibility ??
+              transfer.destination.style.visibility,
             lastTransfer: transfer,
           }
           waitingDestinations.set(transfer.destination, destinationState)
@@ -953,7 +1145,8 @@ function queueCardZoneMotion(
       }
       releaseMotion = beginCardMotionBatch()
       await Promise.all([
-        animateCardZoneMotion(transfers, zoneBarriers, prepareTransfer, playerCardBackUrl()),
+        animateCardZoneMotion(transfers, zoneBarriers, prepareTransfer,
+          transfer => playerDeckCardBackUrl(transfer.cardId), activePileMotionDisplay),
         ...affectedRows.map(row => waitForCardRowReflow(row)),
       ])
     } catch {
@@ -968,12 +1161,15 @@ function queueCardZoneMotion(
           state.pendingConjureBreachArrival = null
         }
       })
+      cardMotionVisibilityHolds.restore(snapshot)
       claimedByMotion.forEach(moveId => activeCardMoveClaims.delete(moveId))
       releaseMotion?.()
     }
   }
   return enqueueCardMotion(runMotion).catch(() => {
     discardCardZoneMotion(snapshot)
+  }).finally(() => {
+    if (ownsPileMotionDisplay) activePileMotionDisplay.finish()
   })
 }
 function registerCardZoneMotionBarrier(previous: UndoSnapshot, zone: string, promise: Promise<void>) {
@@ -1002,13 +1198,11 @@ export function undo() {
   state.nemesisDrawRevealQueued = false
   state.nemesisDrawRevealAnimating = false
   clearPendingAttachCardFlight()
-  clearPendingPlayCardFlight()
   clearPendingNemesisDrawFlight()
   clearPendingGainPlacementFlight()
   state.pendingConjureBreachArrival = null
   state.cardMotionBatchActive = false
-  state.handDiscardPresentation = null
-  state.handPlayPresentation = null
+  cardMotionHandDisplay.clearAll()
   clearDamageImpacts()
   normalizeRemnantRiftBreaches(s.game)
   state.game = reactive(s.game) as GameState
@@ -1021,6 +1215,7 @@ export function undo() {
   state.discardRemaining = [...s.discardRemaining]
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
+  state.cardPileCountOverrides = {}
   state.discardTopDisplayOverride = null
   state.discardPileDisplayOverrides = {}
   state.swapZoneDisplayHolds = {}
@@ -1032,41 +1227,12 @@ export function undo() {
   pushLog('Undid last action')
 }
 // ===== Auto-end turn when no actions remain =====
-async function waitForBreachMotionsWithShield(): Promise<boolean> {
-  let ownsMotionShield = false
-  let waitedForMotion = false
-  try {
-    let observedCardQueue: Promise<void>
-    do {
-      observedCardQueue = cardZoneTransferAnimationQueue
-      await observedCardQueue
-      waitedForMotion = await waitForBreachMotions(() => {
-        if (!state.cardMotionBatchActive) {
-          state.cardMotionBatchActive = true
-          ownsMotionShield = true
-        }
-      }) || waitedForMotion
-      await nextTick()
-      const hand = document.querySelector<HTMLElement>('.hand')
-      if (hasActiveHandCardReflow(hand)) {
-        if (!state.cardMotionBatchActive) {
-          state.cardMotionBatchActive = true
-          ownsMotionShield = true
-        }
-        waitedForMotion = true
-        await waitForHandCardReflow(hand)
-      }
-    } while (observedCardQueue !== cardZoneTransferAnimationQueue)
-    return waitedForMotion
-  } finally {
-    if (ownsMotionShield) state.cardMotionBatchActive = false
-  }}
 function maybeAutoEnd() {
   if (state.phase !== 'main' || !state.game) return
   if (state.game.pendingDecision || state.game.pendingEffect) return
   if (playerCanAct.value || state.autoEndWaitPending) return
   state.autoEndWaitPending = true
-  void activeActionCaptureCompletion.then(() => waitForBreachMotionsWithShield()).then(() => {
+  void activeActionCaptureCompletion.then(() => waitForCardMotions()).then(() => {
     state.autoEndWaitPending = false
     if (state.phase !== 'main' || !state.game || state.game.pendingDecision || state.game.pendingEffect) return
     if (playerCanAct.value) return
@@ -1080,7 +1246,7 @@ function maybeAutoEnd() {
 }
 /** Let a consumed Main Phase action disappear from the board before auto-end advances the phase. */
 async function finishPreppedAction(previous: UndoSnapshot | null) {
-  finishAction(previous)
+  await finishAction(previous)
   await nextTick()
   maybeAutoEnd()
 }
@@ -1101,18 +1267,18 @@ function syncEnginePhaseWithUi() {
   }
 }
 async function enterMainPhase(playerId = cp().id) {
-  await waitForBreachMotionsWithShield()
+  await waitForCardMotions()
   const g = state.game
   if (!g) return
   const p = getPlayer(g, playerId)
   const messages = await trackAutomaticCardTransfers(() => resolvePreppedEffects(g, p.id, 'casting_phase_end'))
   for (const message of messages) pushLog(message, 'info')
-  await waitForBreachMotionsWithShield()
+  await waitForCardMotions()
   if (g.pendingDecision || g.pendingEffect) return
   const inPlayMessages = await trackAutomaticCardTransfers(() =>
     engineResolvePlayerInPlayPhaseEffects(g, p.id, 'casting_phase_end'))
   for (const message of inPlayMessages) pushLog(message, 'info')
-  await waitForBreachMotionsWithShield()
+  await waitForCardMotions()
   if (g.pendingDecision || g.pendingEffect) return
   if (g.gameOver) { state.phase = 'gameover'; return }
   state.phase = 'main'
@@ -1120,7 +1286,7 @@ async function enterMainPhase(playerId = cp().id) {
   // transition before main-phase actions become available.
   syncEnginePhaseWithUi()
   await resolveMainPhasePreppedEffects()
-  await waitForBreachMotionsWithShield()
+  await waitForCardMotions()
   if (g.gameOver) { state.phase = 'gameover'; return }
   maybeAutoEnd()}
 /** Resolve Crooked Mask Corruptions before allowing a player's Casting Phase. */async function continuePlayerTurnAfterCorruptions() {
@@ -1199,7 +1365,7 @@ export function newGame(
   state.nemesisDrawRevealQueued = false
   state.nemesisDrawRevealAnimating = false
   clearPendingAttachCardFlight()
-  clearPendingPlayCardFlight()
+  cardMotionHandDisplay.clearPendingPlayFlight()
   clearPendingNemesisDrawFlight()
   clearPendingGainPlacementFlight()
   state.pendingConjureBreachArrival = null
@@ -1219,8 +1385,7 @@ export function newGame(
     for (const message of engineResolveMageSetups(g)) pushLog(message, 'info')
   }
   state.game = g
-  state.handDiscardPresentation = null
-  state.handPlayPresentation = null
+  cardMotionHandDisplay.clearAll()
   state.log = []
   state.pendingPreppedSpells = []
   clearPendingBoardHandFlights()
@@ -1230,6 +1395,7 @@ export function newGame(
   state.discardRemaining = []
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
+  state.cardPileCountOverrides = {}
   state.discardTopDisplayOverride = null
   state.discardPileDisplayOverrides = {}
   state.swapZoneDisplayHolds = {}
@@ -1268,13 +1434,11 @@ export function resumeGame(saveId?: string): boolean {
     state.nemesisDrawRevealQueued = false
     state.nemesisDrawRevealAnimating = false
     clearPendingAttachCardFlight()
-    clearPendingPlayCardFlight()
     clearPendingNemesisDrawFlight()
     clearPendingGainPlacementFlight()
     state.pendingConjureBreachArrival = null
     state.cardMotionBatchActive = false
-    state.handDiscardPresentation = null
-    state.handPlayPresentation = null
+    cardMotionHandDisplay.clearAll()
     clearDamageImpacts()
     const resumedGame = cloneGameState(save.game)
     normalizeRemnantRiftBreaches(resumedGame)
@@ -1290,6 +1454,7 @@ export function resumeGame(saveId?: string): boolean {
     state.discardRemaining = [...save.discardRemaining]
     state.deckDisplayOverride = null
     state.deckPileDisplayOverrides = {}
+    state.cardPileCountOverrides = {}
     state.discardTopDisplayOverride = null
     state.discardPileDisplayOverrides = {}
     state.swapZoneDisplayHolds = {}
@@ -1429,13 +1594,11 @@ function resetToSetup() {
   state.nemesisDrawRevealQueued = false
   state.nemesisDrawRevealAnimating = false
   clearPendingAttachCardFlight()
-  clearPendingPlayCardFlight()
   clearPendingNemesisDrawFlight()
   clearPendingGainPlacementFlight()
   state.pendingConjureBreachArrival = null
   state.cardMotionBatchActive = false
-  state.handDiscardPresentation = null
-  state.handPlayPresentation = null
+  cardMotionHandDisplay.clearAll()
   clearDamageImpacts()
   state.game = null
   state.phase = 'setup'
@@ -1453,6 +1616,7 @@ function resetToSetup() {
   state.discardRemaining = []
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
+  state.cardPileCountOverrides = {}
   state.discardTopDisplayOverride = null
   state.discardPileDisplayOverrides = {}
   state.swapZoneDisplayHolds = {}
@@ -1514,8 +1678,10 @@ export async function toMainPhase() {
   const must = getCastableSpells(state.game!, cp().id).filter(s => s.mustCast)
   if (must.length > 0) { pushLog('You must cast the [MUST] spell(s) first', 'warn'); return }
   const previous = beforeAction()
+  if (!previous) return
+  holdActionPileDisplayOverrides(previous)
+  await finishAction(previous, [], { preserveUndoBoundary: true })
   await enterMainPhase(cp().id)
-  finishAction(previous)
 }
 function findDataElement(attribute: string, value: string, scope: ParentNode = document): HTMLElement | null {
   if (typeof document === 'undefined') return null
@@ -1547,193 +1713,6 @@ function capturePlayerZoneMotionBaseline(game: GameState): PlayerZoneMotionBasel
     discard: [...player.discard],
     discardInstanceIds: [...(player.discardInstanceIds ?? [])],
   }))
-}
-function releaseBoardDiscardDisplayHolds(snapshot: CardZoneMotionSnapshot | null) {
-  if (!snapshot) return
-  const holds = boardDiscardHoldsByMotion.get(snapshot)
-  if (!holds) return
-  boardDiscardHoldsByMotion.delete(snapshot)
-  const overrides = { ...state.discardPileDisplayOverrides }
-  const swapHolds = { ...state.swapZoneDisplayHolds }
-  let changed = false
-  let swapChanged = false
-  for (const { playerId, previous, current, previousSwap, currentSwap } of holds.values()) {
-    if (toRaw(overrides[playerId]) === current) {
-      if (previous) overrides[playerId] = previous
-      else delete overrides[playerId]
-      changed = true
-    }
-    if (currentSwap && swapHolds[playerId]?.motionKey === currentSwap.motionKey) {
-      if (previousSwap) swapHolds[playerId] = previousSwap
-      else delete swapHolds[playerId]
-      swapChanged = true
-    }
-  }
-  if (changed) state.discardPileDisplayOverrides = overrides
-  if (swapChanged) state.swapZoneDisplayHolds = swapHolds
-}
-function holdSwapCardsMovingToDiscard(
-  snapshot: CardZoneMotionSnapshot | null,
-  before: readonly PlayerZoneMotionBaseline[],
-  after: readonly PlayerState[],
-  events: readonly CardMoveEvent[],
-) {
-  if (!snapshot) return
-  const departures = events.filter((event): event is Extract<CardMoveEvent, { kind: 'move' }> =>
-    event.kind === 'move' && event.reason === 'swap' &&
-    event.source.zone === 'swap_zone' && event.destination.zone === 'discard')
-  for (const prior of before) {
-    const player = after.find(candidate => candidate.id === prior.id)
-    if (!player) continue
-    for (const event of departures.filter(candidate => candidate.source.ownerId === player.id)) {
-      const cardId = event.cardId
-      const origin = snapshot.cards.find(card => card.instanceId === event.instanceId && card.flight)
-      if (!origin) continue
-      if (player.discard[0] !== cardId) {
-        holdCardFlightAtOrigin(origin.flight)
-        continue
-      }
-      const holds = boardDiscardHoldsByMotion.get(snapshot) ?? new Map<PlayerId, BoardDiscardDisplayHold>()
-      const existing = holds.get(player.id)
-      if (existing?.current.boardArrival?.cardId === cardId &&
-        existing.current.boardArrival.count === player.discard.length) continue
-      const previous = existing ? existing.previous : state.discardPileDisplayOverrides[player.id]
-      // The resolving card can leave the discard for the Swap zone during the
-      // same action (a spell waiting in the discard). Exclude it from the
-      // pre-arrival surface so its own flight out of the pile stays visible
-      // and the movement coordinator can still animate the exact departure.
-      const returnedFromDiscardIds = new Set(events.flatMap(candidate =>
-        candidate.kind === 'move' && candidate.source.zone === 'discard' &&
-          candidate.destination.zone === 'swap_zone' && candidate.source.ownerId === player.id
-          ? [candidate.instanceId] : []))
-      const displayIndex = prior.discardInstanceIds.findIndex(instanceId => !returnedFromDiscardIds.has(instanceId))
-      const current: DiscardDisplayOverride = {
-        cardId: displayIndex >= 0 ? prior.discard[displayIndex] ?? null : null,
-        count: prior.discard.length - returnedFromDiscardIds.size,
-        boardArrival: { cardId, count: player.discard.length, instanceId: event.instanceId, sourceZone: 'swap' },
-      }
-      const previousSwap = existing ? existing.previousSwap : state.swapZoneDisplayHolds[player.id]
-      const oldSwapCards = snapshot.cards.filter(card => card.zone === 'swap' && card.ownerId === player.id)
-      const availableKeys = oldSwapCards.filter(card => card.instanceId !== origin.instanceId)
-      const survivorKeys = (player.swapZoneInstanceIds ?? []).map((instanceId, index) => {
-        const priorIndex = availableKeys.findIndex(card => card.instanceId === instanceId)
-        if (priorIndex >= 0) return availableKeys.splice(priorIndex, 1)[0]!.key
-        return `${origin.key}:arrival:${index}`
-      })
-      const currentSwap: SwapZoneDisplayHold = {
-        cardId,
-        instanceId: event.instanceId,
-        index: oldSwapCards.findIndex(card => card.key === origin.key),
-        motionKey: origin.key,
-        survivorKeys,
-        departing: false,
-      }
-      holds.set(player.id, { playerId: player.id, previous, current, previousSwap, currentSwap })
-      boardDiscardHoldsByMotion.set(snapshot, holds)
-      state.discardPileDisplayOverrides = { ...state.discardPileDisplayOverrides, [player.id]: current }
-      state.swapZoneDisplayHolds = { ...state.swapZoneDisplayHolds, [player.id]: currentSwap }
-      state.swapZoneCardKeys = {
-        ...state.swapZoneCardKeys,
-        [player.id]: { cardIds: [...(player.swapZone ?? [])], motionKeys: survivorKeys },
-      }
-    }
-  }
-}
-function holdDevelopCardsMovingToDiscard(
-  snapshot: CardZoneMotionSnapshot | null,
-  before: readonly PlayerZoneMotionBaseline[],
-  after: readonly PlayerState[],
-  events: readonly CardMoveEvent[],
-) {
-  if (!snapshot) return
-  const departures = events.filter((event): event is Extract<CardMoveEvent, { kind: 'move' }> =>
-    event.kind === 'move' && event.reason === 'develop' &&
-    event.source.zone === 'develop' && event.destination.zone === 'discard',
-  )
-  for (const prior of before) {
-    const player = after.find(candidate => candidate.id === prior.id)
-    if (!player) continue
-    for (const event of departures.filter(candidate => candidate.destination.ownerId === player.id)) {
-      const finalMove = events.filter(candidate =>
-        candidate.kind === 'move' && candidate.instanceId === event.instanceId,
-      ).at(-1)
-      if (finalMove?.kind !== 'move' || finalMove.destination.zone !== 'discard') continue
-      if (player.discardInstanceIds?.[0] !== event.instanceId) continue
-      const origin = snapshot.cards.find(card => card.instanceId === event.instanceId && card.flight)
-      if (!origin) continue
-      const holds = boardDiscardHoldsByMotion.get(snapshot) ?? new Map<PlayerId, BoardDiscardDisplayHold>()
-      const existing = holds.get(player.id)
-      const previous = existing ? existing.previous : state.discardPileDisplayOverrides[player.id]
-      const current: DiscardDisplayOverride = {
-        cardId: prior.discard[0] ?? null,
-        count: prior.discard.length,
-        boardArrival: {
-          cardId: event.cardId,
-          count: player.discard.length,
-          instanceId: event.instanceId,
-          sourceZone: 'develop',
-        },
-      }
-      holds.set(player.id, {
-        playerId: player.id,
-        previous,
-        current,
-        previousSwap: existing?.previousSwap,
-        currentSwap: existing?.currentSwap,
-      })
-      boardDiscardHoldsByMotion.set(snapshot, holds)
-      state.discardPileDisplayOverrides = { ...state.discardPileDisplayOverrides, [player.id]: current }
-    }
-  }
-}
-function holdBoardCardsMovingToDiscard(
-  snapshot: CardZoneMotionSnapshot | null,
-  before: readonly PlayerZoneMotionBaseline[],
-  after: readonly PlayerState[],
-  events: readonly CardMoveEvent[],
-) {
-  if (!snapshot) return
-  const departures = events.filter((event): event is Extract<CardMoveEvent, { kind: 'move' }> =>
-    event.kind === 'move' && event.source.zone !== 'discard' &&
-    (event.source.zone === 'breach' || event.source.zone === 'played_this_turn') &&
-    event.destination.zone === 'discard' && event.reason !== 'discard_phase',
-  )
-  for (const prior of before) {
-    const player = after.find(candidate => candidate.id === prior.id)
-    if (!player) continue
-    for (const event of departures.filter(candidate => candidate.destination.ownerId === player.id)) {
-      const finalMove = events.filter(candidate =>
-        candidate.kind === 'move' && candidate.instanceId === event.instanceId,
-      ).at(-1)
-      if (finalMove?.kind !== 'move' || finalMove.destination.zone !== 'discard') continue
-      if (player.discardInstanceIds?.[0] !== event.instanceId) continue
-      const origin = snapshot.cards.find(card => card.instanceId === event.instanceId &&
-        card.zone === (event.source.zone === 'played_this_turn' ? 'played' : 'breach') && card.flight)
-      if (!origin) continue
-
-      const holds = boardDiscardHoldsByMotion.get(snapshot) ?? new Map<PlayerId, BoardDiscardDisplayHold>()
-      const existing = holds.get(player.id)
-      const current: DiscardDisplayOverride = {
-        cardId: prior.discard[0] ?? null,
-        count: prior.discard.length,
-        boardArrival: {
-          cardId: event.cardId,
-          count: player.discard.length,
-          instanceId: event.instanceId,
-          sourceZone: event.source.zone === 'played_this_turn' ? 'played' : 'breach',
-        },
-      }
-      holds.set(player.id, {
-        playerId: player.id,
-        previous: existing ? existing.previous : state.discardPileDisplayOverrides[player.id],
-        current,
-        previousSwap: existing?.previousSwap,
-        currentSwap: existing?.currentSwap,
-      })
-      boardDiscardHoldsByMotion.set(snapshot, holds)
-      state.discardPileDisplayOverrides = { ...state.discardPileDisplayOverrides, [player.id]: current }
-    }
-  }
 }
 function getPlayerCardMotionZone(game: GameState | null, ownerId: PlayerId, instanceId: string): string | null {
   const owner = game?.players.find(player => player.id === ownerId)
@@ -1781,31 +1760,19 @@ function findPendingPlayCardDestination(pending: PendingPlayCardFlight, zone: st
 }
 
 function animatePlayCardFlight(
+  cardId: string,
   flight: CardFlightSnapshot | null,
   destination: HTMLElement | null,
   zone: string,
   destinationVisibility = '',
 ): Promise<void> {
-  const timing = zone === 'deck'
-    ? 'hand-to-deck-top'
-    : zone === 'discard'
-      ? 'hand-to-pile'
-      : zone === 'swap' ? 'hand-to-swap-zone' : 'hand-to-play-zone'
-  if (zone === 'deck') {
-    return animateCardFlightToPlayerDeck(flight, destination, playerCardBackUrl(), {
-      destinationMode: 'overlay',
-      timing,
-    })
-  }
-  if (zone === 'trinket_deck') {
-    return animateCardFlight(flight, destination, {
-      destinationMode: 'overlay',
-      timing: 'standard',
-    })
-  }
-  return animateCardFlight(flight, destination, {
-    destinationMode: zone === 'discard' ? 'overlay' : 'replace',
-    timing,
+  return animateCardMotionFlight({
+    cardId,
+    sourceZone: 'hand',
+    destinationZone: zone,
+    flight,
+    destination,
+    usePlayCardTimingFallback: true,
     restoreDestinationVisibility: destinationVisibility,
   })
 }
@@ -1826,22 +1793,32 @@ function hidePendingPlayCardDestination(pending: PendingPlayCardFlight) {
   }
 }
 
-async function finishPendingPlayCardFlight(previous: UndoSnapshot | null): Promise<{ zone: string; promise: Promise<void> } | null> {
-  const pending = pendingPlayCardFlight
+async function finishPendingPlayCardFlight(
+  previous: UndoSnapshot | null,
+  allowCurrentDecision = false,
+): Promise<{ zone: string; promise: Promise<void> } | null> {
+  const pending = cardMotionHandDisplay.getPendingPlayFlight()
   if (!pending) return null
-  if (state.game?.pendingDecision || state.game?.pendingEffect) {
+  const releaseForDecision = allowCurrentDecision &&
+    state.pendingPlayCardDecisionRelease?.instanceId === pending.instanceId
+  if ((state.game?.pendingDecision || state.game?.pendingEffect) && !releaseForDecision) {
     await nextTick()
-    if (pendingPlayCardFlight === pending) hidePendingPlayCardDestination(pending)
+    if (cardMotionHandDisplay.getPendingPlayFlight() === pending) hidePendingPlayCardDestination(pending)
     return null
   }
 
-  pendingPlayCardFlight = null
+  if (releaseForDecision && state.pendingPlayCardDecisionRelease) {
+    state.pendingPlayCardDecisionRelease.revealedInPlayedZone = true
+  }
+  cardMotionHandDisplay.takePendingPlayFlight()
   const releaseMotion = beginCardMotionBatch()
-  const zone = getPendingPlayCardZone(pending)
+  let zone = getPendingPlayCardZone(pending)
   let destinationVisibility = pending.hiddenDestinationVisibility
   let destination = pending.hiddenDestination
-  try {
+  const promise = enqueueCardMotion(async () => {
+    try {
     await nextTick()
+    zone = getPendingPlayCardZone(pending) ?? zone
     destination = findPendingPlayCardDestination(pending, zone)
     if (pending.hiddenDestination && pending.hiddenDestination !== destination &&
       pending.hiddenDestination.style.visibility === 'hidden') {
@@ -1866,47 +1843,34 @@ async function finishPendingPlayCardFlight(previous: UndoSnapshot | null): Promi
       markHandCardDeparting(source)
       source.style.visibility = 'hidden'
     }
-    if (state.handPlayPresentation?.presentationKey === pending.presentationKey) {
-      state.handPlayPresentation = null
-    }
+    cardMotionHandDisplay.clearPlayPresentation(pending.presentationKey)
     await nextTick()
     const playFlight = flight
     const playDestination = destination
     const playDestinationVisibility = destinationVisibility
     const playZone = zone ?? 'completed'
-    const promise = enqueueCardMotion(async () => {
-      try {
-        await Promise.all([
-          animatePlayCardFlight(playFlight, playDestination, playZone, playDestinationVisibility),
-          waitForHandCardReflow(hand),
-        ])
-      } finally {
-        if (playDestination?.style.visibility === 'hidden') {
-          playDestination.style.visibility = playDestinationVisibility
-        }
-        if (pending.hiddenDestination && pending.hiddenDestination !== playDestination &&
-          pending.hiddenDestination.style.visibility === 'hidden') {
-          pending.hiddenDestination.style.visibility = pending.hiddenDestinationVisibility
-        }
-        releaseMotion()
+    await Promise.all([
+      animatePlayCardFlight(pending.cardId, playFlight, playDestination, playZone, playDestinationVisibility),
+      waitForHandCardReflow(hand),
+    ])
+    } finally {
+      if (destination?.style.visibility === 'hidden') {
+        destination.style.visibility = destinationVisibility
       }
-    })
-    if (previous && destination) {
-      const destinationZone = destination.dataset.cardMotionZone ?? zone ?? 'completed'
-      registerCardZoneMotionBarrier(previous, destinationZone, promise)
+      if (pending.hiddenDestination && pending.hiddenDestination !== destination &&
+        pending.hiddenDestination.style.visibility === 'hidden') {
+        pending.hiddenDestination.style.visibility = pending.hiddenDestinationVisibility
+      }
+      cardMotionHandDisplay.clearPlayPresentation(pending.presentationKey)
+      if (releaseForDecision && state.pendingPlayCardDecisionRelease?.instanceId === pending.instanceId) {
+        state.pendingPlayCardDecisionRelease = null
+      }
+      releaseMotion()
     }
-    return { zone: destination?.dataset.cardMotionZone ?? zone ?? 'completed', promise }
-  } catch (error) {
-    if (destination?.style.visibility === 'hidden') {
-      destination.style.visibility = destinationVisibility
-    }
-    if (pending.hiddenDestination?.style.visibility === 'hidden') {
-      pending.hiddenDestination.style.visibility = pending.hiddenDestinationVisibility
-    }
-    state.handPlayPresentation = null
-    releaseMotion()
-    throw error
-  }
+  })
+  const destinationZone = zone ?? pending.hiddenDestinationZone ?? 'completed'
+  if (previous && destinationZone !== 'completed') registerCardZoneMotionBarrier(previous, destinationZone, promise)
+  return { zone: destinationZone, promise }
 }
 function captureHandZoneTransfers(
   game: GameState,
@@ -2002,6 +1966,8 @@ function captureCardMoveSource(
     const instanceId = zone.instanceIds[index]
     return instanceId ? [{ cardId, instanceId }] : []
   })
+  const snapshot = captureCardMoveSourceSnapshot(sourceElement, game.players)
+  if (snapshot.flight) snapshot.flight.clone.dataset.cardMotionSourceZone = zone.zone
   return {
     zone: zone.zone,
     zoneId: zone.zoneId,
@@ -2009,7 +1975,7 @@ function captureCardMoveSource(
     instances,
     suppressedInstanceIds: new Set(instances.flatMap(({ instanceId }) =>
       presentedInstanceIds.has(instanceId) ? [instanceId] : [])),
-    snapshot: captureCardMoveSourceSnapshot(sourceElement, game.players),
+    snapshot,
   }
 }
 function captureExternalCardMoveSources(game: GameState): CardMoveSourceCapture[] {
@@ -2100,10 +2066,13 @@ function resolveExternalCardMoveTransfers(
       const flight = cloneCardFlightSnapshot(capture.snapshot.flight)
       if (flight) flight.clone.dataset.cardFlightInstanceId = origin.instanceId
       transfers.push({
+        sequence: finalMove.sequence,
         moveId: finalMove.moveId,
         moveIds: chain.map(event => event.moveId),
         instanceId: origin.instanceId,
         cardId: finalMove.cardId,
+        sourceZoneId: first.source.zoneId,
+        destinationZoneId: finalMove.destination.zoneId,
         playerId: current.playerId,
         ...(capture.ownerId && capture.ownerId !== 'nemesis'
           ? { sourcePlayerId: capture.ownerId as PlayerId }
@@ -2112,7 +2081,9 @@ function resolveExternalCardMoveTransfers(
         zoneIndex: current.zoneIndex,
         flight,
         ...(capture.zone === 'trinket_deck' && current.zone !== 'deck' ? { revealOnArrival: true } : {}),
-        ...(current.zone === 'deck' ? { timing: 'hand-to-deck-top' as const } : {}),
+        ...(current.zone === 'deck'
+          ? { timing: resolveCardMotionPolicy({ sourceZone: 'hand', destinationZone: current.zone }).timing }
+          : {}),
         previousDeckTop: before.deck[0] ?? null,
         previousDeckCount: before.deck.length,
         previousDiscardTop: before.discard[0] ?? null,
@@ -2126,12 +2097,14 @@ function resolveExternalCardMoveTransfers(
 function captureMarketPileTransfers(game: GameState): MarketPileTransferSnapshot[] {
   return game.market.piles.flatMap((pile, pileIndex) => {
     if (pile.remaining <= 0) return []
+    const snapshot = captureCardMoveSourceSnapshot(
+      findDataElement('data-supply-pile-index', String(pileIndex)), game.players,
+    )
+    if (snapshot.flight) snapshot.flight.clone.dataset.cardMotionSourceZone = 'supply'
     return [{
       pileIndex,
       cardId: pile.cardId,
-      snapshot: captureCardMoveSourceSnapshot(
-        findDataElement('data-supply-pile-index', String(pileIndex)), game.players,
-      ),
+      snapshot,
     }]
   })}
 function discardMarketPileTransfers(captures: readonly MarketPileTransferSnapshot[]) {
@@ -2199,10 +2172,13 @@ function resolveMarketPileTransfers(
         height: capture.snapshot.flight.height,
       } : null
       transfers.push({
+        sequence: event.sequence,
         moveId: `create:${event.eventId}`,
         moveIds: [`create:${event.eventId}`],
         instanceId: event.instanceId,
         cardId: event.cardId,
+        sourceZoneId: event.source?.zoneId,
+        destinationZoneId: event.destination.zoneId,
         playerId: currentLocation.playerId,
         zone: currentLocation.zone,
         zoneIndex: currentLocation.zoneIndex,
@@ -2227,33 +2203,12 @@ function stageHandDepartures(
   transfers: readonly CardZoneTransfer[],
   snapshot: HandZoneTransferSnapshot | null,
 ) {
-  if (!snapshot || !state.game) return
-  const handTransfers = transfers.filter(transfer =>
-    (transfer.zone === 'discard' || transfer.zone === 'deck') &&
-    !!transfer.flight && transfer.sourcePlayerId && transfer.sourceHandInstanceId,
+  cardMotionHandDisplay.stageDepartures(
+    transfers,
+    snapshot,
+    state.game,
+    (game, playerId) => getPlayerCardInstanceZone(game, playerId, 'hand').instanceIds,
   )
-  if (handTransfers.length === 0) return
-  const preferredPlayerId = state.handDiscardPresentation?.playerId
-  const playerId = preferredPlayerId && handTransfers.some(transfer => transfer.sourcePlayerId === preferredPlayerId)
-    ? preferredPlayerId
-    : handTransfers[0]!.sourcePlayerId!
-  const movingInstances = new Set(handTransfers
-    .filter(transfer => transfer.sourcePlayerId === playerId)
-    .map(transfer => transfer.sourceHandInstanceId!))
-  const player = state.game.players.find(candidate => candidate.id === playerId)
-  if (!player) return
-  const remainingInstances = new Set(getPlayerCardInstanceZone(state.game, playerId, 'hand').instanceIds)
-  const cards = snapshot.cards
-    .filter(card => card.playerId === playerId &&
-      (remainingInstances.has(card.instanceId) || movingInstances.has(card.instanceId)))
-    .sort((left, right) => left.handIndex - right.handIndex)
-    .map(card => ({
-      cardId: card.cardId,
-      instanceId: card.instanceId,
-      handIndex: card.handIndex,
-      presentationKey: `${playerId}:hand:${card.instanceId}`,
-    }))
-  if (cards.length > 0) state.handDiscardPresentation = { playerId, cards }
 }
 function isWaitingForGainedCardPlacement(game: GameState): boolean {
   const awaiting = game.pendingEffect?.awaiting
@@ -2272,9 +2227,12 @@ function preserveDiscardBeforePendingGainPlacement(
 function queueCardZoneTransfers(
   transfers: CardZoneTransfer[],
   waitForBoardMotion: Promise<void> = Promise.resolve(),
-  displayBaseline?: HandPileDisplayOverrideBaseline,
+  displayBaseline?: PileDisplayBaseline,
+  pileMotionDisplay?: CardPileMotionDisplaySession,
 ): Promise<void> {
-  const candidates = transfers.filter((transfer): transfer is CardZoneTransfer & { flight: CardFlightSnapshot } => !!transfer.flight)
+  const candidates = transfers
+    .filter((transfer): transfer is CardZoneTransfer & { flight: CardFlightSnapshot } => !!transfer.flight)
+    .sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0))
   const claimedMoveIds = new Set<string>()
   const animatedTransfers = candidates.filter(transfer => {
     const moveIds = transfer.moveIds?.length ? transfer.moveIds : transfer.moveId ? [transfer.moveId] : []
@@ -2282,6 +2240,11 @@ function queueCardZoneTransfers(
     if (alreadyClaimed) {
       reportCardMotionIssue('Movement was claimed more than once', { moveId: alreadyClaimed, transfer })
       discardCardFlight(transfer.flight)
+      if (transfer.arrivalDestination) {
+        transfer.arrivalDestination.style.visibility = transfer.arrivalDestinationVisibilityBefore ?? ''
+        transfer.arrivalDestination = null
+        transfer.arrivalDestinationVisibilityBefore = undefined
+      }
       return false
     }
     moveIds.forEach(moveId => {
@@ -2291,110 +2254,45 @@ function queueCardZoneTransfers(
     return true
   })
   if (animatedTransfers.length === 0) {
-    if (displayBaseline) {
-      state.discardPileDisplayOverrides = { ...displayBaseline.discard }
-      state.deckPileDisplayOverrides = { ...displayBaseline.deck }
-    }
-    state.handDiscardPresentation = null
+    if (displayBaseline) cardMotionPileDisplay.restoreBaseline(displayBaseline)
+    cardMotionHandDisplay.clearDiscardPresentation()
     return Promise.resolve()
   }
-  const priorDiscardOverrides = displayBaseline?.discard ?? { ...toRaw(state.discardPileDisplayOverrides) }
-  const priorDeckOverrides = displayBaseline?.deck ?? { ...toRaw(state.deckPileDisplayOverrides) }
-  const discardProjection = new Map<PlayerId, { cardId: string | null; count: number }>()
-  const deckProjection = new Map<PlayerId, { cardId: string | null; count: number }>()
-  const projectedDiscardOverrides = { ...priorDiscardOverrides }
-  const projectedDeckOverrides = { ...priorDeckOverrides }
-  for (const transfer of animatedTransfers) {
-    if (transfer.zone === 'discard' && !discardProjection.has(transfer.playerId)) {
-      const initial = {
-        cardId: transfer.previousDiscardTop,
-        count: transfer.previousDiscardCount,
-      }
-      discardProjection.set(transfer.playerId, initial)
-      projectedDiscardOverrides[transfer.playerId] = initial
-    }
-    if (transfer.zone === 'deck' && !deckProjection.has(transfer.playerId)) {
-      const initial = {
-        cardId: transfer.previousDeckTop,
-        count: transfer.previousDeckCount,
-      }
-      deckProjection.set(transfer.playerId, initial)
-      projectedDeckOverrides[transfer.playerId] = initial
-    }
-  }
-  if (discardProjection.size > 0) state.discardPileDisplayOverrides = projectedDiscardOverrides
-  if (deckProjection.size > 0) state.deckPileDisplayOverrides = projectedDeckOverrides
-  const latestDiscardOverrides = new Map(discardProjection)
-  const latestDeckOverrides = new Map(deckProjection)
+  const ownsPileMotionDisplay = !pileMotionDisplay
+  const activePileMotionDisplay = pileMotionDisplay ?? createCardPileMotionDisplaySession(
+    cardPileMotionDisplayAccess,
+    [],
+    state.game ? captureCardPileCounts(state.game) : {},
+    new Set(animatedTransfers.flatMap(transfer => {
+      const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
+      return instanceId ? [instanceId] : []
+    })),
+    animatedTransfers.flatMap(transfer => {
+      const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
+      return instanceId ? [{
+        instanceId,
+        cardId: transfer.cardId,
+        sourceZoneId: transfer.sourceZoneId,
+        destinationZoneId: transfer.destinationZoneId ?? `player:${transfer.playerId}:${transfer.zone}`,
+      }] : []
+    }),
+  )
+  const pileArrivals = cardMotionPileDisplay.beginArrivals(animatedTransfers, displayBaseline)
   const releaseMotion = beginCardMotionBatch()
   const restoreAndRelease = (() => {
     let released = false
     return () => {
       if (released) return
       released = true
-      for (const [playerId, projection] of discardProjection) {
-        const player = state.game?.players.find(candidate => candidate.id === playerId)
-        if (player && (projection.count !== player.discard.length || projection.cardId !== (player.discard[0] ?? null))) {
-          reportCardMotionIssue('Discard projection did not settle to the engine state', {
-            playerId, projection, engineTop: player.discard[0] ?? null, engineCount: player.discard.length,
-          })
-        }
-      }
-      for (const [playerId, projection] of deckProjection) {
-        const player = state.game?.players.find(candidate => candidate.id === playerId)
-        if (player && (projection.count !== player.deck.length || projection.cardId !== (player.deck[0] ?? null))) {
-          reportCardMotionIssue('Deck projection did not settle to the engine state', {
-            playerId, projection, engineTop: player.deck[0] ?? null, engineCount: player.deck.length,
-          })
-        }
-      }
-      const currentDiscardOverrides = { ...toRaw(state.discardPileDisplayOverrides) }
-      for (const [playerId, latest] of latestDiscardOverrides) {
-        if (currentDiscardOverrides[playerId] !== latest) continue
-        const previous = priorDiscardOverrides[playerId]
-        if (previous) currentDiscardOverrides[playerId] = previous
-        else delete currentDiscardOverrides[playerId]
-      }
-      state.discardPileDisplayOverrides = currentDiscardOverrides
-      const currentDeckOverrides = { ...toRaw(state.deckPileDisplayOverrides) }
-      for (const [playerId, latest] of latestDeckOverrides) {
-        if (currentDeckOverrides[playerId] !== latest) continue
-        const previous = priorDeckOverrides[playerId]
-        if (previous) currentDeckOverrides[playerId] = previous
-        else delete currentDeckOverrides[playerId]
-      }
-      state.deckPileDisplayOverrides = currentDeckOverrides
-      state.handDiscardPresentation = null
+      pileArrivals.restore(state.game?.players ?? [])
+      cardMotionHandDisplay.clearDiscardPresentation()
       claimedMoveIds.forEach(moveId => activeCardMoveClaims.delete(moveId))
       releaseMotion()
+      if (ownsPileMotionDisplay) activePileMotionDisplay.finish()
     }
   })()
 
-  const showArrival = (transfer: CardZoneTransfer) => {
-    if (transfer.zone === 'discard') {
-      const current = discardProjection.get(transfer.playerId) ?? {
-        cardId: transfer.previousDiscardTop,
-        count: transfer.previousDiscardCount,
-      }
-      const next = projectPileArrival(current, transfer)
-      discardProjection.set(transfer.playerId, next)
-      latestDiscardOverrides.set(transfer.playerId, next)
-      state.discardPileDisplayOverrides = {
-        ...toRaw(state.discardPileDisplayOverrides), [transfer.playerId]: next,
-      }
-    } else if (transfer.zone === 'deck') {
-      const current = deckProjection.get(transfer.playerId) ?? {
-        cardId: transfer.previousDeckTop,
-        count: transfer.previousDeckCount,
-      }
-      const next = projectPileArrival(current, transfer)
-      deckProjection.set(transfer.playerId, next)
-      latestDeckOverrides.set(transfer.playerId, next)
-      state.deckPileDisplayOverrides = {
-        ...toRaw(state.deckPileDisplayOverrides), [transfer.playerId]: next,
-      }
-    }
-  }
+  const showArrival = (transfer: CardZoneTransfer) => pileArrivals.showArrival(transfer)
   return enqueueCardMotion(async () => {
     try {
       await waitForBoardMotion
@@ -2404,15 +2302,18 @@ function queueCardZoneTransfers(
         const showArrivalUnderFlight = async () => {
           if (arrivalShown) return
           arrivalShown = true
-          if (transfer.zone !== 'discard' && transfer.zone !== 'deck') return
-          showArrival(transfer)
-          await nextTick()
+          if (transfer.zone === 'discard' || transfer.zone === 'deck') {
+            showArrival(transfer)
+            await nextTick()
+          }
+          const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
+          if (instanceId) activePileMotionDisplay.arrive(instanceId)
         }
         let destination = transferDestination(transfer)
         if (!destination && (transfer.zone === 'discard' || transfer.zone === 'deck')) {
           reportCardMotionIssue('Destination pile has no visible anchor; settling to rule state', transfer)
         }
-        const stagedPresentation = state.handDiscardPresentation
+        const stagedPresentation = cardMotionHandDisplay.getDiscardPresentation()
         const stagedOwnerId = transfer.sourcePlayerId ?? transfer.playerId
         if ((transfer.zone === 'discard' || transfer.zone === 'deck') &&
           (transfer.timing === 'hand-to-pile' || transfer.timing === 'hand-to-deck-top') &&
@@ -2432,18 +2333,19 @@ function queueCardZoneTransfers(
           if (sourceElement) sourceElement.style.visibility = 'hidden'
           const destinationElement = destination?.element ?? null
           const destinationMode = destination?.destinationMode ?? 'overlay'
-          const flightAnimation = transfer.zone === 'deck'
-            ? animateCardFlightToPlayerDeck(flight, destinationElement, playerCardBackUrl(), {
-              destinationMode,
-              timing: transfer.timing,
-              afterFlight: showArrivalUnderFlight,
-            })
-            : animateCardFlight(flight, destinationElement, {
-              destinationMode,
-              timing: transfer.timing,
-              afterFlight: showArrivalUnderFlight,
-            })
-          const currentPresentation = state.handDiscardPresentation
+          const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
+          if (instanceId) activePileMotionDisplay.depart(instanceId)
+          const flightAnimation = animateCardMotionFlight({
+            cardId: transfer.cardId,
+            sourceZone: 'hand',
+            destinationZone: transfer.zone,
+            flight,
+            destination: destinationElement,
+            timing: transfer.timing,
+            destinationMode,
+            afterFlight: showArrivalUnderFlight,
+          })
+          const currentPresentation = cardMotionHandDisplay.getDiscardPresentation()
           if (currentPresentation?.playerId === stagedOwnerId) {
             currentPresentation.cards = currentPresentation.cards.filter(card =>
               transfer.sourceHandInstanceId
@@ -2463,55 +2365,56 @@ function queueCardZoneTransfers(
         if (transfer.zone === 'hand' && destination) {
           // Keep the newly rendered copy hidden while the old hand shifts into
           // its final layout, then aim the flight at that exact card slot.
-          originalDestinationVisibility = destination.element.style.visibility
-          handTarget = destination.element
-          destination.element.style.visibility = 'hidden'
-          await waitForHandGainReflow(destination.element.closest<HTMLElement>('.hand'))
+          handTarget = transfer.arrivalDestination ?? destination.element
+          originalDestinationVisibility = transfer.arrivalDestinationVisibilityBefore ??
+            handTarget.style.visibility
+          handTarget.style.visibility = 'hidden'
+          await waitForHandGainReflow(handTarget.closest<HTMLElement>('.hand'))
           destination = transferDestination(transfer) ?? {
             element: handTarget,
             destinationMode: 'replace',
           }
         }
+        const sourceZone = transfer.sourceHandInstanceId || transfer.sourceHandIndex !== undefined
+          ? 'hand'
+          : transfer.flight?.clone.dataset.cardMotionSourceZone ?? 'external'
+        const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
+        if (instanceId) activePileMotionDisplay.depart(instanceId)
+        const flight = animateCardMotionFlight({
+          cardId: transfer.cardId,
+          sourceZone,
+          destinationZone: transfer.zone,
+          flight: transfer.flight,
+          destination: destination?.element ?? null,
+          timing: transfer.timing,
+          destinationMode: destination?.destinationMode ?? 'overlay',
+          restoreDestinationVisibility: originalDestinationVisibility,
+          afterFlight: showArrivalUnderFlight,
+          revealOnArrival: transfer.revealOnArrival,
+        })
         if (transfer.zone === 'deck') {
-          const deckFlight = animateCardFlightToPlayerDeck(
-            transfer.flight,
-            destination?.element ?? null,
-            playerCardBackUrl(),
-            {
-              destinationMode: destination?.destinationMode ?? 'overlay',
-              timing: transfer.timing,
-              afterFlight: showArrivalUnderFlight,
-            },
-          )
           if ((transfer.timing === 'hand-to-pile' || transfer.timing === 'hand-to-deck-top') &&
             transfer.sourcePlayerId) {
             const sourceArea = findDataElement('data-player-area-id', transfer.sourcePlayerId)
             await Promise.all([
-              deckFlight,
+              flight,
               waitForHandCardReflow(sourceArea?.querySelector<HTMLElement>('.hand') ?? null),
             ])
           } else {
-            await deckFlight
+            await flight
           }
         } else {
-          const flightOptions = {
-            destinationMode: destination?.destinationMode ?? 'overlay',
-            timing: transfer.timing,
-            restoreDestinationVisibility: originalDestinationVisibility,
-            afterFlight: showArrivalUnderFlight,
-          }
-          const revealImage = transfer.revealOnArrival ? cardImageUrl(transfer.cardId) : undefined
-          if (revealImage) {
-            await animateCardFlightWithReveal(
-              transfer.flight, destination?.element ?? null, revealImage, flightOptions,
-            )
-          } else {
-            await animateCardFlight(transfer.flight, destination?.element ?? null, flightOptions)
-          }
+          await flight
         }
         await showArrivalUnderFlight()
       }
     } finally {
+      for (const transfer of animatedTransfers) {
+        if (!transfer.arrivalDestination) continue
+        transfer.arrivalDestination.style.visibility = transfer.arrivalDestinationVisibilityBefore ?? ''
+        transfer.arrivalDestination = null
+        transfer.arrivalDestinationVisibilityBefore = undefined
+      }
       restoreAndRelease()
     }
   }).catch(() => {
@@ -2560,38 +2463,32 @@ function queueCardZoneTransfers(
     if (state.game) transfers.push(...resolveMarketPileTransfers(marketCaptures, state.game, cardMoveEvents))
     else discardMarketPileTransfers(marketCaptures)
     if (boardMotion && boardZoneBaseline && state.game) {
-      holdSwapCardsMovingToDiscard(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
-      holdDevelopCardsMovingToDiscard(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
-      holdBoardCardsMovingToDiscard(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
+      cardMotionBoardDisplay.holdDiscardArrivals(boardMotion, boardZoneBaseline, state.game.players, cardMoveEvents)
     }
+    const pileMotionDisplay = createCardPileMotionSession(cardMoveEvents, boardMotion, transfers)
     const boardFlight = boardMotion
-      ? queueCardZoneMotion(boardMotion, new Map(), cardMoveEvents).finally(() => releaseBoardDiscardDisplayHolds(boardMotion))
+      ? queueCardZoneMotion(boardMotion, new Map(), cardMoveEvents, pileMotionDisplay)
+        .finally(() => cardMotionBoardDisplay.release(boardMotion))
       : Promise.resolve()
-    if (transfers.length > 0) await queueCardZoneTransfers(transfers, boardFlight)
-    else await boardFlight
+    try {
+      if (transfers.length > 0) await queueCardZoneTransfers(transfers, boardFlight, undefined, pileMotionDisplay)
+      else await boardFlight
+    } finally {
+      pileMotionDisplay.finish()
+    }
   }
   return result
 }
 function clearPendingAttachCardFlight() {
   discardCardFlight(pendingAttachCardFlight?.flight ?? null)
   pendingAttachCardFlight = null}
-function clearPendingPlayCardFlight() {
-  const pending = pendingPlayCardFlight
-  if (!pending) return
-  if (pending.hiddenDestination?.style.visibility === 'hidden') {
-    pending.hiddenDestination.style.visibility = pending.hiddenDestinationVisibility
-  }
-  if (state.handPlayPresentation?.presentationKey === pending.presentationKey) {
-    state.handPlayPresentation = null
-  }
-  pendingPlayCardFlight = null
-}
 function clearPendingGainPlacementFlight() {
   if (!pendingGainPlacementFlight) return
   discardCardMoveSourceSnapshot(pendingGainPlacementFlight.snapshot)
   pendingGainPlacementFlight = null
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
+  state.cardPileCountOverrides = {}
   state.discardTopDisplayOverride = null
 }
 function resolvePendingGainPlacementTransfers(
@@ -2610,6 +2507,7 @@ function resolvePendingGainPlacementTransfers(
     return [{
       instanceId: pending.instanceId,
       cardId: pending.cardId,
+      destinationZoneId: destination.zoneId,
       playerId: pending.playerId,
       zone,
       zoneIndex,
@@ -2645,6 +2543,19 @@ function capturePendingNemesisDrawFlight(game: GameState) {
   captureNemesisDeckTopFlight(game)
 }
 function startNemesisDrawRevealAnimation(decision: Extract<PendingDecision, { kind: 'confirm_nemesis_draw' }>): Promise<void> {
+  const pileMotionInstanceId = `nemesis-draw-reveal:${decision.id}`
+  const pileMotionDisplay = createCardPileMotionDisplaySession(
+    cardPileMotionDisplayAccess,
+    [],
+    state.game ? captureCardPileCounts(state.game) : {},
+    new Set([pileMotionInstanceId]),
+    [{
+      instanceId: pileMotionInstanceId,
+      cardId: decision.cardId,
+      sourceZoneId: 'nemesis:nemesis_deck',
+      destinationZoneId: 'temporary:nemesis_draw',
+    }],
+  )
   const pendingFlight = pendingNemesisDrawFlight
   pendingNemesisDrawFlight = null
   const matchingFlight = pendingFlight?.cardId === decision.cardId ? pendingFlight.flight : null
@@ -2673,10 +2584,23 @@ function startNemesisDrawRevealAnimation(decision: Extract<PendingDecision, { ki
     state.nemesisDrawRevealQueued = false
     await nextTick()
     destination.style.visibility = destinationVisibility
-    if (flight) await animateCardRevealFlight(flight, destination, cardImageUrl(decision.cardId))
+    if (flight) {
+      pileMotionDisplay.depart(pileMotionInstanceId)
+      await animateCardMotionFlight({
+        cardId: decision.cardId,
+        sourceZone: 'nemesis_deck',
+        destinationZone: 'nemesis_play_area',
+        flight,
+        destination,
+        revealFromFaceDown: true,
+        revealFrontImageUrl: cardImageUrl(decision.cardId),
+      })
+      pileMotionDisplay.arrive(pileMotionInstanceId)
+    }
   })
     .catch(() => undefined)
     .finally(() => {
+      pileMotionDisplay.finish()
       releaseMotion()
       state.nemesisDrawRevealQueued = false
       state.nemesisDrawRevealAnimating = false
@@ -2855,12 +2779,13 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
   if (attachFlight) state.cardMotionBatchActive = true
   // The card click and its Breach confirmation are one action. The click has
   // already recorded the pre-play snapshot, so do not add an intermediate undo point.
-  const pendingPlayFlightAtStart = pendingPlayCardFlight
+  const pendingPlayFlightAtStart = cardMotionHandDisplay.getPendingPlayFlight()
   // Decisions belonging to a held hand play share the click's undo boundary.
   // The intermediate engine state already moved the card out of the hand.
   const previous = completingAttachPlay ? null : beforeAction(
     true, preferredHandZoneOrder, null, !pendingPlayFlightAtStart,
   )
+  if (previous) holdActionPileDisplayOverrides(previous)
   const conjureMotionSnapshot = previous ? cardZoneMotionsByUndo.get(previous) : null
   const conjureOrigin = conjurePrepTarget
     ? conjureMotionSnapshot?.cards.find(card =>
@@ -2892,12 +2817,33 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
   }
   const zoneBaseline = capturePlayerZoneMotionBaseline(state.game)
   const messages = engineResolvePendingDecision(state.game, state.game.pendingDecision.id, answer)
+  const nextDecision = state.game.pendingDecision
+  const pendingPlayCardIsNowSelectable = pendingPlayFlightAtStart !== null && nextDecision?.kind === 'select_cards' &&
+    nextDecision.source === 'played_this_turn' &&
+    (nextDecision.ownerId ?? pendingPlayFlightAtStart.ownerId) === pendingPlayFlightAtStart.ownerId &&
+    nextDecision.candidates.some(choice =>
+      choice.zone === 'played_this_turn' && choice.cardId === pendingPlayFlightAtStart.cardId &&
+      getPlayerCardInstanceZone(state.game!, pendingPlayFlightAtStart.ownerId, 'played_this_turn')
+        .instanceIds[choice.index] === pendingPlayFlightAtStart.instanceId)
+  if (pendingPlayCardIsNowSelectable && pendingPlayFlightAtStart && nextDecision) {
+    state.pendingPlayCardDecisionRelease = {
+      instanceId: pendingPlayFlightAtStart.instanceId,
+      decisionId: nextDecision.id,
+      revealedInPlayedZone: false,
+    }
+  }
   const nextNemesisDrawPending = wasNemesisTurnWaiting &&
     state.game.pendingDecision?.kind === 'confirm_nemesis_draw' &&
     state.game.pendingDecision.source !== 'specific_deck'
   if (!nextNemesisDrawPending) state.nemesisDrawRevealQueued = false
   const decisionMoveEvents = previous ? finishActionMovementCapture(previous) : []
-  if (previous) prepareHandDeparturePresentation(previous)
+  if (previous) {
+    prepareHandDeparturePresentation(previous)
+    prepareActionPileTransfers(previous, decisionMoveEvents)
+    await hideActionHandArrivals(previous)
+    await hideActionNewHandArrivals(previous)
+    await hideActionBoardArrivals(previous, decisionMoveEvents)
+  }
   if (conjurePrepTarget && state.pendingConjureBreachArrival?.instanceId === conjurePrepTarget.instanceId) {
     const movedToChosenBreach = decisionMoveEvents.some(event =>
       event.kind === 'move' && event.instanceId === conjurePrepTarget.instanceId &&
@@ -2947,7 +2893,7 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
           zone: 'deck',
           zoneIndex: returnEvent.destination.index,
           flight: conjureReturnFlight,
-          timing: 'hand-to-deck-top',
+          timing: resolveCardMotionPolicy({ sourceZone: 'conjure', destinationZone: 'deck' }).timing,
           previousDeckTop: conjureReturnDeckTop,
           previousDeckCount: conjureReturnDeckCount,
           previousDiscardTop: conjureReturnDiscardTop,
@@ -2964,9 +2910,9 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
     }
   }
   const decisionBoardMotion = previous ? cardZoneMotionsByUndo.get(previous) ?? null : null
-  holdSwapCardsMovingToDiscard(decisionBoardMotion, zoneBaseline, state.game.players, decisionMoveEvents)
-  holdDevelopCardsMovingToDiscard(decisionBoardMotion, zoneBaseline, state.game.players, decisionMoveEvents)
-  holdBoardCardsMovingToDiscard(decisionBoardMotion, zoneBaseline, state.game.players, decisionMoveEvents)
+  cardMotionBoardDisplay.holdDiscardArrivals(
+    decisionBoardMotion, zoneBaseline, state.game.players, decisionMoveEvents,
+  )
   if (presentationPlayerBefore) {
     // Stage hand cards selected for a discard or a deck-top transfer so they
     // stay rendered until their flights start; the flight then removes each
@@ -2982,7 +2928,7 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
       const capturedHandCards = previous
         ? handZoneTransfersByUndo.get(previous)?.cards.filter(card => card.playerId === presentationPlayerId) ?? []
         : []
-      state.handDiscardPresentation = {
+      cardMotionHandDisplay.setDiscardPresentation({
         playerId: presentationPlayerId,
         cards: presentationHandBefore.map((cardId, handIndex) => ({
           cardId,
@@ -2990,7 +2936,7 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
           handIndex,
           presentationKey: `${presentationPlayerId}:hand:${handIndex}`,
         })),
-      }
+      })
       if (previous) stageHandDepartures(
         resolvedHandTransfersByUndo.get(previous) ?? [],
         handZoneTransfersByUndo.get(previous) ?? null,
@@ -3002,11 +2948,18 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
     pushLog(message, warning ? 'warn' : 'info')
   }
   if (pendingPlayFlightCompletion) await pendingPlayFlightCompletion
-  else await finishPendingPlayCardFlight(previous)
+  else {
+    const pendingPlayMotion = await finishPendingPlayCardFlight(previous, pendingPlayCardIsNowSelectable)
+    if (pendingPlayCardIsNowSelectable && pendingPlayMotion) await pendingPlayMotion.promise
+    else if (pendingPlayCardIsNowSelectable) state.pendingPlayCardDecisionRelease = null
+  }
   if (previous) {
+    const resolvedMarketTransfers = resolvedMarketTransfersByUndo.get(previous)
+    resolvedMarketTransfersByUndo.delete(previous)
     const marketCaptures = marketPileTransfersByUndo.get(previous) ?? []
     marketPileTransfersByUndo.delete(previous)
-    const marketTransfers = resolveMarketPileTransfers(marketCaptures, state.game, decisionMoveEvents)
+    const marketTransfers = resolvedMarketTransfers ??
+      resolveMarketPileTransfers(marketCaptures, state.game, decisionMoveEvents)
     if (marketTransfers.length > 0) await queueCardZoneTransfers(marketTransfers)
   }
   if (gainPlacement && !state.game.pendingDecision && !state.game.pendingEffect) {
@@ -3018,7 +2971,7 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
     state.discardTopDisplayOverride = null
     await nextTick()
   }
-  await waitForBreachMotionsWithShield()
+  await waitForCardMotions()
   // Finish all card-zone flights caused by this decision before continuing a
   // Nemesis/player phase. In particular, Crooked Mask Corruptions must land
   // in the Mage deck before the turn state machine advances.
@@ -3030,11 +2983,15 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
       pendingAttachCardFlight = null
       try {
         await nextTick()
-        await enqueueCardMotion(() => animateCardFlight(
-          attachFlight.flight,
-          findDataElement('data-card-instance-id', attachFlight.instanceId, document),
-          { destinationMode: 'replace' },
-        ))
+        await enqueueCardMotion(() => animateCardMotionFlight({
+          cardId: attachFlight.cardId,
+          sourceZone: 'hand',
+          destinationZone: 'breach',
+          flight: attachFlight.flight,
+          destination: findDataElement('data-card-instance-id', attachFlight.instanceId, document),
+          timing: 'standard',
+          destinationMode: 'replace',
+        }))
       } finally {
         state.cardMotionBatchActive = false
       }
@@ -3103,48 +3060,55 @@ async function playCardWithMotion(
     : null
   const zoneBaseline = capturePlayerZoneMotionBaseline(state.game)
   const previous = beforeAction(true, [], source, options.recordUndo ?? true)
-  const releaseMotion = flight ? beginCardMotionBatch() : null
+  if (!previous) {
+    discardCardFlight(flight)
+    return
+  }
+  holdActionPileDisplayOverrides(previous)
+  // Input must stay locked for the whole play action even when the source
+  // image is not ready and no flight snapshot could be captured.
+  const releaseMotion = beginCardMotionBatch()
   let entryMotion: Promise<void> = Promise.resolve()
   try {
     const playMovementCapture = beginCardMoveTransaction(state.game, 'play')
     const msg = enginePlayCard(state.game, p.id, cardId, cardIdx)
     const playEvents = finishCardMoveTransaction(playMovementCapture).events
-    if (msg) pushLog(msg)
-    holdSwapCardsMovingToDiscard(previous ? cardZoneMotionsByUndo.get(previous) ?? null : null,
-      zoneBaseline, state.game.players, playEvents)
-    holdDevelopCardsMovingToDiscard(previous ? cardZoneMotionsByUndo.get(previous) ?? null : null,
-      zoneBaseline, state.game.players, playEvents)
-    holdBoardCardsMovingToDiscard(previous ? cardZoneMotionsByUndo.get(previous) ?? null : null,
-      zoneBaseline, state.game.players, playEvents)
     const hasPendingEffect = !!state.game.pendingDecision || !!state.game.pendingEffect
     const cardWasPlayed = hasHandPlayMove(playEvents, instanceId)
+    let pendingPlay: PendingPlayCardFlight | null = null
     if (source && motionKey && instanceId && hasPendingEffect && cardWasPlayed) {
-      const presentationKey = `${p.id}:play:${motionKey}`
-      const pending: PendingPlayCardFlight = {
+      // Install the hand placeholder before Vue can paint the engine's removal
+      // from hand. This preserves the source element while the player makes a
+      // decision, avoiding a remove/recreate cycle that interrupts hover and
+      // hand-row motion for every play-triggered decision.
+      pendingPlay = cardMotionHandDisplay.holdPlayedCardForDecision({
         ownerId: p.id,
         cardId,
         instanceId,
         handIndex: cardIdx,
         motionKey,
-        presentationKey,
-        hiddenDestination: null,
-        hiddenDestinationZone: null,
-        hiddenDestinationKey: null,
-        hiddenDestinationVisibility: '',
-      }
-      pendingPlayCardFlight = pending
-      state.handPlayPresentation = {
-        playerId: p.id,
-        cardId,
-        instanceId,
-        handIndex: cardIdx,
-        presentationKey,
-        motionKey,
-      }
+      })
       discardCardFlight(flight)
       flight = null
+    }
+    if (msg) pushLog(msg)
+    cardMotionBoardDisplay.holdDiscardArrivals(
+      previous ? cardZoneMotionsByUndo.get(previous) ?? null : null,
+      zoneBaseline,
+      state.game.players,
+      playEvents,
+    )
+    if (previous) {
+      const actionMoveEvents = finishActionMovementCapture(previous)
+      prepareHandDeparturePresentation(previous)
+      prepareActionPileTransfers(previous, actionMoveEvents)
+      await hideActionHandArrivals(previous)
+      await hideActionNewHandArrivals(previous)
+      await hideActionBoardArrivals(previous, actionMoveEvents)
+    }
+    if (pendingPlay) {
       await nextTick()
-      hidePendingPlayCardDestination(pending)
+      hidePendingPlayCardDestination(pendingPlay)
       entryMotion = enqueueCardMotion(() => waitForHandCardReflow(hand))
     } else if (cardWasPlayed) {
       const destinationZone = getPlayerCardMotionZone(state.game, p.id, instanceId)
@@ -3160,7 +3124,7 @@ async function playCardWithMotion(
         const destinationVisibility = destination?.style.visibility ?? ''
         entryMotion = enqueueCardMotion(async () => {
           await Promise.all([
-            animatePlayCardFlight(playFlight, destination, destinationZone, destinationVisibility),
+            animatePlayCardFlight(cardId, playFlight, destination, destinationZone, destinationVisibility),
             waitForHandCardReflow(hand),
           ])
         })
@@ -3262,7 +3226,7 @@ export async function playAllGems() {
     releaseBatchMotion()
   }
 }
-export function prepSpell(cardIdx: number, breachIndex: number, options: { animate?: boolean } = {}) {
+export async function prepSpell(cardIdx: number, breachIndex: number, options: { animate?: boolean } = {}) {
   const p = cp()
   const cardId = p.hand[cardIdx]!
   const playerArea = findDataElement('data-player-area-id', p.id)
@@ -3285,9 +3249,9 @@ export function prepSpell(cardIdx: number, breachIndex: number, options: { anima
   }
   if (msg) pushLog(msg, 'ok')
   state.prepTarget = null
-  if (!msg && state.phase === 'main') void resolveMainPhasePreppedEffects()
+  await finishAction(previous)
+  if (!msg && state.phase === 'main') await resolveMainPhasePreppedEffects()
   maybeAutoEnd()
-  finishAction(previous)
 }
 export async function activatePreppedCardAction(choice: CardChoice) {
   if (!state.game || !canActMain.value) return
@@ -3305,15 +3269,15 @@ export async function activatePreppedSpellAction(breachIndex: number, spellIndex
   await finishPreppedAction(previous)
 }
 /** Activate a Main Phase action exposed by a face-up Mage-specific card in play. */
-export function activatePlayerCardInPlayAction(cardIndex: number, ownerId: PlayerId = state.selectedPlayer) {
+export async function activatePlayerCardInPlayAction(cardIndex: number, ownerId: PlayerId = state.selectedPlayer) {
   if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis' || state.game.pendingDecision || state.game.pendingEffect) return
   const previous = beforeAction()
   const messages = engineActivatePlayerCardInPlayAction(state.game, ownerId, cardIndex)
   for (const message of messages) {
     pushLog(message, message.startsWith('That ') || message.startsWith('Resolve ') ? 'warn' : 'ok')
   }
+  await finishAction(previous)
   maybeAutoEnd()
-  finishAction(previous)
 }
 export async function buyCard(pileIdx: number) {
   if (!state.game) return
@@ -3324,12 +3288,11 @@ export async function buyCard(pileIdx: number) {
     const msg = engineBuyCard(game, player.id, pileIdx)
     if (msg) pushLog(msg, 'ok')
     const cardFlight = finishAction(previous)
+    await cardFlight
     if (game.gameOver) {
       state.phase = 'gameover'
-      await cardFlight
       return
     }
-    await cardFlight
     maybeAutoEnd()
   } finally {
     state.cardMotionBatchActive = false
@@ -3339,34 +3302,50 @@ export async function buyCard(pileIdx: number) {
   state.viewPile = 'destroyed'}
 export async function focusBreach(breachIndex: number) {
   const previous = beforeAction()
+  if (!previous) return
+  holdActionPileDisplayOverrides(previous)
   const msg = engineFocusBreach(state.game!, cp().id, breachIndex)
   if (msg) pushLog(msg, 'ok')
-  await waitForBreachMotionsWithShield()
-  maybeAutoEnd()
-  finishAction(previous)}
+  const actionMoveEvents = finishActionMovementCapture(previous)
+  prepareHandDeparturePresentation(previous)
+  prepareActionPileTransfers(previous, actionMoveEvents)
+  await hideActionHandArrivals(previous)
+  await hideActionNewHandArrivals(previous)
+  await hideActionBoardArrivals(previous, actionMoveEvents)
+  await finishAction(previous)
+  await waitForCardMotions()
+  maybeAutoEnd()}
 export async function openBreach(breachIndex: number) {
   const previous = beforeAction()
+  if (!previous) return
+  holdActionPileDisplayOverrides(previous)
   const msg = engineOpenBreach(state.game!, cp().id, breachIndex)
   if (msg) pushLog(msg, 'ok')
-  await waitForBreachMotionsWithShield()
+  const actionMoveEvents = finishActionMovementCapture(previous)
+  prepareHandDeparturePresentation(previous)
+  prepareActionPileTransfers(previous, actionMoveEvents)
+  await hideActionHandArrivals(previous)
+  await hideActionNewHandArrivals(previous)
+  await hideActionBoardArrivals(previous, actionMoveEvents)
+  await finishAction(previous)
+  await waitForCardMotions()
   maybeAutoEnd()
-  finishAction(previous)
 }
-export function gainCharge(amount = 1) {
+export async function gainCharge(amount = 1) {
   const previous = beforeAction()
   const msg = engineGainCharge(state.game!, cp().id, amount)
   if (msg) pushLog(msg, 'ok')
+  await finishAction(previous)
   maybeAutoEnd()
-  finishAction(previous)
 }
-export function activateAbility() {
+export async function activateAbility() {
   const previous = beforeAction()
   // An ability may belong to the selected mage rather than the mage whose
   // turn is currently active (for example, Xaxos during Brama's main phase).
   const msg = engineActivateAbility(state.game!, state.selectedPlayer)
   if (msg) pushLog(msg, 'ok')
+  await finishAction(previous)
   maybeAutoEnd()
-  finishAction(previous)
 }
 // ===== End of turn + discard ordering =====
 async function finalizeDraw() {
@@ -3461,11 +3440,17 @@ async function moveDiscardPhaseCard(index: number, capturedFlight?: CardFlightSn
       moveId: moved.moveId,
       instanceId: moved.instanceId,
       cardId: moved.cardId,
+      sourceZoneId: moved.source.zoneId,
+      destinationZoneId: moved.destination.zoneId,
       playerId: p.id,
       zone: 'discard',
       zoneIndex: moved.destination.index,
       flight,
-      timing: 'discard-phase',
+      timing: resolveCardMotionPolicy({
+        sourceZone: 'played',
+        destinationZone: 'discard',
+        reason: 'discard_phase',
+      }).timing,
       previousDeckTop: p.deck[0] ?? null,
       previousDeckCount: p.deck.length,
       previousDiscardTop,
@@ -3476,7 +3461,10 @@ async function moveDiscardPhaseCard(index: number, capturedFlight?: CardFlightSn
   }
 }
 /** Core end-of-turn. Called by user action AND auto-end. */
-async function doEndTurn(recordDiscardUndoBoundary = true) {
+async function doEndTurn(
+  recordDiscardUndoBoundary = true,
+  finishMainAction?: () => Promise<void>,
+) {
   if (state.phase !== 'main' || !state.game || state.game.pendingDecision || state.game.pendingEffect) return
   const p = cp()
   if (state.game.nemesis.corruptionDeck &&
@@ -3496,6 +3484,13 @@ async function doEndTurn(recordDiscardUndoBoundary = true) {
       return
     }
     state.game.pendingCorruptionEndTurnPlayerId = undefined
+  }
+  // The end-main effects above share the player's action snapshot. Finish
+  // their movement before changing phase or starting the discard sequence.
+  await finishMainAction?.()
+  if (state.game.gameOver) {
+    state.phase = 'gameover'
+    return
   }
   if (p.playedThisTurn.length === 0) {
     state.game.currentPhase = 'draw'
@@ -3528,8 +3523,14 @@ async function doEndTurn(recordDiscardUndoBoundary = true) {
 export async function endTurn() {
   if (!canRequestEndTurn.value) return
   const previous = beforeAction()
-  await doEndTurn()
-  await finishAction(previous)
+  let actionMotion: Promise<void> | null = null
+  const finishMainAction = () => actionMotion ??= finishAction(previous, [], { preserveUndoBoundary: true })
+  try {
+    await doEndTurn(true, finishMainAction)
+  } finally {
+    // Corruption choices can pause doEndTurn before its phase transition.
+    await finishMainAction()
+  }
 }
 /** Request the end of Main Phase, warning first when legal actions remain. */
 export function requestEndTurn() {
@@ -3663,38 +3664,38 @@ export const nemesisDiscardActions = computed(() => {
   if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis') return []
   return getNemesisDiscardActions(state.game, state.game.currentTurn)
 })
-export function discardNemesisCard(instanceId: string) {
+export async function discardNemesisCard(instanceId: string) {
   if (!state.game || state.phase !== 'main') return
   const previous = beforeAction()
   const messages = discardNemesisPower(state.game, state.game.currentTurn, instanceId)
   for (const message of messages) pushLog(message, message.startsWith('Discarded') ? 'ok' : 'warn')
+  await finishAction(previous)
   maybeAutoEnd()
-  finishAction(previous)
 }
 /** Perform the configured action for the top card of the Nemesis-specific pile. */
-export function buyNemesisSpecificTopCard() {
+export async function buyNemesisSpecificTopCard() {
   if (!state.game || !canActMain.value) return
   const previous = beforeAction()
   const msg = engineBuySpecificPileCard(state.game, cp().id)
   if (msg) pushLog(msg, 'ok')
   if (state.game.gameOver) {
+    await finishAction(previous)
     state.phase = 'gameover'
-    finishAction(previous)
     return
   }
+  await finishAction(previous)
   maybeAutoEnd()
-  finishAction(previous)
 }
-export function gainFirethornTopCard() {
+export async function gainFirethornTopCard() {
   if (!state.game || !canActMain.value) return
   const previous = beforeAction()
   const message = engineGainFirethornTopCard(state.game, cp().id)
   if (message) pushLog(message, message.startsWith('Gained') ? 'ok' : 'warn')
+  await finishAction(previous)
   maybeAutoEnd()
-  finishAction(previous)
 }
 /** Open the standard prepped-spell choice so debugging can cast any Mage's spell. */
-export function debugCastAnyPreppedSpell() {
+export async function debugCastAnyPreppedSpell() {
   const g = state.game
   if (!g || !state.debugFreeSpellCastEnabled || !canActMain.value ||
     g.pendingDecision || g.pendingEffect || getPreppedSpellChoices(g).length === 0) return
@@ -3706,7 +3707,7 @@ export function debugCastAnyPreppedSpell() {
     ownerScope: 'any_player',
   }])
   for (const message of messages) pushLog(message)
-  finishAction(previous)
+  await finishAction(previous)
 }
 /** Develop a supply pile or gain a card from the shared Develop zone. */
 export async function developCard(source: 'supply' | 'develop_zone', index: number) {
@@ -3720,10 +3721,12 @@ export async function developCard(source: 'supply' | 'develop_zone', index: numb
     const failed = message.startsWith('Need ') || message.startsWith('Develop is only') || message.startsWith('Pile empty') || message.startsWith('Develop zone card')
     pushLog(message, failed ? 'warn' : 'ok')
   }
-  if (state.game.gameOver) state.phase = 'gameover'
   const actionMotion = finishAction(previous)
   await actionMotion
-  if (state.game.gameOver) return
+  if (state.game.gameOver) {
+    state.phase = 'gameover'
+    return
+  }
   maybeAutoEnd()
 }
 /** Return Recall cards currently available to the selected Mage. */
@@ -3733,7 +3736,7 @@ export function getRecallActionsForPlayer(playerId: PlayerId = state.selectedPla
     : []
 }
 /** Activate a Recall effect from the selected Mage's Discard pile. */
-export function activateRecall(discardIndex: number, playerId: PlayerId = state.selectedPlayer) {
+export async function activateRecall(discardIndex: number, playerId: PlayerId = state.selectedPlayer) {
   if (!state.game) return
   if (state.phase !== 'main') {
     pushLog('Recall can only be activated during the Main Phase', 'warn')
@@ -3754,8 +3757,8 @@ export function activateRecall(discardIndex: number, playerId: PlayerId = state.
   // Keep the discard-pile viewer available for consecutive Recall actions
   // only when the current Recall resolved synchronously and another Recall
   // was available before it was activated.
+  await finishAction(previous)
   if (state.viewPile !== 'discard') maybeAutoEnd()
-  finishAction(previous)
 }
 export function useGame() {
   return {

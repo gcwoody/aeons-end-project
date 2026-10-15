@@ -59,6 +59,7 @@ export const essenceTheft: SpellCard = {
       {
         kind: 'choose_optional',
         prompt: 'Discard a card so any player gains 1 life?',
+        skipIfUnavailable: true,
         effects: [
           { kind: 'discard_cards', source: 'hand', amount: 1 },
           {
@@ -189,7 +190,7 @@ export const oblivionSwell: SpellCard = {
         {
           kind: 'choose_optional',
           prompt: 'Discard a gem to deal additional damage equal to its cost?',
-          disableIfUnavailable: true,
+          skipIfUnavailable: true,
           effects: [
             { kind: 'discard_cards', source: 'hand', amount: 1, minAmount: 1, maxAmount: 1, cardType: 'gem' },
           ],
@@ -213,6 +214,7 @@ export const phoenixFlame: SpellCard = {
       {
         kind: 'choose_optional',
         prompt: 'Lose 1 charge to deal 2 additional damage?',
+        skipIfUnavailable: true,
         acceptCondition: { kind: 'has_charge', amount: 1 },
         effects: [{ kind: 'lose_charge', amount: 1 }],
       },

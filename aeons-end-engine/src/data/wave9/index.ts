@@ -17,6 +17,7 @@ import * as Tressa from './mages/tressa'
 import * as Wolf from './mages/wolf'
 import * as YanMagda from './mages/yanmagda'
 import * as CrookedMask from './nemeses/crooked-mask'
+import * as OracleOfFilth from './nemeses/oracle-of-filth'
 
 export * from './cards/basic'
 export * from './cards/gems'
@@ -35,6 +36,7 @@ export * from './mages/wolf'
 export * from './mages/yanmagda'
 export * from './nemeses/basic-cards'
 export * from './nemeses/crooked-mask'
+export * from './nemeses/oracle-of-filth'
 
 export const WAVE9_MAGE_CARDS: Record<string, CardDef> = mergeCatalogs(
   Dezmodia.DEZMODIA_CARDS,
@@ -52,8 +54,12 @@ export const WAVE9_MAGE_CARDS: Record<string, CardDef> = mergeCatalogs(
 export const WAVE9_NEMESIS_CARDS = mergeCatalogs(
   CrookedMask.CROOKED_MASK_UNIQUE_CARDS,
   CrookedMask.CROOKED_MASK_CORRUPTION_CARDS,
+  OracleOfFilth.ORACLE_OF_FILTH_NEMESIS_CARDS,
 )
-export const WAVE9_NEMESES = { [CrookedMask.crookedMask.type]: CrookedMask.crookedMask }
+export const WAVE9_NEMESES = {
+  [CrookedMask.crookedMask.type]: CrookedMask.crookedMask,
+  [OracleOfFilth.oracleOfFilth.type]: OracleOfFilth.oracleOfFilth,
+}
 
 export const WAVE9_INITIAL_CARDS: Record<string, CardDef> = mergeCatalogs(
   { wave9_crystal: BasicCards.wave9Crystal, wave9_spark: BasicCards.wave9Spark },
@@ -65,6 +71,7 @@ export const WAVE9_MARKET_CARDS: Record<string, CardDef> = mergeCatalogs(
   Gems.WAVE9_GEM_CARDS,
   Relics.WAVE9_RELIC_CARDS,
   Spells.WAVE9_SPELL_CARDS,
+  OracleOfFilth.ORACLE_OF_FILTH_MARKET_CARDS,
 )
 
 export const WAVE9_MAGE_UNIQUE_CARDS: Record<string, string[]> = {

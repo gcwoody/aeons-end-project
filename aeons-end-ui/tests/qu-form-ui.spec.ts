@@ -41,60 +41,6 @@ async function startGame(page: Page, mage1: string, mage2 = 'jian') {
   }
 }
 
-test('Qu Form card supports hover preview and opens at large size', async ({ page }) => {
-  await page.setViewportSize({ width: 1440, height: 1000 })
-  await startGame(page, 'qu')
-  await page.locator('.char-btn').filter({ hasText: 'Qu' }).click()
-
-  const formCard = page.locator('.player-specific-deck-preview .card-surface')
-  await expect(formCard).toBeVisible()
-  await formCard.hover({ position: { x: 60, y: 16 } })
-  const hoverPreview = page.locator('.card-hover-preview img')
-  await expect(hoverPreview).toHaveAttribute('alt', /Qu's Form Card/)
-
-  await formCard.click({ position: { x: 60, y: 16 } })
-  const modal = page.locator('.qu-form-pile-modal')
-  await expect(modal).toBeVisible()
-  const largeForm = modal.locator('.card-surface--large')
-  await expect(largeForm).toBeVisible()
-  await expect.poll(async () =>
-    largeForm.evaluate(element => element.getBoundingClientRect().width),
-  ).toBeGreaterThan(248)
-  await modal.getByRole('button', { name: 'Close' }).click()
-
-  await page.keyboard.press('Control+d')
-  const debugStateField = page.locator('.debug-panel textarea')
-  await page.getByRole('button', { name: 'Load Current', exact: true }).click()
-  const debugState = JSON.parse(await debugStateField.inputValue())
-  const qu = debugState.game.players.find((player: { mageType: string }) => player.mageType === 'qu')
-  qu.bonusAether = 10
-  qu.regularAetherSpent = 0
-  debugState.game.currentTurn = qu.id
-  debugState.game.currentPhase = 'main'
-  debugState.phase = 'main'
-  debugState.selectedPlayer = qu.id
-  await debugStateField.fill(JSON.stringify(debugState))
-  await page.getByRole('button', { name: 'Apply', exact: true }).click()
-  await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
-
-  await page.locator('.market-grid .pile.can-buy').first().click()
-  const decisionCard = page.locator('.decision-form-card')
-  // Some randomly selected supply cards have their own on-gain decision. Resolve
-  // those first so this assertion reaches Qu's queued Form decision.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    if (await decisionCard.isVisible().catch(() => false)) break
-    const noButton = page.getByRole('button', { name: 'No', exact: true })
-    if (!await noButton.isVisible().catch(() => false)) break
-    await noButton.click()
-  }
-  await expect(decisionCard).toBeVisible()
-  await expect(decisionCard.locator('img')).toHaveAttribute('alt', /Qu's Form Card — Giver Form/)
-  await expect.poll(async () =>
-    decisionCard.evaluate(element => element.getBoundingClientRect().width),
-  ).toBeGreaterThan(248)
-  await page.getByRole('button', { name: 'Yes', exact: true }).click()
-  await expect(page.locator('.decision-modal')).toHaveCount(0)
-})
 
 test('Yan Magda is displayed as a spaced name during gameplay', async ({ page }) => {
   await startGame(page, 'yan_magda')

@@ -41,6 +41,7 @@ export type EffectAmount =
       base: number
       amountPerPile: number
     }
+  | { kind: 'per_specific_deck_card_cost'; base: number }
   | {
       /** Cost of the card selected by the immediately preceding card-selection effect. */
       kind: 'last_selection_cost'
@@ -116,7 +117,10 @@ export type CardEffectCondition =
   | { kind: 'has_affordable_card_in_specific_deck'; cardType: CardType; payment: 'knowledge'; player?: 'source' | 'active' }
   | { kind: 'has_installed_breach_upgrade'; breachIndex: number }
   | { kind: 'has_card_in_hand'; cardType: 'gem' | 'relic' | 'spell' }
-  | { kind: 'has_eligible_card_in_zone'; zone: CardZone | 'hand_or_discard'; cardTypes: CardType[]; minimumCost?: number; treasureLevel?: TreasureLevel; target?: PlayerTargetScope | 'source' }
+  | { kind: 'has_eligible_card_in_zone'; zone: CardZone | 'hand_or_discard'; cardTypes: CardType[]; cardIds?: string[]; minimumCost?: number; treasureLevel?: TreasureLevel; target?: PlayerTargetScope | 'source' }
+  | { kind: 'specific_deck_card_count'; comparison: EffectComparison; count: number }
+  | { kind: 'nemesis_specific_deck_accepts_cards' }
+  | { kind: 'source_minion_life'; comparison: EffectComparison; amount: number }
   | { kind: 'has_opened_breach'; target: PlayerTargetScope; breachIndices?: number[] }
   | { kind: 'has_ally_prepped_spell' }
   | { kind: 'spells_cast_this_turn'; comparison: EffectComparison; count: number }
@@ -189,7 +193,7 @@ export type PlayerSelectionRule =
 export type PlayerTargetRef = { kind: 'player'; playerId: PlayerId }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
-export type CardSelectionSource = 'hand' | 'discard' | 'deck' | 'hand_or_discard' | 'deck_or_discard' | 'played_gem_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
+export type CardSelectionSource = 'hand' | 'discard' | 'deck' | 'hand_or_discard' | 'deck_or_discard' | 'played_gem_this_turn' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardSelectionLayout = 'simple' | 'pile' | 'instant-card-choice'
 export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardGainDestination = 'discard_top' | 'deck_top'
@@ -197,7 +201,7 @@ export type CardGainDestination = 'discard_top' | 'deck_top'
 /** Stable rule-side zones used by card movement facts (never UI coordinates). */
 export type CardMoveZone =
   | 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck'
-  | 'player_cards_in_play' | 'destroyed' | 'breach' | 'develop' | 'nemesis_deck'
+  | 'player_cards_in_play' | 'destroyed' | 'breach' | 'develop' | 'nemesis_deck' | 'nemesis_card_stack'
   | 'nemesis_discard' | 'nemesis_play_area' | 'nemesis_set_aside' | 'corruption_deck' | 'strike_deck'
   | 'strike_discard' | 'trinket_deck' | 'supply' | 'temporary'
 
@@ -319,6 +323,11 @@ export interface PendingDecisionBase {
   cardPreview?: { cardId: string; mageType: string; formSide?: 'giver' | 'taker' }
 }
 
+export type DamageTargetDecisionContinuation = PendingDecisionBase & (
+  | { kind: 'select_damage_target'; targets: DamageTargetRef[] }
+  | { kind: 'allocate_divided_damage'; targets: DamageTargetRef[]; total: number }
+)
+
 /** Serializable continuation data used while an effect waits for a choice. */
 export interface PendingEffectResolution {
   /** Mage whose action is currently resolving the effect. Nemesis effects may omit it. */
@@ -372,6 +381,8 @@ export interface PendingEffectResolution {
   selectedCardId?: string
   /** Temporary player chosen for a multi-step Nemesis effect. */
   selectedActionPlayerId?: PlayerId
+  /** Mage chosen to receive the first card during an Oracle Expunge. */
+  vortexExpungeStartPlayerId?: PlayerId
   /** Recipient chosen for a card-placement effect. */
   placementRecipientPlayerId?: PlayerId
   /** Card revealed by Conjure while waiting for a Breach choice. */
@@ -417,6 +428,8 @@ export interface PendingSpellCast {
   breachIndex: number
   spellIndex: number
   cardId: string
+  /** Physical copy identity, retained when an on-Cast rule moves the spell. */
+  instanceId?: string
   discard: boolean
   /** Transfer Breach casts must be placed into an ally's hand after resolving. */
   transferToAlly?: boolean
@@ -450,6 +463,11 @@ export interface DecisionOption {
 
 export type SpecificDeckPlacement = 'top' | 'bottom'
 
+export interface CardDistributionItem {
+  cardId: string
+  instanceId: string
+}
+
 export type PendingDecision = PendingDecisionBase & (
   | {
       kind: 'choose_one'
@@ -457,12 +475,7 @@ export type PendingDecision = PendingDecisionBase & (
       /** Optional presentation hint for choices with long text. */
       layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
     }
-  | {
-      /** Adjustable damage allocation stays active while targets are clicked. */
-      kind: 'allocate_divided_damage'
-      targets: DamageTargetRef[]
-      total: number
-    }
+  | DamageTargetDecisionContinuation
   | {
       /** Spend an adjustable number of one token type before continuing effects. */
       kind: 'choose_token_amount'
@@ -490,6 +503,14 @@ export type PendingDecision = PendingDecisionBase & (
       reorderable?: boolean
       /** Owner of a source-specific deck when it differs from the active effect player. */
       ownerId?: PlayerId
+    }
+  | {
+      /** Cards shown to the player and assigned to player zones before confirmation. */
+      kind: 'distribute_cards'
+      source: 'nemesis_specific_deck'
+      destination: 'discard' | 'deck_top'
+      cards: CardDistributionItem[]
+      players: PlayerId[]
     }
   | {
       /** Revealed Mage-specific cards awaiting an individual top/bottom placement. */
@@ -546,8 +567,9 @@ export type PendingDecision = PendingDecisionBase & (
       }
     }
   | {
-      kind: 'select_damage_target'
-      targets: DamageTargetRef[]
+      kind: 'confirm_oracle_nemesis_damage_target'
+      target: DamageTargetRef
+      resumeDecision: DamageTargetDecisionContinuation
     }
   | {
       kind: 'select_market_pile'
@@ -560,6 +582,15 @@ export type PendingDecision = PendingDecisionBase & (
       kind: 'select_setup_devour_pile'
       candidates: MarketPileChoice[]
       remainingChoices: number
+    }
+  | {
+      /** Setup replaces one selected supply pile with a Nemesis-specific card. */
+      kind: 'select_setup_supply_replacement'
+      candidates: MarketPileChoice[]
+      replacementCardId: string
+      nextReplacementCardId?: string
+      /** Card faces shown with this setup choice to explain the replacement options. */
+      previewCardIds?: string[]
     }
   | {
       kind: 'reorder_turn_order'
@@ -606,6 +637,7 @@ export type PendingDecisionAnswer =
   | { kind: 'choose_one'; optionId: string }
   | { kind: 'choose_optional'; accepted: boolean }
   | { kind: 'select_cards'; choices: CardChoice[]; order?: CardChoice[] }
+  | { kind: 'distribute_cards'; assignments: Array<{ instanceId: string; playerId: PlayerId }> }
   | { kind: 'place_specific_deck_card'; cardId: string; placement: SpecificDeckPlacement; slot?: number }
   | { kind: 'select_prepped_spell'; choice: PreppedSpellChoice | null }
   | { kind: 'select_breach'; choice: BreachChoice }
@@ -618,9 +650,11 @@ export type PendingDecisionAnswer =
   | { kind: 'select_damage_target'; target: DamageTargetRef }
   | { kind: 'allocate_divided_damage'; action: 'add' | 'remove'; targetId: string }
   | { kind: 'allocate_divided_damage'; action: 'confirm' }
+  | { kind: 'confirm_oracle_nemesis_damage_target'; accepted: boolean }
   | { kind: 'choose_token_amount'; amount: number }
   | { kind: 'select_market_pile'; choice: MarketPileChoice }
   | { kind: 'select_setup_devour_pile'; choice: MarketPileChoice }
+  | { kind: 'select_setup_supply_replacement'; choice: MarketPileChoice }
   | { kind: 'reorder_turn_order'; order: number[] }
   | { kind: 'select_turn_order_card'; choice: TurnOrderCardChoice }
   | { kind: 'confirm_turn_order_reveal'; accepted: true }
@@ -855,6 +889,8 @@ export type CardEffect =
       amount: EffectAmount
       target: DamagePlayerTargetScope
       selection?: PlayerSelectionRule
+      /** If any target has one of these in hand, restrict the choice to those players. */
+      preferTargetWithCardNamesInHand?: string[]
     }
   | {
       kind: 'draw_cards'
@@ -1024,9 +1060,9 @@ export type CardEffect =
       kind: 'choose_optional'
       prompt: string
       effects: CardEffect[]
-      /** Disable the accept option when a nested card-selection effect has no valid cards. */
+      /** Disable the accept option when a nested card or spell selection has no valid choice. */
       disableIfUnavailable?: boolean
-      /** Skip this prompt when a nested card-selection effect has no valid cards. */
+      /** Skip this prompt when its accept condition or nested card/spell selection is unavailable. */
       skipIfUnavailable?: boolean
       /** Disable the accept option when this condition is not currently met. */
       acceptCondition?: CardEffectCondition
@@ -1091,6 +1127,38 @@ export type CardEffect =
   | { kind: 'return_strike_card'; cardId: string }
   /** Cancel the currently revealed Attack/Power before it resolves. */
   | { kind: 'discard_current_nemesis_card' }
+  | { kind: 'gain_minion_life'; amount: number; minionCardId: string }
+  /** Move selected Mage cards to the top of the Nemesis specific-deck zone. */
+  | {
+      kind: 'move_cards_to_nemesis_specific_deck'
+      source: 'hand' | 'played_this_turn'
+      minAmount: number
+      maxAmount: number
+      cardIds?: string[]
+      cardNames?: string[]
+      cardTypes?: CardType[]
+    }
+  /** Shuffle the Nemesis specific deck and deal cards face-down from a player-chosen starting Mage. */
+  | { kind: 'expunge_nemesis_specific_deck'; amount: number; fallbackGraveholdDamage: number }
+  /** Gain cards from the Nemesis specific deck, either from its top or by printed cost. */
+  | {
+      kind: 'gain_nemesis_specific_deck_cards'
+      amount: number
+      selection: 'top' | 'most_expensive'
+      recipient: 'active' | 'choose' | 'alternate_players'
+      destination: 'discard' | 'deck_top'
+      damage?: number
+    }
+  /** Let players assign selected Nemesis-deck cards to any Mage. */
+  | {
+      kind: 'distribute_nemesis_specific_deck_cards'
+      amount: number
+      selection: 'top' | 'most_expensive'
+      destination: 'discard' | 'deck_top'
+    }
+  | { kind: 'destroy_nemesis_specific_deck_cards'; maxCost: number }
+  | { kind: 'place_specific_deck_cards_under_source_minion'; amount: number }
+  | { kind: 'move_cast_spell_to_nemesis_specific_deck' }
   /** Internal pause used for mandatory effects on prepped cards. */
   | {
       kind: 'confirm_prepped_effect'
@@ -1122,6 +1190,8 @@ export interface CardDef {
   type: CardType
   cost: number
   set: string
+  /** Added to the market only by a named Nemesis setup, never selected as a normal pile. */
+  setupOnlyNemesisSupplyFor?: string
   /** Printed level for Treasure cards; absent on Supply and Nemesis cards. */
   treasureLevel?: TreasureLevel
   /** Aether cost to Develop this card from supply or the shared Develop zone. */
@@ -1156,7 +1226,7 @@ export type NemesisCardType = 'attack' | 'minion' | 'power'
 
 export interface NemesisCardDef extends CardDef {
   type: NemesisCardType
-  tier: 1 | 2 | 3
+  tier: 0 | 1 | 2 | 3
   life?: number
   power?: number
   /** Initial Nemesis token count tracked by this Minion, when applicable. */
@@ -1169,6 +1239,16 @@ export interface NemesisCardDef extends CardDef {
   damageReductionPerInstance?: number
   /** Resolve this sequence whenever a player deals damage to this Minion. */
   onDamage?: CardEffect[]
+  /** Resolve when a spell deals damage to this Minion. */
+  onSpellDamage?: CardEffect[]
+  /** Display this Nemesis card in a dedicated row of the play area. */
+  displayRow?: 'top' | 'play'
+  /** Minimum life this Minion can have after taking damage. */
+  minimumLife?: number
+  /** Cards under this Minion are gained by the Mage who defeats it. */
+  gainCardsUnderneathOnDefeat?: boolean
+  /** This Nemesis card prevents adding cards to its specific deck while in play. */
+  blocksPlacementIntoSpecificDeck?: boolean
 }
 
 export type NemesisDiscardCost =
@@ -1252,6 +1332,10 @@ export interface NemesisDef {
   startingCounters: Record<string, number>
   standardRules: Record<string, number>
   increasedDifficultyRules: Record<string, number>
+  /** If present, only these card sources can reduce Nemesis life. */
+  damageOnlyFromCardIds?: string[]
+  /** Initial known state of the Nemesis-specific deck. */
+  specificDeckVisibility?: 'revealed' | 'hidden'
   /** Runtime rules module that supplies this Nemesis' Unleash sequence and optional hooks. */
   rulesModuleId?: string
   /** Builders for this Nemesis' decks. Definitions may omit unused auxiliary decks. */
@@ -1315,6 +1399,9 @@ export interface NemesisCardInPlay {
   lifeTokens?: number
   powerTokens?: number
   nemesisTokens?: number
+  displayRow?: 'top' | 'play'
+  underCards?: string[]
+  underCardInstanceIds?: string[]
 }
 
 export interface UnleashEffect {
@@ -1430,6 +1517,7 @@ export interface NemesisState {
   discardInstanceIds?: string[]
   strikeDeckInstanceIds?: string[]
   strikeDiscardInstanceIds?: string[]
+  strikeDeckRevealed?: boolean[]
   /** Strike copy temporarily outside the auxiliary deck while a direct draw resolves. */
   resolvingStrikeCardId?: string
   resolvingStrikeCardInstanceId?: string
@@ -1512,6 +1600,8 @@ export interface GameState {
   hasDevelopZone?: boolean
   /** Mechanics present in the starting market, preserved even when a pile empties. */
   supplyMechanics?: CardMechanic[]
+  /** The player confirmed Oracle of Filth's one-time warning about targeting it with a spell. */
+  oracleOfFilthDamageTargetWarningConfirmed?: boolean
   turnOrderDeck: string[]
   turnOrderDiscard: string[]
   currentTurn: TurnOrderActorId

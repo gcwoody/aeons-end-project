@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { getCard } from '@engine/data'
-import { playerCardBackUrl } from '../card-images'
 import HandCardRow from './HandCardRow.vue'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
@@ -37,6 +36,7 @@ defineProps<{
   hasSpecificDeck: boolean
   specificDeckName: string
   specificDeckCards: string[]
+  specificDeckCount: number
   specificDeckTopImage?: string
   specificDeckBackImage?: string
   specificDeckTopIsVisible: boolean
@@ -44,6 +44,8 @@ defineProps<{
   specificDeckActionAttention: boolean
   playerCardsInPlay: PlayerInPlayCardDisplay[]
   deckCount: number
+  deckBackImageUrl: string
+  deckBackImageAlt: string
   discardCount: number
   discardTopCard: string | null
   discardTopInstanceId?: string
@@ -122,7 +124,7 @@ const emit = defineEmits<{
         :image-url="specificDeckBackImage"
         :image-alt="specificDeckName"
       />
-      <PileCountBadge :count="specificDeckCards.length" label="Specific" />
+      <PileCountBadge :count="specificDeckCount" label="Specific" />
     </div>
     <div v-if="playerCardsInPlay.length > 0" class="player-cards-in-play-pile" aria-label="Player cards in play">
       <div class="player-card-stack">
@@ -169,8 +171,8 @@ const emit = defineEmits<{
         v-if="deckCount > 0"
         base-class="player-pile-card"
         size="pile"
-        :image-url="playerCardBackUrl()"
-        image-alt="Player deck"
+        :image-url="deckBackImageUrl"
+        :image-alt="deckBackImageAlt"
       />
       <PileCountBadge :count="deckCount" label="Deck" />
     </div>
@@ -206,7 +208,7 @@ const emit = defineEmits<{
           data-card-flight-target="discard"
           :data-discard-top-card="discardTopCard"
           data-card-motion-zone="discard"
-          data-card-motion-from-zones="swap,develop,breach,played"
+          data-card-motion-from-zones="swap,develop,breach,played,nemesis_card_stack"
           data-card-motion-after-zones="swap"
           :data-card-motion-card-id="discardTopCard"
           :data-card-motion-owner-id="playerId"

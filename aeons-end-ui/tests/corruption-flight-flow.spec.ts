@@ -65,6 +65,9 @@ test('Nemesis turn continuation waits for Crooked Mask Corruption to fly to a Ma
   await page.locator('.player-target-option').first().click()
   const flight = page.locator('.card-flight-clone')
   await expect(flight).toBeVisible()
+  // Both the Corruption Deck and player Deck show cards back-up, so the move
+  // should travel as-is without opening a flip scene.
+  await expect(flight.locator('.card-flight-flip-face')).toHaveCount(0)
   const flightInstanceId = await flight.getAttribute('data-card-flight-instance-id')
   expect(flightInstanceId).toBeTruthy()
   await expect(page.locator('.turn-order-cards .slot.current')).toHaveAttribute('aria-label', 'NEM turn')

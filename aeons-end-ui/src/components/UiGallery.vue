@@ -14,6 +14,7 @@ import CardSurface from './CardSurface.vue'
 import HandMotionDemo from './HandMotionDemo.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardChoicePanel.vue'
+import CenteredDecisionPrompt from './CenteredDecisionPrompt.vue'
 import ZoneScroller from './ZoneScroller.vue'
 import ModalBase from './ModalBase.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
@@ -28,7 +29,7 @@ import PlayerLifeChoice, { type PlayerLifeChoiceItem } from './PlayerLifeChoice.
 import PreppedSpellChoicePanel from './PreppedSpellChoicePanel.vue'
 import { mageImageUrls } from '../mage-images'
 
-type GalleryModal = 'pile' | 'decision' | 'reveal' | 'instant-choice' | 'two-button' | 'token-amount' | 'turn-order' | null
+type GalleryModal = 'pile' | 'decision' | 'reveal' | 'instant-choice' | 'two-button' | 'token-amount' | 'turn-order' | 'centered-prompt' | 'centered-prompt-cards' | null
 
 const modal = ref<GalleryModal>(null)
 const galleryModalEl = ref<HTMLElement | null>(null)
@@ -414,7 +415,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
           <p class="ui-gallery-index">03 · Modals</p>
           <h2>Decision and pile viewer examples</h2>
         </div>
-        <span class="ui-gallery-note">blocking and readable card layouts</span>
+        <span class="ui-gallery-note">centered prompts, blocking decisions, and readable card layouts</span>
       </div>
       <div class="ui-gallery-modal-launchers">
         <button class="btn primary" data-gallery-open="pile" @click="modal = 'pile'">Open PileViewer</button>
@@ -422,6 +423,8 @@ function reorderGalleryTurnOrder(keys: string[]) {
         <button class="btn" data-gallery-open="reveal" @click="modal = 'reveal'">Open Reveal Card</button>
         <button class="btn" data-gallery-open="instant-choice" @click="modal = 'instant-choice'">Open Instant Card Choice</button>
         <button class="btn" data-gallery-open="two-button" @click="modal = 'two-button'">Open Two Button Choice</button>
+        <button class="btn" data-gallery-open="centered-prompt" @click="modal = 'centered-prompt'">Open Centered Prompt</button>
+        <button class="btn" data-gallery-open="centered-prompt-cards" @click="modal = 'centered-prompt-cards'">Open Centered Prompt with Cards</button>
         <button class="btn" data-gallery-open="token-amount" @click="modal = 'token-amount'">Open Token Amount Choice</button>
         <button class="btn" data-gallery-open="turn-order" @click="modal = 'turn-order'">Open Turn Order Tokens</button>
       </div>
@@ -536,8 +539,23 @@ function reorderGalleryTurnOrder(keys: string[]) {
       </div>
     </section>
 
+    <CenteredDecisionPrompt
+      v-if="modal === 'centered-prompt' || modal === 'centered-prompt-cards'"
+      data-gallery-modal
+      data-component="Decision.CenteredPrompt"
+      :title="modal === 'centered-prompt-cards' ? 'Choose a Supply pile to replace' : 'A centered decision prompt'"
+      :message="modal === 'centered-prompt-cards'
+        ? 'Select one of the highlighted Supply piles. The cards shown here are the replacements.'
+        : 'This shared prompt stays centered while the board remains visible around it.'"
+      :preview-card-ids="modal === 'centered-prompt-cards' ? ['vortex_blast', 'abyssal_vial'] : []"
+    >
+      <template #actions>
+        <button class="btn primary" @click="modal = null">Close</button>
+      </template>
+    </CenteredDecisionPrompt>
+
     <ModalBase
-      v-if="modal"
+      v-if="modal && modal !== 'centered-prompt' && modal !== 'centered-prompt-cards'"
       unstyled
       overlay-class="ui-gallery-modal-overlay"
       panel-class="ui-gallery-modal"

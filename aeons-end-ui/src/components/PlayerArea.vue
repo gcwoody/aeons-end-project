@@ -8,7 +8,7 @@ import {
   getSharedDevelopCardInstanceZone,
 } from '@engine/engine'
 import { getCard, MAGES } from '@engine/data'
-import { cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerTurnOrderTokenUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
+import { cardImageUrl, mageTokenImageUrl, playerCardBackUrl, playerDeckCardBackUrl, playerTurnOrderTokenUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
 import type { BreachState, CardChoice, PlayerState } from '@engine/types'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
@@ -76,7 +76,7 @@ function visiblePlayerImageUrls(candidate: PlayerState): string[] {
     if (candidate.playerCardSupplyTargets?.[index] == null) addCard(cardId)
   })
   if (candidate.discard[0]) addCard(candidate.discard[0])
-  if (candidate.deck.length > 0) addUrl(playerCardBackUrl())
+  if (candidate.deck.length > 0) addUrl(playerDeckCardBackUrl(candidate.deck[0]))
 
   const specificDeck = candidate.specificDeck ?? []
   const mageDefinition = MAGES[candidate.mageType]
@@ -194,11 +194,22 @@ const abilityNeedsPreppedSpell = computed(() =>
 const isMain = computed(() => state.phase === 'main')
 const isCasting = computed(() => state.phase === 'casting')
 const isDiscard = computed(() => state.phase === 'discard_order' && state.selectedPlayer === state.game?.currentTurn)
-const deckPileCount = computed(() => {
-  const override = state.deckPileDisplayOverrides[player.value.id] ??
+const deckPileDisplayOverride = computed(() =>
+  state.deckPileDisplayOverrides[player.value.id] ??
     (state.deckDisplayOverride?.playerId === player.value.id ? state.deckDisplayOverride : null)
-  return override?.count ?? player.value.deck.length
-})
+)
+const deckPileCount = computed(() => deckPileDisplayOverride.value?.count ?? player.value.deck.length)
+const displayedDeckCount = computed(() =>
+  state.cardPileCountOverrides[`player:${player.value.id}:deck`]?.count ?? deckPileCount.value,
+)
+const deckTopCard = computed(() => deckPileDisplayOverride.value
+  ? deckPileDisplayOverride.value.cardId
+  : player.value.deck[0] ?? null)
+const deckBackImageUrl = computed(() => playerDeckCardBackUrl(deckTopCard.value))
+const deckTopUsesTrinketBack = computed(() => deckBackImageUrl.value === trinketDeckBackUrl())
+const deckBackImageAlt = computed(() => deckTopUsesTrinketBack.value
+  ? 'Trinket deck card back'
+  : 'Player deck card back')
 const discardDisplayOverride = computed(() => state.discardPileDisplayOverrides[player.value.id] ??
   (state.discardTopDisplayOverride?.playerId === player.value.id ? state.discardTopDisplayOverride : null))
 const discardTopCard = computed(() => {
@@ -212,6 +223,15 @@ const discardTopInstanceId = computed(() => state.discardPileDisplayOverrides[pl
 const discardPileCount = computed(() => {
   return discardDisplayOverride.value?.count ?? player.value.discard.length
 })
+const displayedDiscardCount = computed(() =>
+  state.cardPileCountOverrides[`player:${player.value.id}:discard`]?.count ?? discardPileCount.value,
+)
+const specificDeckCount = computed(() =>
+  state.cardPileCountOverrides[`player:${player.value.id}:specific_deck`]?.count ?? specificDeckCards.value.length,
+)
+const trinketDeckCount = computed(() =>
+  state.cardPileCountOverrides['nemesis:trinket_deck']?.count ?? trinketDeckCards.value.length,
+)
 const pendingBoardDiscardArrival = computed(() =>
   state.discardPileDisplayOverrides[player.value.id]?.boardArrival ?? null)
 const eligibleRecallActions = computed(() => getRecallActionsForPlayer(player.value.id))
@@ -242,8 +262,8 @@ const controlPlayers = computed(() => players.value.map((candidate, playerIndex)
   hp: candidate.hp,
   charge: candidate.charge,
   chargeThreshold: candidate.chargeThreshold,
-  handCount: candidate.hand.length,
-  destroyedCount: candidate.destroyedCards.length,
+  handCount: state.cardPileCountOverrides[`player:${candidate.id}:hand`]?.count ?? candidate.hand.length,
+  destroyedCount: state.cardPileCountOverrides[`player:${candidate.id}:destroyed`]?.count ?? candidate.destroyedCards.length,
   handGain: handIncrease.value[candidate.id] ?? 0,
   chargeGain: chargeIncrease.value[candidate.id] ?? 0,
   exhausted: candidate.exhausted,
@@ -657,6 +677,17 @@ function isPlayerCardInPlayAction(index: number, cardId: string): boolean {
   )
 }
 
+function preferredAutoPrepBreachIndex(candidateIndexes: number[]): number | undefined {
+  const candidates = new Set(candidateIndexes)
+  const eligible = player.value.breaches.filter(breach => candidates.has(breach.index))
+  const rightmost = (breaches: BreachState[]) =>
+    [...breaches].sort((left, right) => right.index - left.index)[0]?.index
+
+  return rightmost(eligible.filter(breach => breach.opened))
+    ?? rightmost(eligible.filter(breach => breach.focusedThisTurn))
+    ?? rightmost(eligible)
+}
+
 function clickPlayerCardInPlay(index: number) {
   if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis' || state.game.pendingDecision || state.game.pendingEffect) return
   if (playerCardsInPlay.value.length > 1) {
@@ -672,6 +703,7 @@ function clickPlayerCardInPlay(index: number) {
 }
 
 function clickHand(i: number) {
+  if (state.cardMotionBatchActive) return
   const cid = player.value.hand[i]
   if (!cid) return
   const boardChoice = boardCardChoice('hand', i, cid)
@@ -682,9 +714,9 @@ function clickHand(i: number) {
   if (state.game?.pendingDecision) return
   if (!canActMain.value) return
   if (getCard(cid).type === 'spell') {
-    const rightmostBreach = getSpellBreachTargets(state.game!, player.value.id, cid)
-      .sort((left, right) => right - left)[0]
-    if (rightmostBreach !== undefined) prepSpell(i, rightmostBreach)
+    const candidateIndexes = getSpellBreachTargets(state.game!, player.value.id, cid)
+    const breachIndex = preferredAutoPrepBreachIndex(candidateIndexes)
+    if (breachIndex !== undefined) prepSpell(i, breachIndex)
     return
   }
   playCard(i)
@@ -698,13 +730,14 @@ function clickConjuredCard() {
   const decision = state.game?.pendingDecision
   if (decision?.kind !== 'select_conjure_breach' || !conjuredCard.value ||
     decision.cardId !== conjuredCard.value.cardId) return
-  const choice = decision.candidates
-    .filter(candidate => candidate.playerId === player.value.id)
-    .sort((left, right) => right.breachIndex - left.breachIndex)[0]
+  const candidates = decision.candidates.filter(candidate => candidate.playerId === player.value.id)
+  const breachIndex = preferredAutoPrepBreachIndex(candidates.map(candidate => candidate.breachIndex))
+  const choice = candidates.find(candidate => candidate.breachIndex === breachIndex)
   if (choice) void resolveDecision({ kind: 'select_conjure_breach', choice })
 }
 
 function startSpellPointerDrag(i: number, event: PointerEvent) {
+  if (state.cardMotionBatchActive) return
   if (boardCardChoice('hand', i, player.value.hand[i] ?? '')) return
   if (state.game?.pendingDecision) return
   if (event.button !== 0 || !canActMain.value || getCard(player.value.hand[i]).type !== 'spell') return
@@ -788,6 +821,8 @@ const playedZoneDisplay = computed(() => {
   const presentation = state.handPlayPresentation
   const heldOccurrence = presentation?.playerId === player.value.id
     && (!!state.game?.pendingDecision || !!state.game?.pendingEffect)
+    && !(state.pendingPlayCardDecisionRelease?.instanceId === presentation.instanceId &&
+      state.pendingPlayCardDecisionRelease.revealedInPlayedZone)
     ? { instanceId: presentation.instanceId }
     : null
   const seen = new Map<string, number>()
@@ -1179,28 +1214,22 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       @click.stop="openTrinketDeckPile()"
     >
       <CardHoverPreview
-        :card-id="trinketDeckTopCardKnown ? trinketDeckCards[0] : undefined"
-        :image-url="trinketDeckTopCardKnown ? undefined : trinketDeckCards.length > 0 ? trinketDeckBackUrl() : undefined"
-        :image-alt="trinketDeckTopCardKnown && trinketDeckCards[0]
-          ? getCard(trinketDeckCards[0]).name
-          : 'Trinket deck card back'"
+        :image-url="trinketDeckCount > 0 ? trinketDeckBackUrl() : undefined"
+        image-alt="Trinket deck card back"
       >
         <CardSurface
           base-class="player-pile-card"
           size="pile"
-          :card-id="trinketDeckTopCardKnown ? trinketDeckCards[0] : undefined"
-          :image-url="trinketDeckTopCardKnown ? undefined : trinketDeckCards.length > 0 ? trinketDeckBackUrl() : undefined"
-          :image-alt="trinketDeckTopCardKnown && trinketDeckCards[0]
-            ? getCard(trinketDeckCards[0]).name
-            : 'Trinket deck card back'"
+          :image-url="trinketDeckCount > 0 ? trinketDeckBackUrl() : undefined"
+          image-alt="Trinket deck card back"
           class="trinket-deck-top-card"
           data-card-flight-source="trinket-deck"
           data-card-flight-target="trinket-deck"
         >
-          <span v-if="trinketDeckCards.length === 0">Trinket Deck</span>
+          <span v-if="trinketDeckCount === 0">Trinket Deck</span>
         </CardSurface>
       </CardHoverPreview>
-      <PileCountBadge :count="trinketDeckCards.length" label="Trinkets" />
+      <PileCountBadge :count="trinketDeckCount" label="Trinkets" />
     </button>
 
     <PlayerZoneArea
@@ -1224,14 +1253,17 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       :has-specific-deck="hasSpecificDeck"
       :specific-deck-name="specificDeckName"
       :specific-deck-cards="specificDeckCards"
+      :specific-deck-count="specificDeckCount"
       :specific-deck-top-image="specificDeckTopImage"
       :specific-deck-back-image="specificDeckBackImage"
       :specific-deck-top-is-visible="specificDeckTopIsVisible"
       :can-buy-firethorn="canBuyFirethorn"
       :specific-deck-action-attention="specificDeckActionAttention"
       :player-cards-in-play="playerCardsInPlayDisplay"
-      :deck-count="deckPileCount"
-      :discard-count="discardPileCount"
+      :deck-count="displayedDeckCount"
+      :deck-back-image-url="deckBackImageUrl"
+      :deck-back-image-alt="deckBackImageAlt"
+      :discard-count="displayedDiscardCount"
       :discard-top-card="discardTopCard"
       :discard-top-instance-id="discardTopInstanceId"
       :pending-board-discard-arrival="pendingBoardDiscardArrival"

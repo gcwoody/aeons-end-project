@@ -48,6 +48,7 @@ export const blastingStaff: RelicCard = {
     effects: [{
       kind: 'choose_optional',
       prompt: 'Cast a spell prepped this turn for +2 damage?',
+      disableIfUnavailable: true,
       effects: [{ kind: 'cast_prepped_spell', source: 'prepped_spell_prepped_this_turn', discard: true, bonusDamage: 2 }],
     }],
   }],

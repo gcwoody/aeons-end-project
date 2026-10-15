@@ -8,6 +8,8 @@ export interface NemesisPresentation {
     enabled: boolean
     label: string
     display?: SpecificPileDisplay
+    /** Show each card's remembered face independently in the pile viewer. */
+    cardVisibility?: 'per_instance'
     topCardAction?: 'buy'
   }
   specificDiscard: { enabled: boolean; label: string }
@@ -28,6 +30,11 @@ export const nemesisPresentations: Record<string, NemesisPresentation> = {
     subBoard: { enabled: false, aspectRatio: 1 },
     specificDeck: { enabled: true, label: 'Corruption Deck' },
     specificDiscard: { enabled: false, label: 'Corruption Discard' },
+  },
+  oracle_of_filth: {
+    subBoard: { enabled: false, aspectRatio: 1 },
+    specificDeck: { enabled: true, label: 'Vortex Deck', cardVisibility: 'per_instance' },
+    specificDiscard: { enabled: false, label: 'Vortex Discard' },
   },
 }
 

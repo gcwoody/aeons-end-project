@@ -22,7 +22,7 @@ import {
 import type { checkGameOver as CheckGameOver, dealDamage as DealDamage } from './combat'
 
 export interface NemesisTurnServices {
-  conditionMatches(game: GameState, playerId: undefined, condition?: CardEffectCondition): boolean
+  conditionMatches(game: GameState, playerId: undefined, condition?: CardEffectCondition, sourceCardId?: string): boolean
   runEffectResolution(game: GameState, resolution: PendingEffectResolution): string[]
   resolveEffects: typeof import('../engine').resolveEffects
   createDecision(
@@ -79,13 +79,20 @@ function cardInstanceKey(card: NemesisCardInPlay): string {
   return card.instanceId ?? `${card.cardId}:${card.placedAt}`
 }
 
+function orderedNemesisMainCards(cards: NemesisCardInPlay[]): NemesisCardInPlay[] {
+  return [...cards].sort((a, b) => {
+    const rowOrder = (a.displayRow === 'top' ? 0 : 1) - (b.displayRow === 'top' ? 0 : 1)
+    return rowOrder || a.placedAt - b.placedAt
+  })
+}
+
 function initializeNemesisTurn(g: GameState): void {
   ensureNemesisRuntime(g)
   const n = g.nemesis
   n.nemesisTurnNumber = (n.nemesisTurnNumber ?? 0) + 1
   g.nemesisResolution = {
     step: 'main',
-    mainQueue: n.playArea.map(cardInstanceKey),
+    mainQueue: orderedNemesisMainCards(n.playArea).map(cardInstanceKey),
     mainIndex: 0,
   }
 }
@@ -205,7 +212,7 @@ function resolveNemesisCardEffects(
 ): string[] {
   const effects = card.nemesisEffects
     ?.filter(block => block.trigger === trigger)
-    .filter(block => conditionMatches(g, undefined, block.condition))
+    .filter(block => conditionMatches(g, undefined, block.condition, card.id))
     .flatMap(block => block.effects) ?? []
   if (effects.length === 0) return []
   return runEffectResolution(g, {
@@ -443,6 +450,7 @@ function advanceNemesisTurn(g: GameState): string[] {
           placedAt: counter,
           instanceId: placedInstanceId,
           enteredOnNemesisTurn: g.nemesis.nemesisTurnNumber,
+          ...(definition.displayRow ? { displayRow: definition.displayRow } : {}),
           ...(definition.type === 'minion'
             ? {
                 lifeTokens: definition.life ?? 0,

@@ -94,7 +94,8 @@ function ensurePlayerZone(
   player: PlayerState,
   zone: Exclude<CardMoveZone,
     | 'develop' | 'nemesis_deck' | 'nemesis_discard' | 'nemesis_play_area' | 'nemesis_set_aside'
-    | 'corruption_deck' | 'strike_deck' | 'strike_discard' | 'trinket_deck' | 'supply' | 'breach' | 'temporary'>,
+    | 'nemesis_card_stack' | 'corruption_deck' | 'strike_deck' | 'strike_discard'
+    | 'trinket_deck' | 'supply' | 'breach' | 'temporary'>,
 ): CardInstanceZone {
   let cards: string[]
   let ids: string[] | undefined
@@ -301,6 +302,22 @@ export function getNemesisCardInstanceZone(
   }
   return {
     zoneId: `nemesis:${zone}`, zone, ownerId: 'nemesis', cards, instanceIds: ensured, defaultRevealed,
+  }
+}
+
+/** Card instances stored beneath one Nemesis Minion remain independently tracked. */
+export function getNemesisCardStackZone(game: GameState, minion: import('../types').NemesisCardInPlay): CardInstanceZone {
+  minion.underCards ??= []
+  minion.underCardInstanceIds = ensureCardInstanceZone(
+    game, minion.underCards, minion.underCardInstanceIds, true,
+  )
+  return {
+    zoneId: `nemesis:minion:${minion.placedAt}:under`,
+    zone: 'nemesis_card_stack',
+    ownerId: 'nemesis',
+    cards: minion.underCards,
+    instanceIds: minion.underCardInstanceIds,
+    defaultRevealed: true,
   }
 }
 
@@ -727,6 +744,12 @@ export function captureCardInstanceLocations(
     locations.set(instanceId, {
       cardId: card.cardId,
       location: { zoneId: 'nemesis:play_area', zone: 'nemesis_play_area', ownerId: 'nemesis', index },
+    })
+    const stacked = getNemesisCardStackZone(game, card)
+    stacked.cards.forEach((cardId, stackIndex) => {
+      const stackInstanceId = stacked.instanceIds[stackIndex]
+      if (!stackInstanceId) return
+      locations.set(stackInstanceId, { cardId, location: address(stacked, stackIndex) })
     })
   }
   for (const [index, card] of (game.nemesis.setAsideCards ?? []).entries()) {

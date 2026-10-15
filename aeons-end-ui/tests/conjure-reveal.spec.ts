@@ -19,7 +19,12 @@ async function resolveStartupInterrupts(page: Page) {
   }
 }
 
-async function startConjure(page: Page, hasEligibleBreach: boolean, topCardId = 'spark') {
+async function startIndiraWithHand(
+  page: Page,
+  hand: string[],
+  deck: string[],
+  openBreachForConjure = false,
+) {
   await page.goto('/')
   await page.evaluate(() => localStorage.clear())
   await page.reload()
@@ -41,8 +46,8 @@ async function startConjure(page: Page, hasEligibleBreach: boolean, topCardId = 
   debugState.game.currentPhase = 'main'
   debugState.game.pendingDecision = null
   debugState.game.pendingEffect = null
-  indira.hand = ['fused_opal', 'crystal']
-  indira.deck = hasEligibleBreach ? [topCardId, 'spark'] : [topCardId]
+  indira.hand = hand
+  indira.deck = deck
   indira.discard = []
   indira.playedThisTurn = []
   for (const breach of indira.breaches) {
@@ -50,11 +55,19 @@ async function startConjure(page: Page, hasEligibleBreach: boolean, topCardId = 
     breach.focusedThisTurn = false
     breach.prepSpells = []
   }
-  if (hasEligibleBreach) indira.breaches[1].opened = true
+  if (openBreachForConjure) indira.breaches[1].opened = true
   await stateField.fill(JSON.stringify(debugState))
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
+}
 
+async function startConjure(page: Page, hasEligibleBreach: boolean, topCardId = 'spark') {
+  await startIndiraWithHand(
+    page,
+    ['fused_opal', 'crystal'],
+    hasEligibleBreach ? [topCardId, 'spark'] : [topCardId],
+    hasEligibleBreach,
+  )
   await page.locator('.hand .card').filter({ has: page.locator('img[alt="Fused Opal"]') }).click()
   await page.getByRole('button', { name: 'Conjure', exact: true }).click()
 }
@@ -64,6 +77,48 @@ async function currentGame(page: Page) {
   const stateField = page.locator('.debug-panel textarea')
   await page.getByRole('button', { name: 'Load Current', exact: true }).click()
   return JSON.parse(await stateField.inputValue()).game
+}
+
+for (const { cardId, cardName, decisionPrompt } of [
+  { cardId: 'fused_opal', cardName: 'Fused Opal', decisionPrompt: 'Choose Fused Opal effect' },
+  { cardId: 'rift_ring', cardName: 'Rift Ring', decisionPrompt: 'Choose a Rift Ring effect' },
+]) {
+  test(`${cardName} stays still while its play decision is open`, async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 })
+    await startIndiraWithHand(page, [cardId], ['spark'])
+
+    const card = page.locator('.hand .card').filter({ has: page.locator(`img[alt="${cardName}"]`) })
+    await card.hover()
+    await page.waitForTimeout(300)
+    await page.evaluate(() => {
+      const samples: Array<{ top: number; transform: string; flightCount: number }> = []
+      const startedAt = performance.now()
+      const sample = () => {
+        const element = document.querySelector<HTMLElement>('.hand .card[data-hand-card-id]')
+        const entry = element?.closest<HTMLElement>('.hand-card-entry')
+        samples.push({
+          top: entry?.getBoundingClientRect().top ?? Number.NaN,
+          transform: element ? getComputedStyle(element).transform : 'missing',
+          flightCount: document.querySelectorAll('.card-flight-clone').length,
+        })
+        if (performance.now() - startedAt < 1200) requestAnimationFrame(sample)
+      }
+      Object.assign(window, { handDecisionMotionSamples: samples })
+      requestAnimationFrame(sample)
+    })
+    await card.click()
+    await expect(page.locator('.decision-modal')).toContainText(decisionPrompt)
+    await page.waitForTimeout(250)
+    const samples = await page.evaluate(() =>
+      (window as typeof window & { handDecisionMotionSamples: Array<{ top: number; transform: string; flightCount: number }> })
+        .handDecisionMotionSamples,
+    )
+    const positions = samples.map(sample => sample.top).filter(Number.isFinite)
+    expect(Math.max(...positions) - Math.min(...positions)).toBeLessThan(0.5)
+    expect(new Set(samples.map(sample => sample.transform)).size).toBe(1)
+    expect(samples.every(sample => sample.flightCount === 0)).toBe(true)
+    await expect(page.locator('.card-flight-clone')).toHaveCount(0)
+  })
 }
 
 test('Conjure adds the revealed card to the hand display and allows Skip with no eligible Breach', async ({ page }) => {
@@ -126,8 +181,9 @@ test('Conjure prepares the highlighted hand card by dragging it to an eligible B
 
   await expect(page.locator('.decision-modal')).toHaveCount(0)
   await expect(card).toHaveCount(0)
-  const breachFlight = page.locator('.card-flight-clone')
+  const breachFlight = page.locator(`.card-flight-clone[data-card-flight-instance-id="${conjuredInstanceId}"]`)
   await expect(breachFlight).toHaveAttribute('data-card-flight-instance-id', conjuredInstanceId)
+  await expect.poll(() => breachFlight.evaluate(element => element.getAnimations().length)).toBeGreaterThan(0)
   await breachFlight.evaluate(element => Promise.all(element.getAnimations().map(animation => animation.finished)))
   await expect(breach.locator('img[alt="Face-down conjured spell"]')).toBeVisible()
   await page.keyboard.press('Control+d')

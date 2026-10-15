@@ -15,6 +15,10 @@ before making changes; do not duplicate their detailed rules here.
 6. Read `design/wave9-plan.md` only when checking Wave 9 implementation status.
 7. When continuing work across conversations, read `HANDOFF.md` for a short
    project snapshot; confirm details against the current code and guides.
+8. For card-animation work, read the “卡牌动效结构” section in
+   `ui/ui-guide.md` and inspect the matching modules under
+   `aeons-end-ui/src/game/`. The current code and UI guide replace the old
+   phase plans and reports as the implementation reference.
 
 ## Non-negotiable project rules
 
@@ -28,6 +32,9 @@ before making changes; do not duplicate their detailed rules here.
 - New card and Mage rules must use typed effects, triggers, and decisions.
   Add a reusable engine/UI primitive when the existing model cannot express a
   genuinely new mechanic; do not hard-code a single card ID into a generic path.
+- Card movement visuals follow the shared event, policy, and queue structure in
+  the UI guide; do not infer a moved card from pile-count changes or add a
+  card-ID-specific route.
 
 ## Common commands
 
@@ -39,7 +46,7 @@ cd ..\aeons-end-ui
 npx vue-tsc --noEmit
 npm run dev
 npm run build
-npm run test:e2e
+npm run test:e2e -- --workers=2
 npm run test:ui-gallery
 ```
 

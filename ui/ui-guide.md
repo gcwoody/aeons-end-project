@@ -4,7 +4,7 @@
 
 UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 
-更新时间：2026-10-09
+更新时间：2026-10-14
 
 ## 1. UI 与规则的边界
 
@@ -27,6 +27,7 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 | `NemesisArea.vue`、`MarketPanel.vue`、`SetupScreen.vue` | Nemesis 区域、市场和开局设置 |
 | `MatPreviewButton.vue` | Setup 中按图片自然边界显示 Mage/Nemesis mat，并共用圆角和悬停边线 |
 | `ModalBase.vue` | 标准弹窗外壳、遮罩、拖动和关闭行为 |
+| `CenteredDecisionPrompt.vue` | 居中展示短提示，可选在文字下方展示大尺寸卡牌；弹窗外仍可点击棋盘目标 |
 | `CardDecisionModal.vue` | 将引擎的 typed decision 映射到决策 UI |
 | `CardSelectionPanel.vue` | 单选、多选、跳过、确认和可选排序 |
 | `LargeCardChoicePanel.vue` | 需要读卡面的即时单选 |
@@ -46,12 +47,12 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 - Setup 的 Mage/Nemesis mat 预览使用 `MatPreviewButton.vue`。按钮跟随图片自然比例收缩，图片与高亮覆盖层同边界、同圆角；不要把 `object-fit: contain` 留出的空白也圈进边线。
 - 图片与边框共存时，内侧圆角应贴合卡面，不能遮住边框或在角落留下空隙。
 - 市场 Supply pile 保持紧凑的 3×3 排列；视口变化时卡牌随可用高度缩放，不用弹性分配把列间距拉大。Nemesis Play 区域使用剩余横向空间。Supply pile 悬停不做上浮位移。
-- Nemesis Play 区域分为上下两行：下行显示 Minion、Power 等正常在场卡牌；上行从左至右显示被规则放置在场边的 Nemesis 卡牌（例如 Dark Conclusion 暂放在 Turn Order deck 旁）。
+- Nemesis Play 区域分为上下两行：下行显示 Minion、Power 等正常在场卡牌；上行从左至右显示被规则放置在场边的 Nemesis 卡牌（例如 Dark Conclusion 暂放在 Turn Order deck 旁）。上行中的在场 Minion 也显示生命标记和当前可执行效果提示。
 - Log 面板默认隐藏；Debug Tools 最后一项可切换显示。面板隐藏时，游戏日志仍持续记录；启用后保留原有的展开/折叠交互。
 - Supply pile 卡图始终保持正常颜色；费用足够时用绿色边框标记可购买项。费用不足不能通过降低卡图透明度来表示；费用不足时 Charge 按钮使用禁用样式。
 - 卡牌牌区内容不足时居中，超出时横向滚动；不能裁掉卡牌边缘。Deck、Discard、Trinket 等查看弹窗按顶牌在左、底牌在右，每行最多五张。
-- Trinket deck 是全局牌区：牌宽随 Supply pile 同步，水平位置与市场第三列对齐；切换 Mage 视角时它不淡入淡出。查看牌堆不会揭示未知牌；是否已看过要随实体卡移动。
-- Mage 抽牌堆和弃牌堆，无论使用哪位 Mage，都显示 Player Card Back；Mage-specific deck 显示自己的牌背（例如 Tressa's Vault 使用 Treasure 3 back）。普通 Deck/Discard 悬停不加蓝框；仅 Recall 等确实可执行的动作使用语义高亮。
+- Trinket deck 是全局牌区：牌宽随 Supply pile 同步，水平位置与市场第三列对齐；切换 Mage 视角时它不淡入淡出。棋盘上的牌堆始终显示 Trinket deck 牌背；打开查看时，已揭示的 Trinket 显示正面，未知的牌显示 Trinket 牌背。
+- 玩家牌堆在棋盘上始终显示牌背；若顶牌是 Trinket，则使用 Trinket 牌背。打开玩家 Deck 时，已知卡牌正面朝上，未知普通牌使用 Player Card Back，未知 Trinket 使用 Trinket 牌背。Mage-specific deck 显示自己的牌背（例如 Tressa's Vault 使用 Treasure 3 back）。普通 Deck/Discard 悬停不加蓝框；仅 Recall 等确实可执行的动作使用语义高亮。
 - 当前回合的 Turn Order token 不加环绕边框，回合到位动画本身负责提示。Nemesis 设置项按 `NemesisDef.wave` 分类，与 Mage 和 Market 的 Wave 分类一致。
 - Played Zone 始终显示。开局 Mage 或市场卡牌需要 Swap 时显示 Swap Zone；市场含有 Develop 卡牌时显示 Develop Zone。两种条件独立判断，区域对所有 Mage 视角可见。Swap 卡仍归其持有者，Develop 为共享区域。
 - Played、Swap、Develop 使用彼此分开的深色圆角区域。Swap 与 Develop 各占一份，Played 在单侧区域存在时占两份；两侧区域都存在时三等分。Swap/Develop 卡列在自己的区域内居中，Played 卡列始终以整行中心为中心并在空间不足时滚动。
@@ -73,6 +74,30 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 
 ## 4. 交互与动效
 
+### 卡牌动效结构
+
+卡牌的规则去向由引擎决定，前端只负责把这次移动画出来。引擎为实际移动记录实体卡 ID、起点、终点和顺序；这些记录只用于界面展示，不是第二套游戏规则。前端按这些记录找卡牌和落点，不再通过牌区数量的前后变化猜哪张牌移动了。
+
+一次卡牌移动大致经过这条路径：
+
+```text
+引擎记录实体卡移动 → useGame 协调本次游戏操作 → 找到画面中的起点和终点
+                  → 选择飞行速度与翻面方式 → 串行播放 → 更新牌区显示并等待结束
+```
+
+| 职责 | 文件 | 说明 |
+| --- | --- | --- |
+| 游戏操作协调 | `src/game/useGame.ts` | 连接玩家操作、引擎移动记录和动效模块；在继续阶段、打开下一张 Nemesis 卡或接受后续操作前等待必要动效。 |
+| 移动整理与画面落点 | `src/game/card-motion-projection.ts`、`src/game/card-zone-motion.ts`、`src/game/card-motion-regions.ts` | 把引擎记录整理成实际的画面移动，并找到对应牌区位置。 |
+| 飞行规则 | `src/game/card-motion-policy.ts`、`src/game/card-motion-flight.ts` | 根据起点和终点选择速度、缓动、到达时的显示方式及是否需要翻面；Trinket 牌背图片由 `src/card-images.ts` 提供。 |
+| 动画基本动作 | `src/game/card-flight.ts` | 绘制卡牌飞行、翻面、揭示和牌列收拢。 |
+| 串行与等待 | `src/game/card-motion-queue.ts`、`src/game/card-motion-wait.ts`、`src/game/breach-motion.ts` | 卡牌移动逐项播放；相关飞行、Breach 动画和手牌收拢完成后，游戏操作再继续。 |
+| 动画中的临时画面 | `src/game/card-motion-display.ts`、`src/game/card-pile-motion-display.ts`、`src/game/card-motion-board-display.ts`、`src/game/card-motion-hand-display.ts`、`src/game/card-motion-visibility.ts` | 暂留原牌、牌堆顶牌、数量或新到达的卡面，避免卡牌提前出现、重复显示或闪回。 |
+
+新增移动路线时，按起点和终点补充可复用规则，不按单张卡牌 ID 写分支。实体卡从背面区域移到背面区域时直接飞行；只有起点和终点显示面不同，或效果明确要求背面朝上时才翻面。飞行卡面及翻面卡面都沿用卡牌圆角；从 Played Zone 飞入 Nemesis Specific Deck（Vortex）使用 300ms 的较快路线。决策窗口中展示的卡牌是供查看的副本，确认后直接出现在规则指定区域，不从窗口位置飞出。独立的反馈动画可以按设计与卡牌移动同时播放，但不能让后续游戏流程越过它所依赖的动效。
+
+桌面上显示数量的牌堆共用 `card-pile-motion-display.ts`：从引擎移动记录得到每张牌的起点和终点，牌离开时更新来源数量，飞到目标并落定后更新目标数量。没有飞行动画的移动直接显示结算后的数量；动画队列结束后清除临时显示，让界面回到引擎状态。Supply 等按钮的可购买性仍读取引擎状态，临时数字只负责跟随动画。新增可见牌堆时，把它的牌堆地址接入共用数量显示，不要在组件里单独估算移动数量。Nemesis 抽牌等独立动画也要在相应飞行边界更新其牌堆数量。
+
 ### 玩家视角和 Breach
 
 - 回合切换时，先播放 Turn Order token 到位/放大淡出的动效，再切换玩家区域；棋盘短暂拦截重复输入。
@@ -84,13 +109,14 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 - Conjure 牌进入 Breach 时复用手牌准备法术的飞行时长；飞行途中从正面翻到牌背，Breach 里的静态牌面要等飞行结束后才显示。
 - 其他牌区到玩家牌区的飞行由引擎的卡牌移动记录确定具体牌副和最终去向。Supply 新获得的牌用“创建记录”标识来源牌堆；Crooked Mask、Mage/Nemesis 专属牌堆等来源用牌副 ID 跟踪原卡。新增来源时，提供可见来源锚点并复用 `useGame.ts` 的移动队列，不要比较动作前后牌数来猜是哪张卡。
 - 决策窗口中展示的实体卡牌只是供玩家查看和选择的副本；选择确认后，无论规则把它移到哪个牌区，都直接更新最终位置，不从窗口或原牌区播放飞行。Supply 等没有实体牌副 ID 的卡牌选项仍按其真实牌堆来源处理。
-- 落到玩家牌库时保留现有牌堆图像；落到新加入的手牌或弃牌顶牌时暂时隐藏新渲染的静止卡面，避免飞行卡与目标卡重叠。手牌打出的 Gem/Relic 在等待决策期间继续显示在手牌中；决策结束后按引擎最终牌区飞行一次。Swap 先完成进场，再让旧牌飞向 Discard。弃牌阶段也逐张飞行，并等待飞行和手牌/牌区收拢完成后再继续。
+- 落到玩家牌库时保留现有牌堆图像；落到新加入的手牌或弃牌顶牌时暂时隐藏新渲染的静止卡面，避免飞行卡与目标卡重叠。手牌打出的 Gem/Relic 在等待决策期间继续显示在手牌中；如果后续决策把这张牌本身列为 Played this Turn 的候选，则先完成飞入 Played Zone，再开放选择；其他情况在决策结束后按引擎最终牌区飞行一次。Swap 先完成进场，再让旧牌飞向 Discard。弃牌阶段也逐张飞行，并等待飞行和手牌/牌区收拢完成后再继续。
 
 ### 决策和拖动
 
 - 可选的单张预备法术施放，点击棋盘上高亮的法术即提交选择并继续施放，弹窗只提供 Skip，不显示 Selected 计数或 Confirm。多张法术选择仍保留选中计数和 Confirm；引擎的候选校验、Skip 分支与施放规则不变。`PreppedSpellChoicePanel` 的 `confirmSelection` 控制这两种展示方式，Gallery 同步展示点击即施放。
 - 引擎决策使用可复用模式：多选后 Confirm/Skip 用 `CardSelectionPanel`；读卡后立即选一张用 `LargeCardChoicePanel`；双选用等宽上下排列按钮；token 数量选择用共享的 `DebugNumberInput` 与 Confirm。
 - 阻塞式决策不能被 Esc 或遮罩点击取消；普通查看弹窗可按其组件配置关闭。
+- `CenteredDecisionPrompt.vue` 用于必须说明当前目标、但仍需点击棋盘或市场目标的流程。它在屏幕中央显示提示，保留面板背景色，并让弹窗外的棋盘保持可点击；需要展示相关卡牌时，使用 `previewCardIds` 在提示文字下方显示 large 卡图。Gallery 同时展示不带卡图和带卡图的版本。
 - Debug Tools 的文本框聚焦时，游戏快捷键交给文本输入；Esc 关闭 Debug Tools，Tab 切换玩家视角而不移动原生焦点。游戏界面不显示对象的原生键盘焦点环；鼠标悬停反馈仍保留。牌序编辑入口常驻，选定 Mage 后在独立牌堆窗口里用大图拖动排序。
 - Power 卡的 To Discard 条件满足时高亮整张卡，点击卡牌触发；不显示常驻的独立 Discard 按钮。
 - 玩家在 Main Phase 首次点击 End Turn 且仍有合法操作时，保留现有内联提醒，同时用引擎的 `getMainPhaseActionHint` 显示一个具体操作说明，并短暂闪亮该操作位置。若操作属于另一位 Mage，先闪亮其 Control Bar 选择按钮；切换视角后再闪亮实际操作目标。此提示不新增弹窗，`canPlayerAct` 与提示必须共用同一引擎判断。
@@ -98,7 +124,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 - Reveal 类效果要让玩家看到实际揭示的卡牌，再按规则提供 Confirm 或选择操作。Conjure 使用专用流程：揭示牌暂时显示在手牌并以橙色选择提示标记；没有拖动时不高亮 Breach，开始拖动后合法 Breach 才显示蓝色临时落点提示。即使无合法目标，仍展示卡牌并提供 Skip。
 - 需要选择 Breach 执行 Focus 效果时，合法目标显示橙色 Focus 按钮；按钮与 Breach 图提交同一决策，且不额外支付普通 Focus 费用。
 - 受伤/弃牌目标使用统一玩家选择按钮；伤害弹窗明确写出伤害量，弃牌弹窗显示需弃牌数量和随后抽牌数量（抽牌数为零时不写后续抽牌）。
-- Control Bar 的 Hand 数字只读取该玩家真实的 `hand.length`。Conjure 揭示牌虽然暂时展示在手牌区域，仍不能加入 Hand 计数；获得到牌堆顶或弃牌堆不触发白色手牌增长气泡。白色气泡只反映真实手牌增加，蓝色气泡反映 Charge；正常回合补牌不产生手牌气泡，切换到对应 Mage 时清除其手牌提醒，撤销/恢复整个 GameState 时清除所有遗留增长提醒。
+- Control Bar 的 Hand 数字在没有动效时读取真实的 `hand.length`；卡牌飞行期间只通过共用牌堆计数机制逐张显示变化。Conjure 揭示牌虽然暂时展示在手牌区域，仍不能加入 Hand 计数；获得到牌堆顶或弃牌堆不触发白色手牌增长气泡。白色气泡只反映真实手牌增加，蓝色气泡反映 Charge；正常回合补牌不产生手牌气泡，切换到对应 Mage 时清除其手牌提醒，撤销/恢复整个 GameState 时清除所有遗留增长提醒。
 - Turn Order deck 的 Reveal、选择和排序使用 token 图片。排序弹窗不加冗余顺序文字；拖动 token 时相邻项目要平滑让位。
 
 所有可以重排卡牌或 token 的界面都复用 `aeons-end-ui/src/game/usePointerReorder.ts`。使用 Pointer Events 和 pointer capture；跨过目标中线时改变顺序，用 `pointer-sort` 过渡显示位移。鼠标仍按住时拖动可离开弹窗继续跟随，松开、取消拖动、窗口失焦或标签页隐藏时都要清理状态。不要启用原生 HTML drag image 或 dataTransfer。当前共用位置包括卡牌选择、Turn Order token 和 Debug Deck Order。
@@ -107,7 +133,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 
 - 伤害反馈由页面级 `DamageFeedbackLayer` 显示，需保持在弹窗、控制栏及牌区之上。命中生命值时也要让相应生命条平滑变化。
 - `deal_damage_divided` 先智能地把伤害尽量分配给当前生命值最低的敌方单位。用红底白字的 `−X` 标记各单位已分配值；左键加分配、右键撤销一点。分完后再次点击法术或按 Space 才结算，不能在最后一点分配时自动结算。
-- 选择施法目标或分配伤害时，敌方可选目标使用橙色覆盖式边框；高亮不能与底色边框叠脏，也不能改变卡牌尺寸。二次点击确认中的法术仍保持原 Breach 位置。
+- Nemesis Mat 和场上卡牌只要有高亮边框，悬停时就显示与边框同色的轻微透光和内侧光晕；光晕保持低透明度，不能遮住卡图或改变卡牌尺寸。选择施法目标或分配伤害时，可选目标仍使用橙色覆盖式边框。二次点击确认中的法术仍保持原 Breach 位置。
 - “Damage assigned” 提示的位置固定；只调 `--damage-assigned-size` 就能按比例改变提示整体大小。
 
 ## 5. 尺寸、颜色和动效参数
@@ -124,11 +150,14 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 | Nemesis mat 圆角（棋盘、设置、预览和弹窗） | `--nemesis-mat-radius: 5%` |
 | Breach 附着 Relic 露出量 | `--breach-attached-relic-offset-y: 18px`，正值向下 |
 | Focus/Open 动效 | `--breach-focus-duration: 280ms`、`--breach-open-duration: 560ms`、`--breach-open-perspective: 620px` |
+| Breach 飞入 Discard | `--breach-to-discard-flight-duration: 180ms` |
+| 手牌飞入 Breach | `--hand-to-breach-flight-duration: 220ms` |
 | 手牌飞入 Played Zone | `--hand-to-play-zone-flight-duration: 200ms` |
 | 手牌飞入 Swap Zone | `--hand-to-swap-zone-flight-duration: 200ms` |
 | Swap Zone 飞入 Discard | `--swap-to-discard-flight-duration: 200ms` |
 | 手牌飞入牌堆顶（自己或盟友）；Conjure 回到牌堆顶 | `--hand-to-deck-top-flight-duration: 300ms` |
 | 手牌飞向弃牌堆 | `--hand-to-pile-flight-duration: 200ms` |
+| Played Zone 飞入 Nemesis Specific Deck（Vortex） | `--played-to-nemesis-specific-deck-flight-duration: 300ms` |
 | 弃牌阶段飞入 Discard | `--discard-phase-flight-duration: 200ms` |
 | 其他卡牌飞行动画（购买、其他牌区移动） | `--card-flight-duration: 600ms`、`--card-flight-easing` |
 | 手牌收拢/新增卡牌重排 | `--hand-card-reflow-duration: 220ms`、`--hand-gain-reflow-duration: 220ms` |
@@ -144,9 +173,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 
 手牌使用 `HandCardRow.vue` 的固定宽度卡槽直接参与横向布局。每次更新前捕获真实屏幕位置，更新后一次性确定居中与卡槽的最终位置，再用同一套 FLIP 动画移动。不要同时给手牌 padding 加 CSS 过渡或另外计算弃牌位移。新动画启动前取消该手牌的旧动画；完成、切换 Mage 和卸载时清理动画，不在卡槽上保留 inline transform。相同卡牌的打出/准备按实际离开的卡槽识别；批量弃牌保留源索引，结束后按剩余顺序恢复实时索引。
 
-Played、Swap、Develop 等牌区根据引擎移动记录播放飞行和收拢。移动记录按牌副 ID 精确对应卡牌；同一动作里一张牌经过多个区域时，只播放一段从真实起点到最终落点的飞行。`data-card-motion-zone`、卡牌 ID、持有者、牌副 ID 和稳定视觉 key 标记可见卡牌；目标弃牌堆用 `data-card-motion-from-zones` 声明接收来源，`data-card-motion-after-zones` 声明先后顺序，`data-card-motion-row` 标记需要平滑收拢的牌列。Supply 来源使用牌堆索引和引擎创建记录。动作前捕获的内容只用于保存卡牌起点和牌列位置；卡牌移动不再由区域数量变化推断。不同来源的转移由各自的解析器识别，再进入同一个全局串行队列；队列按引擎移动序号播放，并遵守目标区域声明的先后依赖。Nemesis Deck 的下一张牌要在引擎推进前捕获牌堆来源，翻牌动画也进入此队列，避免前一批移动未结束时先显示新牌。队列共用移动 ID 防止同一移动被播放两次。新增可见牌区时，先给实体卡提供牌副 ID，再添加来源/目标标记并验证事件、落点和收拢效果。
-
-手牌打出或一次弃多张牌时，每张卡起飞后，剩余卡牌立即平滑收拢；后续飞牌、决策和自动阶段推进等待当前串行队列完成。多张牌按规则顺序逐张处理。一次转移所需的卡牌飞行、翻面和来源牌列收拢作为同一复合动效完成；独立转移不得并发启动。新手牌到达时会先隐藏静止卡面，避免重复显示；切换 Mage 时直接换整手牌并重置滚动。飞行、计时和牌列收拢由 `src/game/card-flight.ts` 提供，`src/game/useGame.ts` 按引擎移动记录安排动作。UI Gallery 的 `Hand.Motion` 可重复演示打牌、飞向弃牌堆、增牌、溢出滚动、切换 Mage，以及动画中再次操作。
+Played、Swap、Develop 等牌区使用引擎移动记录和实体卡 ID 对应移动。一次操作中同一张牌经过多个区域，只从真实起点飞到最终位置。每张牌的飞行、翻面和来源牌列收拢按规则顺序播放；手牌和牌堆的临时显示在落地时恢复。UI Gallery 的 `Hand.Motion` 可重复演示打牌、飞向弃牌堆、增牌、溢出滚动、切换 Mage，以及动画中再次操作。
 
 ## 6. 全局层级
 
@@ -185,8 +212,8 @@ npm test
 cd ..\aeons-end-ui
 npx vue-tsc --noEmit
 npm run build
-npm run test:e2e
+npm run test:e2e -- --workers=2
 npm run test:ui-gallery
 ```
 
-生产构建会先生成图片导入映射。新增可复用决策 UI、排序交互或明显视觉状态时，把模式也加入 UI Gallery，方便后续直接复用。
+生产构建会先生成图片导入映射。新增可复用决策 UI、排序交互或明显视觉状态时，把模式也加入 UI Gallery，方便后续直接复用。当前 E2E 基线和复跑记录见 [E2E 基线记录](../aeons-end-ui/tests/E2E_BASELINE.md)。

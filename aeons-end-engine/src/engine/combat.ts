@@ -9,8 +9,11 @@ import {
   getNemesisCardInstanceZone, getPlayerCardInstanceZone, moveCardBetweenZones, recordCardMove,
 } from './card-movement'
 
-export function damageNemesis(game: GameState, amount: number): void {
-  const value = Math.max(0, amount)
+export function damageNemesis(game: GameState, amount: number, sourceCardId?: string): void {
+  const allowedSources = getNemesisDefinition(game.nemesis.definitionId)?.damageOnlyFromCardIds
+  const value = allowedSources && !allowedSources.includes(sourceCardId ?? '')
+    ? 0
+    : Math.max(0, amount)
   if (value > 0) recordHealthChange(game, { kind: 'damage', targetId: 'nemesis', amount: value })
   game.nemesis.hp -= value
   if (game.nemesis.hp <= 0) {
@@ -20,11 +23,11 @@ export function damageNemesis(game: GameState, amount: number): void {
 }
 
 /** Deal damage to a resolved target reference. */
-export function dealDamage(game: GameState, target: DamageTargetRef, amount: number): string {
+export function dealDamage(game: GameState, target: DamageTargetRef, amount: number, sourceCardId?: string): string {
   const value = Math.max(0, amount)
   if (target.kind === 'nemesis') {
     const before = game.nemesis.hp
-    damageNemesis(game, value)
+    damageNemesis(game, value, sourceCardId)
     return `Nemesis takes ${before - game.nemesis.hp} damage (${game.nemesis.hp}/${game.nemesis.maxHp})`
   }
 
@@ -52,7 +55,7 @@ export function dealDamage(game: GameState, target: DamageTargetRef, amount: num
     : Math.min(reducedValue, Math.max(0, definition.damagePerInstance))
   const before = Math.max(0, minion.lifeTokens ?? 0)
   recordHealthChange(game, { kind: 'damage', targetId: `minion:${minion.placedAt}`, amount: resolvedValue })
-  minion.lifeTokens = Math.max(0, before - resolvedValue)
+  minion.lifeTokens = Math.max(Math.max(0, definition.minimumLife ?? 0), before - resolvedValue)
   if (minion.lifeTokens === 0) {
     const playIndex = game.nemesis.playArea.indexOf(minion)
     const instanceId = minion.instanceId ?? `${minion.cardId}:${minion.placedAt}`

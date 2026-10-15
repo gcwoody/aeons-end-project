@@ -11,7 +11,8 @@ const { state, buyables, buyCard, developCard, resolveDecision, activatePlayerCa
 const canBuy = computed(() => state.game!.currentTurn !== 'nemesis' && state.phase === 'main')
 const marketDecision = computed(() => {
   const decision = state.game?.pendingDecision
-  return decision?.kind === 'select_market_pile' || decision?.kind === 'select_setup_devour_pile'
+  return decision?.kind === 'select_market_pile' || decision?.kind === 'select_setup_devour_pile' ||
+    decision?.kind === 'select_setup_supply_replacement'
     ? decision
     : null
 })
@@ -25,13 +26,18 @@ function marketChoice(pileIndex: number) {
   return marketDecision.value?.candidates.find(choice => choice.pileIndex === pileIndex) ?? null
 }
 
+function displayedRemaining(pileIndex: number, fallback: number): number {
+  return state.cardPileCountOverrides[`supply:${pileIndex}`]?.count ?? fallback
+}
+
 function onPileClick(pileIndex: number) {
   const decision = marketDecision.value
   if (decision) {
     const choice = marketChoice(pileIndex)
     if (!choice) return
     if (decision.kind === 'select_market_pile') resolveDecision({ kind: 'select_market_pile', choice })
-    else resolveDecision({ kind: 'select_setup_devour_pile', choice })
+    else if (decision.kind === 'select_setup_devour_pile') resolveDecision({ kind: 'select_setup_devour_pile', choice })
+    else resolveDecision({ kind: 'select_setup_supply_replacement', choice })
     return
   }
   if (!canBuy.value) return
@@ -96,7 +102,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
     <div class="market-grid">
       <template v-for="b in buyables" :key="b.cardId">
         <CardHoverPreview
-          v-if="b.remaining > 0"
+          v-if="displayedRemaining(b.pileIndex, b.remaining) > 0"
           :card-id="b.cardId"
           :preview-width="280"
           :preview-height="388.03"
@@ -131,7 +137,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
           >
             <img v-if="cardImageUrl(b.cardId)" :src="cardImageUrl(b.cardId)" :alt="b.cardName" draggable="false" />
             <span v-else class="cname">{{ b.cardName }}</span>
-            <span class="remaining">{{ b.remaining }}</span>
+            <span class="remaining">{{ displayedRemaining(b.pileIndex, b.remaining) }}</span>
             <span
               v-if="b.developCost !== undefined"
               class="develop-cost-badge"
@@ -147,7 +153,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
               :preview-delay="180"
             >
               <span
-                v-if="b.remaining > 0 && cardImageUrl(setCardId.cardId)"
+                v-if="displayedRemaining(b.pileIndex, b.remaining) > 0 && cardImageUrl(setCardId.cardId)"
                 class="market-set-card-overlay"
                 :class="{
                   'market-set-card-overlay-action': setCardHasAction(setCardId),
@@ -192,7 +198,11 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             <span
               v-if="cardImageUrl(setCard.cardId)"
               class="market-set-card-overlay"
-              :class="{ 'market-set-card-overlay-action': setCardHasAction(setCard) }"
+              :class="{
+                'market-set-card-overlay-action': setCardHasAction(setCard),
+                'game-highlight': setCardHasAction(setCard),
+                'game-highlight--available': setCardHasAction(setCard),
+              }"
               :style="{ '--set-card-index': setIndex }"
               @click="onSetCardClick($event, setCard)"
             >

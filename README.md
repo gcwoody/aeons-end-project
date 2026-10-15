@@ -11,8 +11,8 @@
 - 可使用 Wave 1 与 Wave 9 的 Gems、Relics、Spells 和 Wave 9 Trinket deck。22 张 Wave 9 Basic Nemesis Cards 已并入所有 Nemesis 共用的基础牌池；游戏暂不提供按 Wave 筛选基础牌的设置。
 - Wave 9 的 Friends、Foes、Banners 和 Crooked Mask 以外的 Nemesis 尚未接入对局。详细状态见 [Wave 9 接入状态](design/wave9-plan.md)。
 - Setup 支持选择或随机选择 Mage/Nemesis、设置 Nemesis 难度，以及使用 Template 1 市场并逐槽替换卡牌。
-- 支持卡牌效果与目标决策、Breach、Nemesis Attack/Power/Minion、Unleash、存档恢复和最多 10 步的 Ctrl+Z 撤销。
-- 棋盘包含卡牌飞行、手牌平滑收拢、Breach Focus/Open、回合切换、Nemesis 抽牌翻面，以及伤害、治疗、抽牌和 Charge 反馈等效果；组件复用和样式约定见 [UI 开发指南](ui/ui-guide.md)。
+- 支持卡牌效果与目标决策、Breach、Nemesis Attack/Power/Minion、Unleash、存档恢复和最多 20 步的 Ctrl+Z 撤销；按 `A` 可打出当前 Mage 手中的所有 Gems。
+- 棋盘包含卡牌飞行、手牌平滑收拢、Breach Focus/Open、回合切换、Nemesis 抽牌翻面，以及伤害、治疗、抽牌和 Charge 反馈等效果。卡牌移动按引擎记录的实体卡移动来播放，不再靠比较牌区数量猜测；代码职责和交互约定见 [UI 开发指南](ui/ui-guide.md)。
 - Debug Tools（`Ctrl+D`）用于调整游戏状态、牌序和调试操作。
 
 存档只保存在当前浏览器的 `localStorage` 中；清除网站数据会删除存档。
@@ -55,7 +55,7 @@ npx vue-tsc --noEmit
 npm run build
 
 # 浏览器流程与交互测试
-npm run test:e2e
+npm run test:e2e -- --workers=2
 
 # UI Gallery 回归
 npm run test:ui-gallery
@@ -70,10 +70,12 @@ aeons-end-engine/src/data/   按 Wave 和内容类型组织的 Mage、卡牌与�
 aeons-end-engine/src/engine/ 共享规则模块；engine.ts 保留公开入口
 aeons-end-engine/src/nemesis/ Nemesis 专属规则模块
 aeons-end-ui/src/components/ Vue 棋盘、卡牌、弹窗和 UI Gallery
-aeons-end-ui/src/game/       前端游戏状态、阶段协调、存档和撤销
+aeons-end-ui/src/game/       游戏操作、阶段、存档和撤销协调
+aeons-end-ui/src/game/card-motion-*.ts  按职责拆分的卡牌动效策略、展示状态和等待逻辑
+aeons-end-ui/src/game/card-zone-motion.ts  根据引擎移动记录播放牌区转移动效
 aeons-end-ui/src/styles/     按职责拆分的样式；tokens.css 保存全局变量
 documents/                   游戏卡牌与 Mage 的基础资料
-design/                      当前 Wave 状态等少量仍有效的设计记录
+design/                      Wave 9 接入状态计划
 ```
 
 引擎原地修改一个 `GameState`；前端直接通过 `@engine` 引用引擎，并用 Vue `reactive()` 追踪状态。规则结果由引擎决定，组件只显示状态、收集输入并调用引擎。
@@ -90,8 +92,9 @@ design/                      当前 Wave 状态等少量仍有效的设计记录
 
 | 快捷键 | 功能 |
 | --- | --- |
-| `Ctrl+Z` | 撤销最近操作，最多 10 步 |
+| `Ctrl+Z` | 撤销最近操作，最多 20 步 |
 | `Ctrl+D` | 打开或关闭 Debug Tools |
+| `A` | 打出当前 Mage 手牌中的所有 Gems |
 | `1`、`2` | 切换到对应玩家的 Mage 视角 |
 | `Tab` | 切换当前显示的玩家 |
 | `Q` / `W` | 查看当前 Mage 的抽牌堆 / 弃牌堆 |

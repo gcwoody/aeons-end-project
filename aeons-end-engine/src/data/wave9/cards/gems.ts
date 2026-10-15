@@ -56,19 +56,14 @@ export const hewnGravitite = makeGem('hewn_gravitite', 'Hewn Gravitite', 3, [
   { trigger: { kind: 'on_play' }, effects: [
     { kind: 'gain_aether', amount: 2 },
     {
-      kind: 'conditional',
-      condition: { kind: 'all_of', conditions: [
-        { kind: 'has_pulse_tokens', amount: 2 },
-        { kind: 'has_prepped_spell', ownerScope: 'any_player' },
-      ] },
-      effects: [{
-        kind: 'choose_optional',
-        prompt: 'Lose 2 Pulse tokens to cast a prepped spell?',
-        effects: [
-          { kind: 'lose_pulse_token', amount: 2 },
-          { kind: 'cast_prepped_spell', source: 'any_prepped_spell', ownerScope: 'any_player' },
-        ],
-      }],
+      kind: 'choose_optional',
+      prompt: 'Lose 2 Pulse tokens to cast a prepped spell?',
+      skipIfUnavailable: true,
+      acceptCondition: { kind: 'has_pulse_tokens', amount: 2 },
+      effects: [
+        { kind: 'lose_pulse_token', amount: 2 },
+        { kind: 'cast_prepped_spell', source: 'any_prepped_spell', ownerScope: 'any_player' },
+      ],
     },
   ] },
   { trigger: { kind: 'recall' }, effects: [{ kind: 'gain_pulse_token', amount: 1 }] },

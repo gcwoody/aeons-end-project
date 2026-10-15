@@ -124,23 +124,10 @@ function testNewCardEffectPrimitives(): void {
   prepSpell(oblivionNoGemGame, oblivionNoGemPlayer.id, 'oblivion_swell', 1)
   const noGemHp = oblivionNoGemGame.nemesis.hp
   castSpell(oblivionNoGemGame, oblivionNoGemPlayer.id, 1)
-  const noGemOptional = oblivionNoGemGame.pendingDecision
-  assert(noGemOptional?.kind === 'choose_optional', 'Oblivion Swell asks about its optional gem discard')
-  if (!noGemOptional || noGemOptional.kind !== 'choose_optional') return
-  assertEqual(noGemOptional.accept.disabled, true,
-    'Oblivion Swell disables Yes when no gem can be discarded')
-  const rejectedNoGem = resolvePendingDecision(oblivionNoGemGame, noGemOptional.id, {
-    kind: 'choose_optional', accepted: true,
-  })
-  assert(rejectedNoGem.some(message => message.includes('not available')),
-    'A disabled Oblivion Swell option cannot be accepted through the engine')
-  assertEqual(oblivionNoGemGame.pendingDecision?.id, noGemOptional.id,
-    'Oblivion Swell keeps the decision open after a disabled option is attempted')
-  resolvePendingDecision(oblivionNoGemGame, noGemOptional.id, {
-    kind: 'choose_optional', accepted: false,
-  })
+  assertEqual(oblivionNoGemGame.pendingDecision, null,
+    'Oblivion Swell automatically skips its discard option when no gem can be discarded')
   assertEqual(oblivionNoGemGame.nemesis.hp, noGemHp - 2,
-    'Oblivion Swell still deals its base damage when the optional discard is skipped')
+    'Oblivion Swell deals its base damage after automatically skipping the unavailable discard')
 
   const oblivionGemGame = createGame(scenario)
   const oblivionGemPlayer = oblivionGemGame.players[0]!

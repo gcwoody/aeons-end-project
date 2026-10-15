@@ -52,6 +52,7 @@ export const STAKE_CARDS: Record<string, CardDef> = {
         {
           kind: 'choose_optional',
           prompt: 'Lose 1 Knowledge to gain a charge?',
+          skipIfUnavailable: true,
           acceptCondition: { kind: 'has_knowledge', amount: 1 },
           effects: [
             { kind: 'lose_knowledge', amount: 1 },

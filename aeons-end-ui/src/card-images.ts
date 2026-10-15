@@ -1,4 +1,5 @@
 import { CARD_IMAGE_IMPORTS, MAGE_TOKEN_IMAGE_IMPORTS, NEMESIS_MAT_IMAGE_IMPORTS } from './generated-image-imports'
+import { getCard } from '@engine/data'
 import playerCardBack from '../../image-database/common images/player-card back.jpg'
 import treasureTwoBack from '../../image-database/common images/treasure 2 back.jpg'
 import treasureThreeBack from '../../image-database/common images/treasure 3 back.jpg'
@@ -38,7 +39,7 @@ export function nemesisCardBackUrl(): string {
 
 export function nemesisSpecificDeckBackUrl(nemesisType: string): string {
   if (nemesisType === 'rageborne') return rageborneStrikeDeckBack
-  if (nemesisType === 'crooked_mask') return playerCardBack
+  if (nemesisType === 'crooked_mask' || nemesisType === 'oracle_of_filth') return playerCardBack
   return nemesisCardBack
 }
 
@@ -57,6 +58,15 @@ export function pulseTokenImageUrl(): string {
 
 export function trinketDeckBackUrl(): string {
   return trinketDeckBack
+}
+
+/** Use the Trinket back whenever a Trinket is the visible top card of a player deck. */
+export function playerDeckCardBackUrl(cardId: string | null | undefined): string {
+  if (!cardId) return playerCardBackUrl()
+  const card = getCard(cardId)
+  return card.type === 'gem' && card.mechanics?.includes('trinket')
+    ? trinketDeckBackUrl()
+    : playerCardBackUrl()
 }
 
 export function playerTurnOrderTokenUrl(playerNumber: number): string | undefined {

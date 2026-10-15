@@ -111,6 +111,27 @@ export function conditionMatches(
     const attack = getCard(attackId) as NemesisCardDef
     return attack.nemesisEffects?.some(block => block.trigger === 'immediately' && block.effects.length > 0) ?? false
   }
+  if (condition.kind === 'specific_deck_card_count') {
+    const count = game.nemesis.strikeDeck.length
+    if (condition.comparison === 'equals') return count === condition.count
+    if (condition.comparison === 'at_most') return count <= condition.count
+    if (condition.comparison === 'greater_than') return count > condition.count
+    return count >= condition.count
+  }
+  if (condition.kind === 'nemesis_specific_deck_accepts_cards') {
+    return !game.nemesis.playArea.some(card =>
+      (getCard(card.cardId) as NemesisCardDef).blocksPlacementIntoSpecificDeck === true,
+    )
+  }
+  if (condition.kind === 'source_minion_life') {
+    const sourceId = resolution?.sourceCardId ?? sourceCardId
+    const minion = game.nemesis.playArea.find(card => card.cardType === 'minion' && card.cardId === sourceId)
+    const life = minion?.lifeTokens ?? 0
+    if (condition.comparison === 'equals') return life === condition.amount
+    if (condition.comparison === 'at_most') return life <= condition.amount
+    if (condition.comparison === 'greater_than') return life > condition.amount
+    return life >= condition.amount
+  }
   if (condition.kind === 'has_player_turn_order_card') {
     return Boolean(playerId && game.turnOrderDiscard.some(cardId => cardId === playerId))
   }
@@ -172,6 +193,7 @@ export function conditionMatches(
       return zones.some(zone => getZoneCards(owner, zone).some(cardId => {
         const card = getCard(cardId)
         return condition.cardTypes.includes(card.type) &&
+          (!condition.cardIds || condition.cardIds.includes(cardId)) &&
           card.cost >= (condition.minimumCost ?? 0) &&
           (condition.treasureLevel === undefined || card.treasureLevel === condition.treasureLevel)
       }))

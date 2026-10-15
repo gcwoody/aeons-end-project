@@ -3,7 +3,7 @@ import type {
 } from '../types'
 import {
   MAGES, createTwoPlayerScenario, getCard, getNemesisDefinition,
-  resolveMarketCardIds, resolveMageStartingCardId,
+  getStartingSupplyPileCount, resolveMarketCardIds, resolveMageStartingCardId,
 } from '../data'
 import { getNemesisRules } from '../nemesis/registry'
 import { marketPileChoices } from '../nemesis/market'
@@ -121,8 +121,7 @@ export function createInitialGameState(
   const player2 = createPlayer(playerIdForMage(mage2Def.type), mage2Def)
   const marketPiles = resolveMarketCardIds(scenario.marketSetup).map(cardId => {
     const card = getCard(cardId)
-    const remaining = card.type === 'gem' ? 7 : 5
-    return { cardId, remaining }
+    return { cardId, remaining: getStartingSupplyPileCount(card) }
   })
   const supplyMechanics = [...new Set(marketPiles.flatMap(pile => {
     const card = getCard(pile.cardId)
@@ -189,6 +188,9 @@ export function createInitialGameState(
   game.nemesis.deckInstanceIds = initializeCardInstanceZone(game, game.nemesis.deck)
   game.nemesis.discardInstanceIds = initializeCardInstanceZone(game, game.nemesis.discard, true)
   game.nemesis.strikeDeckInstanceIds = initializeCardInstanceZone(game, game.nemesis.strikeDeck)
+  if (nemesisDef.specificDeckVisibility === 'revealed') {
+    for (const instanceId of game.nemesis.strikeDeckInstanceIds) markCardInstanceRevealed(game, instanceId)
+  }
   game.nemesis.strikeDiscardInstanceIds = initializeCardInstanceZone(game, game.nemesis.strikeDiscard, true)
   game.nemesis.corruptionDeckInstanceIds = initializeCardInstanceZone(game, game.nemesis.corruptionDeck ?? [])
   game.trinketDeckInstanceIds = initializeCardInstanceZone(game, game.trinketDeck ?? [])

@@ -1,6 +1,7 @@
 .card-flight-clone {
   box-sizing: border-box;
   overflow: hidden;
+  border-radius: var(--card-radius);
   pointer-events: none !important;
   transform-origin: top left;
   transition: none !important;
@@ -13,12 +14,14 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
 }
 
 .card-flight-flip-face {
   position: absolute;
   inset: 0;
   overflow: hidden;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
   transform-origin: center;
   will-change: transform;
 }
@@ -27,6 +30,7 @@
   position: absolute;
   inset: 0;
   display: block;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
 }
 
 .card-flight-flip-front { opacity: 1; }

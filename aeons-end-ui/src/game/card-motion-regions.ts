@@ -1,4 +1,4 @@
-import { cardZoneFlightDestinationMode } from './card-flight'
+import { cardZoneFlightDestinationMode } from './card-motion-policy'
 import type { CardZoneTransfer, PlayerCardZone } from './card-flight'
 
 export interface CardMotionRegionAnchor {

@@ -1,8 +1,41 @@
 import { test, expect } from '@playwright/test'
 
+async function resolveStartupInterrupts(page: import('@playwright/test').Page) {
+  let quietChecks = 0
+  for (let attempt = 0; attempt < 40; attempt++) {
+    const flight = page.locator('.nemesis-draw-flight-scene')
+    if (await flight.count()) {
+      await expect(flight).toHaveCount(0, { timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    const transition = page.locator('.turn-transition-shield')
+    if (await transition.isVisible().catch(() => false)) {
+      await expect(transition).toBeHidden({ timeout: 5000 })
+      quietChecks = 0
+      continue
+    }
+    const reveal = page.locator('.nemesis-draw-reveal-screen')
+    if (await reveal.isVisible().catch(() => false)) {
+      await reveal.click({ position: { x: 12, y: 12 } })
+      quietChecks = 0
+      continue
+    }
+    const next = page.getByRole('button', { name: /^(Continue|Resolve Card|Skip|Confirm|Attack .+|Gravehold)$/ }).first()
+    if (await next.isVisible().catch(() => false)) {
+      await next.click()
+      quietChecks = 0
+      continue
+    }
+    await page.waitForTimeout(100)
+    if (++quietChecks >= 3) return
+  }
+}
+
 test('the shared Trinket deck keeps unknown copies hidden and shows known copies in its viewer', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Start Game' }).click()
+  await resolveStartupInterrupts(page)
 
   const deckPile = page.getByRole('button', { name: 'Open Trinket Deck' })
   await expect(deckPile).toBeVisible()
@@ -32,7 +65,7 @@ test('the shared Trinket deck keeps unknown copies hidden and shows known copies
   await page.getByRole('button', { name: 'Apply', exact: true }).click()
   await page.getByRole('button', { name: 'Close (Ctrl+D)' }).click()
 
-  await expect(deckPile.locator('img')).toHaveAttribute('alt', 'Clouded Trinket')
+  await expect(deckPile.locator('img')).toHaveAttribute('alt', 'Trinket deck card back')
   await expect(deckPile.locator('.player-pile-count')).toHaveText('2')
   const marketThirdColumn = await page.locator('.market-grid .pile').nth(2).boundingBox()
   const trinketDeckRect = await deckPile.boundingBox()
@@ -52,5 +85,5 @@ test('the shared Trinket deck keeps unknown copies hidden and shows known copies
   await expect(page.locator('.pile-modal .pile-card-image:not(.pile-unknown-card)')).toHaveCount(1)
   await expect(page.locator('.pile-modal .pile-unknown-card')).toHaveCount(1)
   await expect(page.locator('.pile-modal img[alt="Clouded Trinket"]')).toHaveCount(1)
-  await expect(page.locator('.pile-modal img[alt="Trinket Deck card back"]')).toHaveCount(1)
+  await expect(page.locator('.pile-modal img[alt="Trinket deck card back"]')).toHaveCount(1)
 })

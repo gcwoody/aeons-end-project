@@ -2,6 +2,7 @@ import type { CardMoveEvent, PlayerId } from '@engine/types'
 import { discardCardFlight } from './card-flight'
 import type { CardZoneTransfer } from './card-flight'
 import type { CardFlightSnapshot } from './card-flight'
+import { resolveCardMotionPolicy } from './card-motion-policy'
 
 export interface CapturedHandCard {
   playerId: PlayerId
@@ -35,6 +36,7 @@ export function resolveHandCardZoneTransfers(
     zoneIndex: number
     moveId: string
     moveIds: string[]
+    sequence: number
   }>()
 
   for (const event of events) {
@@ -58,6 +60,7 @@ export function resolveHandCardZoneTransfers(
         zoneIndex: event.destination.index,
         moveId: event.moveId,
         moveIds: [event.moveId],
+        sequence: event.sequence,
       })
       continue
     }
@@ -68,6 +71,7 @@ export function resolveHandCardZoneTransfers(
     existing.zoneIndex = event.destination.index
     existing.moveId = event.moveId
     existing.moveIds.push(event.moveId)
+    existing.sequence = event.sequence
   }
 
   const transfers: CardZoneTransfer[] = []
@@ -78,10 +82,13 @@ export function resolveHandCardZoneTransfers(
     if (!source || !before) continue
     if (!source.flight) report('Hand departure has no visible source anchor', destination)
     transfers.push({
+      sequence: destination.sequence,
       moveId: destination.moveId,
       moveIds: destination.moveIds,
       instanceId,
       cardId: destination.cardId,
+      sourceZoneId: `player:${destination.sourcePlayerId}:hand`,
+      destinationZoneId: `player:${destination.destinationPlayerId}:${destination.destinationZone}`,
       playerId: destination.destinationPlayerId,
       sourcePlayerId: destination.sourcePlayerId,
       sourceHandIndex: source.handIndex,
@@ -89,7 +96,10 @@ export function resolveHandCardZoneTransfers(
       zone: destination.destinationZone,
       zoneIndex: destination.zoneIndex,
       flight: source.flight,
-      timing: destination.destinationZone === 'deck' ? 'hand-to-deck-top' : 'hand-to-pile',
+      timing: resolveCardMotionPolicy({
+        sourceZone: 'hand',
+        destinationZone: destination.destinationZone,
+      }).timing,
       previousDeckTop: before.deck[0] ?? null,
       previousDeckCount: before.deck.length,
       previousDiscardTop: before.discard[0] ?? null,
@@ -109,7 +119,9 @@ export function projectPileArrival(
   transfer: Pick<CardZoneTransfer, 'zone' | 'zoneIndex' | 'cardId'>,
 ) {
   return {
-    cardId: transfer.zoneIndex === 0 ? transfer.cardId : current.cardId,
+    // Until the next incoming card arrives, the first arrival is the visible
+    // top of an empty pile even when a later arrival will be inserted above it.
+    cardId: current.count === 0 || transfer.zoneIndex === 0 ? transfer.cardId : current.cardId,
     count: current.count + 1,
   }
 }

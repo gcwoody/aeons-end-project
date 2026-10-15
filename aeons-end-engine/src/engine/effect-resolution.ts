@@ -2,6 +2,7 @@ import type { BreachChoice, CardEffect, CardEffectOption, CardSelectionSource, C
 import type { SpendType } from './aether'
 import type { EffectResolutionServices } from '../engine'
 import { gainPlayerCharge } from './charge-feedback'
+import { recordHealthChange } from './health-feedback'
 import {
   getPlayer, preparePlayerDeckForRevealWithInstances, putPlayerCardInDeck,
   rememberOwnedTrinketInstance, returnCorruptionToBottom,
@@ -10,12 +11,12 @@ import {
 } from './zones'
 import {
   createCardInstance, ensureCardInstanceZone, findCardInstanceId, insertCardInstanceAt, markCardInstanceRevealed,
-  removeCardInstanceAt,
+  removeCardInstanceAt, resetCardInstancesAfterShuffle,
 } from './card-instances'
 import {
-  createCardInZone, destroyCardFromZone, getBreachCardInstanceZone,
+  createCardInZone, destroyCardFromZone, getBreachCardInstanceZone, getNemesisCardStackZone,
   drawPlayerCardsToHand, getNemesisCardInstanceZone, getPlayerCardInstanceZone, moveCardBetweenZones,
-  placeTemporaryCardInZone, recordCardDestruction, recordCardMove, recordCardTemporary,
+  placeTemporaryCardInZone, recordCardDestruction, recordCardMove, recordCardShuffle, recordCardTemporary,
 } from './card-movement'
 import { availableCardEffectOptionIds } from './effect-conditions'
 import { retainFullyResolvableOrMaximumTargets } from './targets'
@@ -99,7 +100,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
     marketPileChoices,
     matchingBlocks,
     moveGainedSupplyCardToDeck,
-    optionalCardSelectionAvailable,
+    optionalEffectAvailable,
     pauseEffect,
     pauseRevealTopCard,
     pendingDecision,
@@ -638,6 +639,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         g.nemesis.playArea.push({
           cardId: item.cardId, cardType: 'minion', placedAt, instanceId: removed.instanceId,
           enteredOnNemesisTurn: g.nemesis.nemesisTurnNumber, lifeTokens: definition.life ?? 0,
+          ...(definition.displayRow ? { displayRow: definition.displayRow } : {}),
           ...(definition.nemesisTokens != null ? { nemesisTokens: definition.nemesisTokens } : {}),
         })
         recordCardMove(g, removed.instanceId, item.cardId,
@@ -1380,20 +1382,22 @@ export function createEffectResolver(services: EffectResolutionServices) {
       // so move the physical card to its owner's discard before resolving its
       // Cast text. This mirrors the timing used for spells cast from Breaches.
       const discardThisCast = effect.remaining <= 1
+      const sourceHand = getPlayerCardInstanceZone(g, owner.id, 'hand')
+      let castInstanceId = sourceHand.instanceIds[index]
       if (discardThisCast) {
-        const hand = getPlayerCardInstanceZone(g, owner.id, 'hand')
         const discard = getPlayerCardInstanceZone(g, owner.id, 'discard')
-        const moved = moveCardBetweenZones(g, hand, index, discard, 0, 'cast_spell')
+        const moved = moveCardBetweenZones(g, sourceHand, index, discard, 0, 'cast_spell')
         if (moved?.cardId !== effect.cardId) {
           messages.push('The selected ally spell is no longer in hand')
           continue
         }
+        castInstanceId = moved.instanceId
       }
       const outerContext = captureEffectContext(resolution)
       const casterPlayerId = resolution.sourcePlayerId ?? currentPlayerId
       resolution.pendingSpellCast = {
         playerId: effect.playerId, casterPlayerId, breachIndex: -1, spellIndex: -1,
-        cardId: effect.cardId, discard: false,
+        cardId: effect.cardId, instanceId: castInstanceId, discard: false,
       }
       resolution.sourcePlayerId = casterPlayerId
       resolution.sourceCardOwnerId = effect.playerId
@@ -1417,6 +1421,243 @@ export function createEffectResolver(services: EffectResolutionServices) {
         ...(effect.remaining > 1 ? [{ kind: 'cast_selected_spell_from_hand', playerId: effect.playerId, cardId: effect.cardId, remaining: effect.remaining - 1 } satisfies CardEffect] : []),
       ])
       messages.push(`Cast ${getCard(effect.cardId).name} from an ally's hand${discardThisCast ? '' : ' without discarding it'}`)
+      continue
+    }
+
+    if (effect.kind === 'gain_minion_life') {
+      const minion = g.nemesis.playArea.find(card =>
+        card.cardType === 'minion' && card.cardId === effect.minionCardId,
+      )
+      if (!minion) {
+        messages.push(`${getCard(effect.minionCardId).name} is not in play`)
+        continue
+      }
+      const amount = Math.max(0, Math.floor(effect.amount))
+      minion.lifeTokens = Math.max(0, minion.lifeTokens ?? 0) + amount
+      recordHealthChange(g, { kind: 'healing', targetId: `minion:${minion.placedAt}`, amount })
+      messages.push(`${getCard(minion.cardId).name} gains ${amount} life (${minion.lifeTokens})`)
+      continue
+    }
+
+    if (effect.kind === 'move_cards_to_nemesis_specific_deck') {
+      const blocked = g.nemesis.playArea.some(card =>
+        (getCard(card.cardId) as NemesisCardDef).blocksPlacementIntoSpecificDeck === true,
+      )
+      if (blocked) {
+        messages.push('Cards cannot be placed into the Nemesis specific deck right now')
+        continue
+      }
+      const candidates = getCardChoices(g, currentPlayerId, effect.source).filter(choice =>
+        (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
+        (!effect.cardNames || effect.cardNames.includes(getCard(choice.cardId).name)) &&
+        (!effect.cardTypes || effect.cardTypes.includes(getCard(choice.cardId).type)),
+      )
+      const maximum = Math.min(Math.max(0, effect.maxAmount), candidates.length)
+      const minimum = Math.min(Math.max(0, effect.minAmount), maximum)
+      if (maximum === 0) {
+        messages.push('No eligible card is available to place into the Nemesis specific deck')
+        continue
+      }
+      if (minimum !== maximum || candidates.length > minimum || maximum > 1) {
+        const decision = createDecision(
+          g,
+          minimum === maximum
+            ? `Choose ${minimum} card(s) to place into the Nemesis specific deck`
+            : `Choose up to ${maximum} card(s) to place into the Nemesis specific deck`,
+          'select_cards',
+          { source: effect.source, candidates, min: minimum, max: maximum },
+          resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      const source = getPlayerCardInstanceZone(g, currentPlayerId, candidates[0]!.zone)
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const moved = moveCardBetweenZones(g, source, candidates[0]!.index, vortex, 0, 'effect', { reveal: true })
+      if (moved) messages.push(`Placed ${getCard(moved.cardId).name} into the Nemesis specific deck`)
+      continue
+    }
+
+    if (effect.kind === 'expunge_nemesis_specific_deck') {
+      if (!resolution.vortexExpungeStartPlayerId) {
+        const targets = g.players.map(player => ({ kind: 'player' as const, playerId: player.id }))
+        const decision = createDecision(
+          g, 'Choose which Mage receives the first Vortex card', 'select_player_target',
+          { targets }, resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      const startIndex = g.players.findIndex(player => player.id === resolution.vortexExpungeStartPlayerId)
+      resolution.vortexExpungeStartPlayerId = undefined
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const shuffled = shuffle(vortex.cards.map((cardId, index) => ({
+        cardId, instanceId: vortex.instanceIds[index]!,
+      })))
+      vortex.cards.splice(0, vortex.cards.length, ...shuffled.map(item => item.cardId))
+      vortex.instanceIds.splice(0, vortex.instanceIds.length, ...shuffled.map(item => item.instanceId))
+      resetCardInstancesAfterShuffle(g, vortex.instanceIds)
+      vortex.cards.forEach((cardId, index) => recordCardShuffle(
+        g, vortex.instanceIds[index]!, cardId,
+        { zoneId: vortex.zoneId, zone: vortex.zone, ownerId: vortex.ownerId, index },
+        'shuffle',
+      ))
+
+      for (let dealt = 0; dealt < Math.max(0, effect.amount); dealt++) {
+        const playerIndex = (Math.max(0, startIndex) + dealt) % g.players.length
+        const recipient = g.players[playerIndex]!
+        if (vortex.cards.length > 0) {
+          const deck = getPlayerCardInstanceZone(g, recipient.id, 'deck')
+          moveCardBetweenZones(g, vortex, 0, deck, 0, 'effect', { hide: true })
+        } else {
+          messages.push(dealDamage(g, { kind: 'gravehold', id: 'gravehold', label: 'Gravehold' }, effect.fallbackGraveholdDamage))
+        }
+      }
+      messages.push(`Oracle of Filth Expunges; cards were dealt starting with ${getPlayer(g, g.players[Math.max(0, startIndex)]!.id).mageType}`)
+      if (g.nemesis.difficulty === 'increased' && !g.gameOver) {
+        addRemainingEffects(resolution, [{
+          kind: 'choose_one',
+          prompt: 'Choose a character to gain 3 life',
+          options: [
+            { id: 'oracle', label: 'Oracle of Filth gains 3 life', effects: [{ kind: 'gain_life', amount: 3, target: 'nemesis' }] },
+            { id: 'pupil', label: 'Pupil of Oblivion gains 3 life', effects: [{ kind: 'gain_minion_life', minionCardId: 'pupil_of_oblivion', amount: 3 }] },
+          ],
+        }])
+      }
+      continue
+    }
+
+    if (effect.kind === 'gain_nemesis_specific_deck_cards') {
+      if (effect.recipient === 'choose' && !resolution.selectedActionPlayerId) {
+        const targets = g.players.map(player => ({ kind: 'player' as const, playerId: player.id }))
+        const decision = createDecision(g, 'Choose a player to gain cards from the Nemesis specific deck',
+          'select_player_target', { targets }, resolution.sourceCardId)
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const available = vortex.cards.map((cardId, index) => ({
+        cardId, instanceId: vortex.instanceIds[index]!, index, cost: getCard(cardId).cost,
+      }))
+      const ordered = effect.selection === 'top'
+        ? available
+        : [...available].sort((left, right) => right.cost - left.cost || left.index - right.index)
+      const count = Math.min(Math.max(0, effect.amount), ordered.length)
+      for (let index = 0; index < count; index++) {
+        const card = ordered[index]!
+        const currentIndex = vortex.instanceIds.indexOf(card.instanceId)
+        const recipientIndex = effect.recipient === 'alternate_players' ? index % g.players.length : 0
+        const recipientId = effect.recipient === 'choose'
+          ? resolution.selectedActionPlayerId!
+          : effect.recipient === 'alternate_players'
+            ? g.players[recipientIndex]!.id
+            : currentPlayerId
+        const destination = getPlayerCardInstanceZone(g, recipientId,
+          effect.destination === 'deck_top' ? 'deck' : 'discard')
+        moveCardBetweenZones(g, vortex, currentIndex, destination,
+          effect.destination === 'deck_top' ? 0 : 0,
+          'gain', effect.destination === 'deck_top' ? { hide: true } : { reveal: true })
+      }
+      if (effect.recipient === 'choose') {
+        const recipient = getPlayer(g, resolution.selectedActionPlayerId!)
+        resolution.effectPlayerId = recipient.id
+        resolution.selectedActionPlayerId = undefined
+        messages.push(`${recipient.mageType} gains ${count} card(s) from the Nemesis specific deck`)
+      } else {
+        messages.push(`Players gain ${count} card(s) from the Nemesis specific deck`)
+      }
+      continue
+    }
+
+    if (effect.kind === 'distribute_nemesis_specific_deck_cards') {
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const available = vortex.cards.map((cardId, index) => ({
+        cardId, instanceId: vortex.instanceIds[index]!, index, cost: getCard(cardId).cost,
+      }))
+      const ordered = effect.selection === 'top'
+        ? available
+        : [...available].sort((left, right) => right.cost - left.cost || left.index - right.index)
+      const cards = ordered.slice(0, Math.max(0, effect.amount)).map(({ cardId, instanceId }) => ({
+        cardId, instanceId,
+      }))
+      if (cards.length === 0) {
+        messages.push('No cards are available in the Nemesis specific deck to distribute')
+        continue
+      }
+      const decision = createDecision(
+        g,
+        `Distribute ${cards.length} card(s) from the Nemesis specific deck among the players`,
+        'distribute_cards',
+        {
+          source: 'nemesis_specific_deck',
+          destination: effect.destination,
+          cards,
+          players: g.players.map(player => player.id),
+        },
+        resolution.sourceCardId,
+      )
+      messages.push(...pauseEffect(g, resolution, effect, decision))
+      return messages
+    }
+
+    if (effect.kind === 'destroy_nemesis_specific_deck_cards') {
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const destroyed: string[] = []
+      for (let index = vortex.cards.length - 1; index >= 0; index--) {
+        if (getCard(vortex.cards[index]!).cost > effect.maxCost) continue
+        const cardId = destroyCardFromZone(g, vortex, index)
+        if (cardId) destroyed.push(cardId)
+      }
+      messages.push(`Destroyed ${destroyed.length} card(s) from the Nemesis specific deck`)
+      continue
+    }
+
+    if (effect.kind === 'place_specific_deck_cards_under_source_minion') {
+      const minion = g.nemesis.playArea.find(card =>
+        card.cardType === 'minion' && card.cardId === resolution.sourceCardId,
+      )
+      if (!minion) {
+        messages.push('The source Minion is no longer in play')
+        continue
+      }
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const stack = getNemesisCardStackZone(g, minion)
+      const count = Math.min(Math.max(0, effect.amount), vortex.cards.length)
+      for (let index = 0; index < count; index++) {
+        moveCardBetweenZones(g, vortex, 0, stack, stack.cards.length, 'effect', { reveal: true })
+      }
+      messages.push(`Placed ${count} card(s) under ${getCard(minion.cardId).name}`)
+      continue
+    }
+
+    if (effect.kind === 'move_cast_spell_to_nemesis_specific_deck') {
+      const pending = resolution.pendingSpellCast
+      if (!pending?.instanceId) {
+        messages.push('The cast spell copy could not be identified')
+        continue
+      }
+      const blocked = g.nemesis.playArea.some(card =>
+        (getCard(card.cardId) as NemesisCardDef).blocksPlacementIntoSpecificDeck === true,
+      )
+      if (blocked) {
+        messages.push('The cast spell stays in its current zone because cards cannot enter the Vortex')
+        continue
+      }
+      const owner = getPlayer(g, pending.playerId)
+      const sources = [
+        getPlayerCardInstanceZone(g, owner.id, 'discard'),
+        getPlayerCardInstanceZone(g, owner.id, 'hand'),
+        ...owner.breaches.map(breach => getBreachCardInstanceZone(g, owner.id, breach.index)),
+      ]
+      const source = sources.find(zone => zone.instanceIds.includes(pending.instanceId!))
+      if (!source) {
+        messages.push('The cast spell is no longer available to place into the Vortex')
+        continue
+      }
+      const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
+      const index = source.instanceIds.indexOf(pending.instanceId)
+      moveCardBetweenZones(g, source, index, vortex, 0, 'effect', { reveal: true })
+      messages.push(`Placed ${getCard(pending.cardId).name} into the Vortex`)
       continue
     }
 
@@ -1914,6 +2155,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         cardId, cardType: 'minion', placedAt, instanceId: removed.instanceId,
         enteredOnNemesisTurn: g.nemesis.nemesisTurnNumber,
         lifeTokens: definition.life ?? 0,
+        ...(definition.displayRow ? { displayRow: definition.displayRow } : {}),
         ...(definition.nemesisTokens != null ? { nemesisTokens: definition.nemesisTokens } : {}),
       })
       recordCardMove(g, removed.instanceId, cardId,
@@ -2212,9 +2454,15 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'deal_player_damage') {
-      const targets = effect.target === 'doom_owner'
+      let targets = effect.target === 'doom_owner'
         ? getSelectedDamagePlayerTargets(g, currentPlayerId, effect.target, effect.selection)
         : getEffectPlayerTargets(g, resolution, currentPlayerId, effect.target, effect.selection)
+      if (effect.preferTargetWithCardNamesInHand?.length) {
+        const eligibleTargets = targets.filter(target => getPlayer(g, target.playerId).hand.some(cardId =>
+          effect.preferTargetWithCardNamesInHand!.includes(getCard(cardId).name),
+        ))
+        if (eligibleTargets.length > 0) targets = eligibleTargets
+      }
       if (targets.length === 0) {
         messages.push('No valid player damage target')
         continue
@@ -2619,7 +2867,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
         messages.push('No source Minion is in play')
         continue
       }
+      const before = Math.max(0, minion.lifeTokens ?? 0)
       minion.lifeTokens = Math.max(0, effect.base + emptyMarketPileCount(g) * effect.amountPerEmptyMarketPile)
+      recordHealthChange(g, {
+        kind: 'healing',
+        targetId: `minion:${minion.placedAt}`,
+        amount: Math.max(0, minion.lifeTokens - before),
+      })
       messages.push(`${getCard(minion.cardId).name} gains ${minion.lifeTokens} life`)
       continue
     }
@@ -3086,15 +3340,20 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'choose_optional') {
-      if (effect.skipIfUnavailable && !optionalCardSelectionAvailable(g, currentPlayerId, effect.effects)) {
+      if (effect.skipIfUnavailable && (
+        !optionalEffectAvailable(g, currentPlayerId, effect.effects, resolution.sourcePlayerId ?? currentPlayerId) ||
+        (effect.acceptCondition !== undefined &&
+          !conditionMatches(g, currentPlayerId, effect.acceptCondition, resolution))
+      )) {
         resolution.lastOptionalAccepted = false
-        messages.push('No eligible card is available for this effect')
+        messages.push('This optional effect is unavailable')
         continue
       }
       const acceptDisabled = Boolean(
         (effect.acceptCondition !== undefined &&
           !conditionMatches(g, currentPlayerId, effect.acceptCondition, resolution)) ||
-        (effect.disableIfUnavailable && !optionalCardSelectionAvailable(g, currentPlayerId, effect.effects)),
+        (effect.disableIfUnavailable &&
+          !optionalEffectAvailable(g, currentPlayerId, effect.effects, resolution.sourcePlayerId ?? currentPlayerId)),
       )
       const decision = createDecision(g, effect.prompt, 'choose_optional',
         {
@@ -3306,6 +3565,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         breachIndex: choice.breachIndex,
         spellIndex: choice.spellIndex,
         cardId: choice.cardId,
+        instanceId: breach.preppedSpellInstanceIds?.[choice.spellIndex],
         discard: effect.discard !== false && !effect.returnToCasterHand && !(breach.special === 'transfer' && breach.opened),
         transferToAlly: !effect.returnToCasterHand && breach.special === 'transfer' && breach.opened,
         returnToCasterHand: effect.returnToCasterHand,
