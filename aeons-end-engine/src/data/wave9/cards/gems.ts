@@ -134,6 +134,7 @@ export const iceDustedJewel = makeGem('ice_dusted_jewel', 'Ice-Dusted Jewel', 3,
       {
         id: 'aether_and_pulse',
         label: 'Gain 2 Aether and 1 Pulse token',
+        autoSelectIfSoleAvailable: true,
         effects: [
           { kind: 'gain_aether', amount: 2 },
           { kind: 'gain_pulse_token', amount: 1 },

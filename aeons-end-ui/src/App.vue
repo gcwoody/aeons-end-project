@@ -301,7 +301,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
-            <div class="help-row"><kbd>Space</kbd><span>Confirm a decision when its Confirm button is available, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise confirm an available decision, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 

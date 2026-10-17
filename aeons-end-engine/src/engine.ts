@@ -61,7 +61,8 @@ import {
   createCardInstance, ensureCardInstanceZone, insertCardInstanceAt, markCardInstanceRevealed,
 } from './engine/card-instances'
 import {
-  createCardInZone, destroyCardFromZone, drawPlayerCardsToHand, getBreachCardInstanceZone,
+  createCardInZone, destroyCardFromZone, drawPlayerCardsToHand, ensurePendingSpellCastInstanceId,
+  getBreachCardInstanceZone,
   getBreachAttachedRelicZone, getNemesisCardInstanceZone, getNemesisCardStackZone, getPlayerCardInstanceZone, getSharedDevelopCardInstanceZone,
   moveCardBetweenZones, placeTemporaryCardInZone,
 } from './engine/card-movement'
@@ -86,7 +87,7 @@ export {
   isSpecificDeckCardRevealed, returnNemesisDiscardCardToDeck,
 } from './engine/zones'
 export {
-  getAllRemainingConditional, getConditionalAetherByType, getRemainingConditionalAether, getTotalAether,
+  getAllRemainingConditional, getConditionalAetherByType, getRemainingConditionalAether, getSpendableAether, getTotalAether,
 } from './engine/aether'
 export type { SpendType } from './engine/aether'
 export type { NemesisDiscardAction } from './engine/nemesis-turn'
@@ -973,6 +974,10 @@ function spellBreachDamageBonus(breach: PlayerState['breaches'][number]): number
 }
 
 function applySpellDamageBonus(resolution: PendingEffectResolution, amount: number): number {
+  if (resolution.pendingSpellCast) {
+    resolution.pendingSpellCast.damageInstancesResolved =
+      (resolution.pendingSpellCast.damageInstancesResolved ?? 0) + 1
+  }
   const breachBonus = resolution.spellDamageBonus ?? 0
   const additionalBonus = resolution.spellAdditionalDamageBonus ?? 0
   if (additionalBonus > 0) {
@@ -1167,15 +1172,21 @@ function resetBreachToStartingPosition(breach: BreachState): void {
  * damage calculations can still identify the original Breach. */
 function discardPendingSpellCast(g: GameState, resolution: PendingEffectResolution): void {
   const pending = resolution.pendingSpellCast
-  if (!pending || !pending.discard) return
+  if (!pending) return
 
   const owner = getPlayer(g, pending.playerId)
   const breach = owner.breaches.find(item => item.index === pending.breachIndex)
-  if (breach?.prepSpells[pending.spellIndex] !== pending.cardId) return
-
+  if (!breach) return
   const source = getBreachCardInstanceZone(g, owner.id, breach.index)
+  const instanceId = ensurePendingSpellCastInstanceId(g, pending)
+  if (!pending.discard) return
+  const spellIndex = instanceId
+    ? source.instanceIds.indexOf(instanceId)
+    : pending.spellIndex
+  if (spellIndex < 0 || source.cards[spellIndex] !== pending.cardId) return
+
   const discard = getPlayerCardInstanceZone(g, owner.id, 'discard')
-  moveCardBetweenZones(g, source, pending.spellIndex, discard, 0, 'cast_spell')
+  moveCardBetweenZones(g, source, spellIndex, discard, 0, 'cast_spell')
 }
 
 function describeSimultaneousEffect(effect: CardEffect): string {
@@ -1471,6 +1482,7 @@ export function drawCardsForPlayer(g: GameState, playerId: string, amount: numbe
 function dealNemesisTargetDamage(
   g: GameState, resolution: PendingEffectResolution, target: DamageTargetRef, amount: number,
 ): string {
+  ensurePendingSpellCastInstanceId(g, resolution.pendingSpellCast)
   const minion = target.kind === 'minion'
     ? g.nemesis.playArea.find(card => card.cardType === 'minion' && card.placedAt === target.placedAt)
     : undefined
@@ -2296,6 +2308,7 @@ export interface DecisionResolutionServices {
   getCardChoices: typeof getCardChoices
   getExhaustBreachChoices: typeof getExhaustBreachChoices
   getMarketCardCost: typeof getMarketCardCost
+  getNemesisDefinition: typeof getNemesisDefinition
   getPreppedSpellCost: typeof getPreppedSpellCost
   getSupplyPileGainEffects: typeof getSupplyPileGainEffects
   losePulseTokens: typeof losePulseTokens
@@ -2357,6 +2370,7 @@ const resolvePendingDecisionWithServices = createDecisionResolver({
   getCardChoices,
   getExhaustBreachChoices,
   getMarketCardCost,
+  getNemesisDefinition,
   getPreppedSpellCost,
   getSupplyPileGainEffects,
   losePulseTokens,
@@ -2519,8 +2533,10 @@ export function castSpell(g: GameState, playerId: string, breachIndex: number, s
   const name = cardDef.name
 
   const messages = [`Cast ${name}`]
+  const instanceId = getBreachCardInstanceZone(g, playerId, breachIndex).instanceIds[spellIndex]
   const pending: PendingSpellCast = {
     playerId, casterPlayerId: playerId, breachIndex, spellIndex, cardId,
+    instanceId,
     discard: !(b.special === 'transfer' && b.opened),
     transferToAlly: b.special === 'transfer' && b.opened,
     faceDown,
@@ -2543,9 +2559,10 @@ export function castSpell(g: GameState, playerId: string, breachIndex: number, s
   const directEffects = [
     ...spellEffects,
     ...resolveSimultaneousEffectGroups(breachOnCastEffects(g, p, b, playerId, castContext)),
+    { kind: 'resolve_spell_damage_bonus' } satisfies CardEffect,
   ]
   if (pending.transferToAlly) directEffects.push({ kind: 'place_cast_spell_in_ally_hand' })
-  if (pending.transferToAlly) directEffects.push({ kind: 'finalize_spell_cast' })
+  directEffects.push({ kind: 'finalize_spell_cast' })
   messages.push(...resolveEffects(g, playerId, directEffects, cardDef.id, spellDamageBonus, undefined, false, pending))
   return messages.join('; ')
 }

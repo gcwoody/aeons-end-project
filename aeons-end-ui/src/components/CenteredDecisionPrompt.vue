@@ -9,9 +9,11 @@ const props = withDefaults(defineProps<{
   title: string
   message?: string
   previewCardIds?: string[]
+  highlightedPreviewCardId?: string
 }>(), {
   message: '',
   previewCardIds: () => [],
+  highlightedPreviewCardId: '',
 })
 
 const previewCards = computed(() => props.previewCardIds.map(cardId => ({
@@ -42,6 +44,7 @@ const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
         size="large"
         :card-id="card.cardId"
         :image-alt="card.cardName"
+        :class="card.cardId === highlightedPreviewCardId ? ['game-highlight', 'game-highlight--choice'] : undefined"
       />
     </div>
     <slot />

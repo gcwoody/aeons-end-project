@@ -7,6 +7,7 @@ const props = defineProps<{
   cardId: string
   ariaLabel: string
   primaryEnabled?: boolean
+  available?: boolean
   displayClass?: string
 }>()
 
@@ -26,9 +27,9 @@ function inspect(event: MouseEvent) {
     <button
       type="button"
       class="face-up-pile-card"
-      :class="[displayClass, { 'is-primary-action': primaryEnabled }]"
+      :class="[displayClass, { 'is-primary-action': primaryEnabled, 'game-highlight': available, 'game-highlight--available': available }]"
       :aria-label="ariaLabel"
-      @click="emit('primary')"
+      @click.stop="emit('primary')"
       @contextmenu="inspect"
     >
       <img v-if="cardImageUrl(cardId)" :src="cardImageUrl(cardId)" :alt="getCard(cardId).name" draggable="false" />

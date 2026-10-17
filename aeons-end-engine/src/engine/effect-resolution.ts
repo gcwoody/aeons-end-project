@@ -14,7 +14,8 @@ import {
   removeCardInstanceAt, resetCardInstancesAfterShuffle,
 } from './card-instances'
 import {
-  createCardInZone, destroyCardFromZone, getBreachCardInstanceZone, getNemesisCardStackZone,
+  createCardInZone, destroyCardFromZone, ensurePendingSpellCastInstanceId,
+  getBreachCardInstanceZone, getNemesisCardStackZone,
   drawPlayerCardsToHand, getNemesisCardInstanceZone, getPlayerCardInstanceZone, moveCardBetweenZones,
   placeTemporaryCardInZone, recordCardDestruction, recordCardMove, recordCardShuffle, recordCardTemporary,
 } from './card-movement'
@@ -123,6 +124,8 @@ export function createEffectResolver(services: EffectResolutionServices) {
     MAGES,
     MAX_PULSE_TOKENS
   } = services
+  const specificDeckName = (g: GameState) =>
+    getNemesisDefinition(g.nemesis.definitionId)?.specificDeckName ?? 'Nemesis specific deck'
 
   return function runEffectResolution(
   g: GameState, resolution: PendingEffectResolution,
@@ -134,6 +137,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
       ? resolution.pendingSpellCast.playerId
       : resolution.sourcePlayerId
   }
+  ensurePendingSpellCastInstanceId(g, resolution.pendingSpellCast)
   discardPendingSpellCast(g, resolution)
 
   // Stop a compound effect as soon as any of its steps ends the game. Without
@@ -145,11 +149,24 @@ export function createEffectResolver(services: EffectResolutionServices) {
     const p = getPlayer(g, currentPlayerId)
 
     if (effect.kind === 'restore_effect_context') {
+      const currentSpellCast = resolution.pendingSpellCast
       resolution.sourcePlayerId = effect.sourcePlayerId
       resolution.sourceCardOwnerId = effect.sourceCardOwnerId
       resolution.sourceCardId = effect.sourceCardId
       resolution.effectPlayerId = effect.effectPlayerId
       resolution.pendingSpellCast = effect.pendingSpellCast ? { ...effect.pendingSpellCast } : undefined
+      if (effect.preserveSpellDamageState && currentSpellCast && resolution.pendingSpellCast &&
+        currentSpellCast.playerId === resolution.pendingSpellCast.playerId &&
+        currentSpellCast.cardId === resolution.pendingSpellCast.cardId &&
+        currentSpellCast.breachIndex === resolution.pendingSpellCast.breachIndex &&
+        currentSpellCast.spellIndex === resolution.pendingSpellCast.spellIndex &&
+        currentSpellCast.instanceId === resolution.pendingSpellCast.instanceId) {
+        resolution.pendingSpellCast.damageInstancesResolved = Math.max(
+          currentSpellCast.damageInstancesResolved ?? 0,
+          resolution.pendingSpellCast.damageInstancesResolved ?? 0,
+        )
+      }
+      ensurePendingSpellCastInstanceId(g, resolution.pendingSpellCast)
       if (!effect.preserveSpellDamageState) {
         resolution.spellDamageBonus = effect.spellDamageBonus
         resolution.spellAdditionalDamageBonus = effect.spellAdditionalDamageBonus
@@ -1440,11 +1457,12 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'move_cards_to_nemesis_specific_deck') {
+      const deckName = specificDeckName(g)
       const blocked = g.nemesis.playArea.some(card =>
         (getCard(card.cardId) as NemesisCardDef).blocksPlacementIntoSpecificDeck === true,
       )
       if (blocked) {
-        messages.push('Cards cannot be placed into the Nemesis specific deck right now')
+        messages.push(`Cards cannot be placed into the ${deckName} right now`)
         continue
       }
       const candidates = getCardChoices(g, currentPlayerId, effect.source).filter(choice =>
@@ -1455,15 +1473,15 @@ export function createEffectResolver(services: EffectResolutionServices) {
       const maximum = Math.min(Math.max(0, effect.maxAmount), candidates.length)
       const minimum = Math.min(Math.max(0, effect.minAmount), maximum)
       if (maximum === 0) {
-        messages.push('No eligible card is available to place into the Nemesis specific deck')
+        messages.push(`No eligible card is available to place into the ${deckName}`)
         continue
       }
       if (minimum !== maximum || candidates.length > minimum || maximum > 1) {
         const decision = createDecision(
           g,
           minimum === maximum
-            ? `Choose ${minimum} card(s) to place into the Nemesis specific deck`
-            : `Choose up to ${maximum} card(s) to place into the Nemesis specific deck`,
+            ? `Choose ${minimum} card(s) to place into the ${deckName}`
+            : `Choose up to ${maximum} card(s) to place into the ${deckName}`,
           'select_cards',
           { source: effect.source, candidates, min: minimum, max: maximum },
           resolution.sourceCardId,
@@ -1474,7 +1492,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
       const source = getPlayerCardInstanceZone(g, currentPlayerId, candidates[0]!.zone)
       const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
       const moved = moveCardBetweenZones(g, source, candidates[0]!.index, vortex, 0, 'effect', { reveal: true })
-      if (moved) messages.push(`Placed ${getCard(moved.cardId).name} into the Nemesis specific deck`)
+      if (moved) messages.push(`Placed ${getCard(moved.cardId).name} into the ${deckName}`)
       continue
     }
 
@@ -1530,7 +1548,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
     if (effect.kind === 'gain_nemesis_specific_deck_cards') {
       if (effect.recipient === 'choose' && !resolution.selectedActionPlayerId) {
         const targets = g.players.map(player => ({ kind: 'player' as const, playerId: player.id }))
-        const decision = createDecision(g, 'Choose a player to gain cards from the Nemesis specific deck',
+        const decision = createDecision(g, `Choose a player to gain cards from the ${specificDeckName(g)}`,
           'select_player_target', { targets }, resolution.sourceCardId)
         messages.push(...pauseEffect(g, resolution, effect, decision))
         return messages
@@ -1562,9 +1580,9 @@ export function createEffectResolver(services: EffectResolutionServices) {
         const recipient = getPlayer(g, resolution.selectedActionPlayerId!)
         resolution.effectPlayerId = recipient.id
         resolution.selectedActionPlayerId = undefined
-        messages.push(`${recipient.mageType} gains ${count} card(s) from the Nemesis specific deck`)
+        messages.push(`${recipient.mageType} gains ${count} card(s) from the ${specificDeckName(g)}`)
       } else {
-        messages.push(`Players gain ${count} card(s) from the Nemesis specific deck`)
+        messages.push(`Players gain ${count} card(s) from the ${specificDeckName(g)}`)
       }
       continue
     }
@@ -1581,12 +1599,12 @@ export function createEffectResolver(services: EffectResolutionServices) {
         cardId, instanceId,
       }))
       if (cards.length === 0) {
-        messages.push('No cards are available in the Nemesis specific deck to distribute')
+        messages.push(`No cards are available in the ${specificDeckName(g)} to distribute`)
         continue
       }
       const decision = createDecision(
         g,
-        `Distribute ${cards.length} card(s) from the Nemesis specific deck among the players`,
+        `Distribute ${cards.length} card(s) from the ${specificDeckName(g)} among the players`,
         'distribute_cards',
         {
           source: 'nemesis_specific_deck',
@@ -1608,7 +1626,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         const cardId = destroyCardFromZone(g, vortex, index)
         if (cardId) destroyed.push(cardId)
       }
-      messages.push(`Destroyed ${destroyed.length} card(s) from the Nemesis specific deck`)
+      messages.push(`Destroyed ${destroyed.length} card(s) from the ${specificDeckName(g)}`)
       continue
     }
 
@@ -3323,6 +3341,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
         else messages.push('No effect option is currently available')
         continue
       }
+      if (availableOptionIds.size === 1) {
+        const onlyAvailableOption = effect.options.find(option => availableOptionIds.has(option.id))
+        if (onlyAvailableOption?.autoSelectIfSoleAvailable) {
+          addRemainingEffects(resolution, onlyAvailableOption.effects)
+          continue
+        }
+      }
       const options: CardEffectOption[] = effect.options
       const decision = createDecision(g, effect.prompt, 'choose_one',
         {
@@ -3414,9 +3439,23 @@ export function createEffectResolver(services: EffectResolutionServices) {
       continue
     }
 
-  if (effect.kind === 'resolve_spell_damage_bonus') {
+    if (effect.kind === 'resolve_spell_damage_bonus') {
+      const pending = resolution.pendingSpellCast
+      const bonus = (resolution.spellDamageBonus ?? 0) + (resolution.spellAdditionalDamageBonus ?? 0)
+      // A chosen Cast branch can contain no damage effect at all. Treat that
+      // cast as one zero-base damage instance so its Breach/other cast bonus
+      // still resolves through the regular target and damage rules.
+      if (pending && !pending.fallbackDamageAttempted &&
+        (pending.damageInstancesResolved ?? 0) === 0 && bonus > 0) {
+        pending.fallbackDamageAttempted = true
+        addRemainingEffects(resolution, [
+          { kind: 'deal_damage', amount: 0, target: 'nemesis_or_minion' },
+          effect,
+        ])
+        continue
+      }
       // Damage bonuses modify damage explicitly dealt by the spell. They do
-      // not create a new zero-base damage event or target-selection step.
+      // not create a second damage event if the spell already resolved one.
       resolution.spellDamageBonus = undefined
       resolution.spellAdditionalDamageBonus = undefined
       resolution.effectPlayerId = undefined
@@ -3452,17 +3491,21 @@ export function createEffectResolver(services: EffectResolutionServices) {
       if (pending) {
         const owner = getPlayer(g, pending.playerId)
         const breach = owner.breaches.find(item => item.index === pending.breachIndex)
-        if ((pending.transferToAlly || pending.returnToCasterHand) &&
-          breach?.prepSpells[pending.spellIndex] === pending.cardId) {
-          const instanceId = breach.preppedSpellInstanceIds?.[pending.spellIndex] ?? null
+        if ((pending.transferToAlly || pending.returnToCasterHand) && breach) {
           const source = getBreachCardInstanceZone(g, pending.playerId, pending.breachIndex)
-          const destinationPlayerId = pending.transferToAlly
-            ? pending.destinationPlayerId ?? pending.playerId
-            : pending.casterPlayerId ?? pending.playerId
-          const hand = getPlayerCardInstanceZone(g, destinationPlayerId, 'hand')
-          moveCardBetweenZones(g, source, pending.spellIndex, hand, hand.cards.length, 'return', {
-            handPreppedSpellInstanceId: instanceId,
-          })
+          const instanceId = ensurePendingSpellCastInstanceId(g, pending) ?? null
+          const spellIndex = instanceId
+            ? source.instanceIds.indexOf(instanceId)
+            : pending.spellIndex
+          if (spellIndex >= 0 && source.cards[spellIndex] === pending.cardId) {
+            const destinationPlayerId = pending.transferToAlly
+              ? pending.destinationPlayerId ?? pending.playerId
+              : pending.casterPlayerId ?? pending.playerId
+            const hand = getPlayerCardInstanceZone(g, destinationPlayerId, 'hand')
+            moveCardBetweenZones(g, source, spellIndex, hand, hand.cards.length, 'return', {
+              handPreppedSpellInstanceId: instanceId,
+            })
+          }
         }
       }
       const continuedSelection = resolution.preppedSpellSelectionStack?.pop()
@@ -3559,18 +3602,20 @@ export function createEffectResolver(services: EffectResolutionServices) {
       // changed effectPlayerId to a target Mage.
       const casterPlayerId = resolution.sourcePlayerId ?? effectPlayerId(g, resolution)
       const outerContext = captureEffectContext(resolution)
+      const source = getBreachCardInstanceZone(g, choice.playerId, choice.breachIndex)
       resolution.pendingSpellCast = {
         playerId: choice.playerId,
         casterPlayerId,
         breachIndex: choice.breachIndex,
         spellIndex: choice.spellIndex,
         cardId: choice.cardId,
-        instanceId: breach.preppedSpellInstanceIds?.[choice.spellIndex],
+        instanceId: source.instanceIds[choice.spellIndex],
         discard: effect.discard !== false && !effect.returnToCasterHand && !(breach.special === 'transfer' && breach.opened),
         transferToAlly: !effect.returnToCasterHand && breach.special === 'transfer' && breach.opened,
         returnToCasterHand: effect.returnToCasterHand,
         faceDown,
       }
+      ensurePendingSpellCastInstanceId(g, resolution.pendingSpellCast)
       resolution.sourcePlayerId = casterPlayerId
       resolution.sourceCardOwnerId = choice.playerId
       resolution.sourceCardId = choice.cardId

@@ -3,13 +3,15 @@
  * the card or board object itself, then choose exactly one semantic tone.
  * The pseudo-element sits above artwork without changing its dimensions.
  */
-.game-highlight {
+.game-highlight,
+.player-card-hover-feedback {
   --game-highlight-color: transparent;
   --game-highlight-layer: 1;
   position: relative;
   isolation: isolate;
 }
-.game-highlight::after {
+.game-highlight::after,
+.player-card-hover-feedback::after {
   content: '';
   position: absolute;
   inset: 0;
@@ -18,6 +20,44 @@
   border: var(--game-highlight-width) solid var(--game-highlight-color);
   border-radius: inherit;
   pointer-events: none;
+}
+
+/* Every highlighted card surface uses the same neutral hover darkening. Keep
+   the list scoped to card classes so Breaches, Mage/Nemesis mats, and other
+   highlighted board targets retain their own hover treatment. */
+:is(
+  .game-highlight.card,
+  .game-highlight.pile,
+  .game-highlight.market-set-card-overlay,
+  .game-highlight.face-up-pile-card,
+  .game-highlight.player-pile-card,
+  .game-highlight.breach-spell-card-frame,
+  .game-highlight.centered-decision-preview-card,
+  .game-highlight.market-slot-card,
+  .game-highlight.market-picker-card,
+  .game-highlight.mage-picker-card,
+  .game-highlight.nemesis-picker-card,
+  .game-highlight.debug-card-option
+)::after,
+.player-card-hover-feedback::after {
+  transition: background-color 120ms ease;
+}
+:is(
+  .game-highlight.card,
+  .game-highlight.pile,
+  .game-highlight.market-set-card-overlay,
+  .game-highlight.face-up-pile-card,
+  .game-highlight.player-pile-card,
+  .game-highlight.breach-spell-card-frame,
+  .game-highlight.centered-decision-preview-card,
+  .game-highlight.market-slot-card,
+  .game-highlight.market-picker-card,
+  .game-highlight.mage-picker-card,
+  .game-highlight.nemesis-picker-card,
+  .game-highlight.debug-card-option
+):hover::after,
+.player-card-hover-feedback:hover::after {
+  background-color: rgba(0, 0, 0, .14);
 }
 
 .game-highlight--context { --game-highlight-color: var(--game-highlight-context); }

@@ -43,7 +43,14 @@ const selectedTokenAmount = ref(0)
 
 const decision = computed(() => {
   const current = state.game?.pendingDecision ?? null
-  return current && state.pendingPlayCardDecisionRelease?.decisionId === current.id ? null : current
+  if (!current || state.pendingPlayCardDecisionRelease?.decisionId === current.id) return null
+  const pendingEffect = state.game?.pendingEffect
+  if (pendingEffect?.awaiting?.kind === 'resolve_mage_form_supply_gain') {
+    const displayPlayerId = pendingEffect.effectPlayerId ?? pendingEffect.sourcePlayerId
+    if (state.cardMotionBatchActive ||
+      (displayPlayerId && state.selectedPlayer !== displayPlayerId)) return null
+  }
+  return current
 })
 const immediatePreppedSpellCast = computed(isImmediatePreppedSpellCast)
 const decisionFormPreview = computed(() => {
@@ -78,6 +85,9 @@ const isDirectMarketDecision = computed(() =>
 const marketDecisionPreviewCardIds = computed(() => decision.value?.kind === 'select_setup_supply_replacement'
   ? decision.value.previewCardIds ?? [decision.value.replacementCardId]
   : [])
+const highlightedMarketDecisionPreviewCardId = computed(() =>
+  decision.value?.kind === 'select_setup_supply_replacement' ? decision.value.replacementCardId : undefined,
+)
 const marketDecisionMessage = computed(() => decision.value?.kind === 'select_setup_supply_replacement'
   ? 'Select a highlighted Supply pile in the Market. The cards shown here will replace your choice.'
   : 'Select a highlighted supply pile directly in the Market.')
@@ -596,8 +606,18 @@ function onDecisionKeydown(event: KeyboardEvent) {
   if (state.helpOpen || state.viewPile || state.exitPrompt || state.debugOpen) return
   if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]')) return
 
-  const confirmButton = Array.from(modalEl.value?.querySelectorAll<HTMLButtonElement>('button') ?? [])
-    .find(button => button.textContent?.replace(/\s+/g, ' ').trim() === 'Confirm')
+  const modalButtons = Array.from(modalEl.value?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+  const label = (button: HTMLButtonElement) => button.textContent?.replace(/\s+/g, ' ').trim().toLowerCase()
+  const yesButton = modalButtons.find(button => label(button) === 'yes')
+  const noButton = modalButtons.find(button => label(button) === 'no')
+  if (yesButton && noButton) {
+    event.preventDefault()
+    if (event.repeat || yesButton.disabled) return
+    yesButton.click()
+    return
+  }
+
+  const confirmButton = modalButtons.find(button => label(button) === 'confirm')
   if (!confirmButton) return
 
   event.preventDefault()
@@ -657,6 +677,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     :title="decisionPrompt(decision?.prompt ?? '')"
     :message="marketDecisionMessage"
     :preview-card-ids="marketDecisionPreviewCardIds"
+    :highlighted-preview-card-id="highlightedMarketDecisionPreviewCardId"
   />
 
   <ModalBase

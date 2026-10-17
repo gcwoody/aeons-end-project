@@ -255,7 +255,7 @@
   aspect-ratio: var(--card-aspect-ratio);
   margin: 14px auto;
   border: var(--pixel-border-width) solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--card-radius);
   overflow: hidden;
   background: #151a29;
 }
@@ -399,7 +399,7 @@
   transform: translateY(0) scale(1);
 }
 .prepped-spell-option { display: flex; align-items: center; gap: 10px; text-align: left; }
-.prepped-spell-option img { width: 42px; height: auto; aspect-ratio: var(--card-aspect-ratio); object-fit: cover; border-radius: 4px; }
+.prepped-spell-option img { width: 42px; height: auto; aspect-ratio: var(--card-aspect-ratio); object-fit: cover; border-radius: calc(var(--card-radius) - var(--pixel-border-width)); }
 .decision-card-zone {
   /* Keep every source area aligned to a five-card row, even when the last
      row currently contains fewer cards. */
@@ -475,7 +475,7 @@
   /* Unselected cards show only their artwork. Selected and rule-highlighted
      states add their own colored border below. */
   border: var(--pixel-border-width) solid transparent;
-  border-radius: 7px;
+  border-radius: var(--card-radius);
   cursor: pointer;
 }
 .decision-card-choice img {
@@ -483,7 +483,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: inherit;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
 }
 .decision-card-choice.selected {
   z-index: var(--z-card-hover);
@@ -527,7 +527,7 @@
   width: 252px;
   height: auto;
   aspect-ratio: var(--card-aspect-ratio);
-  border-radius: 8px;
+  border-radius: var(--card-radius);
 }
 .card-selection-panel.large-cards .decision-card-sort-row > .decision-card-choice {
   flex-basis: 252px;
@@ -570,7 +570,7 @@
   width: 252px;
   height: auto;
   aspect-ratio: var(--card-aspect-ratio);
-  border-radius: 8px;
+  border-radius: var(--card-radius);
 }
 @media (max-width: 840px) {
   .decision-modal.mage-ability-modal {

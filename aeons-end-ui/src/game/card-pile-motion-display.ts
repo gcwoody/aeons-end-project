@@ -7,6 +7,11 @@ export interface CardPileCountOverride {
 
 export type CardPileCountOverrides = Record<string, CardPileCountOverride>
 
+export interface CardPileMotionDisplayBaseline {
+  counts: Readonly<Record<string, number>>
+  motionId: number
+}
+
 export interface CardPileMotionRoute {
   instanceId: string
   cardId: string
@@ -74,6 +79,33 @@ export function captureCardPileCounts(game: GameState): Record<string, number> {
   return counts
 }
 
+/** Keep every displayed pile at its action-start count until its motion is prepared. */
+export function holdCardPileMotionDisplay(
+  access: CardPileMotionDisplayAccess,
+  game: GameState,
+): CardPileMotionDisplayBaseline {
+  const counts = captureCardPileCounts(game)
+  const motionId = ++nextMotionId
+  const overrides = { ...access.get() }
+  for (const [zoneId, count] of Object.entries(counts)) {
+    overrides[zoneId] = { count, motionId }
+  }
+  access.set(overrides)
+  return { counts, motionId }
+}
+
+/** Release a pre-action hold when its action cannot reach a motion session. */
+export function releaseCardPileMotionDisplayBaseline(
+  access: CardPileMotionDisplayAccess,
+  baseline: CardPileMotionDisplayBaseline,
+): void {
+  const overrides = { ...access.get() }
+  for (const zoneId of Object.keys(baseline.counts)) {
+    if (overrides[zoneId]?.motionId === baseline.motionId) delete overrides[zoneId]
+  }
+  access.set(overrides)
+}
+
 function normalizedFlows(events: readonly CardMoveEvent[]): CardPileMotionFlow[] {
   const byInstance = new Map<string, TrackedCardMoveEvent[]>()
   for (const event of events) {
@@ -123,6 +155,7 @@ export function createCardPileMotionDisplaySession(
   finalCounts: Readonly<Record<string, number>>,
   animatedInstanceIds: ReadonlySet<string>,
   extraRoutes: readonly CardPileMotionRoute[] = [],
+  baseline?: CardPileMotionDisplayBaseline,
 ): CardPileMotionDisplaySession {
   const motionId = ++nextMotionId
   const flows = routeFlows(events, extraRoutes)
@@ -134,7 +167,7 @@ export function createCardPileMotionDisplaySession(
   const appliedArrival = new Set<string>()
 
   const adjustDelta = (zoneId: string | undefined, amount: number) => {
-    if (!zoneId || finalCounts[zoneId] === undefined) return
+    if (!zoneId || (finalCounts[zoneId] === undefined && baseline?.counts[zoneId] === undefined)) return
     affectedZones.add(zoneId)
     netDelta.set(zoneId, (netDelta.get(zoneId) ?? 0) + amount)
   }
@@ -144,7 +177,9 @@ export function createCardPileMotionDisplaySession(
     adjustDelta(flow.destinationZoneId, 1)
   }
   for (const zoneId of affectedZones) {
-    projected.set(zoneId, Math.max(0, (finalCounts[zoneId] ?? 0) - (netDelta.get(zoneId) ?? 0)))
+    const initialCount = baseline?.counts[zoneId] ??
+      (finalCounts[zoneId] ?? 0) - (netDelta.get(zoneId) ?? 0)
+    projected.set(zoneId, Math.max(0, initialCount))
   }
 
   const publish = () => {
@@ -153,6 +188,13 @@ export function createCardPileMotionDisplaySession(
       const count = projected.get(zoneId)
       if (count === undefined) continue
       overrides[zoneId] = { count, motionId }
+    }
+    if (baseline) {
+      for (const zoneId of Object.keys(baseline.counts)) {
+        if (!affectedZones.has(zoneId) && overrides[zoneId]?.motionId === baseline.motionId) {
+          delete overrides[zoneId]
+        }
+      }
     }
     access.set(overrides)
   }
@@ -185,6 +227,11 @@ export function createCardPileMotionDisplaySession(
       const overrides = { ...access.get() }
       for (const zoneId of affectedZones) {
         if (overrides[zoneId]?.motionId === motionId) delete overrides[zoneId]
+      }
+      if (baseline) {
+        for (const zoneId of Object.keys(baseline.counts)) {
+          if (overrides[zoneId]?.motionId === baseline.motionId) delete overrides[zoneId]
+        }
       }
       access.set(overrides)
     },

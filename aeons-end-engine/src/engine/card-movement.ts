@@ -1,5 +1,6 @@
 import type {
   CardChoice, CardMoveAuditIssue, CardMoveEvent, CardMoveReason, CardMoveZone, CardMoveZoneAddress,
+  PendingSpellCast,
   GameState, PlayerState,
 } from '../types'
 import { getCard } from '../data'
@@ -231,6 +232,26 @@ export function getBreachCardInstanceZone(
       breach.preppedSpellFaceDown?.splice(index, 1)
     },
   }
+}
+
+/** Recover the physical card identity for a prepped spell cast when older or
+ * incomplete callers did not attach it to the pending cast metadata. */
+export function ensurePendingSpellCastInstanceId(
+  game: GameState,
+  pending: PendingSpellCast | undefined,
+): string | undefined {
+  if (!pending) return undefined
+  if (pending.instanceId) return pending.instanceId
+  if (pending.breachIndex < 0 || pending.spellIndex < 0) return undefined
+
+  const player = game.players.find(candidate => candidate.id === pending.playerId)
+  const breach = player?.breaches.find(candidate => candidate.index === pending.breachIndex)
+  if (!player || !breach || breach.prepSpells[pending.spellIndex] !== pending.cardId) return undefined
+
+  const source = getBreachCardInstanceZone(game, player.id, breach.index)
+  const instanceId = source.instanceIds[pending.spellIndex]
+  if (instanceId) pending.instanceId = instanceId
+  return instanceId
 }
 
 export function getBreachAttachedRelicZone(

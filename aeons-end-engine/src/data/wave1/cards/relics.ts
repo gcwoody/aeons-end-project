@@ -18,6 +18,7 @@ export const flexingDagger: RelicCard = {
         {
           id: 'destroy_for_damage',
           label: 'Destroy this to deal 1 damage',
+          autoSelectIfSoleAvailable: true,
           effects: [
             { kind: 'destroy_cards', source: 'self' },
             { kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' },
@@ -62,7 +63,7 @@ export const focusingOrb: RelicCard = {
       kind: 'choose_one',
       prompt: 'Choose a Focusing Orb effect',
       options: [
-        { id: 'focus', label: "Focus any player's closed breach", effects: [{ kind: 'focus_breach', target: 'any_player', selection: 'choose' }] },
+        { id: 'focus', label: "Focus any player's closed breach", condition: { kind: 'has_focusable_breach', target: 'any_player' }, effects: [{ kind: 'focus_breach', target: 'any_player', selection: 'choose' }] },
         { id: 'destroy', label: 'Destroy this to let Gravehold gain 3 life', effects: [{ kind: 'destroy_cards', source: 'self' }, { kind: 'gain_life', amount: 3, target: 'gravehold' }] },
       ],
     }],
@@ -94,7 +95,7 @@ export const unstablePrism: RelicCard = {
           condition: { kind: 'has_card_in_hand', cardType: 'gem' },
           effects: [{ kind: 'play_card_from_hand', cardType: 'gem', times: 2, destroy: true }],
         },
-        { id: 'gain_aether', label: 'Gain 2 Aether', effects: [{ kind: 'gain_aether', amount: 2 }] },
+        { id: 'gain_aether', label: 'Gain 2 Aether', autoSelectIfSoleAvailable: true, effects: [{ kind: 'gain_aether', amount: 2 }] },
       ],
     }],
   }],

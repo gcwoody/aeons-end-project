@@ -6,6 +6,7 @@ import {
   resolveCardMotionEasing,
 } from './card-motion-policy'
 import type { CardFlightDestinationMode, CardFlightTiming, PlayerCardZone } from './card-motion-policy'
+import { animateCardFlightPath } from './card-flight-geometry'
 
 export {
   cardZoneFlightDestinationMode,
@@ -50,21 +51,6 @@ export interface CardZoneMotionSnapshot {
     positions: CardRowPositionSnapshot
   }>
   cards: CardZoneMotionCardSnapshot[]
-}
-
-function fitCardFlightToTarget(
-  flight: Pick<CardFlightSnapshot, 'left' | 'top' | 'width' | 'height'>,
-  target: DOMRect,
-) {
-  const scale = Math.min(target.width / flight.width, target.height / flight.height)
-  const fittedLeft = target.left + (target.width - flight.width * scale) / 2
-  const fittedTop = target.top + (target.height - flight.height * scale) / 2
-  return {
-    scaleX: scale,
-    scaleY: scale,
-    translateX: fittedLeft - flight.left,
-    translateY: fittedTop - flight.top,
-  }
 }
 
 export interface CardMoveSourceSnapshot {
@@ -490,21 +476,13 @@ export async function animateCardRevealFlight(
   const flipDuration = resolveCardMotionDuration('--nemesis-draw-flip-duration')
   const flipStartDelay = Math.round(duration * 0.45)
   const easing = resolveCardMotionEasing()
-  const translateX = target.left - left
-  const translateY = target.top - top
-  const scaleX = target.width / width
-  const scaleY = target.height / height
-
   try {
     const revealOverlay = document.querySelector<HTMLElement>('.nemesis-draw-reveal-screen')
     const backdrop = revealOverlay?.animate([
       { opacity: 0 },
       { opacity: 1 },
     ], { duration, easing: 'ease-out', fill: 'forwards' })
-    const movement = scene.animate([
-      { transform: 'translate3d(0, 0, 0) scale(1)' },
-      { transform: `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})` },
-    ], { duration, easing, fill: 'forwards' })
+    const movement = animateCardFlightPath(scene, [card], { left, top, width, height }, target, duration, easing)
     // Collapse the card to its edge, swap the two image layers while hidden,
     // then expand it again. This avoids showing a mirrored card back during
     // the 3D backface turn, and guarantees the face is visible as it opens.
@@ -532,7 +510,7 @@ export async function animateCardRevealFlight(
       { opacity: 1, offset: 1 },
     ], flipOptions)
     await Promise.all([
-      movement.finished,
+      ...movement.map(animation => animation.finished),
       flip.finished,
       hideBack.finished,
       revealFront.finished,
@@ -595,14 +573,17 @@ export async function animateCardFlight(
   document.body.append(clone)
 
   const { duration, easing } = resolveCardFlightTiming(options.timing)
-  const { translateX, translateY, scaleX, scaleY } = fitCardFlightToTarget(flight, target)
 
   let completed = false
   try {
-    await clone.animate([
-      { transform: 'translate3d(0, 0, 0) scale(1)' },
-      { transform: `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})` },
-    ], { duration, easing, fill: 'forwards' }).finished
+    await Promise.all(animateCardFlightPath(
+      clone,
+      [clone, ...clone.querySelectorAll<HTMLElement>('img, .card-flight-flip-face')],
+      flight,
+      target,
+      duration,
+      easing,
+    ).map(animation => animation.finished))
     completed = true
   } catch {
     // Navigation or teardown can cancel a flight; the transient clone is still removed.
@@ -694,7 +675,6 @@ export async function animateCardFlightWithReveal(
   document.body.append(clone)
 
   const { duration, easing } = resolveCardFlightTiming(options.timing)
-  const { translateX, translateY, scaleX, scaleY } = fitCardFlightToTarget(flight, target)
   const flipDuration = Math.min(180, duration * .5)
   const flipOptions: KeyframeAnimationOptions = {
     duration: flipDuration,
@@ -705,10 +685,14 @@ export async function animateCardFlightWithReveal(
 
   let completed = false
   try {
-    const movement = clone.animate([
-      { transform: 'translate3d(0, 0, 0) scale(1)' },
-      { transform: `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})` },
-    ], { duration, easing, fill: 'forwards' })
+    const movement = animateCardFlightPath(
+      clone,
+      [clone, ...clone.querySelectorAll<HTMLElement>('img, .card-flight-flip-face')],
+      flight,
+      target,
+      duration,
+      easing,
+    )
     const flip = face.animate([
       { transform: 'scaleX(1)', offset: 0 },
       { transform: 'scaleX(.015)', offset: .5 },
@@ -726,7 +710,12 @@ export async function animateCardFlightWithReveal(
       { opacity: 1, offset: .53 },
       { opacity: 1, offset: 1 },
     ], flipOptions)
-    await Promise.all([movement.finished, flip.finished, hideBack.finished, showFront.finished])
+    await Promise.all([
+      ...movement.map(animation => animation.finished),
+      flip.finished,
+      hideBack.finished,
+      showFront.finished,
+    ])
     completed = true
   } catch {
     // Navigation or teardown can cancel the flight; the transient clone is still removed.
@@ -817,8 +806,6 @@ export async function animateCardFlightWithFaceDownReveal(
     face.append(back)
     clone.append(face)
   }
-  clone.style.borderRadius = cardFaceRadius
-
   const destinationVisibility = destination.style.visibility
   const destinationMode = resolveCardFlightDestinationMode(destination, options.destinationMode)
   const hideDestination = destinationMode !== 'overlay'
@@ -844,14 +831,17 @@ export async function animateCardFlightWithFaceDownReveal(
   await decodedBack
 
   const { duration, easing } = resolveCardFlightTiming(options.timing)
-  const { translateX, translateY, scaleX, scaleY } = fitCardFlightToTarget(flight, target)
 
   let completed = false
   try {
-    const movement = clone.animate([
-      { transform: 'translate3d(0, 0, 0) scale(1)' },
-      { transform: `translate3d(${translateX}px, ${translateY}px, 0) scale(${scaleX}, ${scaleY})` },
-    ], { duration, easing, fill: 'forwards' })
+    const movement = animateCardFlightPath(
+      clone,
+      [clone, ...clone.querySelectorAll<HTMLElement>('img, .card-flight-flip-face')],
+      flight,
+      target,
+      duration,
+      easing,
+    )
     // Collapse early and exchange faces while edge-on so the card back is
     // shown upright instead of appearing mirrored. Keep the flip short and
     // start it right after the launch so short flights do not feel delayed.
@@ -880,7 +870,7 @@ export async function animateCardFlightWithFaceDownReveal(
       { opacity: 1, offset: 1 },
     ], flipOptions)
     await Promise.all([
-      movement.finished,
+      ...movement.map(animation => animation.finished),
       flip.finished,
       ...(hideFront ? [hideFront.finished] : []),
       showBack.finished,

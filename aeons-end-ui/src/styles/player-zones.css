@@ -99,8 +99,7 @@
 }
 .played-zone-headings {
   position: absolute;
-  /* Keep headings above the hovered zone surface, which is raised to
-     --z-local-hover while a card lifts during Discard Phase. */
+  /* Keep headings above the hovered zone surface during Discard Phase. */
   z-index: calc(var(--z-local-hover) + 1);
   top: 5px;
   right: 0;
@@ -191,7 +190,7 @@
 
 .hand-row {
   position: relative;
-  /* Keep lifted hand cards above the played row and bottom controls. */
+  /* Keep hand cards above the played row and bottom controls. */
   z-index: var(--z-hand-row);
   display: grid;
   --hand-column: 3;
@@ -491,14 +490,12 @@
   flex-wrap: nowrap;
   overflow-x: auto;
   overflow-y: hidden;
-  /* Reserve the horizontal scrollbar gutter before overflow begins. On
-     Chromium/Windows the scrollbar otherwise reduces the card viewport and
-     clips the hover lift at the top edge. */
+  /* Reserve the horizontal scrollbar gutter before overflow begins. */
   scrollbar-gutter: stable;
   min-height: 0;
   min-width: 0;
   max-width: 100%;
-  /* Reserve a few pixels above the cards so their hover lift is not clipped. */
+  /* Keep a small inset above the cards. */
   padding: var(--space-2) var(--space-2) 0 var(--hand-offset, 0px);
   /* Centering is part of the slot FLIP animation. A separate padding
      transition would move its targets while the cards are already sliding. */

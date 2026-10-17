@@ -430,6 +430,10 @@ export interface PendingSpellCast {
   cardId: string
   /** Physical copy identity, retained when an on-Cast rule moves the spell. */
   instanceId?: string
+  /** Damage effects already resolved by this cast, including zero-base effects. */
+  damageInstancesResolved?: number
+  /** Prevent repeated fallback damage if no legal enemy target exists. */
+  fallbackDamageAttempted?: boolean
   discard: boolean
   /** Transfer Breach casts must be placed into an ally's hand after resolving. */
   transferToAlly?: boolean
@@ -693,6 +697,8 @@ export interface CardEffectOption {
   cardId?: string
   /** Optional dynamic rule used to determine whether this choice is available. */
   condition?: CardEffectCondition
+  /** Resolve this option automatically when it is the only available choice. */
+  autoSelectIfSoleAvailable?: boolean
   /** Used only when every option's full-resolution condition fails. Highest rank wins. */
   fallbackPriority?: number
 }
@@ -1336,6 +1342,8 @@ export interface NemesisDef {
   damageOnlyFromCardIds?: string[]
   /** Initial known state of the Nemesis-specific deck. */
   specificDeckVisibility?: 'revealed' | 'hidden'
+  /** Optional player-facing name for this Nemesis' specific deck. */
+  specificDeckName?: string
   /** Runtime rules module that supplies this Nemesis' Unleash sequence and optional hooks. */
   rulesModuleId?: string
   /** Builders for this Nemesis' decks. Definitions may omit unused auxiliary decks. */

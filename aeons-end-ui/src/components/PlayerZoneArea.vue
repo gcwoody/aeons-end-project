@@ -136,7 +136,7 @@ onBeforeUnmount(() => {
                 size="mini"
                 class="clickable"
                 :data-discard-phase-card-index="card.index"
-                :class="card.typeClass"
+                :class="[card.typeClass, 'player-card-hover-feedback']"
                 @click="emit('click-discard-card', card.index)"
               />
             </CardHoverPreview>

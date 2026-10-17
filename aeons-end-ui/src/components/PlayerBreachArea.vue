@@ -62,6 +62,18 @@ const emit = defineEmits<{
   'click-spell': [breach: BreachState, spellIndex: number]
   'confirm-divided-damage': []
 }>()
+
+function isPreppedSpellHighlighted(breach: BreachState, spellIndex: number): boolean {
+  return props.ui.isCastableBreach(breach)
+    || props.ui.isMustCastBreach(breach)
+    || props.ui.isMandatoryPreppedEffect(breach, spellIndex)
+    || !!props.ui.preppedSpellCastChoice(breach, spellIndex)
+    || props.ui.isRepeatCastConfirmation(breach, spellIndex)
+    || !!props.ui.pendingPreppedSpellChoice(breach, spellIndex)
+    || props.ui.pendingCastSpell(breach, spellIndex)
+    || props.ui.isPreppedSpellAction(breach, spellIndex)
+    || props.ui.isRepeatablePreppedSpell(breach, spellIndex)
+}
 </script>
 
 <template>
@@ -169,7 +181,8 @@ const emit = defineEmits<{
                 :data-card-motion-owner-id="ownerId"
                 :data-card-motion-key="`breach-${ownerId}-${breach.index}-${spellIndex}`"
                 :class="{
-                  'game-highlight': ui.isCastableBreach(breach) || ui.isMustCastBreach(breach) || ui.isMandatoryPreppedEffect(breach, spellIndex) || !!ui.preppedSpellCastChoice(breach, spellIndex) || ui.isRepeatCastConfirmation(breach, spellIndex) || !!ui.pendingPreppedSpellChoice(breach, spellIndex) || ui.pendingCastSpell(breach, spellIndex) || ui.isPreppedSpellAction(breach, spellIndex) || ui.isRepeatablePreppedSpell(breach, spellIndex),
+                  'game-highlight': isPreppedSpellHighlighted(breach, spellIndex),
+                  'player-card-hover-feedback': isPreppedSpellHighlighted(breach, spellIndex),
                   'game-highlight--available': (ui.isCastableBreach(breach) && !ui.isMustCastBreach(breach) && !ui.isMandatoryPreppedEffect(breach, spellIndex)) || ui.isPreppedSpellAction(breach, spellIndex) || (ui.isRepeatablePreppedSpell(breach, spellIndex) && !ui.isRepeatCastConfirmation(breach, spellIndex)),
                   'game-highlight--choice': (!!ui.preppedSpellCastChoice(breach, spellIndex) || !!ui.pendingPreppedSpellChoice(breach, spellIndex) || ui.pendingCastSpell(breach, spellIndex)) && !ui.isMustCastBreach(breach) && !ui.isMandatoryPreppedEffect(breach, spellIndex) && !ui.isRepeatCastConfirmation(breach, spellIndex),
                   'game-highlight--required': ui.isMustCastBreach(breach) || ui.isMandatoryPreppedEffect(breach, spellIndex) || ui.isRepeatCastConfirmation(breach, spellIndex),

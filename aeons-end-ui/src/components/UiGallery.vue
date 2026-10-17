@@ -124,6 +124,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleGalleryKeydown
 const handCards = ['vision_shard', 'crystal', 'spark']
 const miniCards = ['crystal', 'spark', 'corrupted_coil', 'runic_flute', 'fungal_network']
 const pileCards = ['calcified_electinium', 'corrupted_coil', 'fungal_network', 'runic_flute', 'time_cortex']
+const galleryDoomedUnderCards = ['vortex_blast', 'abyssal_vial']
 const mageAbilityMatUrl = mageImageUrls('indira')?.front
 const mageAbilityOptions = [
   {
@@ -308,7 +309,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
           <p class="ui-gallery-caption">Orange marks a choice; red marks a required target</p>
           <div class="gallery-market-targets">
             <div class="gallery-market-target-item">
-              <button class="pile decision-market-choice game-highlight game-highlight--choice" type="button" aria-label="Eligible supply pile">
+              <button class="pile decision-market-choice game-highlight game-highlight--choice player-card-hover-feedback" type="button" aria-label="Eligible supply pile">
                 <img :src="cardImageUrl('vriswood_amber')" alt="Eligible V’riswood Amber pile" draggable="false" />
               </button>
               <span>Eligible</span>
@@ -320,7 +321,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
               <span>Ineligible</span>
             </div>
             <div class="gallery-market-target-item">
-              <button class="pile decision-market-choice decision-market-choice-required game-highlight game-highlight--required" type="button" aria-label="Required supply pile">
+              <button class="pile decision-market-choice decision-market-choice-required game-highlight game-highlight--required player-card-hover-feedback" type="button" aria-label="Required supply pile">
                 <img :src="cardImageUrl('runic_flute')" alt="Required Runic Flute pile" draggable="false" />
               </button>
               <span>Required</span>
@@ -331,23 +332,23 @@ function reorderGalleryTurnOrder(keys: string[]) {
 
       <div class="ui-gallery-state-row" data-component="Card.States">
         <span class="ui-gallery-state-label">Highlight meaning</span>
-        <div class="card small card-image gallery-state-card game-highlight game-highlight--available">
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--available player-card-hover-feedback">
           <img :src="cardImageUrl('crystal')" alt="Actionable Crystal" draggable="false" />
           <span class="gallery-state-chip">Available</span>
         </div>
-        <div class="card small card-image gallery-state-card game-highlight game-highlight--choice">
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--choice player-card-hover-feedback">
           <img :src="cardImageUrl('spark')" alt="Selectable Spark" draggable="false" />
           <span class="gallery-state-chip">Choice</span>
         </div>
-        <div class="card small card-image gallery-state-card game-highlight game-highlight--selected">
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--selected player-card-hover-feedback">
           <img :src="cardImageUrl('spark')" alt="Selected Spark" draggable="false" />
           <span class="gallery-state-chip">Selected</span>
         </div>
-        <div class="card small card-image gallery-state-card game-highlight game-highlight--required">
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--required player-card-hover-feedback">
           <img :src="cardImageUrl('spark')" alt="Highlighted target Spark" draggable="false" />
           <span class="gallery-state-chip">Required</span>
         </div>
-        <div class="card small card-image gallery-state-card game-highlight game-highlight--context">
+        <div class="card small card-image gallery-state-card game-highlight game-highlight--context player-card-hover-feedback">
           <img :src="cardImageUrl('crystal')" alt="Contextual target Crystal" draggable="false" />
           <span class="gallery-state-chip">Context</span>
         </div>
@@ -404,6 +405,28 @@ function reorderGalleryTurnOrder(keys: string[]) {
           <div class="ui-gallery-badge-demo">
             <TokenBadge class="gallery-token-badge" label="Power" :count="2" tone="power" />
             <TokenBadge class="gallery-token-badge gallery-token-badge-gold" label="Aether Token" :count="3" tone="aether" />
+          </div>
+        </article>
+
+        <article class="ui-gallery-item gallery-underneath-item" data-component="Nemesis.UnderneathCards">
+          <h3>Nemesis.UnderneathCards</h3>
+          <p class="ui-gallery-caption">Cards placed underneath a Minion stay face-up, overlap in order, and move with that Minion’s display.</p>
+          <div class="ui-gallery-surface gallery-underneath-surface">
+            <CardHoverPreview :card-id="'the_doomed'" :preview-width="210" :preview-height="291.02">
+              <div class="nemesis-play-card nemesis-minion nemesis-stationed-card game-highlight gallery-underneath-minion" aria-label="The Doomed with two Vortex cards underneath">
+                <img :src="cardImageUrl('the_doomed')" :alt="cardName('the_doomed')" draggable="false" />
+                <div class="nemesis-under-card-stack" :aria-label="`Cards underneath: ${galleryDoomedUnderCards.map(cardName).join(', ')}`">
+                  <CardSurface
+                    v-for="cardId in galleryDoomedUnderCards"
+                    :key="`doomed-under-${cardId}`"
+                    base-class="nemesis-under-card"
+                    size="mini"
+                    :card-id="cardId"
+                    :image-alt="cardName(cardId)"
+                  />
+                </div>
+              </div>
+            </CardHoverPreview>
           </div>
         </article>
       </div>
@@ -545,9 +568,10 @@ function reorderGalleryTurnOrder(keys: string[]) {
       data-component="Decision.CenteredPrompt"
       :title="modal === 'centered-prompt-cards' ? 'Choose a Supply pile to replace' : 'A centered decision prompt'"
       :message="modal === 'centered-prompt-cards'
-        ? 'Select one of the highlighted Supply piles. The cards shown here are the replacements.'
+        ? 'Select a highlighted Supply pile. The orange card is the replacement for this step.'
         : 'This shared prompt stays centered while the board remains visible around it.'"
       :preview-card-ids="modal === 'centered-prompt-cards' ? ['vortex_blast', 'abyssal_vial'] : []"
+      :highlighted-preview-card-id="modal === 'centered-prompt-cards' ? 'vortex_blast' : undefined"
     >
       <template #actions>
         <button class="btn primary" @click="modal = null">Close</button>
@@ -858,6 +882,9 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .ui-gallery-zone-track { display: flex; width: max-content; min-width: 100%; align-items: center; justify-content: center; gap: 10px; }
 .ui-gallery-zone-track .card-hover-wrap { flex: 0 0 auto; }
 .ui-gallery-pile-demo { display: flex; min-height: 174px; align-items: center; justify-content: center; }
+.gallery-underneath-item { grid-column: 1 / -1; }
+.gallery-underneath-surface { min-height: 250px; }
+.nemesis-play-card.gallery-underneath-minion { width: 132px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: visible; }
 .ui-gallery-empty-pile { display: grid; flex: 0 0 auto; width: var(--hand-card-width); height: var(--hand-card-height); box-sizing: border-box; place-items: center; border: var(--pixel-border-width) dashed var(--border); border-radius: var(--card-radius); color: var(--muted); font-size: 13px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .ui-gallery-badge-demo { display: flex; min-height: 174px; flex-direction: column; align-items: center; justify-content: center; gap: 12px; }
 .gallery-token-badge { padding: 5px 8px; border-radius: 4px; background: #11151f; color: #fff; font-size: 13px; font-weight: 700; }

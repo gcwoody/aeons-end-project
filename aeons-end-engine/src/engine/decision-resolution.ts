@@ -70,6 +70,7 @@ export function createDecisionResolver(services: DecisionResolutionServices) {
     getCardChoices,
     getExhaustBreachChoices,
     getMarketCardCost,
+    getNemesisDefinition,
     getPreppedSpellCost,
     getSupplyPileGainEffects,
     losePulseTokens,
@@ -96,6 +97,8 @@ export function createDecisionResolver(services: DecisionResolutionServices) {
     sufferPlayerDamage,
     toRoman,
   } = services
+  const specificDeckName = (g: GameState) =>
+    getNemesisDefinition(g.nemesis.definitionId)?.specificDeckName ?? 'Nemesis specific deck'
 
 function resolvePendingDecision(
   g: GameState, decisionId: string, answer: PendingDecisionAnswer,
@@ -107,8 +110,10 @@ function resolvePendingDecision(
     target: DamageTargetRef,
   ): boolean {
     const spellCardId = g.pendingEffect?.pendingSpellCast?.cardId
+    const damageAllowedSpellIds = getNemesisDefinition(g.nemesis.definitionId)?.damageOnlyFromCardIds
     if (target.kind !== 'nemesis' || g.nemesis.type !== 'oracle_of_filth' ||
-      g.oracleOfFilthDamageTargetWarningConfirmed || !spellCardId || getCard(spellCardId).type !== 'spell') {
+      g.oracleOfFilthDamageTargetWarningConfirmed || !spellCardId || getCard(spellCardId).type !== 'spell' ||
+      damageAllowedSpellIds?.includes(spellCardId)) {
       return false
     }
     g.pendingDecision = createDecision(
@@ -847,6 +852,7 @@ function resolvePendingDecision(
       return ['Card selection is no longer valid']
     }
     if (effect.kind === 'move_cards_to_nemesis_specific_deck') {
+      const deckName = specificDeckName(g)
       const blocked = g.nemesis.playArea.some(card =>
         (getCard(card.cardId) as import('../types').NemesisCardDef).blocksPlacementIntoSpecificDeck === true,
       )
@@ -859,8 +865,8 @@ function resolvePendingDecision(
       if (blocked || !validSelection) {
         restore()
         return [blocked
-          ? 'Cards cannot be placed into the Nemesis specific deck right now'
-          : 'Choose only eligible cards for the Nemesis specific deck']
+          ? `Cards cannot be placed into the ${deckName} right now`
+          : `Choose only eligible cards for the ${deckName}`]
       }
       const vortex = getNemesisCardInstanceZone(g, 'strike_deck')
       const moved: string[] = []
@@ -872,8 +878,8 @@ function resolvePendingDecision(
       resolution.lastSelectedCardCount = moved.length
       return [
         moved.length > 0
-          ? `Placed ${moved.map(cardId => getCard(cardId).name).join(', ')} into the Nemesis specific deck`
-          : 'No cards were placed into the Nemesis specific deck',
+          ? `Placed ${moved.map(cardId => getCard(cardId).name).join(', ')} into the ${deckName}`
+          : `No cards were placed into the ${deckName}`,
         ...runEffectResolution(g, resolution),
       ]
     }
@@ -1622,11 +1628,11 @@ function resolvePendingDecision(
     if (effect.kind === 'gain_nemesis_specific_deck_cards' && effect.recipient === 'choose') {
       if (!g.players.some(candidate => candidate.id === target.playerId)) {
         restore()
-        return ['Choose a player to gain cards from the Nemesis specific deck']
+        return [`Choose a player to gain cards from the ${specificDeckName(g)}`]
       }
       resolution.selectedActionPlayerId = target.playerId
       addRemainingEffects(resolution, [effect])
-      return [`${player.mageType} will gain cards from the Nemesis specific deck`, ...runEffectResolution(g, resolution)]
+      return [`${player.mageType} will gain cards from the ${specificDeckName(g)}`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'gain_corruptions') {
       if (!getEffectPlayerTargets(g, resolution, effectPlayerId(g, resolution), effect.target ?? 'self')

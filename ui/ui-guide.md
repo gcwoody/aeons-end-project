@@ -43,6 +43,7 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 - 所有游戏卡牌的卡面、牌背、牌堆、预览和弹窗统一使用 `styles/tokens.css` 的 `--card-aspect-ratio: 63.5 / 88`。这是唯一的卡牌比例来源；不要改图片素材或为单张卡另设比例。Mage/Nemesis mat、Breach 和 token 不受此规则限制。
 - 有图片的卡牌默认不显示中性灰边框，直接显示完整卡面；选中、可操作和目标提示使用覆盖在卡面上的彩色边框，不能改变卡牌尺寸或压缩图片。只有空牌区、无图片占位和选择控件可以保留结构边框。Nemesis Mat 等非卡牌区域按各自规则处理。
 - 游戏对象的提示边框统一使用 `.game-highlight` 覆盖层（`::after`），再按语义加一个颜色类。它覆盖卡图、不改变尺寸；不要给卡牌、Breach 或 Nemesis 目标另写 `border`、`outline` 或 `box-shadow` 高亮。默认粗细由 `--game-highlight-width` 控制；Nemesis Mat 可保留单独的 3px 表面尺寸，普通卡牌和棋盘目标为 2px。
+- 高亮的玩家卡牌（包括手牌、玩家牌区、Recall 目标、市场卡牌、Mage-specific deck 顶牌、Breach 上的法术和 Supply 附属 Treasure）悬停时统一增加轻微的暗色覆盖，移开后恢复，不伴随位移。共享卡牌高亮层负责这项反馈；`.player-card-hover-feedback` 还用于没有彩色高亮、但当前可操作的手牌，以及 Discard Phase 中 Played Zone 里待弃的牌。悬停不改变高亮颜色或点击行为。
 - 高亮颜色按含义固定：`.game-highlight--available` 绿色，表示可购买/可激活/可执行；`.game-highlight--choice` 橙色，表示尚未选中的合法候选；`.game-highlight--selected` 红色，表示玩家已选中的候选，与 `.game-highlight--required`（必须执行的目标）共用红色；`.game-highlight--context` 蓝色，表示拖拽中的临时落点或悬停上下文。禁用项保持灰暗、不加彩色边框。键盘焦点环、普通按钮和空区域占位的结构边框不属于游戏目标高亮，可以保留自己的可访问性/控件样式。Gallery 的 `Card.States` 展示这五种语义。全局色值和粗细只在 `styles/tokens.css` 调整，覆盖层实现只在 `styles/interaction-highlights.css` 维护。
 - Setup 的 Mage/Nemesis mat 预览使用 `MatPreviewButton.vue`。按钮跟随图片自然比例收缩，图片与高亮覆盖层同边界、同圆角；不要把 `object-fit: contain` 留出的空白也圈进边线。
 - 图片与边框共存时，内侧圆角应贴合卡面，不能遮住边框或在角落留下空隙。
@@ -52,6 +53,7 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 - Supply pile 卡图始终保持正常颜色；费用足够时用绿色边框标记可购买项。费用不足不能通过降低卡图透明度来表示；费用不足时 Charge 按钮使用禁用样式。
 - 卡牌牌区内容不足时居中，超出时横向滚动；不能裁掉卡牌边缘。Deck、Discard、Trinket 等查看弹窗按顶牌在左、底牌在右，每行最多五张。
 - Trinket deck 是全局牌区：牌宽随 Supply pile 同步，水平位置与市场第三列对齐；切换 Mage 视角时它不淡入淡出。棋盘上的牌堆始终显示 Trinket deck 牌背；打开查看时，已揭示的 Trinket 显示正面，未知的牌显示 Trinket 牌背。
+- Oracle of Filth 的 Vortex deck 在棋盘上始终显示 Player Card Back；打开牌堆查看时，所有 Vortex 卡牌始终正面朝上显示，以便玩家查看卡牌费用并计算 Vortex Blast 的伤害。牌堆查看规则与桌面牌堆背面显示相互独立。
 - 玩家牌堆在棋盘上始终显示牌背；若顶牌是 Trinket，则使用 Trinket 牌背。打开玩家 Deck 时，已知卡牌正面朝上，未知普通牌使用 Player Card Back，未知 Trinket 使用 Trinket 牌背。Mage-specific deck 显示自己的牌背（例如 Tressa's Vault 使用 Treasure 3 back）。普通 Deck/Discard 悬停不加蓝框；仅 Recall 等确实可执行的动作使用语义高亮。
 - 当前回合的 Turn Order token 不加环绕边框，回合到位动画本身负责提示。Nemesis 设置项按 `NemesisDef.wave` 分类，与 Mage 和 Market 的 Wave 分类一致。
 - Played Zone 始终显示。开局 Mage 或市场卡牌需要 Swap 时显示 Swap Zone；市场含有 Develop 卡牌时显示 Develop Zone。两种条件独立判断，区域对所有 Mage 视角可见。Swap 卡仍归其持有者，Develop 为共享区域。
@@ -90,13 +92,13 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 | 游戏操作协调 | `src/game/useGame.ts` | 连接玩家操作、引擎移动记录和动效模块；在继续阶段、打开下一张 Nemesis 卡或接受后续操作前等待必要动效。 |
 | 移动整理与画面落点 | `src/game/card-motion-projection.ts`、`src/game/card-zone-motion.ts`、`src/game/card-motion-regions.ts` | 把引擎记录整理成实际的画面移动，并找到对应牌区位置。 |
 | 飞行规则 | `src/game/card-motion-policy.ts`、`src/game/card-motion-flight.ts` | 根据起点和终点选择速度、缓动、到达时的显示方式及是否需要翻面；Trinket 牌背图片由 `src/card-images.ts` 提供。 |
-| 动画基本动作 | `src/game/card-flight.ts` | 绘制卡牌飞行、翻面、揭示和牌列收拢。 |
+| 动画基本动作 | `src/game/card-flight.ts`、`src/game/card-flight-geometry.ts` | 绘制卡牌飞行、翻面、揭示和牌列收拢；飞行缩放时同步补偿圆角，维持与静止卡面一致的圆角。 |
 | 串行与等待 | `src/game/card-motion-queue.ts`、`src/game/card-motion-wait.ts`、`src/game/breach-motion.ts` | 卡牌移动逐项播放；相关飞行、Breach 动画和手牌收拢完成后，游戏操作再继续。 |
 | 动画中的临时画面 | `src/game/card-motion-display.ts`、`src/game/card-pile-motion-display.ts`、`src/game/card-motion-board-display.ts`、`src/game/card-motion-hand-display.ts`、`src/game/card-motion-visibility.ts` | 暂留原牌、牌堆顶牌、数量或新到达的卡面，避免卡牌提前出现、重复显示或闪回。 |
 
-新增移动路线时，按起点和终点补充可复用规则，不按单张卡牌 ID 写分支。实体卡从背面区域移到背面区域时直接飞行；只有起点和终点显示面不同，或效果明确要求背面朝上时才翻面。飞行卡面及翻面卡面都沿用卡牌圆角；从 Played Zone 飞入 Nemesis Specific Deck（Vortex）使用 300ms 的较快路线。决策窗口中展示的卡牌是供查看的副本，确认后直接出现在规则指定区域，不从窗口位置飞出。独立的反馈动画可以按设计与卡牌移动同时播放，但不能让后续游戏流程越过它所依赖的动效。
+新增移动路线时，按起点和终点补充可复用规则，不按单张卡牌 ID 写分支。实体卡从背面区域移到背面区域时直接飞行；只有起点和终点显示面不同，或效果明确要求背面朝上时才翻面。桌面卡牌统一使用 `--card-radius`，卡面内沿按边框宽度收进；飞行过程中，圆角会随卡牌缩放同步补偿，因此卡牌放大或缩小时看起来仍与静止卡牌一致。从 Played Zone 飞入 Nemesis Specific Deck（Vortex）使用 300ms 的较快路线。决策窗口中展示的卡牌是供查看的副本，确认后直接出现在规则指定区域，不从窗口位置飞出。独立的反馈动画可以按设计与卡牌移动同时播放，但不能让后续游戏流程越过它所依赖的动效。
 
-桌面上显示数量的牌堆共用 `card-pile-motion-display.ts`：从引擎移动记录得到每张牌的起点和终点，牌离开时更新来源数量，飞到目标并落定后更新目标数量。没有飞行动画的移动直接显示结算后的数量；动画队列结束后清除临时显示，让界面回到引擎状态。Supply 等按钮的可购买性仍读取引擎状态，临时数字只负责跟随动画。新增可见牌堆时，把它的牌堆地址接入共用数量显示，不要在组件里单独估算移动数量。Nemesis 抽牌等独立动画也要在相应飞行边界更新其牌堆数量。
+桌面上显示数量的牌堆共用 `card-pile-motion-display.ts`：每个玩家操作在引擎改动牌区之前，先固定所有可见牌堆的当前数量；取得引擎移动记录后，再把受影响牌堆交给共用动效队列逐张更新。自动效果和独立动画也要在同一同步调用中先建立数量投影，再等待后续流程。这个固定值必须在任何 `await` 或页面重绘之前建立，避免空牌堆先显示出新牌、随后又从空堆播放飞行动画。牌离开时更新来源数量，飞到目标并落定后更新目标数量；没有飞行动画的移动直接显示结算后的数量。动画队列结束后清除临时显示，让界面回到引擎状态。Supply 等按钮的可购买性仍读取引擎状态，临时数字只负责跟随动画。新增可见牌堆时，把它的牌堆地址接入共用数量显示，不要在组件里单独估算移动数量。Nemesis 抽牌等独立动画也要在相应飞行边界更新其牌堆数量。
 
 ### 玩家视角和 Breach
 

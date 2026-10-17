@@ -70,7 +70,7 @@ export const dreamersCrown: RelicCard = {
   id: 'dreamers_crown', name: "Dreamer's Crown", type: 'relic', cost: 3, set: 'wave9',
   mechanics: ['pulse_token'],
   effects: [{ trigger: { kind: 'on_play' }, effects: [{ kind: 'choose_one', prompt: "Choose a Dreamer's Crown effect", options: [
-    { id: 'charge_pulse', label: 'Gain 1 charge and 2 Pulse tokens', effects: [
+    { id: 'charge_pulse', label: 'Gain 1 charge and 2 Pulse tokens', autoSelectIfSoleAvailable: true, effects: [
       { kind: 'gain_charge', amount: 1, target: 'self' }, { kind: 'gain_pulse_token', amount: 2 },
     ] },
     { id: 'unspent_aether', label: 'Lose 4 Pulse tokens to deal damage equal to your unspent Aether', condition: { kind: 'has_pulse_tokens', amount: 4 }, effects: [
@@ -112,7 +112,7 @@ export const visionaryStaff: RelicCard = {
   id: 'visionary_staff', name: 'Visionary Staff', type: 'relic', cost: 5, set: 'wave9',
   mechanics: ['recall'],
   effects: [{ trigger: { kind: 'on_play' }, effects: [{ kind: 'choose_one', prompt: 'Choose a Visionary Staff effect', options: [
-    { id: 'draw_discard', label: 'An ally draws three cards and discards two cards', effects: [{ kind: 'draw_and_discard_cards', drawAmount: 3, discardAmount: 2, target: 'ally' }] },
+    { id: 'draw_discard', label: 'An ally draws three cards and discards two cards', autoSelectIfSoleAvailable: true, effects: [{ kind: 'draw_and_discard_cards', drawAmount: 3, discardAmount: 2, target: 'ally' }] },
     { id: 'recall', label: 'Resolve a Recall effect up to two times', condition: { kind: 'has_recall_in_any_discard' }, effects: [{ kind: 'resolve_recall', maxTimes: 2, ignoreOncePerTurn: true }] },
   ] }] }, {
     trigger: { kind: 'recall' }, effects: [{ kind: 'gain_charge', amount: 1, target: 'self' }],

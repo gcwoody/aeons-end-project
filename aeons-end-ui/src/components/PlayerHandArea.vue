@@ -72,6 +72,11 @@ const emit = defineEmits<{
   'open-discard': []
 }>()
 
+function activateSpecificDeckPrimary(canBuy: boolean) {
+  if (canBuy) emit('click-specific-deck')
+  else emit('open-specific-deck')
+}
+
 </script>
 
 <template>
@@ -91,7 +96,7 @@ const emit = defineEmits<{
       :data-main-action-id="specificDeckActionAttention ? `specific-deck:${playerId}` : undefined"
       :aria-label="canBuyFirethorn ? 'Buy the top Firethorn for 5 Aether' : `Open ${specificDeckName}`"
       :aria-disabled="specificDeckCards.length === 0"
-      @click="specificDeckCards.length > 0 && emit('click-specific-deck')"
+      @click="specificDeckCards.length > 0 && activateSpecificDeckPrimary(canBuyFirethorn)"
     >
       <CardHoverPreview
         v-if="mageType === 'qu' && specificDeckCards.length > 0"
@@ -111,9 +116,11 @@ const emit = defineEmits<{
       <FaceUpPileCard
         v-else-if="specificDeckTopIsVisible && specificDeckCards.length > 0"
         :card-id="specificDeckCards[0]!"
-        :ariaLabel="`Open ${specificDeckName}`"
+        :ariaLabel="canBuyFirethorn ? 'Buy the top Firethorn for 5 Aether' : `Open ${specificDeckName}`"
         :primaryEnabled="true"
+        :available="canBuyFirethorn"
         display-class="player-specific-deck-face-up"
+        @primary="activateSpecificDeckPrimary(canBuyFirethorn)"
         @inspect="emit('open-specific-deck')"
       />
       <CardSurface

@@ -81,9 +81,10 @@ export const garnetShard: GemCard = {
       kind: 'choose_one',
       prompt: 'Choose a Garnet Shard effect',
       options: [
-        { id: 'gain_aether', label: 'Gain 1 Aether', effects: [{ kind: 'gain_aether', amount: 1 }] },
+        { id: 'gain_aether', label: 'Gain 1 Aether', autoSelectIfSoleAvailable: true, effects: [{ kind: 'gain_aether', amount: 1 }] },
         {
           id: 'cast_prepped_spell', label: "Cast any player's prepped spell",
+          condition: { kind: 'has_prepped_spell', ownerScope: 'any_player' },
           effects: [{ kind: 'cast_prepped_spell', source: 'any_prepped_spell', discard: true }],
         },
       ],

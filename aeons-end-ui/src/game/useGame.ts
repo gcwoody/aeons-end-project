@@ -61,8 +61,11 @@ import type { DiscardPileDisplayValue, PileDisplayBaseline } from './card-motion
 import {
   captureCardPileCounts,
   createCardPileMotionDisplaySession,
+  holdCardPileMotionDisplay,
+  releaseCardPileMotionDisplayBaseline,
 } from './card-pile-motion-display'
 import type {
+  CardPileMotionDisplayBaseline,
   CardPileMotionDisplaySession,
   CardPileMotionRoute,
 } from './card-pile-motion-display'
@@ -150,6 +153,7 @@ const cardMoveEventsByUndo = new WeakMap<UndoSnapshot, CardMoveEvent[]>()
 const resolvedHandTransfersByUndo = new WeakMap<UndoSnapshot, CardZoneTransfer[]>()
 const resolvedExternalTransfersByUndo = new WeakMap<UndoSnapshot, CardZoneTransfer[]>()
 const resolvedMarketTransfersByUndo = new WeakMap<UndoSnapshot, CardZoneTransfer[]>()
+const cardPileMotionBaselinesByUndo = new WeakMap<UndoSnapshot, CardPileMotionDisplayBaseline>()
 const pendingBoardHandFlights = new Map<string, CardFlightSnapshot | null>()
 interface MarketPileTransferSnapshot {
   pileIndex: number
@@ -392,6 +396,19 @@ function restoreAutomaticDecisionViewIfSettled() {
   state.selectedPlayer = restore.returnPlayerId
   state.prepTarget = null
 }
+function syncAutomaticDecisionView() {
+  const decision = state.game?.pendingDecision
+  if (!decision) return
+  // Mage Form gain prompts belong to the gain trigger. Keep the gainer's board
+  // mounted until its supply-to-pile flight finishes so the card has a real
+  // discard/deck destination instead of falling back to the player control.
+  if (state.cardMotionBatchActive &&
+    state.game?.pendingEffect?.awaiting?.kind === 'resolve_mage_form_supply_gain') return
+  const decisionPlayerId = soleDecisionDisplayPlayerId(decision)
+  if (decisionPlayerId && decisionPlayerId !== state.selectedPlayer) {
+    selectPlayerForDecision(decisionPlayerId)
+  }
+}
 /** Return a board-resident hand, played, or Swap zone candidate, if selectable now. */
 export function getBoardCardSelection(
   playerId: PlayerId, zone: CardChoice['zone'], index: number, cardId: string,
@@ -573,10 +590,13 @@ watch(
       : []
     clearPendingBoardHandFlights()
     state.pendingBoardCards = []
-    const decisionPlayerId = soleDecisionDisplayPlayerId(decision)
-    if (decisionPlayerId && decisionPlayerId !== state.selectedPlayer) {
-      selectPlayerForDecision(decisionPlayerId)
-    }
+    syncAutomaticDecisionView()
+  },
+)
+watch(
+  () => state.cardMotionBatchActive,
+  (active, wasActive) => {
+    if (wasActive && !active) syncAutomaticDecisionView()
   },
 )
 function pushLog(text: string, kind: LogEntry['kind'] = 'info') {
@@ -676,6 +696,9 @@ function beforeAction(
   const movementTransaction = beginCardMoveTransaction(state.game, 'effect')
   const previous = snapshot()
   cardMoveTransactionsByUndo.set(previous, movementTransaction)
+  cardPileMotionBaselinesByUndo.set(previous,
+    holdCardPileMotionDisplay(cardPileMotionDisplayAccess, state.game))
+  holdActionPileDisplayOverrides(previous)
   activeActionCaptureDepth++
   cardZoneMotionsByUndo.set(previous, typeof document === 'undefined'
     ? { rows: [], cards: [] }
@@ -896,6 +919,11 @@ function finishAction(
   const cardMoveEvents = finishActionMovementCapture(previous)
   void preferredHandZoneOrder
   if (!state.game) {
+    const pileMotionBaseline = cardPileMotionBaselinesByUndo.get(previous)
+    if (pileMotionBaseline) {
+      releaseCardPileMotionDisplayBaseline(cardPileMotionDisplayAccess, pileMotionBaseline)
+      cardPileMotionBaselinesByUndo.delete(previous)
+    }
     const boardMotion = cardZoneMotionsByUndo.get(previous) ?? null
     discardCardZoneMotion(boardMotion)
     cardMotionVisibilityHolds.restore(previous)
@@ -962,7 +990,11 @@ function finishAction(
   const handPileDisplayBaseline = finalizeActionPileDisplayOverrides(previous, transfers)
   const boardMotionGates = cardZoneMotionGatesByUndo.get(previous)
   cardZoneMotionGatesByUndo.delete(previous)
-  const pileMotionDisplay = createCardPileMotionSession(cardMoveEvents, boardMotion, transfers)
+  const pileMotionBaseline = cardPileMotionBaselinesByUndo.get(previous)
+  cardPileMotionBaselinesByUndo.delete(previous)
+  const pileMotionDisplay = createCardPileMotionSession(
+    cardMoveEvents, boardMotion, transfers, pileMotionBaseline,
+  )
   const boardFlight = boardMotion
     ? queueCardZoneMotion(boardMotion, boardMotionGates, cardMoveEvents, pileMotionDisplay)
       .finally(() => cardMotionBoardDisplay.release(boardMotion))
@@ -990,6 +1022,7 @@ function createCardPileMotionSession(
   events: readonly CardMoveEvent[],
   boardMotion: CardZoneMotionSnapshot | null,
   transfers: readonly CardZoneTransfer[],
+  baseline?: CardPileMotionDisplayBaseline,
 ): CardPileMotionDisplaySession {
   const animatedInstanceIds = new Set<string>()
   boardMotion?.cards.forEach(card => {
@@ -1013,6 +1046,7 @@ function createCardPileMotionSession(
     state.game ? captureCardPileCounts(state.game) : {},
     animatedInstanceIds,
     routes,
+    baseline,
   )
 }
 
@@ -1679,7 +1713,6 @@ export async function toMainPhase() {
   if (must.length > 0) { pushLog('You must cast the [MUST] spell(s) first', 'warn'); return }
   const previous = beforeAction()
   if (!previous) return
-  holdActionPileDisplayOverrides(previous)
   await finishAction(previous, [], { preserveUndoBoundary: true })
   await enterMainPhase(cp().id)
 }
@@ -2785,7 +2818,6 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
   const previous = completingAttachPlay ? null : beforeAction(
     true, preferredHandZoneOrder, null, !pendingPlayFlightAtStart,
   )
-  if (previous) holdActionPileDisplayOverrides(previous)
   const conjureMotionSnapshot = previous ? cardZoneMotionsByUndo.get(previous) : null
   const conjureOrigin = conjurePrepTarget
     ? conjureMotionSnapshot?.cards.find(card =>
@@ -3064,7 +3096,6 @@ async function playCardWithMotion(
     discardCardFlight(flight)
     return
   }
-  holdActionPileDisplayOverrides(previous)
   // Input must stay locked for the whole play action even when the source
   // image is not ready and no flight snapshot could be captured.
   const releaseMotion = beginCardMotionBatch()
@@ -3303,7 +3334,6 @@ export async function buyCard(pileIdx: number) {
 export async function focusBreach(breachIndex: number) {
   const previous = beforeAction()
   if (!previous) return
-  holdActionPileDisplayOverrides(previous)
   const msg = engineFocusBreach(state.game!, cp().id, breachIndex)
   if (msg) pushLog(msg, 'ok')
   const actionMoveEvents = finishActionMovementCapture(previous)
@@ -3318,7 +3348,6 @@ export async function focusBreach(breachIndex: number) {
 export async function openBreach(breachIndex: number) {
   const previous = beforeAction()
   if (!previous) return
-  holdActionPileDisplayOverrides(previous)
   const msg = engineOpenBreach(state.game!, cp().id, breachIndex)
   if (msg) pushLog(msg, 'ok')
   const actionMoveEvents = finishActionMovementCapture(previous)

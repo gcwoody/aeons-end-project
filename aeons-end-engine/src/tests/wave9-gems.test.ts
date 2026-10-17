@@ -247,10 +247,7 @@ function testIceDustedJewelShowsBothModesAndPreservesCastSpell(): void {
   const allySpell = prepareSpell(game, ally!.id)
   resolveCardEffects(game, player!.id, 'ice_dusted_jewel', { kind: 'on_play' })
   let decision = game.pendingDecision
-  assert(decision?.kind === 'choose_one', 'Ice-Dusted Jewel offers its two modes')
-  assertEqual(decision.options.find(option => option.id === 'cast_prepped_spell')?.disabled, true,
-    'The cast option is disabled without five Pulse tokens')
-  resolvePendingDecision(game, decision.id, { kind: 'choose_one', optionId: 'aether_and_pulse' })
+  assertEqual(decision, null, 'Ice-Dusted Jewel skips the unavailable Pulse-cost mode')
   assertEqual(player!.bonusAether, 2, 'The first mode grants 2 Aether')
   assertEqual(player!.pulseTokens, 1, 'The first mode grants one Pulse token')
 
@@ -274,9 +271,9 @@ function testIceDustedJewelShowsBothModesAndPreservesCastSpell(): void {
   noSpellPlayer.pulseTokens = 5
   resolveCardEffects(noSpellGame, noSpellPlayer.id, 'ice_dusted_jewel', { kind: 'on_play' })
   const noSpellDecision = noSpellGame.pendingDecision
-  assert(noSpellDecision?.kind === 'choose_one', 'Ice-Dusted Jewel still offers its Aether mode without prepared spells')
-  assertEqual(noSpellDecision.options.find(option => option.id === 'cast_prepped_spell')?.disabled, true,
-    'The cast mode is disabled when no player has a prepared spell')
+  assertEqual(noSpellDecision, null, 'Ice-Dusted Jewel skips the cast mode when no player has a prepared spell')
+  assertEqual(noSpellPlayer.bonusAether, 2, 'The Aether mode resolves when the cast mode has no valid spell')
+  assertEqual(noSpellPlayer.pulseTokens, 6, 'The default mode grants its Pulse token when the cast mode is unavailable')
 }
 
 function testChromiaSphereRetainsItsExistingDevelopBonus(): void {

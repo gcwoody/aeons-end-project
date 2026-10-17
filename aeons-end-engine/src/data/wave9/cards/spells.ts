@@ -178,6 +178,7 @@ export const megafluxSlice = makeSpell('megaflux_slice', 'Megaflux Slice', 4, [{
       {
         id: 'gain_pulse',
         label: 'Deal 2 damage and gain 1 Pulse token',
+        autoSelectIfSoleAvailable: true,
         effects: [damage(2), { kind: 'gain_pulse_token', amount: 1 }],
       },
       {

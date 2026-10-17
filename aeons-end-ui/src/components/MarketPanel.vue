@@ -126,6 +126,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
               'game-highlight--available': !marketDecision && (canBuy && b.affordable || canDevelopSupplyPile(b.pileIndex)),
               'game-highlight--choice': !!marketChoice(b.pileIndex) && !requiredMarketChoice,
               'game-highlight--required': !!marketChoice(b.pileIndex) && requiredMarketChoice,
+              'player-card-hover-feedback': (!marketDecision && canBuy && b.affordable) || (!marketDecision && canDevelopSupplyPile(b.pileIndex)) || !!marketChoice(b.pileIndex),
               'end-turn-attention': endTurnActionAttention(b.pileIndex),
             }"
             :data-main-action-id="endTurnActionAttention(b.pileIndex) ? `market-pile:${b.pileIndex}` : undefined"
@@ -159,6 +160,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
                   'market-set-card-overlay-action': setCardHasAction(setCardId),
                   'game-highlight': setCardHasAction(setCardId),
                   'game-highlight--available': setCardHasAction(setCardId),
+                  'player-card-hover-feedback': setCardHasAction(setCardId),
                 }"
                 :style="{ '--set-card-index': setIndex }"
                 @click="onSetCardClick($event, setCardId)"
@@ -179,6 +181,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             'game-highlight': !!marketChoice(b.pileIndex),
             'game-highlight--choice': !!marketChoice(b.pileIndex) && !requiredMarketChoice,
             'game-highlight--required': !!marketChoice(b.pileIndex) && requiredMarketChoice,
+            'player-card-hover-feedback': !!marketChoice(b.pileIndex),
           }"
           :disabled="marketDecision ? !marketChoice(b.pileIndex) : false"
           @click="onPileClick(b.pileIndex)"
@@ -202,6 +205,7 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
                 'market-set-card-overlay-action': setCardHasAction(setCard),
                 'game-highlight': setCardHasAction(setCard),
                 'game-highlight--available': setCardHasAction(setCard),
+                'player-card-hover-feedback': setCardHasAction(setCard),
               }"
               :style="{ '--set-card-index': setIndex }"
               @click="onSetCardClick($event, setCard)"

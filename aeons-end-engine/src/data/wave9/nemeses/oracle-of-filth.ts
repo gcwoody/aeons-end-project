@@ -189,6 +189,7 @@ export const oracleOfFilth: NemesisDef = {
   increasedDifficultyRules: {},
   damageOnlyFromCardIds: ['vortex_blast'],
   specificDeckVisibility: 'revealed',
+  specificDeckName: 'Vortex deck',
   rulesModuleId: 'oracle_of_filth',
   deckBuilder: () => buildTieredNemesisDeck(oracleOfFilth),
   specificDeckBuilder: () => Array.from({ length: 5 }, () => 'wave9_crystal'),

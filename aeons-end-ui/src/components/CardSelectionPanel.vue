@@ -106,6 +106,7 @@ function toggleAfterClick(key: string): void {
             :class="{
               selected: isSelected(choice.key),
               'game-highlight--selected': isSelected(choice.key),
+              'player-card-hover-feedback': isSelected(choice.key),
               unavailable: choice.disabled,
               'pointer-sort-item': true,
               'is-dragging': draggingKey === choice.key,
@@ -159,6 +160,7 @@ function toggleAfterClick(key: string): void {
                   'game-highlight--selected': isSelected(choice.key),
                   'game-highlight--choice': !isSelected(choice.key) && choice.highlight === 'choice',
                   'game-highlight--required': !isSelected(choice.key) && choice.highlight === 'required',
+                  'player-card-hover-feedback': isSelected(choice.key) || choice.highlight === 'choice' || choice.highlight === 'required',
                   unavailable: choice.disabled,
                 }"
                 type="button"

@@ -55,10 +55,25 @@
 - Mage 抽牌堆洗牌后，牌堆中的卡牌位置未知，应全部背面朝上；卡牌之后被抽到或通过其他效果公开时，再逐张恢复正面可见。
 - Nemesis 效果将 Corruption 放到 Mage 抽牌堆顶或底时，该 Corruption 以背面朝上的状态进入牌堆。它之后被抽到或公开后再显示正面。
 
+## 没有伤害效果的法术与 Breach 伤害加成
+
+- 施放法术时，若该法术实际选中的效果没有造成任何伤害，仍要检查施法的 Breach 和其他法术伤害加成。第三或第四个 Breach 的 +1 伤害，以及其他正数法术伤害加成，都要应用到这次施法；把基础伤害视为 0，再正常结算。
+- 这次补出的伤害使用法术的常规敌方目标范围；若 Nemesis 和一个或多个 Minion 都可选，玩家需要选择目标。
+- 若该次施法已经结算过至少一个伤害效果（包括基础数值为 0 的伤害效果），就不再额外补出一份 0 基础伤害。原有加成仍按各伤害效果的结算规则应用。
+- 例如：Doom Howl 在第四个 Breach 施放时，若选择“Wolf loses 1 Doom”，该选项本身没有伤害，但第四个 Breach 的 +1 伤害仍会造成 1 点伤害，并让玩家选择 Nemesis 或 Minion 作为目标。若选了 Doom Howl 的 3 点伤害选项，则 Breach 加成作用于该伤害，不再额外产生第二次伤害。
+
+### 实现要求
+
+1. 伤害加成要绑定到整次法术施放，而不能只在扫描卡牌数据时寻找 `deal_damage`。玩家可能选择不含伤害效果的分支，嵌套效果也可能在施法过程中改变最终执行的伤害效果。
+2. 引擎应记录当前法术施放已经结算的伤害效果数。施法效果和嵌套选择都结束后，如果数量仍为 0 且有正数伤害加成，才以 0 基础伤害补一次通用伤害结算。
+3. 补出的伤害必须复用既有伤害目标决策、伤害函数和伤害反馈；不得按 Doom Howl 或其他单张牌写特例。
+4. 记录状态要随施法上下文一起保存和恢复，避免嵌套施法或暂停选择导致重复补伤害、丢失伤害记录或串到另一张法术上。
+
 ## 代码入口
 
 - Nemesis 卡牌数据：`aeons-end-engine/src/data/wave1/nemeses/cards.ts`、`aeons-end-engine/src/data/wave9/nemeses/basic-cards.ts`、`aeons-end-engine/src/data/wave9/nemeses/crooked-mask.ts`
 - 通用选项和效果解析：`aeons-end-engine/src/types.ts`、`aeons-end-engine/src/engine/effect-resolution.ts`、`aeons-end-engine/src/engine/decision-resolution.ts`
+- 法术伤害加成和施法收尾：`aeons-end-engine/src/types.ts`、`aeons-end-engine/src/engine.ts`、`aeons-end-engine/src/engine/effect-resolution.ts`、`aeons-end-engine/src/engine/spell-damage-preview.ts`
 - Nemesis Power 的 `TO DISCARD` 当前会先验证费用/牌数，再进入行动；提交后也会重新验证付款条件，可作为复用该模式的参考。
 
 ## 维护约定

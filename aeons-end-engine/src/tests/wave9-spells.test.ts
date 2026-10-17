@@ -752,6 +752,93 @@ function testArcingFirethornOptionalCastUsesConfirmSkipAndShowsBonusDamage(): vo
   assertEqual(skipGame.pendingDecision, null, 'Skipping completes the optional effect')
 }
 
+function testBreachDamageBonusAppliesWhenTheChosenSpellEffectHasNoDamage(): void {
+  const game = createGame('wolf', 'stake')
+  const wolf = game.players.find(player => player.mageType === 'wolf')!
+  setMainPhase(game, wolf.id)
+  wolf.doomTokens = 1
+  const breach = wolf.breaches.find(candidate => candidate.index === 4)!
+  breach.opened = true
+  breach.damageBonus = 1
+  wolf.hand = ['doom_howl']
+  wolf.handInstanceIds = undefined
+  assert(prepSpell(game, wolf.id, 'doom_howl', breach.index)?.includes('Prepped'),
+    'Doom Howl can be prepared on the fourth Breach')
+  const minion = {
+    cardId: 'bane_sire', cardType: 'minion' as const, placedAt: 9401,
+    instanceId: 'bane_sire:doom-howl-breach-bonus', lifeTokens: 5,
+  }
+  game.nemesis.playArea = [minion]
+  const nemesisHp = game.nemesis.hp
+
+  castSpell(game, wolf.id, breach.index)
+  const option = game.pendingDecision
+  assert(option?.kind === 'choose_one', 'Doom Howl offers the player its two effects')
+  resolvePendingDecision(game, option.id, { kind: 'choose_one', optionId: 'lose_doom' })
+
+  const damageTarget = game.pendingDecision
+  assert(damageTarget?.kind === 'select_damage_target',
+    'The Breach bonus creates a target choice for Doom Howl’s non-damage option')
+  assert(damageTarget.targets.some(target => target.kind === 'nemesis'), 'Nemesis remains a valid target')
+  assert(damageTarget.targets.some(target => target.kind === 'minion' && target.placedAt === minion.placedAt),
+    'The Minion is also a valid target')
+  resolvePendingDecision(game, damageTarget.id, {
+    kind: 'select_damage_target',
+    target: damageTarget.targets.find(target => target.kind === 'minion')!,
+  })
+  assertEqual(minion.lifeTokens, 4, 'The selected Minion takes the Breach’s one damage')
+  assertEqual(game.nemesis.hp, nemesisHp, 'Choosing the Minion does not damage the Nemesis')
+  assertEqual(wolf.doomTokens, 0, 'The selected Doom Howl option also removes one Doom')
+  assertEqual(game.pendingDecision, null, 'The added damage and spell finish normally')
+
+  const unmodifiedGame = createGame('wolf', 'stake')
+  const unmodifiedWolf = unmodifiedGame.players.find(player => player.mageType === 'wolf')!
+  setMainPhase(unmodifiedGame, unmodifiedWolf.id)
+  unmodifiedWolf.doomTokens = 1
+  const firstBreach = unmodifiedWolf.breaches.find(candidate => candidate.present !== false)!
+  firstBreach.opened = true
+  unmodifiedWolf.hand = ['doom_howl']
+  unmodifiedWolf.handInstanceIds = undefined
+  prepSpell(unmodifiedGame, unmodifiedWolf.id, 'doom_howl', firstBreach.index)
+  castSpell(unmodifiedGame, unmodifiedWolf.id, firstBreach.index)
+  const unmodifiedOption = unmodifiedGame.pendingDecision
+  assert(unmodifiedOption?.kind === 'choose_one', 'The unmodified cast also offers both effects')
+  resolvePendingDecision(unmodifiedGame, unmodifiedOption.id, {
+    kind: 'choose_one', optionId: 'lose_doom',
+  })
+  assertEqual(unmodifiedGame.pendingDecision, null,
+    'A zero-damage spell effect does not create a target choice when no damage bonus applies')
+
+  const existingDamageGame = createGame('wolf', 'stake')
+  const damageWolf = existingDamageGame.players.find(player => player.mageType === 'wolf')!
+  setMainPhase(existingDamageGame, damageWolf.id)
+  const damageBreach = damageWolf.breaches.find(candidate => candidate.index === 4)!
+  damageBreach.opened = true
+  damageBreach.damageBonus = 1
+  damageWolf.hand = ['doom_howl']
+  damageWolf.handInstanceIds = undefined
+  prepSpell(existingDamageGame, damageWolf.id, 'doom_howl', damageBreach.index)
+  const damageMinion = {
+    cardId: 'bane_sire', cardType: 'minion' as const, placedAt: 9402,
+    instanceId: 'bane_sire:doom-howl-existing-damage', lifeTokens: 5,
+  }
+  existingDamageGame.nemesis.playArea = [damageMinion]
+  castSpell(existingDamageGame, damageWolf.id, damageBreach.index)
+  const damageOption = existingDamageGame.pendingDecision
+  assert(damageOption?.kind === 'choose_one', 'Doom Howl still offers its damage option')
+  resolvePendingDecision(existingDamageGame, damageOption.id, {
+    kind: 'choose_one', optionId: 'gain_doom',
+  })
+  const existingDamageTarget = existingDamageGame.pendingDecision
+  assert(existingDamageTarget?.kind === 'select_damage_target', 'The printed damage asks for one target')
+  resolvePendingDecision(existingDamageGame, existingDamageTarget.id, {
+    kind: 'select_damage_target',
+    target: existingDamageTarget.targets.find(target => target.kind === 'minion')!,
+  })
+  assertEqual(damageMinion.lifeTokens, 1, 'The printed three damage receives the Breach bonus exactly once')
+  assertEqual(existingDamageGame.pendingDecision, null, 'No extra fallback damage is added after printed damage')
+}
+
 testWave9SupplySpellCatalogAndMechanics()
 testInfernalCascadeCastsTheChosenSpellOnceWithoutDiscardingThenNormally()
 testGenericPreppedSpellCastKeepsNestedInfernalChoicesIndependent()
@@ -780,5 +867,6 @@ testGenericPreppedSpellCastResolvesObliteratingArcSupplyEffect()
 testGarnetShardCastUsesTheActiveSpellAsSource()
 testWorldshiftFocusesOnlyAnAllyBreach()
 testArcingFirethornOptionalCastUsesConfirmSkipAndShowsBonusDamage()
+testBreachDamageBonusAppliesWhenTheChosenSpellEffectHasNoDamage()
 
 console.log('Wave 9 Spell tests passed')

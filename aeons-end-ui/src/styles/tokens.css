@@ -32,7 +32,6 @@
   --pile-card-aspect-ratio: var(--card-aspect-ratio);
   --large-card-width: 252px;
   --large-card-height: 349.1px;
-  --card-hover-lift: 3px;
   --control-height: 32px;
   --control-gap: 10px;
   --zone-gap: 10px;
@@ -86,7 +85,7 @@
      height. The Market panel applies a more exact container-height value. */
   --market-width: max(160px, calc((var(--viewport-height) - 495px) * .528));
   --market-card-width: calc((var(--market-width) - 32px) / 3);
-  --market-card-radius: 8px;
+  --market-card-radius: var(--card-radius);
   --market-card-ratio: var(--card-aspect-ratio);
   --card-radius: var(--radius-card);
   --mage-mat-ratio: 840 / 604;

@@ -12,7 +12,6 @@
 .card:hover {
   position: relative;
   z-index: var(--z-card-hover);
-  transform: translateY(calc(-1 * var(--card-hover-lift)));
   border-color: var(--border);
 }
 .hand .card.spell-draggable { cursor: grab; }
@@ -212,7 +211,7 @@ body.spell-dragging .card-hover-preview {
   aspect-ratio: var(--card-aspect-ratio);
   margin: 14px auto;
   border: var(--pixel-border-width) solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--card-radius);
   overflow: hidden;
   background: #151a29;
 }

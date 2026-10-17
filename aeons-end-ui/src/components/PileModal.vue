@@ -148,9 +148,12 @@ function recallActionAvailable(index: number, cardId: string): boolean {
 function isFaceVisible(cardId: string, index: number): boolean {
   if (isTrinketDeck.value) return state.game ? isTrinketDeckCardRevealed(state.game, index) : false
   if (isCorruptionDeck.value) return state.game ? isCorruptionDeckCardRevealed(state.game, index) : false
-  if (state.viewPile === 'nemesis_specific' &&
-    getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.cardVisibility === 'per_instance') {
-    return state.game ? isNemesisSpecificDeckCardRevealed(state.game, index) : false
+  if (state.viewPile === 'nemesis_specific') {
+    const cardVisibility = getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.cardVisibility
+    if (cardVisibility === 'all_face_up') return true
+    if (cardVisibility === 'per_instance') {
+      return state.game ? isNemesisSpecificDeckCardRevealed(state.game, index) : false
+    }
   }
   if (state.viewPile === 'nemesis_deck') return state.game ? isNemesisDeckCardRevealed(state.game, index) : false
   if (state.viewPile === 'deck') {
@@ -234,6 +237,7 @@ function specificCardImage(cardId: string): string | undefined {
                 'game-highlight': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || recallActionAvailable(cardIndexInPile(gi, i), cid),
                 'game-highlight--available': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
                 'game-highlight--context': recallActionAvailable(cardIndexInPile(gi, i), cid),
+                'player-card-hover-feedback': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || recallActionAvailable(cardIndexInPile(gi, i), cid),
               }"
               @click="selectPileCard(gi, i)"
             />

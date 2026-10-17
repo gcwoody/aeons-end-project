@@ -108,7 +108,7 @@ function layoutHand(previousPositions: HandCardPositionSnapshot, animate = true)
   const entries = [...hand.querySelectorAll<HTMLElement>('.hand-card-entry')]
   const style = getComputedStyle(hand)
   const gap = Number.parseFloat(style.gap) || 0
-  // Slot dimensions do not include hover or in-flight transforms.
+  // Slot dimensions do not include selected-state or in-flight transforms.
   const contentWidth = entries.reduce((total, entry) => total + entry.offsetWidth, 0) +
     Math.max(0, entries.length - 1) * gap
   const rightPadding = Number.parseFloat(style.paddingRight) || 0
@@ -225,6 +225,7 @@ const renderedHandCards = computed(() => props.handCards.map((card, index) => ({
   handIndex: card.handIndex ?? index,
   visualKey: handCardVisualKeys.value[index] ?? `hand-card-${index}`,
 })))
+const hasHighlightedHandCard = computed(() => renderedHandCards.value.some(card => card.pending))
 
 onUpdated(() => {
   const positions = pendingHandReflowPositions
@@ -275,6 +276,7 @@ onBeforeUnmount(() => {
               'game-highlight': card.pending,
               'game-highlight--choice': card.pending && !card.selected,
               'game-highlight--selected': card.pending && card.selected,
+              'player-card-hover-feedback': !card.heldForPlay && (card.pending || (canActMain && !hasHighlightedHandCard)),
               'end-turn-attention': card.endTurnActionAttention,
             }]"
             :aria-disabled="card.heldForPlay || undefined"
@@ -295,7 +297,7 @@ onBeforeUnmount(() => {
             :data-card-motion-owner-id="playerId"
             :data-card-motion-key="`${playerId}:conjure:${conjuredCard.instanceId ?? conjuredCard.cardId}`"
             :data-card-instance-id="conjuredCard.instanceId"
-            :class="[conjuredCard.typeClass, 'pending-board-card', 'pending-conjure-card', 'spell-draggable', 'game-highlight', 'game-highlight--choice', {
+            :class="[conjuredCard.typeClass, 'pending-board-card', 'pending-conjure-card', 'spell-draggable', 'game-highlight', 'game-highlight--choice', 'player-card-hover-feedback', {
               dragging: draggingSpell && draggingConjuredCard,
             }]"
             draggable="false"

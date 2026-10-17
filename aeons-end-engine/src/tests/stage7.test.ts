@@ -441,23 +441,20 @@ function testRelicEffects(): void {
 
   const allBreachesOpenGame = freshGame()
   const allBreachesOpenPlayer = allBreachesOpenGame.players[0]!
+  const nemesisHpBeforeSkippedDagger = allBreachesOpenGame.nemesis.hp
   allBreachesOpenPlayer.hand = ['flexing_dagger']
   for (const breach of allBreachesOpenPlayer.breaches) {
     if (breach.present !== false) breach.opened = true
   }
   playCard(allBreachesOpenGame, allBreachesOpenPlayer.id, 'flexing_dagger')
-  assertEqual(allBreachesOpenGame.pendingDecision?.kind, 'choose_one', 'Flexing Dagger still presents its OR choice')
-  if (allBreachesOpenGame.pendingDecision?.kind === 'choose_one') {
-    const reduceOption = allBreachesOpenGame.pendingDecision.options.find(option => option.id === 'reduce_breach_cost')
-    assertEqual(reduceOption?.disabled, true, 'Flexing Dagger disables breach-cost reduction when every breach is open')
-    const invalidMessages = resolvePendingDecision(
-      allBreachesOpenGame,
-      allBreachesOpenGame.pendingDecision.id,
-      { kind: 'choose_one', optionId: 'reduce_breach_cost' },
-    )
-    assert(invalidMessages.some(message => message.includes('not available')), 'Disabled OR options cannot be selected')
-    assertEqual(allBreachesOpenGame.pendingDecision?.kind, 'choose_one', 'Invalid disabled choice keeps the decision open')
-  }
+  assertEqual(allBreachesOpenGame.pendingDecision, null,
+    'Flexing Dagger automatically chooses its only available effect when every Breach is open')
+  assertEqual(allBreachesOpenPlayer.destroyedCards.includes('flexing_dagger'), true,
+    'Flexing Dagger destroys itself when its breach-cost effect is unavailable')
+  assertEqual(allBreachesOpenGame.nemesis.hp, nemesisHpBeforeSkippedDagger - 1,
+    'Flexing Dagger deals 1 damage when its breach-cost effect is unavailable')
+  assertEqual(allBreachesOpenPlayer.turnEffects.nextBreachCostReductions.length, 0,
+    'Skipping Flexing Dagger does not add an unusable breach-cost reduction')
 }
 
 function testSpellEffects(): void {

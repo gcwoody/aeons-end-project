@@ -245,7 +245,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 8px;
+  border-radius: calc(var(--card-radius) - var(--pixel-border-width));
 }
 .breach-spell-card-frame {
   position: relative;
@@ -253,7 +253,7 @@
   aspect-ratio: var(--card-aspect-ratio);
   margin-inline: auto;
   overflow: hidden;
-  border-radius: 9px;
+  border-radius: var(--card-radius);
 }
 .breach-spell-card-frame.game-highlight { --game-highlight-layer: 3; }
 .breach-spell-card-frame.divided-damage-confirm-spell {

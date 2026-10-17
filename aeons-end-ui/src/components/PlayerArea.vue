@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import {
   getCastableSpells, getBreachActionCosts, getPreppedSpellChoices, getSpellBreachTargets,
   getSpellDamagePreviewRange, getSupplyMechanics, getGameZoneVisibility, canGainCharge,
+  getSpendableAether,
   getDevelopZoneCards, getDevelopActions, getTrinketDeckCards, isTrinketDeckCardRevealed,
   getPlayerCardInstanceZone, getBreachCardInstanceZone, getBreachAttachedRelicZone,
   getSharedDevelopCardInstanceZone,
@@ -293,7 +294,8 @@ const specificDeckTopImage = computed(() => specificDeckCards.value[0]
   ? specificDeckCardImageUrl(player.value.mageType, specificDeckCards.value[0], player.value.mageFormSide)
   : undefined)
 const canBuyFirethorn = computed(() => player.value.mageType === 'inco' &&
-  specificDeckCards.value.length > 0 && canActMain.value)
+  specificDeckCards.value.length > 0 && canActMain.value &&
+  getSpendableAether(player.value, 'spell') >= 5)
 const specificDeckActionAttention = computed(() =>
   isEndTurnActionTarget(`specific-deck:${player.value.id}`))
 const recallActionAttention = computed(() =>
@@ -317,12 +319,8 @@ const specificDeckBackImage = computed(() =>
     ? specificDeckBackUrl(mageDefinition.value.specificDeckBack)
     : undefined,
 )
-function onSpecificDeckClick() {
-  if (canBuyFirethorn.value) {
-    gainFirethornTopCard()
-    return
-  }
-  openSpecificDeckPile()
+function onSpecificDeckBuyClick() {
+  if (canBuyFirethorn.value) gainFirethornTopCard()
 }
 const draggingSpell = ref(false)
 const draggedSpellId = ref<string | null>(null)
@@ -1275,7 +1273,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       :dragging-spell="draggingSpell"
       :dragged-spell-index="draggedSpellIndex"
       :dragging-conjured-card="draggedConjuredCard"
-      @click-specific-deck="onSpecificDeckClick"
+      @click-specific-deck="onSpecificDeckBuyClick"
       @open-specific-deck="openSpecificDeckPile"
       @click-player-card="clickPlayerCardInPlay"
       @click-hand-card="clickHand"
