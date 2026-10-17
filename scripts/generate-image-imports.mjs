@@ -63,7 +63,7 @@ async function walkSourceFiles(directory) {
 function extractRegisteredCardIds(source) {
   const ids = new Set()
   const directCardPattern = /\bid:\s*['"]([a-z0-9_]+)['"](?:(?!\bid:)[\s\S]){0,240}?\bname:\s*['"][^'\"]+['"](?:(?!\bid:)[\s\S]){0,160}?\btype:\s*['"](?:gem|relic|spell|treasure|corruption|mage_form|breach_upgrade|attack|minion|power|strike)['"]/g
-  const factoryCardPattern = /\b(?:make(?:Nemesis|Strike)Card|makeCard|makeGem|makeSpell|corruptionCard|vaultCard|trinket)\(\s*['"]([a-z0-9_]+)['"]/g
+  const factoryCardPattern = /\b(?:make(?:Nemesis|Strike)Card|makeCard|makeGem|makeSpell|corruptionCard|vaultCard|trinket|prophecy)\(\s*['"]([a-z0-9_]+)['"]/g
   for (const pattern of [directCardPattern, factoryCardPattern]) {
     for (const match of source.matchAll(pattern)) ids.add(match[1])
   }

@@ -1,3 +1,4 @@
+import { nextTick } from 'vue'
 import type { CardMoveEvent, CardMoveZone } from '@engine/types'
 import {
   discardCardFlight,
@@ -24,6 +25,7 @@ export interface CardZoneMotionTransfer {
   waitForZones: string[]
   cardId: string
   ownerId: string
+  sourceFace?: 'front' | 'back'
   flight: CardFlightSnapshot | null
   destination: HTMLElement | null
   /** Flip a face-up source to the card back while it flies to a face-down zone. */
@@ -60,6 +62,8 @@ const motionZoneByEngineZone: Partial<Record<CardMoveZone, string>> = {
 
 export interface CardZoneMotionEventResolution {
   transfers: CardZoneMotionTransfer[]
+  /** Exact moves whose destination is not present in the rendered board. */
+  settleImmediatelyInstanceIds: string[]
 }
 
 function eventDestination(
@@ -80,6 +84,12 @@ function eventDestination(
       (element.dataset.cardMotionFromZones ?? '').split(',').map(value => value.trim()).includes(sourceZone))
     return eligible.find(element => element.dataset.cardMotionKey?.endsWith('-arrival')) ?? eligible[0] ?? null
   }
+  if (zone === 'nemesis_discard') {
+    return [...root.querySelectorAll<HTMLElement>('[data-card-flight-target="nemesis-discard"]')][0] ?? null
+  }
+  if (zone === 'strike_discard') {
+    return [...root.querySelectorAll<HTMLElement>('[data-card-flight-target="strike-discard"]')][0] ?? null
+  }
   if (zone === 'deck') {
     return [...root.querySelectorAll<HTMLElement>('[data-card-flight-target="deck"]')]
       .find(element => element.closest<HTMLElement>('[data-player-area-id]')?.dataset.playerAreaId === event.destination.ownerId) ?? null
@@ -88,7 +98,11 @@ function eventDestination(
     return [...root.querySelectorAll<HTMLElement>('[data-card-flight-target="trinket-deck"]')][0] ?? null
   }
   if (zone === 'strike_deck') {
-    return [...root.querySelectorAll<HTMLElement>('[data-card-flight-source="nemesis-specific-deck"]')][0] ?? null
+    const pile = [...root.querySelectorAll<HTMLElement>(
+      '[data-card-flight-source="nemesis-specific-deck"]',
+    )][0] ?? null
+    if (pile?.dataset.cardMotionTopAlwaysRevealed === 'true' && event.destination.index > 0) return pile
+    return pile?.querySelector<HTMLElement>('[data-card-motion-pile-top="true"]') ?? pile
   }
   if (zone === 'corruption_deck') {
     return [...root.querySelectorAll<HTMLElement>('[data-card-flight-source="corruption-deck"]')][0] ?? null
@@ -128,6 +142,7 @@ export function resolveCardZoneMotionFromEvents(
   }
 
   const transfers: CardZoneMotionTransfer[] = []
+  const settleImmediatelyInstanceIds: string[] = []
   const usedOrigins = new Set<CardZoneMotionCardSnapshot>()
   const transferredFlights = new Set<CardFlightSnapshot>()
   const takeOriginFlight = (origin: CardZoneMotionCardSnapshot) => {
@@ -147,6 +162,7 @@ export function resolveCardZoneMotionFromEvents(
     const destination = eventDestination(root, last, destinationZone, sourceZone)
     if (!destination) {
       discardCardFlight(origin.flight)
+      settleImmediatelyInstanceIds.push(instanceId)
       continue
     }
     const motionPolicy = resolveCardMotionPolicy({
@@ -154,6 +170,17 @@ export function resolveCardZoneMotionFromEvents(
       destinationZone,
       reason: first.reason,
     })
+    const displayedFace = destination.dataset.cardMotionFace ??
+      destination.closest<HTMLElement>('[data-card-motion-face]')?.dataset.cardMotionFace
+    const destinationHidesCardsBelowRevealedTop = destinationZone === 'strike_deck' &&
+      destination.closest<HTMLElement>('[data-card-flight-source="nemesis-specific-deck"]')?.dataset.cardMotionTopAlwaysRevealed === 'true'
+    const faceDownOnArrival = destinationHidesCardsBelowRevealedTop
+      ? last.destination.index !== 0
+      : displayedFace === 'front'
+        ? false
+        : displayedFace === 'back'
+          ? true
+          : motionPolicy.faceDownOnArrival
     transfers.push({
       sourceZone,
       sourceZoneId: first.source.zoneId,
@@ -166,13 +193,14 @@ export function resolveCardZoneMotionFromEvents(
       waitForZones: (destination.dataset.cardMotionAfterZones ?? '').split(',').map(value => value.trim()).filter(Boolean),
       cardId: last.cardId,
       ownerId: first.source.ownerId ?? last.destination.ownerId ?? '',
+      sourceFace: origin.face,
       moveId: last.moveId,
       moveIds: moves.map(move => move.moveId),
       sequence: first.sequence,
       flight: takeOriginFlight(origin),
       destination,
       timing: motionPolicy.timing,
-      faceDownOnArrival: motionPolicy.faceDownOnArrival,
+      faceDownOnArrival,
     })
   }
   for (const event of supplyDevelopCreations) {
@@ -194,6 +222,7 @@ export function resolveCardZoneMotionFromEvents(
     const destination = eventDestination(root, terminalEvent, destinationZone, sourceZone)
     if (!destination) {
       discardCardFlight(origin.flight)
+      settleImmediatelyInstanceIds.push(origin.instanceId)
       continue
     }
     transfers.push({
@@ -218,7 +247,7 @@ export function resolveCardZoneMotionFromEvents(
   snapshot.cards.forEach(card => {
     if (card.flight && !transferredFlights.has(card.flight)) discardCardFlight(card.flight)
   })
-  return { transfers }
+  return { transfers, settleImmediatelyInstanceIds }
 }
 
 function cloneCardFlightSnapshot(flight: CardFlightSnapshot | null): CardFlightSnapshot | null {
@@ -259,6 +288,7 @@ export async function animateCardZoneMotion(
     const flight = animateCardMotionFlight({
       cardId: transfer.cardId,
       sourceZone: transfer.sourceZone,
+      sourceFace: transfer.sourceFace,
       destinationZone: transfer.destinationZone,
       flight: transfer.flight,
       destination: transfer.destination,
@@ -266,7 +296,10 @@ export async function animateCardZoneMotion(
       restoreDestinationVisibility: transfer.destinationVisibilityBefore,
       afterFlight: async () => {
         await transfer.afterFlight?.()
-        if (transfer.sourceInstanceId) pileMotionDisplay?.arrive(transfer.sourceInstanceId)
+        if (transfer.sourceInstanceId) {
+          pileMotionDisplay?.arrive(transfer.sourceInstanceId)
+          await nextTick()
+        }
       },
       faceDownOnArrival: transfer.faceDownOnArrival,
       faceDownImageUrl: arrivalBackImage,

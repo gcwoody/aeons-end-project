@@ -80,6 +80,7 @@ const distributionPlayers = computed(() => decision.value?.kind === 'distribute_
   : [])
 const isDirectMarketDecision = computed(() =>
   decision.value?.kind === 'select_market_pile' || decision.value?.kind === 'select_setup_devour_pile' ||
+  decision.value?.kind === 'select_setup_exiled_pile' ||
   decision.value?.kind === 'select_setup_supply_replacement',
 )
 const marketDecisionPreviewCardIds = computed(() => decision.value?.kind === 'select_setup_supply_replacement'
@@ -90,6 +91,8 @@ const highlightedMarketDecisionPreviewCardId = computed(() =>
 )
 const marketDecisionMessage = computed(() => decision.value?.kind === 'select_setup_supply_replacement'
   ? 'Select a highlighted Supply pile in the Market. The cards shown here will replace your choice.'
+  : decision.value?.kind === 'select_setup_exiled_pile'
+    ? 'Select a highlighted highest-cost Supply pile. Its top card will begin the Exiled pile.'
   : 'Select a highlighted supply pile directly in the Market.')
 const isLargeSpecificDeckSelection = computed(() =>
   decision.value?.kind === 'select_cards'
@@ -118,6 +121,17 @@ const isLargeCardSelection = computed(() =>
 const isLargeCardChoice = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'large-card-choice',
 )
+const isCenteredPromptWithCards = computed(() =>
+  decision.value?.kind === 'choose_one' && decision.value.layout === 'centered-prompt-cards',
+)
+const centeredPromptCardId = computed(() => {
+  if (!isCenteredPromptWithCards.value) return undefined
+  const pending = state.game?.pendingEffect
+  return pending?.sourceCardId ?? pending?.resolvingCorruption?.cardId
+})
+const centeredPromptTitle = computed(() => centeredPromptCardId.value
+  ? getCard(centeredPromptCardId.value).name
+  : decision.value?.kind === 'choose_one' ? decisionPrompt(decision.value.prompt) : '')
 const isTwoButtonChoice = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'two-button-choice',
 )
@@ -680,6 +694,27 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     :highlighted-preview-card-id="highlightedMarketDecisionPreviewCardId"
   />
 
+  <CenteredDecisionPrompt
+    v-else-if="isCenteredPromptWithCards && decision?.kind === 'choose_one'"
+    :title="centeredPromptTitle"
+    :message="decisionPrompt(decision.prompt)"
+    :preview-card-ids="centeredPromptCardId ? [centeredPromptCardId] : []"
+  >
+    <template #actions>
+      <button
+        v-for="option in decision.options"
+        :key="option.id"
+        class="btn primary decision-option"
+        :class="{ unavailable: option.disabled }"
+        :disabled="option.disabled"
+        :title="option.disabled ? 'This option is not available right now.' : undefined"
+        @click="answer({ kind: 'choose_one', optionId: option.id })"
+      >
+        {{ option.label }}
+      </button>
+    </template>
+  </CenteredDecisionPrompt>
+
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spells'"
     overlay-class="decision-overlay non-blocking-decision-overlay"
@@ -797,7 +832,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
   </ModalBase>
 
   <ModalBase
-    v-if="decision && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'select_setup_supply_replacement' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'confirm_oracle_nemesis_damage_target' && decision.kind !== 'select_damage_target' && decision.kind !== 'allocate_divided_damage'"
+    v-if="decision && !isCenteredPromptWithCards && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'confirm_player_card_effect' && decision.kind !== 'await_card_motions' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'select_setup_exiled_pile' && decision.kind !== 'select_setup_supply_replacement' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'confirm_oracle_nemesis_damage_target' && decision.kind !== 'select_damage_target' && decision.kind !== 'allocate_divided_damage'"
     overlay-class="decision-overlay"
     :blocking="true"
     v-model:panel-ref="modalEl"

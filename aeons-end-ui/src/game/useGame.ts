@@ -29,7 +29,7 @@ import {
   getPlayerCardInstanceZone, getNemesisCardInstanceZone, moveCardBetweenZones,
 } from '@engine/engine'
 import {
-  createTwoPlayerScenario, getCard, defaultMarketSetup, DEFAULT_MARKET_SLOTS,
+  createTwoPlayerScenario, getCard, MAGES, defaultMarketSetup, DEFAULT_MARKET_SLOTS,
   resolveMarketCardIds,
 } from '@engine/data'
 import type {
@@ -40,9 +40,12 @@ import type {
 import { displayMageName, formatMageNamesInText } from './display-name'
 import { getNemesisPresentation } from './nemesis-presentation'
 import { waitForBreachMotions } from './breach-motion'
-import { cardImageUrl, playerDeckCardBackUrl } from '../card-images'
 import {
-  captureCardFlight, captureCardZoneMotion, captureCardMoveSourceSnapshot,
+  cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl,
+  playerDeckCardBackUrl, trinketDeckBackUrl,
+} from '../card-images'
+import {
+  captureCardFlight, captureCardMoveSourceSnapshot,
   getDecisionPresentedCardInstanceIds,
   captureCardRowPositions, holdCardFlightAtOrigin,
   resolveCardFlightDestinationMode,
@@ -54,17 +57,19 @@ import {
 import type { CardFlightSnapshot, CardZoneMotionSnapshot, CardZoneTransfer, CardMoveSourceSnapshot } from './card-flight'
 import { animateCardZoneMotion, discardCardZoneMotion, resolveCardZoneMotionFromEvents } from './card-zone-motion'
 import type { CardZoneMotionTransfer } from './card-zone-motion'
+import { captureGameCardZoneMotion } from './card-motion-capture'
 import { resolveCardMotionPolicy } from './card-motion-policy'
 import { resolveHandCardZoneTransfers } from './card-motion-projection'
 import { createCardMotionPileDisplay } from './card-motion-display'
 import type { DiscardPileDisplayValue, PileDisplayBaseline } from './card-motion-display'
 import {
-  captureCardPileCounts,
+  captureCardPileMotionStates,
   createCardPileMotionDisplaySession,
   holdCardPileMotionDisplay,
   releaseCardPileMotionDisplayBaseline,
 } from './card-pile-motion-display'
 import type {
+  CardPileDisplayOverrides,
   CardPileMotionDisplayBaseline,
   CardPileMotionDisplaySession,
   CardPileMotionRoute,
@@ -190,7 +195,7 @@ const state = reactive({
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
   deckDisplayOverride: null as { playerId: PlayerId; cardId: string | null; count: number } | null,
   deckPileDisplayOverrides: {} as Partial<Record<PlayerId, { cardId: string | null; count: number }>>,
-  cardPileCountOverrides: {} as Record<string, { count: number; motionId: number }>,
+  cardPileDisplayOverrides: {} as CardPileDisplayOverrides,
   discardTopDisplayOverride: null as { playerId: PlayerId; cardId: string | null; count: number } | null,
   discardPileDisplayOverrides: {} as Partial<Record<PlayerId, DiscardDisplayOverride>>,
   swapZoneDisplayHolds: {} as Partial<Record<PlayerId, SwapZoneDisplayHold>>,
@@ -241,8 +246,8 @@ const cardMotionPileDisplay = createCardMotionPileDisplay({
   setDeck: value => { state.deckPileDisplayOverrides = value },
 }, reportCardMotionIssue)
 const cardPileMotionDisplayAccess = {
-  get: () => toRaw(state.cardPileCountOverrides),
-  set: (value: typeof state.cardPileCountOverrides) => { state.cardPileCountOverrides = value },
+  get: () => toRaw(state.cardPileDisplayOverrides),
+  set: (value: typeof state.cardPileDisplayOverrides) => { state.cardPileDisplayOverrides = value },
 }
 const cardMotionHandDisplay = createCardMotionHandDisplay({
   getDiscardPresentation: () => state.handDiscardPresentation,
@@ -702,7 +707,7 @@ function beforeAction(
   activeActionCaptureDepth++
   cardZoneMotionsByUndo.set(previous, typeof document === 'undefined'
     ? { rows: [], cards: [] }
-    : captureCardZoneMotion(document, excludedMotionElement))
+    : captureGameCardZoneMotion(state.game, document, excludedMotionElement))
   handZoneTransfersByUndo.set(previous, captureHandZoneTransfers(state.game, preferredHandZoneOrder))
   const externalCardTransfers = captureExternalCardMoveSources(state.game)
   if (externalCardTransfers.length > 0) cardZoneTransfersByUndo.set(previous, externalCardTransfers)
@@ -914,7 +919,7 @@ function finishAction(
   preferredHandZoneOrder: readonly HandZoneSelection[] = [],
   options: { preserveUndoBoundary?: boolean } = {},
 ): Promise<void> {
-  if (!previous) return Promise.resolve()
+  if (!previous) return resumePendingCardMotionBarrier()
   activeActionCaptureDepth = Math.max(0, activeActionCaptureDepth - 1)
   const cardMoveEvents = finishActionMovementCapture(previous)
   void preferredHandZoneOrder
@@ -1015,7 +1020,7 @@ function finishAction(
     if (undoIndex >= 0) undoStack.splice(undoIndex, 1)
   }
   completeActiveActionCaptureIfSettled()
-  return settledCardFlight
+  return settledCardFlight.then(resumePendingCardMotionBarrier)
 }
 
 function createCardPileMotionSession(
@@ -1038,12 +1043,14 @@ function createCardPileMotionSession(
       cardId: transfer.cardId,
       sourceZoneId: transfer.sourceZoneId,
       destinationZoneId: transfer.destinationZoneId ?? `player:${transfer.playerId}:${transfer.zone}`,
+      sourceIndex: transfer.sourceHandIndex,
+      destinationIndex: transfer.zoneIndex,
     })
   }
   return createCardPileMotionDisplaySession(
     cardPileMotionDisplayAccess,
     events,
-    state.game ? captureCardPileCounts(state.game) : {},
+    state.game ? captureCardPileMotionStates(state.game) : {},
     animatedInstanceIds,
     routes,
     baseline,
@@ -1087,6 +1094,10 @@ function queueCardZoneMotion(
     try {
       await nextTick()
       const eventResolution = resolveCardZoneMotionFromEvents(snapshot, cardMoveEvents, document, activeCardMoveClaims)
+      for (const instanceId of eventResolution.settleImmediatelyInstanceIds) {
+        activePileMotionDisplay.depart(instanceId)
+        activePileMotionDisplay.arrive(instanceId)
+      }
       transfers = eventResolution.transfers.filter(transfer => {
         const moveIds = transfer.moveIds?.length ? transfer.moveIds : transfer.moveId ? [transfer.moveId] : []
         if (moveIds.some(moveId => activeCardMoveClaims.has(moveId))) {
@@ -1103,7 +1114,7 @@ function queueCardZoneMotion(
         const earlyArrivalHold = transfer.destination
           ? cardMotionVisibilityHolds.get(snapshot, transfer.destination)
           : undefined
-        if (earlyArrivalHold) {
+        if (earlyArrivalHold && transfer.destinationVisibilityBefore === undefined) {
           transfer.destinationVisibilityBefore = earlyArrivalHold.visibility
         }
       }
@@ -1180,7 +1191,14 @@ function queueCardZoneMotion(
       releaseMotion = beginCardMotionBatch()
       await Promise.all([
         animateCardZoneMotion(transfers, zoneBarriers, prepareTransfer,
-          transfer => playerDeckCardBackUrl(transfer.cardId), activePileMotionDisplay),
+          transfer => transfer.destinationZone === 'strike_deck'
+            ? nemesisSpecificDeckBackUrl(state.game?.nemesis.type ?? '')
+            : transfer.destinationZone === 'nemesis_deck'
+              ? nemesisCardBackUrl()
+              : transfer.destinationZone === 'trinket_deck'
+                ? trinketDeckBackUrl()
+                : playerDeckCardBackUrl(transfer.cardId),
+          activePileMotionDisplay),
         ...affectedRows.map(row => waitForCardRowReflow(row)),
       ])
     } catch {
@@ -1249,7 +1267,7 @@ export function undo() {
   state.discardRemaining = [...s.discardRemaining]
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
-  state.cardPileCountOverrides = {}
+  state.cardPileDisplayOverrides = {}
   state.discardTopDisplayOverride = null
   state.discardPileDisplayOverrides = {}
   state.swapZoneDisplayHolds = {}
@@ -1323,7 +1341,7 @@ async function enterMainPhase(playerId = cp().id) {
   await waitForCardMotions()
   if (g.gameOver) { state.phase = 'gameover'; return }
   maybeAutoEnd()}
-/** Resolve Crooked Mask Corruptions before allowing a player's Casting Phase. */async function continuePlayerTurnAfterCorruptions() {
+/** Resolve any tracked in-hand card before allowing a player's Casting Phase. */async function continuePlayerTurnAfterCorruptions() {
   const g = state.game
   if (!g || g.currentTurn === 'nemesis' || g.pendingDecision || g.pendingEffect) return
   const playerId = g.currentTurn
@@ -1429,7 +1447,7 @@ export function newGame(
   state.discardRemaining = []
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
-  state.cardPileCountOverrides = {}
+  state.cardPileDisplayOverrides = {}
   state.discardTopDisplayOverride = null
   state.discardPileDisplayOverrides = {}
   state.swapZoneDisplayHolds = {}
@@ -1488,7 +1506,7 @@ export function resumeGame(saveId?: string): boolean {
     state.discardRemaining = [...save.discardRemaining]
     state.deckDisplayOverride = null
     state.deckPileDisplayOverrides = {}
-    state.cardPileCountOverrides = {}
+    state.cardPileDisplayOverrides = {}
     state.discardTopDisplayOverride = null
     state.discardPileDisplayOverrides = {}
     state.swapZoneDisplayHolds = {}
@@ -1650,7 +1668,7 @@ function resetToSetup() {
   state.discardRemaining = []
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
-  state.cardPileCountOverrides = {}
+  state.cardPileDisplayOverrides = {}
   state.discardTopDisplayOverride = null
   state.discardPileDisplayOverrides = {}
   state.swapZoneDisplayHolds = {}
@@ -2295,7 +2313,7 @@ function queueCardZoneTransfers(
   const activePileMotionDisplay = pileMotionDisplay ?? createCardPileMotionDisplaySession(
     cardPileMotionDisplayAccess,
     [],
-    state.game ? captureCardPileCounts(state.game) : {},
+    state.game ? captureCardPileMotionStates(state.game) : {},
     new Set(animatedTransfers.flatMap(transfer => {
       const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
       return instanceId ? [instanceId] : []
@@ -2307,6 +2325,8 @@ function queueCardZoneTransfers(
         cardId: transfer.cardId,
         sourceZoneId: transfer.sourceZoneId,
         destinationZoneId: transfer.destinationZoneId ?? `player:${transfer.playerId}:${transfer.zone}`,
+        sourceIndex: transfer.sourceHandIndex,
+        destinationIndex: transfer.zoneIndex,
       }] : []
     }),
   )
@@ -2340,7 +2360,10 @@ function queueCardZoneTransfers(
             await nextTick()
           }
           const instanceId = transfer.instanceId ?? transfer.sourceHandInstanceId
-          if (instanceId) activePileMotionDisplay.arrive(instanceId)
+          if (instanceId) {
+            activePileMotionDisplay.arrive(instanceId)
+            await nextTick()
+          }
         }
         let destination = transferDestination(transfer)
         if (!destination && (transfer.zone === 'discard' || transfer.zone === 'deck')) {
@@ -2455,12 +2478,12 @@ function queueCardZoneTransfers(
     restoreAndRelease()
   })
 }
-/** Track automatic effects that run outside a user action's undo boundary. */async function trackAutomaticCardTransfers<T>(run: () => T): Promise<T> {
+/** Track automatic effects that run outside a user action's undo boundary. */async function trackAutomaticCardTransfers(run: () => string[]): Promise<string[]> {
   const movementTransaction = activeActionCaptureDepth === 0 && state.game
     ? beginCardMoveTransaction(state.game, 'effect')
     : null
   const boardMotion = activeActionCaptureDepth === 0 && typeof document !== 'undefined'
-    ? captureCardZoneMotion(document)
+    ? captureGameCardZoneMotion(state.game!, document)
     : null
   const boardZoneBaseline = boardMotion && state.game
     ? capturePlayerZoneMotionBaseline(state.game)
@@ -2474,7 +2497,7 @@ function queueCardZoneTransfers(
   const marketCaptures = activeActionCaptureDepth === 0 && state.game
     ? captureMarketPileTransfers(state.game)
     : []
-  let result!: T
+  let result!: string[]
   try {
     result = run()
   } finally {
@@ -2510,7 +2533,27 @@ function queueCardZoneTransfers(
       pileMotionDisplay.finish()
     }
   }
+  if (state.game?.pendingDecision?.kind === 'await_card_motions') {
+    await waitForCardMotions()
+    const decision = state.game.pendingDecision
+    const continuation = await trackAutomaticCardTransfers(() => engineResolvePendingDecision(
+      state.game!, decision.id, { kind: 'await_card_motions', accepted: true },
+    ))
+    return [...result, ...continuation]
+  }
   return result
+}
+/** Continue a rule sequence only after the UI has completed its queued card flights. */
+async function resumePendingCardMotionBarrier() {
+  const game = state.game
+  const decision = game?.pendingDecision
+  if (!game || decision?.kind !== 'await_card_motions') return
+  await waitForCardMotions()
+  if (state.game !== game || game.pendingDecision?.id !== decision.id) return
+  const messages = await trackAutomaticCardTransfers(() => engineResolvePendingDecision(
+    game, decision.id, { kind: 'await_card_motions', accepted: true },
+  ))
+  messages.forEach(message => pushLog(message, 'info'))
 }
 function clearPendingAttachCardFlight() {
   discardCardFlight(pendingAttachCardFlight?.flight ?? null)
@@ -2521,7 +2564,7 @@ function clearPendingGainPlacementFlight() {
   pendingGainPlacementFlight = null
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
-  state.cardPileCountOverrides = {}
+  state.cardPileDisplayOverrides = {}
   state.discardTopDisplayOverride = null
 }
 function resolvePendingGainPlacementTransfers(
@@ -2580,7 +2623,7 @@ function startNemesisDrawRevealAnimation(decision: Extract<PendingDecision, { ki
   const pileMotionDisplay = createCardPileMotionDisplaySession(
     cardPileMotionDisplayAccess,
     [],
-    state.game ? captureCardPileCounts(state.game) : {},
+    state.game ? captureCardPileMotionStates(state.game) : {},
     new Set([pileMotionInstanceId]),
     [{
       instanceId: pileMotionInstanceId,
@@ -3197,8 +3240,13 @@ export function openTrinketDeckPile() {
 /** Open the displayed player's face-up in-play cards for action selection. */
 export function openPlayerCardsInPlayPile() {
   const cards = displayPlayer.value?.playerCardsInPlay ?? []
-  if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis'
-    || state.game.pendingDecision || state.game.pendingEffect || cards.length < 2) return
+  const decision = state.game?.pendingDecision
+  const confirmingPlayerCard = decision?.kind === 'confirm_player_card_effect'
+    && decision.playerId === displayPlayer.value?.id
+  if (!state.game || cards.length < 2 || (!confirmingPlayerCard && (
+    state.phase !== 'main' || state.game.currentTurn === 'nemesis'
+      || state.game.pendingDecision || state.game.pendingEffect
+  ))) return
   closeDismissibleOverlays()
   state.viewPile = 'player_cards_in_play'
 }
@@ -3368,13 +3416,28 @@ export async function gainCharge(amount = 1) {
   maybeAutoEnd()
 }
 export async function activateAbility() {
+  const game = state.game
+  const abilityOwnerId = state.selectedPlayer
+  const abilityOwner = game?.players.find(player => player.id === abilityOwnerId)
+  const abilityReturnView = abilityOwner ? MAGES[abilityOwner.mageType]?.abilityReturnView : undefined
+  const activeTurnPlayerId = game?.currentTurn && game.currentTurn !== 'nemesis'
+    ? game.currentTurn
+    : null
+  if (abilityReturnView === 'active_turn_player' && activeTurnPlayerId &&
+    activeTurnPlayerId !== abilityOwnerId) {
+    // Kadir can use Otherworldly Gate during an ally's turn. If its selection
+    // temporarily opens that ally's board, return to the active Mage afterward.
+    automaticDecisionViewRestore = {
+      returnPlayerId: activeTurnPlayerId,
+      autoSelectedPlayerId: abilityOwnerId,
+    }
+  }
   const previous = beforeAction()
-  // An ability may belong to the selected mage rather than the mage whose
-  // turn is currently active (for example, Xaxos during Brama's main phase).
-  const msg = engineActivateAbility(state.game!, state.selectedPlayer)
+  const msg = engineActivateAbility(state.game!, abilityOwnerId)
   if (msg) pushLog(msg, 'ok')
   await finishAction(previous)
   maybeAutoEnd()
+  restoreAutomaticDecisionViewIfSettled()
 }
 // ===== End of turn + discard ordering =====
 async function finalizeDraw() {
@@ -3496,8 +3559,10 @@ async function doEndTurn(
 ) {
   if (state.phase !== 'main' || !state.game || state.game.pendingDecision || state.game.pendingEffect) return
   const p = cp()
-  if (state.game.nemesis.corruptionDeck &&
-    (p.corruptionsDrawnThisTurn?.length ?? 0) > 0 &&
+  const hasTrackedInHandResolution = (p.corruptionsDrawnThisTurn ?? []).some(cardId =>
+    !!state.game?.nemesis.corruptionDeck || getCard(cardId).resolveWhenInHand === true,
+  )
+  if (hasTrackedInHandResolution &&
     state.game.pendingCorruptionEndTurnPlayerId !== p.id) {
     state.game.pendingCorruptionEndTurnPlayerId = p.id
     const resolveCorruptions = () => engineResolveEffects(state.game!, p.id,

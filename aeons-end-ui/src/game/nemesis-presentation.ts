@@ -8,9 +8,12 @@ export interface NemesisPresentation {
     enabled: boolean
     label: string
     display?: SpecificPileDisplay
+    topCardAlwaysRevealed?: boolean
     /** Controls card faces inside the pile viewer, independently of the board pile back. */
     cardVisibility?: 'per_instance' | 'all_face_up'
     topCardAction?: 'buy'
+    /** Use an affordable face-up top card itself as the action target. */
+    primaryActionOnCard?: boolean
   }
   specificDiscard: { enabled: boolean; label: string }
 }
@@ -35,6 +38,22 @@ export const nemesisPresentations: Record<string, NemesisPresentation> = {
     subBoard: { enabled: false, aspectRatio: 1 },
     specificDeck: { enabled: true, label: 'Vortex Deck', cardVisibility: 'all_face_up' },
     specificDiscard: { enabled: false, label: 'Vortex Discard' },
+  },
+  twice_dead_prophet: {
+    subBoard: { enabled: false, aspectRatio: 1 },
+    specificDeck: {
+      enabled: true, label: 'Prophecy deck', display: 'face_up', cardVisibility: 'per_instance',
+      topCardAlwaysRevealed: true,
+    },
+    specificDiscard: { enabled: false, label: 'Nemesis Specific Discard' },
+  },
+  the_timeless: {
+    subBoard: { enabled: false, aspectRatio: 1 },
+    specificDeck: {
+      enabled: true, label: 'Exiled pile', display: 'face_up', cardVisibility: 'all_face_up',
+      topCardAction: 'buy', primaryActionOnCard: true,
+    },
+    specificDiscard: { enabled: true, label: 'Finality pile' },
   },
 }
 

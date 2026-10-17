@@ -25,6 +25,7 @@ interface PlayerInPlayCardDisplay {
   cardIndex: number
   typeClass: string
   actionAvailable: boolean
+  requiredConfirmation: boolean
   endTurnActionAttention: boolean
   powerTokens: number
 }
@@ -145,9 +146,10 @@ function activateSpecificDeckPrimary(canBuy: boolean) {
             size="mini"
             class="player-in-play-card"
             :class="[card.typeClass, {
-              'in-play-action': card.actionAvailable,
-              'game-highlight': card.actionAvailable,
-              'game-highlight--available': card.actionAvailable,
+              'in-play-action': card.actionAvailable || card.requiredConfirmation,
+              'game-highlight': card.actionAvailable || card.requiredConfirmation,
+              'game-highlight--available': card.actionAvailable && !card.requiredConfirmation,
+              'game-highlight--required': card.requiredConfirmation,
               'end-turn-attention': card.endTurnActionAttention,
             }]"
             :data-main-action-id="card.endTurnActionAttention ? `player-card-in-play:${playerId}:${card.cardIndex}` : undefined"

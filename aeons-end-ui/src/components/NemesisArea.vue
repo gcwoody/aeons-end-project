@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { getCard } from '@engine/data'
+import { getCard, getNemesisDefinition } from '@engine/data'
+import { getSpendableAether } from '@engine/engine'
 import type { NemesisCardDef, NemesisCardInPlay } from '@engine/types'
 import { cardImageUrl, nemesisCardBackUrl, nemesisMatImageUrl, nemesisSpecificDeckBackUrl, nemesisTokenImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
+import AttachedQuarterCard from './AttachedQuarterCard.vue'
 import NemesisSpecificPile from './NemesisSpecificPile.vue'
 import TurnOrderBar from './TurnOrderBar.vue'
 import { useModalDrag } from '../game/useModalDrag'
@@ -19,24 +21,53 @@ const {
   openNemesisSpecificPile, openNemesisSpecificDiscardPile, canActMain,
 } = useGame()
 const nemesis = computed(() => state.game!.nemesis)
+const hasUnlimitedNemesisLife = computed(() => getNemesisDefinition(nemesis.value.definitionId)?.noLifeMaximum === true)
+const nemesisLifeBarMaximum = computed(() =>
+  getNemesisDefinition(nemesis.value.definitionId)?.lifeLossThreshold ?? nemesis.value.maxHp,
+)
 const presentation = computed(() => getNemesisPresentation(nemesis.value.type))
-const specificTopCard = computed(() => presentation.value.specificDeck.display === 'face_up'
-  ? nemesis.value.strikeDeck[0] ?? null
-  : null)
+const strikeDeckDisplay = computed(() => state.cardPileDisplayOverrides['nemesis:strike_deck'])
+const specificTopCard = computed(() => {
+  if (presentation.value.specificDeck.display !== 'face_up') return null
+  return strikeDeckDisplay.value?.topCardId !== undefined
+    ? strikeDeckDisplay.value.topCardId
+    : nemesis.value.strikeDeck[0] ?? null
+})
+const specificDiscardTopCard = computed(() => {
+  const display = state.cardPileDisplayOverrides['nemesis:strike_discard']
+  return display?.topCardId !== undefined ? display.topCardId : nemesis.value.strikeDiscard[0] ?? null
+})
+const specificDiscardTopInstanceId = computed(() => nemesis.value.strikeDiscardInstanceIds?.[0] ?? '')
+const nemesisDiscardTopCard = computed(() => {
+  const display = state.cardPileDisplayOverrides['nemesis:nemesis_discard']
+  return display?.topCardId !== undefined ? display.topCardId : nemesis.value.discard[0] ?? null
+})
+const nemesisDiscardTopInstanceId = computed(() => nemesis.value.discardInstanceIds?.[0] ?? '')
 const specificDeckCardCount = computed(() => nemesis.value.type === 'crooked_mask'
-  ? state.cardPileCountOverrides['nemesis:corruption_deck']?.count ?? nemesis.value.corruptionDeck?.length ?? 0
-  : state.cardPileCountOverrides['nemesis:strike_deck']?.count ?? nemesis.value.strikeDeck.length)
+  ? state.cardPileDisplayOverrides['nemesis:corruption_deck']?.count ?? nemesis.value.corruptionDeck?.length ?? 0
+  : strikeDeckDisplay.value?.count ?? nemesis.value.strikeDeck.length)
 const specificDiscardCount = computed(() =>
-  state.cardPileCountOverrides['nemesis:strike_discard']?.count ?? nemesis.value.strikeDiscard.length,
+  state.cardPileDisplayOverrides['nemesis:strike_discard']?.count ?? nemesis.value.strikeDiscard.length,
 )
 const nemesisDiscardCount = computed(() =>
-  state.cardPileCountOverrides['nemesis:nemesis_discard']?.count ?? nemesis.value.discard.length,
+  state.cardPileDisplayOverrides['nemesis:nemesis_discard']?.count ?? nemesis.value.discard.length,
 )
 const nemesisDeckCount = computed(() =>
-  state.cardPileCountOverrides['nemesis:nemesis_deck']?.count ?? nemesis.value.deck.length,
+  state.cardPileDisplayOverrides['nemesis:nemesis_deck']?.count ?? nemesis.value.deck.length,
 )
 const canActivateSpecificTopCard = computed(() =>
-  presentation.value.specificDeck.topCardAction === 'buy' && !!specificTopCard.value && canActMain.value)
+  presentation.value.specificDeck.topCardAction === 'buy' && !!specificTopCard.value && canActMain.value &&
+  (!presentation.value.specificDeck.primaryActionOnCard || specificTopCardAffordable.value))
+const specificTopCardAffordable = computed(() => {
+  const game = state.game
+  const cardId = specificTopCard.value
+  const player = game?.players.find(candidate => candidate.id === state.selectedPlayer)
+  if (!game || !cardId || !player) return false
+  const card = getCard(cardId)
+  const spendType = card.type === 'gem' || card.type === 'spell' || card.type === 'relic' ? card.type : 'general'
+  const cost = card.cost + (game.nemesis.type === 'the_timeless' ? 1 : 0)
+  return getSpendableAether(player, spendType) >= cost
+})
 const specificTopCardActionLabel = computed(() => {
   if (presentation.value.specificDeck.topCardAction !== 'buy' || !specificTopCard.value) return undefined
   return `Buy ${getCard(specificTopCard.value).name} from the ${presentation.value.specificDeck.label}`
@@ -271,16 +302,16 @@ onBeforeUnmount(() => {
     <div class="nemesis-board">
       <div class="nemesis-board-upper">
         <div class="nemesis-pile-column" aria-label="Nemesis discard piles">
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled, 'is-empty': !presentation.specificDiscard.enabled || specificDiscardCount === 0 }" :aria-disabled="!presentation.specificDiscard.enabled || specificDiscardCount === 0" :aria-label="`Open ${presentation.specificDiscard.label}`" :title="presentation.specificDiscard.label" @click="openNemesisSpecificDiscardPile">
-            <CardHoverPreview v-if="presentation.specificDiscard.enabled && nemesis.strikeDiscard[0]" :card-id="nemesis.strikeDiscard[0]">
-              <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="nemesis.strikeDiscard[0]" />
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :data-card-flight-target="presentation.specificDiscard.enabled ? 'strike-discard' : undefined" :data-card-motion-zone="presentation.specificDiscard.enabled ? 'strike_discard' : undefined" data-card-motion-owner-id="nemesis" data-card-motion-key="nemesis-specific-discard-top" data-card-motion-face="front" :data-card-motion-card-id="specificDiscardTopCard ?? undefined" :data-card-instance-id="specificDiscardTopInstanceId || undefined" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled, 'is-empty': !presentation.specificDiscard.enabled || specificDiscardCount === 0 }" :aria-disabled="!presentation.specificDiscard.enabled || specificDiscardCount === 0" :aria-label="`Open ${presentation.specificDiscard.label}`" :title="presentation.specificDiscard.label" @click="openNemesisSpecificDiscardPile">
+            <CardHoverPreview v-if="presentation.specificDiscard.enabled && specificDiscardTopCard" :card-id="specificDiscardTopCard">
+              <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="specificDiscardTopCard" />
             </CardHoverPreview>
             <span v-else class="nemesis-pile-placeholder">{{ presentation.specificDiscard.enabled ? `${presentation.specificDiscard.label} 0` : 'Not used' }}</span>
             <span v-if="presentation.specificDiscard.enabled && specificDiscardCount > 0" class="nemesis-pile-count">{{ specificDiscardCount }}</span>
           </button>
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-empty': nemesisDiscardCount === 0 }" :aria-disabled="nemesisDiscardCount === 0" aria-label="Open Nemesis Discard" title="Nemesis Discard" @click="openNemesisDiscardPile">
-            <CardHoverPreview v-if="nemesis.discard[0]" :card-id="nemesis.discard[0]">
-              <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="nemesis.discard[0]" />
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" data-card-flight-target="nemesis-discard" data-card-motion-zone="nemesis_discard" data-card-motion-owner-id="nemesis" data-card-motion-key="nemesis-discard-top" data-card-motion-face="front" :data-card-motion-card-id="nemesisDiscardTopCard ?? undefined" :data-card-instance-id="nemesisDiscardTopInstanceId || undefined" :class="{ 'is-empty': nemesisDiscardCount === 0 }" :aria-disabled="nemesisDiscardCount === 0" aria-label="Open Nemesis Discard" title="Nemesis Discard" @click="openNemesisDiscardPile">
+            <CardHoverPreview v-if="nemesisDiscardTopCard" :card-id="nemesisDiscardTopCard">
+              <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="nemesisDiscardTopCard" />
             </CardHoverPreview>
             <span v-else class="nemesis-pile-placeholder">Nemesis Discard {{ nemesisDiscardCount }}</span>
             <span v-if="nemesisDiscardCount > 0" class="nemesis-pile-count">{{ nemesisDiscardCount }}</span>
@@ -295,9 +326,11 @@ onBeforeUnmount(() => {
             :back-image-url="nemesisSpecificDeckBackUrl(nemesis.type)"
             :flight-source="nemesis.type === 'crooked_mask' ? 'corruption-deck' : 'nemesis-specific-deck'"
             :display="presentation.specificDeck.display"
+            :top-card-always-revealed="presentation.specificDeck.topCardAlwaysRevealed"
             :top-card-id="specificTopCard ?? undefined"
             :action-label="specificTopCardActionLabel"
             :action-enabled="canActivateSpecificTopCard"
+            :primary-action-on-card="presentation.specificDeck.primaryActionOnCard"
             @activate="activateSpecificTopCard"
             @inspect="openNemesisSpecificPile"
           />
@@ -324,6 +357,11 @@ onBeforeUnmount(() => {
             >
               <div
                 class="nemesis-play-card nemesis-stationed-card game-highlight"
+                data-card-motion-zone="nemesis_play_area"
+                data-card-motion-owner-id="nemesis"
+                :data-card-motion-card-id="card.cardId"
+                :data-card-motion-key="`nemesis-play-${nemesisCardInstanceId(card)}`"
+                :data-card-instance-id="nemesisCardInstanceId(card)"
                 :data-damage-target="card.cardType === 'minion' ? minionTargetId(card.placedAt) : undefined"
                 :class="{
                   'damage-target': isDamageTarget(minionTargetId(card.placedAt)),
@@ -350,10 +388,10 @@ onBeforeUnmount(() => {
           <div v-if="playCards.length > 0" ref="playScroll" class="nemesis-play-row nemesis-card-scroll">
             <div class="nemesis-card-track">
               <CardHoverPreview v-for="card in playCards" :key="nemesisCardInstanceId(card)" :card-id="card.cardId" :preview-width="210" :preview-height="291.02">
-                <div class="nemesis-play-card game-highlight" :data-damage-target="card.cardType === 'minion' ? minionTargetId(card.placedAt) : undefined" :data-main-action-id="isEndTurnActionCard(card) ? `nemesis-card:${nemesisCardInstanceId(card)}` : undefined" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(nemesisCardInstanceId(card)), 'game-highlight--available': nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'game-highlight--choice': isDamageTarget(minionTargetId(card.placedAt)), 'game-highlight--required': isMainEffectTarget(nemesisCardInstanceId(card)), 'end-turn-attention': isEndTurnActionCard(card) }]" @click="activateNemesisCard(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
+                <div class="nemesis-play-card game-highlight" data-card-motion-zone="nemesis_play_area" data-card-motion-owner-id="nemesis" :data-card-motion-card-id="card.cardId" :data-card-motion-key="`nemesis-play-${nemesisCardInstanceId(card)}`" :data-card-instance-id="nemesisCardInstanceId(card)" :data-damage-target="card.cardType === 'minion' ? minionTargetId(card.placedAt) : undefined" :data-main-action-id="isEndTurnActionCard(card) ? `nemesis-card:${nemesisCardInstanceId(card)}` : undefined" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(nemesisCardInstanceId(card)), 'game-highlight--available': nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'game-highlight--choice': isDamageTarget(minionTargetId(card.placedAt)), 'game-highlight--required': isMainEffectTarget(nemesisCardInstanceId(card)), 'end-turn-attention': isEndTurnActionCard(card) }]" @click="activateNemesisCard(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
                   <img v-if="cardImageUrl(card.cardId)" :src="cardImageUrl(card.cardId)" :alt="getCard(card.cardId).name" draggable="false" />
                   <div v-else class="nemesis-card-fallback">{{ getCard(card.cardId).name }}</div>
-                <div v-if="card.underCards?.length" class="nemesis-under-card-stack" :title="nemesisCardStackTitle(card)" :aria-label="nemesisCardStackTitle(card)" @click.stop>
+                <div v-if="card.underCards?.length && (getCard(card.cardId) as NemesisCardDef).underCardDisplay !== 'attached_quarter'" class="nemesis-under-card-stack" :title="nemesisCardStackTitle(card)" :aria-label="nemesisCardStackTitle(card)" @click.stop>
                   <CardSurface
                     v-for="(underCardId, index) in card.underCards"
                     :key="nemesisCardStackInstanceId(card, index)"
@@ -369,6 +407,18 @@ onBeforeUnmount(() => {
                     :image-alt="getCard(underCardId).name"
                   />
                 </div>
+                <AttachedQuarterCard
+                  v-if="card.underCards?.length && (getCard(card.cardId) as NemesisCardDef).underCardDisplay === 'attached_quarter'"
+                  :card-id="card.underCards[0]"
+                  :data-card-motion-zone="'nemesis_card_stack'"
+                  :data-card-motion-card-id="card.underCards[0]"
+                  data-card-motion-owner-id="nemesis"
+                  :data-card-motion-key="`nemesis-stack-${nemesisCardStackInstanceId(card, 0)}`"
+                  :data-card-instance-id="nemesisCardStackInstanceId(card, 0)"
+                  data-card-motion-from-zones="nemesis_deck"
+                  data-card-motion-face="front"
+                  :image-alt="getCard(card.underCards[0]).name"
+                />
                   <span v-if="dividedDamageAssigned(minionTargetId(card.placedAt)) > 0" class="damage-allocation-badge" :aria-label="`${dividedDamageAssigned(minionTargetId(card.placedAt))} damage assigned`">−{{ dividedDamageAssigned(minionTargetId(card.placedAt)) }}</span>
                   <span v-if="nemesisTokenCounter(card)" class="nemesis-card-counter nemesis-card-token-counter">{{ nemesisTokenCounter(card) }}</span>
                   <div class="nemesis-card-meta"><span v-if="cardCounter(card)" class="nemesis-card-counter">{{ cardCounter(card) }}</span></div>
@@ -390,8 +440,8 @@ onBeforeUnmount(() => {
           </div>
           <div class="hp-block" data-damage-target="nemesis">
             <span class="hp-name">Nemesis</span>
-            <div class="hpbar nemesis"><i :style="{ width: pct(nemesis.hp / nemesis.maxHp) }" /></div>
-            <span class="hp-num"><b>{{ nemesis.hp }}</b>/{{ nemesis.maxHp }}</span>
+            <div class="hpbar nemesis"><i :style="{ width: pct(nemesis.hp / nemesisLifeBarMaximum) }" /></div>
+            <span class="hp-num"><b>{{ nemesis.hp }}</b><template v-if="!hasUnlimitedNemesisLife">/{{ nemesis.maxHp }}</template></span>
           </div>
         </div>
         <div class="nemesis-info-region nemesis-info-turn-order" aria-label="Turn Order Cards">

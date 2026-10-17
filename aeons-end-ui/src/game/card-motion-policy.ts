@@ -36,6 +36,39 @@ const motionDurationFallbacks: Record<string, number> = {
   '--nemesis-draw-flip-duration': 150,
 }
 
+/** Pile surfaces remain visible while an arriving card flies over them. */
+const persistentPileZones = new Set([
+  'deck', 'discard', 'specific_deck', 'trinket_deck',
+  'nemesis_deck', 'nemesis_discard', 'corruption_deck',
+  'strike_deck', 'strike_discard',
+])
+
+function normalizePileZone(zone: string): string {
+  const normalized = zone.trim().toLowerCase().replace(/-/g, '_')
+  if (normalized === 'nemesis_specific_deck') return 'strike_deck'
+  if (normalized === 'nemesis_specific_discard') return 'strike_discard'
+  return normalized
+}
+
+function isPersistentPileZone(zone: string | undefined): boolean {
+  return !!zone && persistentPileZones.has(normalizePileZone(zone))
+}
+
+function isPersistentPileDestination(destination: HTMLElement): boolean {
+  let element: HTMLElement | null = destination
+  while (element) {
+    if (element.dataset.nemesisDeckPile === 'true') return true
+    if ([
+      element.dataset.cardMotionZone,
+      element.dataset.cardFlightZone,
+      element.dataset.cardFlightTarget,
+      element.dataset.cardFlightSource,
+    ].some(isPersistentPileZone)) return true
+    element = element.parentElement
+  }
+  return false
+}
+
 const cardFlightTimingConfig: Record<CardFlightTiming, CardFlightTimingConfig> = {
   standard: { durationVariable: '--card-flight-duration' },
   'breach-to-discard': { durationVariable: '--breach-to-discard-flight-duration' },
@@ -85,24 +118,17 @@ export function cardZoneFlightDestinationMode(
   zone: string,
   targetIsNewCard: boolean,
 ): CardFlightDestinationMode {
-  return zone === 'deck' || zone === 'discard' || zone === 'trinket_deck' ||
-    zone === 'strike_deck' || zone === 'corruption_deck' || !targetIsNewCard
+  return isPersistentPileZone(zone) || !targetIsNewCard
     ? 'overlay'
     : 'replace'
 }
 
-/** Keep persistent player piles visible even when a caller requests replacement. */
+/** Keep persistent piles visible even when a caller requests replacement. */
 export function resolveCardFlightDestinationMode(
   destination: HTMLElement,
   requestedMode: CardFlightDestinationMode = 'replace',
 ): CardFlightDestinationMode {
-  const destinationZone = destination.dataset.cardMotionZone ??
-    destination.dataset.cardFlightZone ?? destination.dataset.cardFlightTarget
-  const pileAncestor = destination.closest<HTMLElement>(
-    '[data-card-flight-target="deck"], [data-card-flight-target="discard"], [data-card-flight-target="trinket-deck"], [data-card-flight-zone="deck"], [data-card-flight-zone="discard"]',
-  )
-  if (destinationZone === 'deck' || destinationZone === 'discard' ||
-    destinationZone === 'trinket_deck' || pileAncestor) return 'overlay'
+  if (isPersistentPileDestination(destination)) return 'overlay'
   return requestedMode
 }
 
@@ -140,8 +166,9 @@ export function cardMotionChangesFace(
   sourceZone: string,
   destinationZone: string,
   faceDownOnArrival?: boolean,
+  sourceFaceOverride?: CardFace,
 ): boolean {
-  const sourceFace = cardFaceForZone(sourceZone)
+  const sourceFace = sourceFaceOverride ?? cardFaceForZone(sourceZone)
   const destinationFace = faceDownOnArrival === undefined
     ? cardFaceForZone(destinationZone)
     : faceDownOnArrival ? 'back' : 'front'

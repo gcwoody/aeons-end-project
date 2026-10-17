@@ -1,5 +1,5 @@
 import type { CardMechanic, CardMoveZoneAddress, GameState, PlayerState } from '../types'
-import { getCard, MAGES } from '../data'
+import { getCard, getNemesisDefinition, MAGES } from '../data'
 import { buildTrinketDeck } from '../data/wave9/special-decks/trinkets'
 import {
   createCardInstance, ensureCardInstanceZone, findCardInstanceId,
@@ -271,6 +271,11 @@ export function isNemesisDeckCardRevealed(game: GameState, index: number): boole
 export function isNemesisSpecificDeckCardRevealed(game: GameState, index: number): boolean {
   const deck = game.nemesis.strikeDeck
   game.nemesis.strikeDeckInstanceIds = ensureCardInstanceZone(game, deck, game.nemesis.strikeDeckInstanceIds)
+  if (index === 0 && getNemesisDefinition(game.nemesis.definitionId)?.specificDeckTopAlwaysRevealed) {
+    const topInstanceId = game.nemesis.strikeDeckInstanceIds[0]
+    if (topInstanceId) markCardInstanceRevealed(game, topInstanceId)
+    return Boolean(topInstanceId)
+  }
   return isCardInstanceRevealed(game, game.nemesis.strikeDeckInstanceIds[index])
 }
 

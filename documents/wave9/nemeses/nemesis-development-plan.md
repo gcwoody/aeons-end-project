@@ -1,6 +1,6 @@
 # Wave 9 Nemesis 开发计划：Oracle of Filth、The Timeless、Twice-Dead Prophet
 
-这份计划记录三场战斗的规则理解、实现分工和进度。Oracle of Filth 已开始实现，另外两场仍处于计划阶段。
+这份计划记录三场战斗的规则理解、实现分工和进度。Oracle of Filth、The Timeless 与 Twice-Dead Prophet 均已实现。
 
 项目目前固定为两名 Mage 对战一名 Nemesis。因此本轮先按双人局实现；卡牌资料里写出的 1–4 人数量表会保留为规则数据，但不借这次开发扩展多人局。
 
@@ -10,8 +10,12 @@
 
 - Oracle of Filth 的引擎效果、开局替换供给堆、Vortex 牌区、Pupil 上排展示及卡牌移动已接通。
 - Unrelenting Fear 使用通用分配弹窗：玩家把展示的牌拖到任一 Mage 区域后确认。
+- The Timeless 已接通开局 Curse、Exiled pile、顶牌购买、Exile 效果、Finality 召唤/回收、Nemesis token 和 Curse 的 Conjure 限制。
+- The Timeless 的 Exiled pile 与 Finality pile 分别复用 Nemesis specific deck/discard；通用 Nemesis token 使用 `NemesisToken.png`。
+- Twice-Dead Prophet 已接通 Prophecy deck、Nemesis deck 底牌附着、结算/弃置后回到底部、Nemesis end-turn 阈值、无生命上限和特殊失败条件。
+- Prophecy 下方的卡按“刚抽到”处理，包含可用的 Nemesis 抽牌响应；卡牌使用 Gallery 的 `Card.AttachedQuarter` 组件展示。
+- Nemesis deck 底牌与 face-up 专属牌堆顶的来源锚点已加入通用卡牌移动捕获模块。
 - 引擎和 UI 类型检查已通过；本次未运行游戏测试。
-- The Timeless 和 Twice-Dead Prophet 尚未实现。
 
 ## 一眼看懂三场战斗的核心
 
@@ -33,7 +37,7 @@
 - 在 `wave9/index.ts` 登记三组卡牌和 Nemesis 定义，在 `nemesis/registry.ts` 登记需要的特殊规则；之后再由现有数据入口提供给设置页和游戏。
 - Vortex、Exiled pile、Finality pile、Prophecy deck 和卡牌下方压着的牌，都属于可保存的游戏状态；需要一起保存牌的顺序、可见状态和归属。
 
-现在已有 Nemesis 数据、基础卡牌池、Unleash、Minion/Power/Attack 结算、`setup` 和 `endTurn` 规则入口，以及有序卡牌移动记录。当前没有通用的 Exile 区、Vortex 区或 Prophecy deck；卡牌也没有“进手牌时触发”这一规则入口。具体缺口会在三位 Nemesis 的计划里分别列出。
+现在已有 Nemesis 数据、基础卡牌池、Unleash、Minion/Power/Attack 结算、`setup` 和 `endTurn` 规则入口，以及有序卡牌移动记录。Oracle 的 Vortex、The Timeless 的 Exiled/Finality 和 Twice-Dead Prophet 的 Prophecy deck 均复用 Nemesis specific deck/discard 状态；Prophecy 下方的牌使用通用 Nemesis 卡牌叠放结构。
 
 Nemesis 卡牌中的大写 `OR` 必须沿用 [游戏裁定](../../../game-rulings.md) 的规则：根据整组选项是否能结算来确定按钮是否可选，并在玩家提交时再次校验。特别需要覆盖 Oracle 的 Torment 和 Abyssal Vial。
 
@@ -90,6 +94,14 @@ Nemesis 卡牌中的大写 `OR` 必须沿用 [游戏裁定](../../../game-ruling
 
 ## 2. The Timeless
 
+### 实现状态
+
+- 开局为每位玩家的弃牌堆加入一张 Curse of Exhaustion；从最高费用供给堆移走一张牌作为 Exiled pile 顶牌，最高费用并列时由玩家选择。
+- Exiled pile 复用 Nemesis specific deck，牌面全程可见；Finality pile 复用 Nemesis specific discard，共 8 张。
+- Main Phase 中，若玩家付得起原费用加 1，Exiled pile 顶牌会像供给牌一样高亮；点击可购买并把同一张实体牌放入弃牌堆。付不起时点击仍可查看牌堆。
+- Nemesis token 图使用共用的 `NemesisToken.png`；Finality 进入场上、被击败后回到专属牌堆，回合结束按每 3 个 token 召唤并继续检查。
+- Curse of Exhaustion 进入手牌后走通用 tracked in-hand resolution；不能被摧毁、Exile 或准备到 Breach。Conjure 翻到它时只能跳过并放回牌堆顶。
+
 ### 基本设置
 
 - 起始生命 60，难度 7。
@@ -115,7 +127,7 @@ Curse of Exhaustion 在进入玩家手牌时自动结算：先抽 1 张牌；然
 | Subside（Tier 1 Attack） | 任意玩家 Exile 手牌中的 Spell，并受到 3 点伤害 | 目标选择要考虑是否有 Spell；双人局无人有 Spell 时按 Nemesis 强制效果规则尽可能结算 |
 | Infinity Warp（Tier 1 Attack） | 放入一张 Finality | 与回合结束阈值召出的 Finality 共用牌堆和空堆处理 |
 | Paradox Scourge（Tier 2 Minion，10 生命） | 玩家对它造成伤害时 The Timeless 获得 1 个 token；PERSISTENT：任意玩家弃掉手中费用最高的牌 | 伤害触发按每次伤害生效；最高费用打平时让玩家从并列牌中选择 |
-| Beyond Time and Space（Tier 2 Power，3） | 放入一张 Finality，并把此卡放到 Nemesis mat 旁；以后每次 Finality 结算 PERSISTENT 时，再结算一次 | 游戏期间的全局状态要保存；如果 Finality 在第一次结算中被击败，不再对离场 Minion 重复结算 |
+| Beyond Time and Space（Tier 2 Power，2） | 放入一张 Finality，并把此卡放到 Nemesis mat 旁；以后每次 Finality 结算 PERSISTENT 时，再结算一次 | 游戏期间的全局状态要保存；如果 Finality 在第一次结算中被击败，不再对离场 Minion 重复结算 |
 | Crushing Eventuality（Tier 2 Power，3；TO DISCARD：7 Aether） | Unleash 两次；从费用最高的供给牌堆 Exile 一张；牌堆数量最少的玩家受到 3 点伤害 | 需要供给牌堆选择/费用并列规则，以及按牌堆总张数选目标；空供给堆不能提供牌 |
 | Ghastly Epoch（Tier 3 Power，1） | 若 Exiled pile 顶牌费用大于 0，Gravehold 受 6 点伤害；否则受 10 点 | 检查当前顶牌；空 Exiled pile 应有明确定义，避免读不存在的牌 |
 | Ossilith（Tier 3 Minion，15 生命） | 任意玩家 Exile 手牌一张牌并受 5 点伤害；按该牌费用减伤，最低为 0 | Exile 的牌必须先选定，再算伤害；没有手牌时仍按规则处理可完成部分 |

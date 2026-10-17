@@ -11,6 +11,7 @@ import {
 } from '../card-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
+import AttachedQuarterCard from './AttachedQuarterCard.vue'
 import HandMotionDemo from './HandMotionDemo.vue'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardChoicePanel.vue'
@@ -271,11 +272,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
             <CardHoverPreview :card-id="'amethyst_shard'">
               <div class="gallery-attached-supply">
                 <img :src="cardImageUrl('amethyst_shard')" :alt="cardName('amethyst_shard')" draggable="false" />
-                <CardHoverPreview :card-id="'runic_flute'">
-                  <div class="gallery-attached-treasure">
-                    <img :src="cardImageUrl('runic_flute')" :alt="cardName('runic_flute')" draggable="false" />
-                  </div>
-                </CardHoverPreview>
+                <AttachedQuarterCard card-id="runic_flute" />
               </div>
             </CardHoverPreview>
           </div>
@@ -788,7 +785,6 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .gallery-pile-card img,
 .gallery-face-down-card img,
 .gallery-attached-supply > img,
-.gallery-attached-treasure img,
 .gallery-reveal-card img,
 .gallery-modal-card img,
 .gallery-modal-reveal-card img {
@@ -838,16 +834,6 @@ function reorderGalleryTurnOrder(keys: string[]) {
   aspect-ratio: var(--card-aspect-ratio);
   overflow: hidden;
   border: var(--pixel-border-width) solid transparent;
-  border-radius: var(--card-radius);
-}
-.gallery-attached-treasure {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 50%;
-  height: 50%;
-  overflow: hidden;
-  border: var(--pixel-border-width) solid var(--ok);
   border-radius: var(--card-radius);
 }
 .reveal-surface { min-height: 270px; }

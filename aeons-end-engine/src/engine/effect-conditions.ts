@@ -8,7 +8,7 @@ import { MAX_PULSE_TOKENS, ensurePlayerCollections } from './player-state'
 import { getZoneCards } from './player-state'
 import { getSpendableAether } from './aether'
 import { getDevelopZoneCards, getPlayer } from './zones'
-import { getDoomOwner, getSelectedPlayerTargets } from './targets'
+import { getDoomOwner, getSelectedPlayerTargets, getSourceMinion } from './targets'
 
 export interface EffectConditionServices {
   hasRecallChoices(game: GameState, sourcePlayerId?: string): boolean
@@ -56,6 +56,9 @@ export function conditionMatches(
       game, playerId, item, resolution, sourceCardId, sourceCardIndex, sourcePlayerId, pendingPlayCardId, services,
     ))
   }
+  if (condition.kind === 'nemesis_difficulty_is') {
+    return game.nemesis.difficulty === condition.difficulty
+  }
   if (condition.kind === 'develop_zone_card_count') {
     const cardId = condition.cardId === 'source'
       ? sourceCardId ?? resolution?.sourceCardId
@@ -102,6 +105,9 @@ export function conditionMatches(
     return game.market.piles.some(pile => pile.remaining > 0 &&
       (!condition.cardType || getCard(pile.cardId).type === condition.cardType))
   }
+  if (condition.kind === 'any_player_below_max_life') {
+    return game.players.some(owner => owner.hp < owner.maxHp)
+  }
   if (condition.kind === 'any_player_charge') {
     return game.players.some(owner => owner.charge >= Math.max(0, condition.amount))
   }
@@ -118,6 +124,20 @@ export function conditionMatches(
     if (condition.comparison === 'greater_than') return count > condition.count
     return count >= condition.count
   }
+  if (condition.kind === 'specific_deck_top_card_cost') {
+    const topCardId = game.nemesis.strikeDeck[0]
+    const cost = topCardId ? getCard(topCardId).cost : 0
+    if (condition.comparison === 'equals') return cost === condition.amount
+    if (condition.comparison === 'at_most') return cost <= condition.amount
+    if (condition.comparison === 'greater_than') return cost > condition.amount
+    return cost >= condition.amount
+  }
+  if (condition.kind === 'nemesis_life') {
+    if (condition.comparison === 'equals') return game.nemesis.hp === condition.amount
+    if (condition.comparison === 'at_most') return game.nemesis.hp <= condition.amount
+    if (condition.comparison === 'greater_than') return game.nemesis.hp > condition.amount
+    return game.nemesis.hp >= condition.amount
+  }
   if (condition.kind === 'nemesis_specific_deck_accepts_cards') {
     return !game.nemesis.playArea.some(card =>
       (getCard(card.cardId) as NemesisCardDef).blocksPlacementIntoSpecificDeck === true,
@@ -125,7 +145,7 @@ export function conditionMatches(
   }
   if (condition.kind === 'source_minion_life') {
     const sourceId = resolution?.sourceCardId ?? sourceCardId
-    const minion = game.nemesis.playArea.find(card => card.cardType === 'minion' && card.cardId === sourceId)
+    const minion = getSourceMinion(game, sourceId)
     const life = minion?.lifeTokens ?? 0
     if (condition.comparison === 'equals') return life === condition.amount
     if (condition.comparison === 'at_most') return life <= condition.amount

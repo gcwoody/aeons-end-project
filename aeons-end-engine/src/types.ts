@@ -119,6 +119,7 @@ export type CardEffectCondition =
   | { kind: 'has_card_in_hand'; cardType: 'gem' | 'relic' | 'spell' }
   | { kind: 'has_eligible_card_in_zone'; zone: CardZone | 'hand_or_discard'; cardTypes: CardType[]; cardIds?: string[]; minimumCost?: number; treasureLevel?: TreasureLevel; target?: PlayerTargetScope | 'source' }
   | { kind: 'specific_deck_card_count'; comparison: EffectComparison; count: number }
+  | { kind: 'specific_deck_top_card_cost'; comparison: EffectComparison; amount: number }
   | { kind: 'nemesis_specific_deck_accepts_cards' }
   | { kind: 'source_minion_life'; comparison: EffectComparison; amount: number }
   | { kind: 'has_opened_breach'; target: PlayerTargetScope; breachIndices?: number[] }
@@ -143,7 +144,10 @@ export type CardEffectCondition =
   | { kind: 'collective_hand_card_count'; comparison: EffectComparison; count: number; cardTypes?: CardType[]; minCost?: number }
   | { kind: 'has_nonempty_market_pile'; cardType?: 'gem' | 'relic' | 'spell' }
   | { kind: 'any_player_charge'; amount: number }
+  | { kind: 'any_player_below_max_life' }
   | { kind: 'has_bottom_nemesis_discard_attack_with_effect' }
+  | { kind: 'nemesis_life'; comparison: EffectComparison; amount: number }
+  | { kind: 'nemesis_difficulty_is'; difficulty: NemesisDifficulty }
 
 /** A conditional amount added to one existing damage instance. */
 export interface AdditionalDamage {
@@ -190,6 +194,7 @@ export type PlayerSelectionRule =
   | 'most_crystals'
   | 'most_charges'
   | 'most_opened_breaches'
+  | 'fewest_cards_in_deck'
 export type PlayerTargetRef = { kind: 'player'; playerId: PlayerId }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
@@ -477,7 +482,7 @@ export type PendingDecision = PendingDecisionBase & (
       kind: 'choose_one'
       options: DecisionOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
+      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice' | 'centered-prompt-cards'
     }
   | DamageTargetDecisionContinuation
   | {
@@ -588,6 +593,11 @@ export type PendingDecision = PendingDecisionBase & (
       remainingChoices: number
     }
   | {
+      /** Setup moves one card from a highest-cost Supply pile to the Exiled pile. */
+      kind: 'select_setup_exiled_pile'
+      candidates: MarketPileChoice[]
+    }
+  | {
       /** Setup replaces one selected supply pile with a Nemesis-specific card. */
       kind: 'select_setup_supply_replacement'
       candidates: MarketPileChoice[]
@@ -635,6 +645,17 @@ export type PendingDecision = PendingDecisionBase & (
       breachIndex: number
       spellIndex?: number
     }
+  | {
+      /** A triggered player card stays highlighted until its owner confirms it from the board. */
+      kind: 'confirm_player_card_effect'
+      cardId: string
+      playerId: PlayerId
+      cardIndex: number
+    }
+  | {
+      /** Internal pause until the UI finishes card movement animations. */
+      kind: 'await_card_motions'
+    }
 )
 
 export type PendingDecisionAnswer =
@@ -658,6 +679,7 @@ export type PendingDecisionAnswer =
   | { kind: 'choose_token_amount'; amount: number }
   | { kind: 'select_market_pile'; choice: MarketPileChoice }
   | { kind: 'select_setup_devour_pile'; choice: MarketPileChoice }
+  | { kind: 'select_setup_exiled_pile'; choice: MarketPileChoice }
   | { kind: 'select_setup_supply_replacement'; choice: MarketPileChoice }
   | { kind: 'reorder_turn_order'; order: number[] }
   | { kind: 'select_turn_order_card'; choice: TurnOrderCardChoice }
@@ -667,6 +689,8 @@ export type PendingDecisionAnswer =
   | { kind: 'confirm_revealed_card'; accepted: true }
   | { kind: 'choose_turn_order_position'; position: 'top' | 'bottom' }
   | { kind: 'confirm_prepped_effect'; accepted: true }
+  | { kind: 'confirm_player_card_effect'; accepted: true }
+  | { kind: 'await_card_motions'; accepted: true }
 
 export interface BreachCostReduction {
   amount: number
@@ -761,6 +785,7 @@ export type CardEffect =
   | { kind: 'gain_corruption_and_shuffle_discard' }
   /** Resolve a player's eligible Corruptions in any order at a rule-defined timing. */
   | { kind: 'resolve_corruptions'; timing: 'turn_start' | 'end_main' }
+  | { kind: 'resolve_tracked_in_hand_card'; playerId: PlayerId; instanceId: string }
   | { kind: 'resolve_corruption_card'; cardId: string; playerId: PlayerId }
   | { kind: 'return_source_corruption'; cardId: string; playerId: PlayerId }
   | { kind: 'destroy_source_corruption' }
@@ -776,7 +801,8 @@ export type CardEffect =
   | { kind: 'afflict_two_players_with_corruptions'; corruptionAmount: number }
   | { kind: 'discard_noncorruptions_and_gain_corruptions'; discardAmount: number; corruptionAmount: number; destination: 'hand' | 'deck_top' | 'deck_bottom'; targetAvailability?: 'full_or_max' }
   | { kind: 'discard_noncorruption_cards'; amount: number }
-  | { kind: 'deal_player_damage_by_last_selected_cost'; divisor: number; roundUp?: boolean; target: DamagePlayerTargetScope }
+  | { kind: 'deal_player_damage_by_last_selected_cost'; divisor: number; roundUp?: boolean; target: DamagePlayerTargetScope; baseAmount?: number; reduceByCost?: boolean }
+  | { kind: 'discard_top_card'; target: PlayerTargetScope; targetAvailability?: 'full_or_max' }
   | { kind: 'look_at_top_card_may_destroy' }
   | { kind: 'gain_least_expensive_card'; cardType: 'gem' | 'relic' | 'spell'; destination: 'hand' | 'deck_top' }
   | { kind: 'return_nemesis_turn_order_card' }
@@ -842,6 +868,8 @@ export type CardEffect =
       drawAmount: number
       discardAmount: number
       target?: PlayerTargetScope
+      /** Internal continuation after each drawn card has resolved any hand-entry triggers. */
+      resumeAfterDraw?: boolean
     }
   | {
       /** Resolve one selected Recall effect up to `maxTimes` times. */
@@ -908,6 +936,8 @@ export type CardEffect =
       /** Resolve self/ally relative to the Mage who began this effect sequence. */
       relativeToSource?: boolean
     }
+  /** Internal continuation that draws one card at a time so hand-entry triggers can interrupt. */
+  | { kind: 'draw_cards_for_player'; playerId: string; remaining: number; drawn: number }
   | { kind: 'reveal_firethorns'; playerCount?: number }
   | { kind: 'gain_specific_deck_top'; target?: PlayerTargetScope; destination?: CardGainDestination }
   | { kind: 'gain_firethorn_top_for_five' }
@@ -986,6 +1016,8 @@ export type CardEffect =
       selection?: PlayerSelectionRule
       /** Prefer targets able to complete the full amount; if none can, retain those with the most eligible cards. */
       targetAvailability?: 'full_or_max'
+      /** Restrict the choice to the highest-cost matching cards. */
+      mostExpensive?: boolean
       /** Restore the effect to its source Mage after a player-targeted discard. */
       restoreToSourceAfterSelection?: boolean
     }
@@ -1021,6 +1053,20 @@ export type CardEffect =
       prompt?: string
       /** Restore the effect sequence to its source after this selection resolves. */
       restoreToSourceAfterSelection?: boolean
+    }
+  | {
+      /** Exile selected player cards face up on top of the active Nemesis' specific deck. */
+      kind: 'exile_cards'
+      source: 'hand' | 'discard' | 'hand_or_discard'
+      amount: number
+      target?: PlayerTargetScope
+      cardType?: CardType
+      cardTypes?: CardType[]
+      minCost?: number
+      discardTopOnly?: boolean
+      mostExpensive?: boolean
+      /** Choose a target able to complete the full amount, or the target able to do the most. */
+      targetAvailability?: 'full_or_max'
     }
   | { kind: 'conditional'; condition: CardEffectCondition; effects: CardEffect[] }
   | {
@@ -1060,7 +1106,7 @@ export type CardEffect =
       prompt: string
       options: CardEffectOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice'
+      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice' | 'centered-prompt-cards'
     }
   | {
       kind: 'choose_optional'
@@ -1128,6 +1174,49 @@ export type CardEffect =
   /** Generic Nemesis counter operations used by reusable Nemesis effects. */
   | { kind: 'gain_nemesis_counter'; counter: string; amount: number }
   | { kind: 'lose_nemesis_counter'; counter: string; amount: number }
+  /** Play the top card of the Nemesis-specific deck as if it had been drawn. */
+  | {
+      kind: 'play_top_nemesis_specific_deck_card'
+      afterPlay?: CardEffect[]
+      powerTokensToRemove?: number
+      protectPowerTokensThisTurn?: boolean
+      /** The card is genuinely drawn (such as Vile Petition), so offer draw responses first. */
+      checkDrawAbility?: boolean
+      /** Internal continuation after any draw response has been offered. */
+      drawAbilityResolved?: boolean
+    }
+  /** Attach the bottom Nemesis-deck card, face-up, to the active Nemesis card. */
+  | { kind: 'attach_bottom_nemesis_deck_card_under_source' }
+  /** Play the card under the active Nemesis card as if it had been drawn. */
+  | { kind: 'play_card_under_source_nemesis_card'; drawAbilityResolved?: boolean }
+  /** Move the top card of the Nemesis-specific deck to its bottom. */
+  | { kind: 'move_top_nemesis_specific_deck_card_to_bottom' }
+  /** Remove one Power token from an eligible Power in play, asking the player when needed. */
+  | { kind: 'remove_nemesis_power_token' }
+  | {
+      kind: 'remove_nemesis_power_token_from_card_instance'
+      instanceId: string
+      ignoreTurnProtection?: boolean
+      protectAfterRemoval?: boolean
+    }
+  /** Finish an Attack or depleted Power after its effects have resolved. */
+  | { kind: 'finish_active_nemesis_card' }
+  /** Restore the Nemesis card context after resolving a nested card's effects. */
+  | {
+      kind: 'restore_nemesis_card_context'
+      activeCardInstanceId?: string
+      activeCardId?: string
+      activeTrigger?: NemesisEffectTrigger
+      activeCardPendingDiscard?: boolean
+    }
+  /** Apply the same damage amount to every player. */
+  | { kind: 'deal_player_damage_all'; amount: EffectAmount }
+  /** Players collectively discard the requested most-expensive prepped spells. */
+  | { kind: 'discard_prepped_spells_collectively'; amount: number; mostExpensive?: boolean }
+  /** Exile one card from a most-expensive non-empty supply pile. */
+  | { kind: 'exile_market_card_from_most_expensive_pile' }
+  /** Put a Finality from the specific discard pile into play, or damage Gravehold if empty. */
+  | { kind: 'summon_finality_from_specific_discard' }
   /** Draw and resolve one card from the Nemesis' auxiliary Strike deck. */
   | { kind: 'resolve_strike'; count?: number }
   | { kind: 'return_strike_card'; cardId: string }
@@ -1174,6 +1263,16 @@ export type CardEffect =
       spellIndex: number
       effects: CardEffect[]
     }
+  | {
+      kind: 'confirm_player_card_effect'
+      prompt: string
+      cardId: string
+      playerId: PlayerId
+      cardIndex: number
+      effects: CardEffect[]
+    }
+  /** Internal continuation barrier for movement effects that must finish before later effects. */
+  | { kind: 'await_card_motions' }
 
 export interface CardEffectBlock {
   trigger: CardEffectTrigger
@@ -1186,7 +1285,7 @@ export interface CardEffectBlock {
   ownerTurnOnly?: boolean
   /** Main-phase effects that wait for an explicit click on the prepped spell. */
   manualActivation?: boolean
-  /** Pause for player confirmation before resolving a mandatory prepped effect. */
+  /** Pause for confirmation on the source card before resolving a mandatory triggered effect. */
   requiresConfirmation?: boolean
 }
 
@@ -1208,6 +1307,14 @@ export interface CardDef {
   prepToClosedBreach?: boolean
   /** A destroyed card with this flag returns to its owner's Swap zone. */
   returnToSwapZoneOnDestroy?: boolean
+  /** Rules restrictions for cards that cannot be affected by these mechanics. */
+  cannotBeDestroyed?: boolean
+  cannotBeExiled?: boolean
+  cannotBeConjured?: boolean
+  /** Resolve this card's on_play effects when it is in hand at the start/end of a turn. */
+  resolveWhenInHand?: boolean
+  /** Destination after a tracked in-hand resolution; defaults to destruction. */
+  resolveInHandDestination?: 'destroy' | 'discard'
 }
 
 export interface GemCard extends CardDef {
@@ -1255,6 +1362,20 @@ export interface NemesisCardDef extends CardDef {
   gainCardsUnderneathOnDefeat?: boolean
   /** This Nemesis card prevents adding cards to its specific deck while in play. */
   blocksPlacementIntoSpecificDeck?: boolean
+  /** Remove this card from the play area to the Nemesis mat after its Power resolves. */
+  setAsideWhenResolved?: boolean
+  /** Extra life added when this Minion enters play on Increased Difficulty. */
+  increasedDifficultyLifeBonus?: number
+  /** Return this defeated Minion to the Nemesis-specific discard pile. */
+  returnToSpecificDiscardOnDefeat?: boolean
+  /** Show one card underneath this card as a large attached corner card. */
+  underCardDisplay?: 'stack' | 'attached_quarter'
+  /** Return this Power to the bottom of the Nemesis-specific deck when resolved. */
+  returnToSpecificDeckOnResolve?: boolean
+  /** Return this Power to the bottom of the Nemesis-specific deck when discarded. */
+  returnToSpecificDeckOnDiscard?: boolean
+  /** Move cards underneath this Power to the top of the Nemesis discard when discarded. */
+  discardUnderCardsToNemesisDiscard?: boolean
 }
 
 export type NemesisDiscardCost =
@@ -1331,6 +1452,12 @@ export interface NemesisDef {
   /** Expansion wave used by setup's content picker. */
   wave?: number
   hp: number
+  /** Nemesis life can rise without a cap. */
+  noLifeMaximum?: boolean
+  /** The Nemesis wins when its life reaches this value. */
+  lifeLossThreshold?: number
+  /** The Nemesis wins as soon as its main deck becomes empty. */
+  deckEmptyLoses?: boolean
   difficultyLevel: number
   uniqueCardIdsByTier: Record<1 | 2 | 3, string[]>
   basicCardsPerTier: Record<1 | 2 | 3, number>
@@ -1342,6 +1469,8 @@ export interface NemesisDef {
   damageOnlyFromCardIds?: string[]
   /** Initial known state of the Nemesis-specific deck. */
   specificDeckVisibility?: 'revealed' | 'hidden'
+  /** The top card is always visible, while the rest retain per-instance memory. */
+  specificDeckTopAlwaysRevealed?: boolean
   /** Optional player-facing name for this Nemesis' specific deck. */
   specificDeckName?: string
   /** Runtime rules module that supplies this Nemesis' Unleash sequence and optional hooks. */
@@ -1352,7 +1481,7 @@ export interface NemesisDef {
   /** Auxiliary deck for Nemesis mechanics such as Crooked Mask's Corruptions. */
   corruptionDeckBuilder?: () => string[]
   /** How the otherwise generic specific-deck zone is used by this Nemesis. */
-  specificPileKind?: 'devoured'
+  specificPileKind?: 'devoured' | 'exiled'
 }
 
 // ===== Breach =====
@@ -1406,6 +1535,8 @@ export interface NemesisCardInPlay {
   enteredOnNemesisTurn?: number
   lifeTokens?: number
   powerTokens?: number
+  /** Prevent further Power-token loss until the Nemesis turn number changes. */
+  powerTokenLossBlockedOnTurn?: number
   nemesisTokens?: number
   displayRow?: 'top' | 'play'
   underCards?: string[]
@@ -1497,6 +1628,8 @@ export interface PlayerState {
   turnEffects: PlayerTurnEffects
   /** Corruption cards drawn into hand this turn, awaiting end-of-Main-Phase resolution. */
   corruptionsDrawnThisTurn?: string[]
+  /** Physical cards that trigger when they enter hand, queued in entry order. */
+  pendingInHandResolutionInstanceIds?: string[]
 }
 
 export interface GraveholdState {
@@ -1558,26 +1691,34 @@ export type Phase = PlayerPhase | NemesisPhase
 
 export type NemesisResolutionStep = 'main' | 'draw' | 'complete'
 
+/** Serializable identity and response state for a Nemesis card awaiting resolution. */
+export interface NemesisDrawContext {
+  drawnCardId?: string
+  drawnCardProcessed?: boolean
+  drawnCardRevealed?: boolean
+  drawnCardInstanceId?: string
+  drawnCardResponseHandled?: boolean
+  drawnCardCancelled?: boolean
+  drawnCardSourceZone?: 'strike_deck' | 'nemesis_card_stack'
+  drawnCardSourceParentInstanceId?: string
+}
+
 /** Serializable progress for one Nemesis turn. */
-export interface NemesisResolutionState {
+export interface NemesisResolutionState extends NemesisDrawContext {
   step: NemesisResolutionStep
   mainQueue: string[]
   mainIndex: number
   activeCardInstanceId?: string
   activeCardId?: string
   activeTrigger?: NemesisEffectTrigger
-  drawnCardId?: string
-  drawnCardProcessed?: boolean
-  /** The UI has shown the drawn Nemesis card and the player confirmed it. */
-  drawnCardRevealed?: boolean
-  /** Physical identity of the card currently drawn from the Nemesis deck. */
-  drawnCardInstanceId?: string
-  drawnCardResponseHandled?: boolean
-  drawnCardCancelled?: boolean
+  /** Supports a draw-triggered ability resolving inside another Nemesis effect. */
+  drawnCardContextStack?: NemesisDrawContext[]
   /** The current Main Phase card has been visibly confirmed by the player. */
   mainEffectConfirmed?: boolean
   /** A revealed Attack or depleted Power remains in play until all effects finish. */
   activeCardPendingDiscard?: boolean
+  /** An end-of-turn rule marked once-per-turn has already run this turn. */
+  endTurnRuleResolved?: boolean
 }
 
 export interface GameState {

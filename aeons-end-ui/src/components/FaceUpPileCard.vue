@@ -27,6 +27,7 @@ function inspect(event: MouseEvent) {
     <button
       type="button"
       class="face-up-pile-card"
+      data-card-motion-pile-top="true"
       :class="[displayClass, { 'is-primary-action': primaryEnabled, 'game-highlight': available, 'game-highlight--available': available }]"
       :aria-label="ariaLabel"
       @click.stop="emit('primary')"

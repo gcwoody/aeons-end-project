@@ -2,10 +2,11 @@ import type {
   DamageTargetRef, DamageTargetScope, GameState, LifeTargetRef, LifeTargetScope,
   PendingEffectResolution, PlayerSelectionRule, PlayerState, PlayerTargetRef, PlayerTargetScope,
 } from '../types'
-import { getCard, MAGES } from '../data'
+import { getCard, getNemesisDefinition, MAGES } from '../data'
 import { isPresentBreach } from './breaches'
 import { getPlayer } from './zones'
 import { recordHealthChange } from './health-feedback'
+import { finishGame } from './combat'
 
 export function getLifeTargets(
   game: GameState, sourcePlayerId: string, scope: LifeTargetScope,
@@ -24,6 +25,25 @@ export function getLifeTargets(
   return game.players
     .filter(player => !player.exhausted)
     .map(player => ({ kind: 'player', playerId: player.id }))
+}
+
+/** Resolve a source Minion to the active physical card copy when available. */
+export function getSourceMinion(game: GameState, sourceCardId?: string) {
+  const resolution = game.nemesisResolution
+  const cardId = sourceCardId ?? resolution?.activeCardId
+  if (!cardId) return undefined
+
+  const activeInstanceId = resolution?.activeCardId === cardId
+    ? resolution.activeCardInstanceId
+    : undefined
+  if (activeInstanceId) {
+    return game.nemesis.playArea.find(card =>
+      card.cardType === 'minion' && card.cardId === cardId &&
+      (card.instanceId ?? `${card.cardId}:${card.placedAt}`) === activeInstanceId,
+    )
+  }
+  const matches = game.nemesis.playArea.filter(card => card.cardType === 'minion' && card.cardId === cardId)
+  return matches.length === 1 ? matches[0] : undefined
 }
 
 export function getPlayerTargets(
@@ -73,6 +93,7 @@ export function getSelectedPlayerTargets(
     if (selection === 'lowest_hp') return -player.hp
     if (selection === 'highest_hp') return player.hp
     if (selection === 'most_charges') return player.charge
+    if (selection === 'fewest_cards_in_deck') return -player.deck.length
     if (selection === 'most_crystals') return player.hand.filter(cardId => {
       const card = getCard(cardId)
       return card.type === 'gem' && card.name.trim().toLowerCase() === 'crystal'
@@ -143,9 +164,12 @@ export function gainLife(game: GameState, target: LifeTargetRef, amount: number)
 
   if (target.kind === 'nemesis') {
     const before = game.nemesis.hp
-    game.nemesis.hp = Math.min(game.nemesis.maxHp, before + value)
+    const hasNoMaximum = getNemesisDefinition(game.nemesis.definitionId)?.noLifeMaximum === true
+    game.nemesis.hp = hasNoMaximum ? before + value : Math.min(game.nemesis.maxHp, before + value)
     const gained = game.nemesis.hp - before
     recordHealthChange(game, { kind: 'healing', targetId: 'nemesis', amount: gained })
+    const lossThreshold = getNemesisDefinition(game.nemesis.definitionId)?.lifeLossThreshold
+    if (lossThreshold != null && game.nemesis.hp >= lossThreshold) finishGame(game, 'nemesis')
     return `Nemesis gains ${gained} life (${game.nemesis.hp}/${game.nemesis.maxHp})`
   }
 
@@ -162,9 +186,12 @@ export function getDamageTargets(game: GameState, scope: DamageTargetScope, sour
     targets.push({ kind: 'nemesis', id: 'nemesis', label: 'Nemesis' })
   }
   if (scope === 'minion' || scope === 'nemesis_or_minion' || scope === 'source_minion') {
-    for (const minion of game.nemesis.playArea) {
+    const sourceMinion = scope === 'source_minion' ? getSourceMinion(game, sourceCardId) : undefined
+    const minions = scope === 'source_minion'
+      ? sourceMinion ? [sourceMinion] : []
+      : game.nemesis.playArea
+    for (const minion of minions) {
       if (minion.cardType !== 'minion') continue
-      if (scope === 'source_minion' && (!sourceCardId || minion.cardId !== sourceCardId)) continue
       targets.push({
         kind: 'minion',
         id: `minion:${minion.placedAt}`,

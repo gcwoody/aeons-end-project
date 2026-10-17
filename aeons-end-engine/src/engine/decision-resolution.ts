@@ -8,7 +8,7 @@ import { marketPileChoices } from '../nemesis/market'
 import { shuffle } from './decks'
 import { createCardInstance, ensureCardInstanceZone } from './card-instances'
 import {
-  destroyCardFromZone, destroySelectedPlayerCards, getBreachAttachedRelicZone, getBreachCardInstanceZone,
+  createCardInZone, destroyCardFromZone, destroySelectedPlayerCards, getBreachAttachedRelicZone, getBreachCardInstanceZone,
   getNemesisCardInstanceZone, getPlayerCardInstanceZone, moveCardBetweenZones,
   moveCardToTemporary, moveSelectedPlayerCards, placeTemporaryCardInZone, recordCardMove,
 } from './card-movement'
@@ -20,10 +20,12 @@ import {
 } from './zones'
 import {
   effectTargetPlayerId, gainLife, getDamageTargets, getEffectPlayerTargets, getPlayerTargets,
-  getSelectedDamagePlayerTargets, getSelectedPlayerTargets, retainFullyResolvableOrMaximumTargets,
+  getSelectedDamagePlayerTargets, getSelectedPlayerTargets, getSourceMinion,
+  retainFullyResolvableOrMaximumTargets,
 } from './targets'
 import { availableCardEffectOptionIds } from './effect-conditions'
 import type { DecisionResolutionServices } from '../engine'
+import { moveStartingSupplyCardToExiledPile } from '../nemesis/the-timeless'
 
 function orderedByZoneRemoval(choices: CardChoice[]): CardChoice[] {
   const grouped = new Map<string, CardChoice[]>()
@@ -210,6 +212,20 @@ function resolvePendingDecision(
     )
     return messages
   }
+  if (decision?.kind === 'select_setup_exiled_pile') {
+    if (decision.id !== decisionId || answer.kind !== 'select_setup_exiled_pile' ||
+      g.nemesis.type !== 'the_timeless') {
+      return ['Invalid setup Exiled pile choice']
+    }
+    const choice = decision.candidates.find(candidate =>
+      candidate.pileIndex === answer.choice.pileIndex && candidate.cardId === answer.choice.cardId,
+    )
+    if (!choice || !moveStartingSupplyCardToExiledPile(g, choice.pileIndex)) {
+      return ['Choose a supply pile that is still tied for highest cost']
+    }
+    g.pendingDecision = null
+    return [`Added ${choice.cardName} to the Exiled pile`, ...resolveMageSetups(g)]
+  }
   if (decision?.kind === 'select_setup_supply_replacement') {
     if (decision.id !== decisionId || answer.kind !== 'select_setup_supply_replacement') {
       return ['Invalid setup supply replacement choice']
@@ -375,7 +391,13 @@ function resolvePendingDecision(
     resolution.awaiting = effect
   }
 
-  if (answer.kind === 'confirm_revealed_card') {
+  if (answer.kind === 'await_card_motions') {
+    if (decision.kind !== 'await_card_motions' || effect.kind !== 'await_card_motions' || !answer.accepted) {
+      restore()
+      return ['Invalid card movement continuation']
+    }
+    return runEffectResolution(g, resolution)
+  } else if (answer.kind === 'confirm_revealed_card') {
     if (decision.kind !== 'confirm_revealed_card' ||
       effect.kind !== 'reveal_top_card_to_hand_if_spell' || !answer.accepted) {
       restore()
@@ -406,6 +428,23 @@ function resolvePendingDecision(
     ) {
       restore()
       return ['Invalid prepped effect confirmation']
+    }
+    addRemainingEffects(resolution, effect.effects)
+  } else if (answer.kind === 'confirm_player_card_effect') {
+    if (
+      decision.kind !== 'confirm_player_card_effect' ||
+      effect.kind !== 'confirm_player_card_effect' ||
+      decision.cardId !== effect.cardId ||
+      decision.playerId !== effect.playerId ||
+      decision.cardIndex !== effect.cardIndex
+    ) {
+      restore()
+      return ['Invalid player card effect confirmation']
+    }
+    const player = getPlayer(g, effect.playerId)
+    if (player.playerCardsInPlay?.[effect.cardIndex] !== effect.cardId) {
+      restore()
+      return ['The player card is no longer in play']
     }
     addRemainingEffects(resolution, effect.effects)
   } else if (answer.kind === 'choose_one') {
@@ -597,7 +636,7 @@ function resolvePendingDecision(
   const choice = decision.candidates.find(candidate =>
       candidate.playerId === answer.choice?.playerId && candidate.breachIndex === answer.choice?.breachIndex)
     const breach = choice && owner.breaches.find(item => item.index === choice.breachIndex)
-    if (!choice || !breach || !canConjureToBreach(g, owner, breach, effect.breachEligibility)) {
+    if (!choice || !breach || !canConjureToBreach(g, owner, breach, effect.breachEligibility, conjured.cardId)) {
       restore()
       return ['The selected Breach is no longer available for Conjure']
     }
@@ -738,8 +777,7 @@ function resolvePendingDecision(
         ? getExhaustBreachChoices(g, ownerId).find(candidate =>
           candidate.playerId === choice.playerId && candidate.breachIndex === choice.breachIndex)
         : undefined
-      const stinger = g.nemesis.playArea.find(card =>
-        card.cardType === 'minion' && card.cardId === resolution.sourceCardId)
+      const stinger = getSourceMinion(g, resolution.sourceCardId)
       if (!currentChoice || !stinger || (stinger.nemesisTokens ?? stinger.powerTokens ?? 0) < 2) {
         restore()
         return ['The selected Breach can no longer be destroyed']
@@ -850,6 +888,43 @@ function resolvePendingDecision(
     if (!selectedChoicesAreCurrent(g, selectionOwnerId, decision.candidates, selected)) {
       restore()
       return ['Card selection is no longer valid']
+    }
+    if (effect.kind === 'exile_cards') {
+      const targetId = resolution.effectPlayerId ?? currentPlayerId
+      const eligible = getCardChoices(g, targetId, effect.source).filter(choice => {
+        const card = getCard(choice.cardId)
+        return card.cannotBeExiled !== true &&
+          (!effect.cardType || card.type === effect.cardType) &&
+          (!effect.cardTypes || effect.cardTypes.includes(card.type)) &&
+          card.cost >= (effect.minCost ?? 0) &&
+          (!effect.discardTopOnly || choice.zone !== 'discard' || choice.index === 0)
+      })
+      let allowed = eligible
+      if (effect.mostExpensive && eligible.length > 0) {
+        const highestCost = Math.max(...eligible.map(choice => getCard(choice.cardId).cost))
+        allowed = eligible.filter(choice => getCard(choice.cardId).cost === highestCost)
+      }
+      const selectedKeys = new Set(allowed.map(choice => `${choice.zone}:${choice.index}:${choice.cardId}`))
+      const required = Math.min(Math.max(0, Math.floor(effect.amount)), allowed.length)
+      if (selected.length !== required || !selected.every(choice => selectedKeys.has(`${choice.zone}:${choice.index}:${choice.cardId}`))) {
+        restore()
+        return ['Choose the required eligible cards to Exile']
+      }
+      const exiled = getNemesisCardInstanceZone(g, 'strike_deck')
+      const moved: string[] = []
+      for (const choice of [...orderedByZoneRemoval(selected)].reverse()) {
+        const source = getPlayerCardInstanceZone(g, targetId, choice.zone)
+        const card = moveCardBetweenZones(g, source, choice.index, exiled, 0, 'effect', { reveal: true })
+        if (card) moved.push(card.cardId)
+      }
+      resolution.lastSelectedCardCount = moved.length
+      resolution.lastSelectedCardCost = moved.length > 0
+        ? Math.max(...moved.map(cardId => getCard(cardId).cost)) : 0
+      if (moved.length > 0) addRemainingEffects(resolution, [{ kind: 'await_card_motions' }])
+      return [
+        moved.length > 0 ? `Exiled ${moved.map(cardId => getCard(cardId).name).join(', ')}` : 'No cards were Exiled',
+        ...runEffectResolution(g, resolution),
+      ]
     }
     if (effect.kind === 'move_cards_to_nemesis_specific_deck') {
       const deckName = specificDeckName(g)
@@ -1083,6 +1158,19 @@ function resolvePendingDecision(
         restore()
         return [`Choose only cards costing ${effect.minCost} Aether or more`]
       }
+      if (effect.mostExpensive) {
+        const candidates = getCardChoices(g, currentPlayerId, effect.source)
+          .filter(choice => (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
+            (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
+            getCard(choice.cardId).cost >= (effect.minCost ?? 0))
+        const maximumCost = candidates.length > 0
+          ? Math.max(...candidates.map(choice => getCard(choice.cardId).cost))
+          : Number.NEGATIVE_INFINITY
+        if (!selected.every(choice => getCard(choice.cardId).cost === maximumCost)) {
+          restore()
+          return ['Choose only the most expensive eligible card(s)']
+        }
+      }
       const removed = discardSelectedCards(g, currentPlayerId, selected, true)
       resolution.lastSelectedCardCount = removed.length
       resolution.lastSelectedCardCost = removed.length > 0 ? Math.max(...removed.map(id => getCard(id).cost)) : 0
@@ -1167,6 +1255,7 @@ function resolvePendingDecision(
         return ['Invalid card source']
       }
       if (!selected.every(choice =>
+        getCard(choice.cardId).cannotBeDestroyed !== true &&
         (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
         (!effect.cardTypes || effect.cardTypes.includes(getCard(choice.cardId).type)) &&
         getCard(choice.cardId).cost >= (effect.minCost ?? 0),
@@ -1191,6 +1280,10 @@ function resolvePendingDecision(
       if (selected.length === 0 || !selected.every(choice => cardChoiceMatches(choice, 'hand_or_discard'))) {
         restore()
         return ['Choose cards from hand or discard pile']
+      }
+      if (selected.some(choice => getCard(choice.cardId).cannotBeDestroyed)) {
+        restore()
+        return ['The selected card cannot be destroyed']
       }
       const tokenOwner = getPlayer(g, effect.playerId ?? resolution.sourceCardOwnerId ?? resolution.sourcePlayerId ?? currentPlayerId)
       const target = getPlayer(g, effect.playerId ?? currentPlayerId)
@@ -1502,7 +1595,8 @@ function resolvePendingDecision(
     return ['Collective card selection does not match the pending effect']
   } else if (answer.kind === 'select_market_pile') {
     if (decision.kind !== 'select_market_pile' ||
-      (effect.kind !== 'devour_market_cards' && effect.kind !== 'set_next_to_supply_pile' && effect.kind !== 'gain_card_from_market')) {
+      (effect.kind !== 'devour_market_cards' && effect.kind !== 'set_next_to_supply_pile' &&
+        effect.kind !== 'gain_card_from_market' && effect.kind !== 'exile_market_card_from_most_expensive_pile')) {
       restore()
       return ['Decision answer has the wrong type']
     }
@@ -1534,6 +1628,20 @@ function resolvePendingDecision(
         restore()
         return ['The selected supply pile no longer matches this effect']
       }
+    }
+    if (effect.kind === 'exile_market_card_from_most_expensive_pile') {
+      const activeCandidates = marketPileChoices(g).filter(candidate => candidate.remaining > 0)
+      const highestCost = activeCandidates.length > 0
+        ? Math.max(...activeCandidates.map(candidate => getCard(candidate.cardId).cost))
+        : Number.NEGATIVE_INFINITY
+      if (getCard(choice.cardId).cost !== highestCost) {
+        restore()
+        return ['Choose a card from a currently most expensive supply pile']
+      }
+      pile.remaining--
+      createCardInZone(g, getNemesisCardInstanceZone(g, 'strike_deck'), choice.cardId, 0, 'effect', true,
+        { zoneId: `supply:${choice.pileIndex}`, zone: 'supply', ownerId: null, index: 0 })
+      return [`Exiled ${choice.cardName} from the supply`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'set_next_to_supply_pile') {
       const ownerId = resolution.sourcePlayerId ?? effectPlayerId(g, resolution)
@@ -1582,7 +1690,7 @@ function resolvePendingDecision(
         effect.kind !== 'discard_noncorruptions_and_gain_corruptions' &&
         effect.kind !== 'shuffle_hand_into_deck_and_draw' &&
         effect.kind !== 'obliterate_most_open_breach_player' &&
-        effect.kind !== 'discard_cards' && effect.kind !== 'shuffle_discard_into_deck' &&
+        effect.kind !== 'discard_cards' && effect.kind !== 'discard_top_card' && effect.kind !== 'exile_cards' && effect.kind !== 'shuffle_discard_into_deck' &&
         effect.kind !== 'destroy_top_cards' && effect.kind !== 'place_cast_spell_in_ally_hand' &&
         effect.kind !== 'gain_aether_token' && effect.kind !== 'gain_trinkets' && effect.kind !== 'gain_pulse_token' &&
         effect.kind !== 'lose_pulse_token' && effect.kind !== 'gain_charge' &&
@@ -1601,6 +1709,35 @@ function resolvePendingDecision(
       return ['Invalid player target']
     }
     const player = getPlayer(g, target.playerId)
+    if (effect.kind === 'discard_top_card' || effect.kind === 'exile_cards') {
+      const eligibleTargets = getEffectPlayerTargets(
+        g, resolution, effectPlayerId(g, resolution), effect.target ?? 'any_player',
+      )
+      let validTargets = eligibleTargets
+      if (effect.kind === 'discard_top_card' && effect.targetAvailability === 'full_or_max') {
+        validTargets = retainFullyResolvableOrMaximumTargets(validTargets, 1, candidate =>
+          getPlayer(g, candidate.playerId).deck.length > 0 ? 1 : 0)
+      }
+      if (effect.kind === 'exile_cards' && effect.targetAvailability === 'full_or_max') {
+        const eligibleCount = (playerId: string) => getCardChoices(g, playerId, effect.source).filter(choice => {
+          const card = getCard(choice.cardId)
+          return card.cannotBeExiled !== true &&
+            (!effect.cardType || card.type === effect.cardType) &&
+            (!effect.cardTypes || effect.cardTypes.includes(card.type)) &&
+            card.cost >= (effect.minCost ?? 0) &&
+            (!effect.discardTopOnly || choice.zone !== 'discard' || choice.index === 0)
+        }).length
+        validTargets = retainFullyResolvableOrMaximumTargets(validTargets, effect.amount, candidate =>
+          eligibleCount(candidate.playerId))
+      }
+      if (!validTargets.some(candidate => candidate.playerId === target.playerId)) {
+        restore()
+        return ['Choose a player who can resolve this Exile effect as fully as possible']
+      }
+      resolution.effectPlayerId = target.playerId
+      addRemainingEffects(resolution, [{ ...effect, target: 'self' }])
+      return [`${player.mageType} is selected`, ...runEffectResolution(g, resolution)]
+    }
     if (effect.kind === 'deal_player_damage' && effect.preferTargetWithCardNamesInHand?.length) {
       let eligibleTargets = effect.target === 'doom_owner'
         ? getSelectedDamagePlayerTargets(g, effectPlayerId(g, resolution), effect.target, effect.selection)
@@ -1737,10 +1874,17 @@ function resolvePendingDecision(
     }
     if (effect.kind === 'discard_cards' && effect.targetAvailability === 'full_or_max') {
       let targets = getEffectPlayerTargets(g, resolution, effectPlayerId(g, resolution), effect.target ?? 'self', effect.selection)
-      const candidatesFor = (targetId: string) => getCardChoices(g, targetId, effect.source).filter(choice =>
-        (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
-        (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
-        getCard(choice.cardId).cost >= (effect.minCost ?? 0))
+      const candidatesFor = (targetId: string) => {
+        let candidates = getCardChoices(g, targetId, effect.source).filter(choice =>
+          (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
+          (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
+          getCard(choice.cardId).cost >= (effect.minCost ?? 0))
+        if (effect.mostExpensive && candidates.length > 0) {
+          const highestCost = Math.max(...candidates.map(choice => getCard(choice.cardId).cost))
+          candidates = candidates.filter(choice => getCard(choice.cardId).cost === highestCost)
+        }
+        return candidates
+      }
       targets = retainFullyResolvableOrMaximumTargets(targets, effect.maxAmount ?? effect.amount, item =>
         candidatesFor(item.playerId).length)
       if (!targets.some(item => item.playerId === target.playerId)) {
@@ -1883,11 +2027,14 @@ function resolvePendingDecision(
     }
     resolution.effectPlayerId = target.playerId
     if (effect.kind === 'draw_cards') {
-      const drawn = drawCardsForPlayer(g, target.playerId, effect.amount)
-      if (effect.relativeToSource) {
-        resolution.effectPlayerId = resolution.sourcePlayerId ?? target.playerId
-      }
-      return [`${player.mageType} draws ${drawn} card(s)`, ...runEffectResolution(g, resolution)]
+      resolution.effectPlayerId = effect.relativeToSource
+        ? resolution.sourcePlayerId ?? target.playerId
+        : target.playerId
+      addRemainingEffects(resolution, [{
+        kind: 'draw_cards_for_player', playerId: target.playerId,
+        remaining: Math.max(0, effect.amount), drawn: 0,
+      }])
+      return [...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'deal_player_damage') {
       const damage = amountValue(g, effectPlayerId(g, resolution), effect.amount, resolution.sourceCardId)
@@ -1921,7 +2068,9 @@ function resolvePendingDecision(
       return ['Invalid life target']
     }
     const message = gainLife(g, target, effect.amount)
-    return [ ...(message ? [message] : []), ...runEffectResolution(g, resolution) ]
+    const gameOver = target.kind === 'nemesis' ? checkGameOver(g) : null
+    if (gameOver) resolution.remainingEffects = []
+    return [ ...(message ? [message] : []), ...(gameOver ? [gameOver] : []), ...runEffectResolution(g, resolution) ]
   } else if (answer.kind === 'reorder_turn_order') {
     if (decision.kind !== 'reorder_turn_order' || effect.kind !== 'reveal_turn_order_deck') {
       restore()

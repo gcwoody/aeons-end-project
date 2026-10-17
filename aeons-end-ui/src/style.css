@@ -6,6 +6,7 @@
 @import './styles/player-board.css';
 @import './styles/player-zones.css';
 @import './styles/card-surfaces.css';
+@import './styles/card-attachments.css';
 @import './styles/controls.css';
 @import './styles/log.css';
 @import './styles/overlay.css';

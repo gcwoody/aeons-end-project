@@ -117,6 +117,12 @@ function onKeydown(e: KeyboardEvent) {
     resolveDecision({ kind: 'confirm_nemesis_effect', accepted: true })
     return
   }
+  if (e.code === 'Space' && !e.shiftKey && canConfirmPlayerCardEffectWithSpace()) {
+    e.preventDefault()
+    if (e.repeat) return
+    resolveDecision({ kind: 'confirm_player_card_effect', accepted: true })
+    return
+  }
   if (e.code === 'Space' && !e.shiftKey && canConfirmDividedDamageWithSpace()) {
     e.preventDefault()
     if (e.repeat) return
@@ -181,6 +187,20 @@ function canConfirmNemesisEffectWithSpace(): boolean {
     && state.phase === 'nemesis_main'
     && game.currentTurn === 'nemesis'
     && game.pendingDecision?.kind === 'confirm_nemesis_effect'
+    && !state.viewPile
+    && !state.helpOpen
+    && !state.exitPrompt
+    && !state.debugOpen
+}
+
+/** Match the required board-card confirmation at the end of a player's Casting Phase. */
+function canConfirmPlayerCardEffectWithSpace(): boolean {
+  const game = state.game
+  const decision = game?.pendingDecision
+  return !!game
+    && state.phase === 'casting'
+    && decision?.kind === 'confirm_player_card_effect'
+    && game.currentTurn === decision.playerId
     && !state.viewPile
     && !state.helpOpen
     && !state.exitPrompt
@@ -301,7 +321,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
-            <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise confirm an available decision, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise confirm an available decision or required player card, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 

@@ -1,7 +1,7 @@
 import type {
   CardChoice, CardMoveAuditIssue, CardMoveEvent, CardMoveReason, CardMoveZone, CardMoveZoneAddress,
   PendingSpellCast,
-  GameState, PlayerState,
+  GameState, NemesisCardInPlay, PlayerState,
 } from '../types'
 import { getCard } from '../data'
 import {
@@ -68,6 +68,19 @@ function nextTransactionId(): string {
 
 function address(zone: CardInstanceZone, index: number): CardMoveZoneAddress {
   return { zoneId: zone.zoneId, zone: zone.zone, ownerId: zone.ownerId, index }
+}
+
+function queueInHandEntryTrigger(
+  game: GameState,
+  destination: CardInstanceZone,
+  card: CardInstanceRef,
+): void {
+  if (destination.zone !== 'hand' || !destination.ownerId ||
+    getCard(card.cardId).resolveWhenInHand !== true) return
+  const player = game.players.find(candidate => candidate.id === destination.ownerId)
+  if (!player) return
+  const queued = player.pendingInHandResolutionInstanceIds ??= []
+  if (!queued.includes(card.instanceId)) queued.push(card.instanceId)
 }
 
 function registerEvent(
@@ -342,6 +355,32 @@ export function getNemesisCardStackZone(game: GameState, minion: import('../type
   }
 }
 
+/** Move a Nemesis card from play into one of its tracked deck or discard zones. */
+export function moveNemesisPlayCardToZone(
+  game: GameState,
+  card: NemesisCardInPlay,
+  destination: CardInstanceZone,
+  destinationIndex: number,
+  reason: CardMoveReason,
+): boolean {
+  const sourceIndex = game.nemesis.playArea.indexOf(card)
+  if (sourceIndex < 0) return false
+  const instanceId = card.instanceId ?? `${card.cardId}:${card.placedAt}`
+  game.nemesis.playArea.splice(sourceIndex, 1)
+  const index = Math.max(0, Math.min(destinationIndex, destination.cards.length))
+  insertCardInstanceAt(game, destination.cards, destination.instanceIds, {
+    cardId: card.cardId,
+    instanceId,
+    revealed: true,
+  }, index, true)
+  destination.onInsert?.(index, { cardId: card.cardId, instanceId, revealed: true })
+  recordCardMove(game, instanceId, card.cardId,
+    { zoneId: 'nemesis:play_area', zone: 'nemesis_play_area', ownerId: 'nemesis', index: sourceIndex },
+    { zoneId: destination.zoneId, zone: destination.zone, ownerId: destination.ownerId, index },
+    reason)
+  return true
+}
+
 export function moveCardBetweenZones(
   game: GameState,
   source: CardInstanceZone,
@@ -370,6 +409,9 @@ export function moveCardBetweenZones(
   )
   if (options.hide) markCardInstanceHidden(game, removed.instanceId)
   destination.onInsert?.(safeDestinationIndex, removed)
+  if (source.zone !== 'hand' || source.ownerId !== destination.ownerId) {
+    queueInHandEntryTrigger(game, destination, removed)
+  }
   if (destinationPlayer) {
     destinationPlayer.handPreppedSpellInstanceIds!.splice(
       safeDestinationIndex, 0, options.handPreppedSpellInstanceId ?? null,
@@ -419,6 +461,7 @@ export function destroyCardFromZone(
   const instanceId = source.instanceIds[index]
   if (!cardId || !instanceId) return undefined
   const card = getCard(cardId)
+  if (card.cannotBeDestroyed) return undefined
   if (applyReplacement && card.returnToSwapZoneOnDestroy && source.ownerId) {
     const player = game.players.find(candidate => candidate.id === source.ownerId)
     if (player) {
@@ -463,6 +506,7 @@ export function createCardInZone(
   destination.cards.splice(safeIndex, 0, cardId)
   destination.instanceIds.splice(safeIndex, 0, instance.instanceId)
   destination.onInsert?.(safeIndex, instance)
+  queueInHandEntryTrigger(game, destination, instance)
   recordCardCreation(game, instance.instanceId, cardId, address(destination, safeIndex), reason, source)
   syncLegacyRevealState(game, destination)
   return instance
@@ -482,6 +526,7 @@ export function placeTemporaryCardInZone(
   const safeIndex = Math.max(0, Math.min(destinationIndex, destination.cards.length))
   insertCardInstanceAt(game, destination.cards, destination.instanceIds, card, safeIndex, revealed)
   destination.onInsert?.(safeIndex, card)
+  queueInHandEntryTrigger(game, destination, card)
   const target = address(destination, safeIndex)
   recordCardMove(game, instanceId, cardId, source, target, reason)
   syncLegacyRevealState(game, destination)

@@ -23,6 +23,8 @@ export interface NemesisRuleModule {
   setup?: (context: NemesisRuleContext) => void
   /** Optional effects appended after a resolved Strike card. */
   strikeAfterResolve?: (game: GameState, definition: NemesisDef, strikeId: string) => CardEffect[]
+  /** Optional shared continuation appended to each matching Persistent card. */
+  additionalPersistentEffects?: (game: GameState, card: import('../types').NemesisCardDef) => CardEffect[]
   endTurn?: NemesisEndTurnRule
 }
 
@@ -33,4 +35,6 @@ export interface NemesisEndTurnRule {
   effects: CardEffect[]
   message: string
   sourceCardId: string
+  /** Run this end-of-turn action at most once during the current Nemesis turn. */
+  oncePerTurn?: boolean
 }

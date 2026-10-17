@@ -41,6 +41,7 @@ export interface CardZoneMotionCardSnapshot {
   ownerId: string
   key: string
   instanceId: string
+  face?: 'front' | 'back'
   flight: CardFlightSnapshot | null
 }
 
@@ -223,6 +224,9 @@ export function captureCardZoneMotion(
       ownerId,
       key,
       instanceId: element.dataset.cardInstanceId ?? '',
+      ...(element.dataset.cardMotionFace === 'front' || element.dataset.cardMotionFace === 'back'
+        ? { face: element.dataset.cardMotionFace as 'front' | 'back' }
+        : {}),
       flight: visibility === 'hidden' ? null : captureCardFlight(element),
     }]
   })

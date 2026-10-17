@@ -60,7 +60,8 @@ export function dealDamage(game: GameState, target: DamageTargetRef, amount: num
     const playIndex = game.nemesis.playArea.indexOf(minion)
     const instanceId = minion.instanceId ?? `${minion.cardId}:${minion.placedAt}`
     game.nemesis.playArea = game.nemesis.playArea.filter(card => card !== minion)
-    const discard = getNemesisCardInstanceZone(game, 'nemesis_discard')
+    const discard = getNemesisCardInstanceZone(game,
+      definition.returnToSpecificDiscardOnDefeat ? 'strike_discard' : 'nemesis_discard')
     insertCardInstanceAt(game, discard.cards, discard.instanceIds, {
       cardId: minion.cardId, instanceId, revealed: true,
     }, 0, true)
@@ -91,9 +92,18 @@ export function sufferPlayerDamage(game: GameState, playerId: string, damage: nu
 
 export function checkGameOver(game: GameState): string | null {
   if (game.nemesis.hp <= 0) { finishGame(game, 'players'); return 'VICTORY! Nemesis defeated!' }
+  const nemesisDefinition = getNemesisDefinition(game.nemesis.definitionId)
+  if (nemesisDefinition?.lifeLossThreshold != null && game.nemesis.hp >= nemesisDefinition.lifeLossThreshold) {
+    finishGame(game, 'nemesis')
+    return 'DEFEAT! The Nemesis has reached its life threshold!'
+  }
+  if (nemesisDefinition?.deckEmptyLoses && game.nemesis.deck.length === 0) {
+    finishGame(game, 'nemesis')
+    return 'DEFEAT! The Nemesis deck is empty!'
+  }
   if (game.gravehold.hp <= 0) { finishGame(game, 'nemesis'); return 'DEFEAT! Gravehold destroyed!' }
   if (game.players.every(player => player.exhausted)) { finishGame(game, 'nemesis'); return 'DEFEAT! All mages exhausted!' }
-  const usesDevouredPile = getNemesisDefinition(game.nemesis.definitionId)?.specificPileKind === 'devoured'
+  const usesDevouredPile = nemesisDefinition?.specificPileKind === 'devoured'
   if (usesDevouredPile && game.market.piles.every(pile => pile.remaining <= 0)) {
     finishGame(game, 'nemesis')
     return 'DEFEAT! All supply piles have been Devoured!'

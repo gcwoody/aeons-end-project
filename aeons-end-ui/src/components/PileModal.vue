@@ -19,7 +19,7 @@ import { registerDismissibleOverlay } from '../game/dismissible-overlays'
 
 const {
   state, displayPlayer, closePile, playerCardInPlayActions, activatePlayerCardInPlayAction,
-  getRecallActionsForPlayer, activateRecall,
+  getRecallActionsForPlayer, activateRecall, resolveDecision,
 } = useGame()
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 
@@ -116,7 +116,17 @@ const usesRowLabels = computed(() => playerPileKind.value !== null)
 const isPlayerCardsInPlay = computed(() => state.viewPile === 'player_cards_in_play')
 
 function playerCardActionAvailable(index: number, cardId: string): boolean {
-  return playerCardInPlayActions.value.some(action => action.cardIndex === index && action.cardId === cardId)
+  return playerCardEffectConfirmationAvailable(index, cardId)
+    || playerCardInPlayActions.value.some(action => action.cardIndex === index && action.cardId === cardId)
+}
+
+function playerCardEffectConfirmationAvailable(index: number, cardId: string): boolean {
+  const decision = state.game?.pendingDecision
+  return isPlayerCardsInPlay.value
+    && decision?.kind === 'confirm_player_card_effect'
+    && decision.playerId === displayPlayer.value?.id
+    && decision.cardIndex === index
+    && decision.cardId === cardId
 }
 
 function cardIndexInPile(groupIndex: number, cardIndex: number): number {
@@ -136,6 +146,11 @@ function selectPileCard(groupIndex: number, cardIndex: number) {
   }
   if (!isPlayerCardsInPlay.value) return
   const cardId = cards.value[index]
+  if (cardId && playerCardEffectConfirmationAvailable(index, cardId)) {
+    closePile()
+    resolveDecision({ kind: 'confirm_player_card_effect', accepted: true })
+    return
+  }
   if (!cardId || !playerCardActionAvailable(index, cardId)) return
   closePile()
   activatePlayerCardInPlayAction(index)
@@ -234,10 +249,11 @@ function specificCardImage(cardId: string): string | undefined {
                 'player-card-in-play-action': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
                 'player-card-in-play-disabled': isPlayerCardsInPlay && !playerCardActionAvailable(cardIndexInPile(gi, i), cid),
                 'recall-card-action': recallActionAvailable(cardIndexInPile(gi, i), cid),
-                'game-highlight': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || recallActionAvailable(cardIndexInPile(gi, i), cid),
-                'game-highlight--available': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid),
+                'game-highlight': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid) || recallActionAvailable(cardIndexInPile(gi, i), cid),
+                'game-highlight--available': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid) && !playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid),
+                'game-highlight--required': playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid),
                 'game-highlight--context': recallActionAvailable(cardIndexInPile(gi, i), cid),
-                'player-card-hover-feedback': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || recallActionAvailable(cardIndexInPile(gi, i), cid),
+                'player-card-hover-feedback': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid) || recallActionAvailable(cardIndexInPile(gi, i), cid),
               }"
               @click="selectPileCard(gi, i)"
             />

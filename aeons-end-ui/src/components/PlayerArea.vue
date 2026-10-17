@@ -201,11 +201,13 @@ const deckPileDisplayOverride = computed(() =>
 )
 const deckPileCount = computed(() => deckPileDisplayOverride.value?.count ?? player.value.deck.length)
 const displayedDeckCount = computed(() =>
-  state.cardPileCountOverrides[`player:${player.value.id}:deck`]?.count ?? deckPileCount.value,
+  state.cardPileDisplayOverrides[`player:${player.value.id}:deck`]?.count ?? deckPileCount.value,
 )
-const deckTopCard = computed(() => deckPileDisplayOverride.value
-  ? deckPileDisplayOverride.value.cardId
-  : player.value.deck[0] ?? null)
+const deckTopCard = computed(() => {
+  const motionDisplay = state.cardPileDisplayOverrides[`player:${player.value.id}:deck`]
+  if (motionDisplay?.topCardId !== undefined) return motionDisplay.topCardId
+  return deckPileDisplayOverride.value ? deckPileDisplayOverride.value.cardId : player.value.deck[0] ?? null
+})
 const deckBackImageUrl = computed(() => playerDeckCardBackUrl(deckTopCard.value))
 const deckTopUsesTrinketBack = computed(() => deckBackImageUrl.value === trinketDeckBackUrl())
 const deckBackImageAlt = computed(() => deckTopUsesTrinketBack.value
@@ -214,24 +216,27 @@ const deckBackImageAlt = computed(() => deckTopUsesTrinketBack.value
 const discardDisplayOverride = computed(() => state.discardPileDisplayOverrides[player.value.id] ??
   (state.discardTopDisplayOverride?.playerId === player.value.id ? state.discardTopDisplayOverride : null))
 const discardTopCard = computed(() => {
+  const motionDisplay = state.cardPileDisplayOverrides[`player:${player.value.id}:discard`]
+  if (motionDisplay?.topCardId !== undefined) return motionDisplay.topCardId
   return discardDisplayOverride.value
     ? discardDisplayOverride.value.cardId
     : player.value.discard[0] ?? null
 })
 const discardTopInstanceId = computed(() => state.discardPileDisplayOverrides[player.value.id]
+  || state.cardPileDisplayOverrides[`player:${player.value.id}:discard`]?.topCardId !== undefined
   ? undefined
   : state.game ? getPlayerCardInstanceZone(state.game, player.value.id, 'discard').instanceIds[0] : undefined)
 const discardPileCount = computed(() => {
   return discardDisplayOverride.value?.count ?? player.value.discard.length
 })
 const displayedDiscardCount = computed(() =>
-  state.cardPileCountOverrides[`player:${player.value.id}:discard`]?.count ?? discardPileCount.value,
+  state.cardPileDisplayOverrides[`player:${player.value.id}:discard`]?.count ?? discardPileCount.value,
 )
-const specificDeckCount = computed(() =>
-  state.cardPileCountOverrides[`player:${player.value.id}:specific_deck`]?.count ?? specificDeckCards.value.length,
-)
+const specificDeckCount = computed(() => state.cardPileDisplayOverrides[
+  `player:${player.value.id}:specific_deck`
+]?.count ?? specificDeckCards.value.length)
 const trinketDeckCount = computed(() =>
-  state.cardPileCountOverrides['nemesis:trinket_deck']?.count ?? trinketDeckCards.value.length,
+  state.cardPileDisplayOverrides['nemesis:trinket_deck']?.count ?? trinketDeckCards.value.length,
 )
 const pendingBoardDiscardArrival = computed(() =>
   state.discardPileDisplayOverrides[player.value.id]?.boardArrival ?? null)
@@ -263,8 +268,8 @@ const controlPlayers = computed(() => players.value.map((candidate, playerIndex)
   hp: candidate.hp,
   charge: candidate.charge,
   chargeThreshold: candidate.chargeThreshold,
-  handCount: state.cardPileCountOverrides[`player:${candidate.id}:hand`]?.count ?? candidate.hand.length,
-  destroyedCount: state.cardPileCountOverrides[`player:${candidate.id}:destroyed`]?.count ?? candidate.destroyedCards.length,
+  handCount: state.cardPileDisplayOverrides[`player:${candidate.id}:hand`]?.count ?? candidate.hand.length,
+  destroyedCount: state.cardPileDisplayOverrides[`player:${candidate.id}:destroyed`]?.count ?? candidate.destroyedCards.length,
   handGain: handIncrease.value[candidate.id] ?? 0,
   chargeGain: chargeIncrease.value[candidate.id] ?? 0,
   exhausted: candidate.exhausted,
@@ -289,7 +294,10 @@ const specificDeckName = computed(() => mageDefinition.value?.specificDeckName ?
 const specificDeckFaceUp = computed(() => mageDefinition.value?.specificDeckDisplay === 'face_up')
 const specificDeckTopRevealed = computed(() => mageDefinition.value?.specificDeckDisplay === 'top_revealed')
 const specificDeckTopIsVisible = computed(() => specificDeckFaceUp.value || specificDeckTopRevealed.value)
-const specificDeckCards = computed(() => player.value.specificDeck ?? [])
+const specificDeckCards = computed(() => {
+  const motionDisplay = state.cardPileDisplayOverrides[`player:${player.value.id}:specific_deck`]
+  return [...(motionDisplay?.cardIds ?? player.value.specificDeck ?? [])]
+})
 const specificDeckTopImage = computed(() => specificDeckCards.value[0]
   ? specificDeckCardImageUrl(player.value.mageType, specificDeckCards.value[0], player.value.mageFormSide)
   : undefined)
@@ -472,8 +480,13 @@ const spellDamagePreview = (b: BreachState, spellIndex = 0) => {
   const castChoice = preppedSpellCastChoice(b, spellIndex)
   const pendingChoice = pendingPreppedSpellChoice(b, spellIndex)
   const decision = state.game.pendingDecision
-  if ((castChoice && decision?.kind === 'select_prepped_spell')
-    || (pendingChoice && decision?.kind === 'select_prepped_spells')) {
+  const awaitingEffect = state.game.pendingEffect?.awaiting
+  // Spell discard effects (such as Dispel) share the same decision kinds;
+  // only cast effects should show an upcoming-damage badge.
+  const isCastingSelection = awaitingEffect?.kind === 'cast_prepped_spell'
+    || awaitingEffect?.kind === 'cast_any_number_prepped_spells'
+  if (isCastingSelection && ((castChoice && decision?.kind === 'select_prepped_spell')
+    || (pendingChoice && decision?.kind === 'select_prepped_spells'))) {
     const choice = castChoice ?? pendingChoice!
     const casterId = state.game.pendingEffect?.effectPlayerId
       ?? state.game.pendingEffect?.sourcePlayerId
@@ -558,6 +571,7 @@ const playerCardsInPlayDisplay = computed(() => playerCardPlacementsInPlay.value
   cardIndex: placement.cardIndex,
   typeClass: typeClass(placement.cardId),
   actionAvailable: isPlayerCardInPlayAction(index, placement.cardId),
+  requiredConfirmation: isRequiredPlayerCardEffect(placement.cardIndex, placement.cardId),
   endTurnActionAttention: isEndTurnActionTarget(`player-card-in-play:${player.value.id}:${placement.cardIndex}`),
   powerTokens: player.value.playerCardPowerTokens?.[placement.cardIndex] ?? 0,
 })))
@@ -675,6 +689,14 @@ function isPlayerCardInPlayAction(index: number, cardId: string): boolean {
   )
 }
 
+function isRequiredPlayerCardEffect(cardIndex: number, cardId: string): boolean {
+  const decision = state.game?.pendingDecision
+  return decision?.kind === 'confirm_player_card_effect'
+    && decision.playerId === player.value.id
+    && decision.cardIndex === cardIndex
+    && decision.cardId === cardId
+}
+
 function preferredAutoPrepBreachIndex(candidateIndexes: number[]): number | undefined {
   const candidates = new Set(candidateIndexes)
   const eligible = player.value.breaches.filter(breach => candidates.has(breach.index))
@@ -687,6 +709,16 @@ function preferredAutoPrepBreachIndex(candidateIndexes: number[]): number | unde
 }
 
 function clickPlayerCardInPlay(index: number) {
+  const placement = playerCardPlacementsInPlay.value[index]
+  const decision = state.game?.pendingDecision
+  if (decision?.kind === 'confirm_player_card_effect' && decision.playerId === player.value.id) {
+    if (placement && decision.cardIndex === placement.cardIndex && decision.cardId === placement.cardId) {
+      resolveDecision({ kind: 'confirm_player_card_effect', accepted: true })
+    } else if (playerCardsInPlay.value.length > 1) {
+      openPlayerCardsInPlayPile()
+    }
+    return
+  }
   if (!state.game || state.phase !== 'main' || state.game.currentTurn === 'nemesis' || state.game.pendingDecision || state.game.pendingEffect) return
   if (playerCardsInPlay.value.length > 1) {
     const hasVisibleAction = playerCardPlacementsInPlay.value.some((placement, visibleIndex) =>
@@ -695,7 +727,6 @@ function clickPlayerCardInPlay(index: number) {
     if (hasVisibleAction) openPlayerCardsInPlayPile()
     return
   }
-  const placement = playerCardPlacementsInPlay.value[index]
   if (!placement || !isPlayerCardInPlayAction(index, placement.cardId)) return
   activatePlayerCardInPlayAction(placement.cardIndex)
 }

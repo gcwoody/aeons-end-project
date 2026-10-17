@@ -431,6 +431,7 @@
   z-index: calc(var(--stack-index, 0) + 1);
 }
 .player-card-stack .card-hover-wrap:has(.player-in-play-card.in-play-action) { z-index: 100; }
+.player-card-stack .card-hover-wrap:has(.player-in-play-card.game-highlight--required) { z-index: 200; }
 .player-in-play-card {
   /* Establish the containing block before hover so absolutely positioned
      badges never jump when the generic .card:hover rule runs. */

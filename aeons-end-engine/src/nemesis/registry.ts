@@ -2,6 +2,8 @@ import { princeOfGluttonsRules } from './prince-of-gluttons'
 import { crookedMaskRules } from './crooked-mask'
 import { rageborneRules } from './rageborne'
 import { oracleOfFilthRules } from './oracle-of-filth'
+import { theTimelessRules } from './the-timeless'
+import { twiceDeadProphetRules } from './twice-dead-prophet'
 import type { NemesisRuleModule } from './types'
 
 const NEMESIS_RULE_MODULES: Record<string, NemesisRuleModule> = {
@@ -9,6 +11,8 @@ const NEMESIS_RULE_MODULES: Record<string, NemesisRuleModule> = {
   [princeOfGluttonsRules.id]: princeOfGluttonsRules,
   [crookedMaskRules.id]: crookedMaskRules,
   [oracleOfFilthRules.id]: oracleOfFilthRules,
+  [theTimelessRules.id]: theTimelessRules,
+  [twiceDeadProphetRules.id]: twiceDeadProphetRules,
 }
 
 /** Look up optional Nemesis-specific runtime behavior without putting ID branches in the core loop. */

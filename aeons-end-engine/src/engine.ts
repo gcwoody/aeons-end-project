@@ -69,6 +69,7 @@ import {
 import {
   automaticallyAllocateDamage, effectTargetPlayerId, gainLife, getDamageTargets, getDoomOwner,
   getEffectPlayerTargets, getLifeTargets, getPlayerTargets, getSelectedDamagePlayerTargets,
+  getSourceMinion,
   getSelectedPlayerTargets,
 } from './engine/targets'
 
@@ -192,10 +193,23 @@ export function startTurn(g: GameState): GameState {
 
   g.currentPhase = turn === 'nemesis' ? 'nemesis_main' : 'casting'
   if (turn === 'nemesis') initializeNemesisTurn(g)
-  else if (g.nemesis.corruptionDeck) {
+  else {
     const player = getPlayer(g, turn)
     player.corruptionsDrawnThisTurn = []
-    if (player.hand.some(cardId => getCard(cardId).type === 'corruption')) {
+    const hand = getPlayerCardInstanceZone(g, player.id, 'hand')
+    player.pendingInHandResolutionInstanceIds ??= []
+    for (const [index, cardId] of hand.cards.entries()) {
+      if (getCard(cardId).resolveWhenInHand !== true) continue
+      const instanceId = hand.instanceIds[index]
+      if (instanceId && !player.pendingInHandResolutionInstanceIds.includes(instanceId)) {
+        player.pendingInHandResolutionInstanceIds.push(instanceId)
+      }
+    }
+    const hasTrackedInHandCard = player.hand.some(cardId => {
+      const card = getCard(cardId)
+      return card.type === 'corruption' && (g.nemesis.corruptionDeck !== undefined || card.resolveWhenInHand === true)
+    }) || player.pendingInHandResolutionInstanceIds.length > 0
+    if (hasTrackedInHandCard) {
       g.pendingCorruptionStartPlayerId = player.id
     } else {
       g.pendingCorruptionStartPlayerId = undefined
@@ -631,12 +645,22 @@ export function resolvePlayerInPlayPhaseEffects(
         turnEffects.usedPlayerCardEffects!.push(marker)
       }
       const effectPlayer = block.effectPlayerScope === 'owner' ? player.id : playerId
+      const blockEffects: CardEffect[] = block.requiresConfirmation
+        ? [{
+            kind: 'confirm_player_card_effect',
+            prompt: `Resolve ${getCard(cardId).name}'s effect`,
+            cardId,
+            playerId: player.id,
+            cardIndex,
+            effects: block.effects,
+          }]
+        : block.effects
       effects.push(
         {
           kind: 'restore_effect_context', sourcePlayerId: effectPlayer,
           sourceCardOwnerId: player.id, sourceCardId: cardId, effectPlayerId: effectPlayer,
         },
-        ...block.effects,
+        ...blockEffects,
         { kind: 'restore_effect_context', sourcePlayerId: playerId },
       )
     }
@@ -742,6 +766,7 @@ export function destroyCard(g: GameState, playerId: string, choice: CardChoice):
   ensurePlayerCollections(p)
   const cards = getZoneCards(p, choice.zone)
   if (cards[choice.index] !== choice.cardId) return 'Card selection is no longer valid'
+  if (getCard(choice.cardId).cannotBeDestroyed) return `${getCard(choice.cardId).name} cannot be destroyed`
 
   const sourceZone = getPlayerCardInstanceZone(g, p.id, choice.zone)
   const cardId = destroyCardFromZone(g, sourceZone, choice.index)
@@ -890,15 +915,7 @@ function amountValue(
     return Math.max(0, amount.base + counter * amount.amountPerCounter)
   }
   if (amount.kind === 'current_minion_life') {
-    const activeInstanceId = g.nemesisResolution?.activeCardInstanceId
-    const sourceMinion = activeInstanceId
-      ? g.nemesis.playArea.find(card =>
-        card.cardType === 'minion' && card.cardId === sourceCardId &&
-        (card.instanceId ?? `${card.cardId}:${card.placedAt}`) === activeInstanceId,
-      )
-      : g.nemesis.playArea.find(card =>
-        card.cardType === 'minion' && (!sourceCardId || card.cardId === sourceCardId),
-      )
+    const sourceMinion = getSourceMinion(g, sourceCardId)
     return Math.max(0, sourceMinion?.lifeTokens ?? 0)
   }
   if (amount.kind === 'per_prepped_spell') {
@@ -1126,8 +1143,10 @@ function canConjureToBreach(
   player: PlayerState,
   breach: BreachState,
   eligibility: 'standard' | 'any_present' = 'standard',
+  conjuredCardId?: string,
 ): boolean {
-  return isPresentBreach(breach) &&
+  return (!conjuredCardId || getCard(conjuredCardId).cannotBeConjured !== true) &&
+    isPresentBreach(breach) &&
     (breach.prepSpells.length < getPrepSpellLimit(player, breach.index) ||
       breach.prepSpells.some(preppedId => getCard(preppedId).mechanics?.includes('unlimited_conjure'))) &&
     (eligibility === 'any_present' || canPrepOnBreach(breach))
@@ -1471,7 +1490,8 @@ function pauseEffect(
 export function drawCardsForPlayer(g: GameState, playerId: string, amount: number): number {
   const p = getPlayer(g, playerId)
   const drawn = drawPlayerCardsToHand(g, playerId, Math.max(0, amount))
-  if (g.currentTurn === playerId && (g.currentPhase === 'casting' || g.currentPhase === 'main')) {
+  if (g.nemesis.corruptionDeck && g.currentTurn === playerId &&
+    (g.currentPhase === 'casting' || g.currentPhase === 'main')) {
     p.corruptionsDrawnThisTurn ??= []
     p.corruptionsDrawnThisTurn.push(...drawn.filter(cardId => getCard(cardId).type === 'corruption'))
   }
@@ -1622,6 +1642,7 @@ export interface EffectResolutionServices {
   pauseEffect: typeof pauseEffect,
   pauseRevealTopCard: typeof pauseRevealTopCard,
   pendingDecision: typeof pendingDecision,
+  setPendingDecision: typeof setPendingDecision,
   playerCardPowerTokenCount: typeof playerCardPowerTokenCount,
   preparePlayerDeckForReveal: typeof preparePlayerDeckForReveal,
   putPlayerCardIntoPlay: typeof putPlayerCardIntoPlay,
@@ -1726,6 +1747,7 @@ const runEffectResolution = createEffectResolver({
   pauseEffect,
   pauseRevealTopCard,
   pendingDecision,
+  setPendingDecision,
   playerCardPowerTokenCount,
   preparePlayerDeckForReveal,
   putPlayerCardIntoPlay,
@@ -2842,19 +2864,32 @@ export function developCardFromZone(g: GameState, playerId: string, zoneIndex: n
 export function buySpecificPileCard(g: GameState, playerId: string): string | null {
   const blocked = pendingActionMessage(g)
   if (blocked) return blocked
-  if (!usesDevouredPile(g)) return 'This Nemesis has no buyable specific pile'
+  const pileKind = getNemesisDefinition(g.nemesis.definitionId)?.specificPileKind
+  if (pileKind !== 'devoured' && pileKind !== 'exiled') return 'This Nemesis has no buyable specific pile'
+  if (pileKind === 'exiled' && (g.currentPhase !== 'main' || g.currentTurn !== playerId)) {
+    return 'The Exiled pile may only be bought during your Main Phase'
+  }
   const cardId = g.nemesis.strikeDeck[0]
-  if (!cardId) return 'The Devoured pile is empty'
+  if (!cardId) return pileKind === 'exiled' ? 'The Exiled pile is empty' : 'The Devoured pile is empty'
 
   const card = getCard(cardId)
   const p = getPlayer(g, playerId)
   const spendType: SpendType = card.type === 'gem' ? 'gem'
     : card.type === 'spell' ? 'spell'
     : card.type === 'relic' ? 'relic' : 'general'
+  const cost = card.cost + (pileKind === 'exiled' ? 1 : 0)
   const available = getSpendableAether(p, spendType)
-  if (available < card.cost) return `Need ${card.cost} Aether, have ${available}`
+  if (available < cost) return `Need ${cost} Aether, have ${available}`
 
-  spendAether(p, card.cost, spendType)
+  if (pileKind === 'exiled') {
+    const exiled = getNemesisCardInstanceZone(g, 'strike_deck')
+    const discard = getPlayerCardInstanceZone(g, playerId, 'discard')
+    const moved = moveCardBetweenZones(g, exiled, 0, discard, 0, 'gain', { reveal: true })
+    if (!moved) return 'The Exiled pile is empty'
+    spendAether(p, cost, spendType)
+    return `Gained ${card.name} from the Exiled pile (${cost}a) -> discard pile`
+  }
+  spendAether(p, cost, spendType)
   const message = gainCard(g, playerId, cardId, 'discard_top', undefined, true, true)
   return message ? `Gained ${card.name} from the Devoured pile (${card.cost}a) -> ${message}` : null
 }
@@ -3063,6 +3098,10 @@ export function resolveDrawPhase(g: GameState, playerId: string): string[] {
   while (p.hand.length < 5) {
     const drawn = drawPlayerCardsToHand(g, p.id, 1)
     if (drawn.length === 0) break
+    if ((p.pendingInHandResolutionInstanceIds?.length ?? 0) > 0) {
+      msgs.push(...resolveEffects(g, p.id, [], undefined, 0, p.id))
+      if (g.pendingDecision || g.pendingEffect) return msgs
+    }
   }
   msgs.push(`Hand filled to ${p.hand.length}, Aether reset${unusedAetherTokens > 0 ? `; discarded ${unusedAetherTokens} unused Aether token${unusedAetherTokens === 1 ? '' : 's'}` : ''}`)
   p.spellsCastThisTurn = 0

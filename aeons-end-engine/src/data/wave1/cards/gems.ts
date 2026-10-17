@@ -50,8 +50,15 @@ export const emeraldShard: GemCard = {
       kind: 'choose_one',
       prompt: 'Choose an Emerald Shard effect',
       options: [
-        { id: 'gain_aether', label: 'Gain 1 Aether', effects: [{ kind: 'gain_aether', amount: 1 }] },
-        { id: 'gain_life', label: 'Let any player gain 1 Life', effects: [{ kind: 'gain_life', amount: 1, target: 'any_player' }] },
+        {
+          id: 'gain_aether', label: 'Gain 1 Aether', autoSelectIfSoleAvailable: true,
+          effects: [{ kind: 'gain_aether', amount: 1 }],
+        },
+        {
+          id: 'gain_life', label: 'Let any player gain 1 Life',
+          condition: { kind: 'any_player_below_max_life' },
+          effects: [{ kind: 'gain_life', amount: 1, target: 'any_player' }],
+        },
       ],
     }],
   }],

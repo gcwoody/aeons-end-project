@@ -13,6 +13,7 @@ import type { CardFlightDestinationMode, CardFlightTiming } from './card-motion-
 export interface CardMotionFlightInput {
   cardId: string
   sourceZone: string
+  sourceFace?: 'front' | 'back'
   destinationZone: string
   flight: CardFlightSnapshot | null
   destination: HTMLElement | null
@@ -51,6 +52,7 @@ export function animateCardMotionFlight(input: CardMotionFlightInput): Promise<v
     input.sourceZone,
     input.destinationZone,
     faceDownOnArrival,
+    input.sourceFace,
   )
 
   if (input.revealFromFaceDown) {

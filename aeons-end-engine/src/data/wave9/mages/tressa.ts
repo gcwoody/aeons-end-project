@@ -89,8 +89,10 @@ export const TRESSA_CARDS: Record<string, CardDef> = {
   }]),
   overload_stance: vaultCard('overload_stance', 'Overload Stance', [{
     trigger: { kind: 'while_in_play', phase: 'casting_phase_end' },
+    condition: { kind: 'spells_cast_this_turn', comparison: 'at_least', count: 1 },
     effectPlayerScope: 'owner',
     oncePerTurn: true,
+    requiresConfirmation: true,
     effects: [
       { kind: 'conditional', condition: { kind: 'spells_cast_this_turn', comparison: 'equals', count: 1 }, effects: [{ kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' }] },
       { kind: 'conditional', condition: { kind: 'spells_cast_this_turn', comparison: 'equals', count: 2 }, effects: [{ kind: 'deal_damage', amount: 1, target: 'nemesis_or_minion' }] },

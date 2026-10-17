@@ -12,6 +12,7 @@ const canBuy = computed(() => state.game!.currentTurn !== 'nemesis' && state.pha
 const marketDecision = computed(() => {
   const decision = state.game?.pendingDecision
   return decision?.kind === 'select_market_pile' || decision?.kind === 'select_setup_devour_pile' ||
+    decision?.kind === 'select_setup_exiled_pile' ||
     decision?.kind === 'select_setup_supply_replacement'
     ? decision
     : null
@@ -27,7 +28,7 @@ function marketChoice(pileIndex: number) {
 }
 
 function displayedRemaining(pileIndex: number, fallback: number): number {
-  return state.cardPileCountOverrides[`supply:${pileIndex}`]?.count ?? fallback
+  return state.cardPileDisplayOverrides[`supply:${pileIndex}`]?.count ?? fallback
 }
 
 function onPileClick(pileIndex: number) {
@@ -37,6 +38,7 @@ function onPileClick(pileIndex: number) {
     if (!choice) return
     if (decision.kind === 'select_market_pile') resolveDecision({ kind: 'select_market_pile', choice })
     else if (decision.kind === 'select_setup_devour_pile') resolveDecision({ kind: 'select_setup_devour_pile', choice })
+    else if (decision.kind === 'select_setup_exiled_pile') resolveDecision({ kind: 'select_setup_exiled_pile', choice })
     else resolveDecision({ kind: 'select_setup_supply_replacement', choice })
     return
   }

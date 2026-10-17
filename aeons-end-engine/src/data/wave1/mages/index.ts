@@ -6,6 +6,8 @@ export interface MageDef {
   abilityName: string
   abilityTrigger: AbilityTrigger
   abilityEffects: CardEffect[]
+  /** UI return target after resolving an off-turn ability that switches board views. */
+  abilityReturnView?: 'active_turn_player'
   hp: number
   chargeThreshold: number
   startHand: string[]
@@ -139,6 +141,7 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
     type: 'kadir',
     abilityName: 'Otherworldly Gate',
     abilityTrigger: { kind: 'main_phase', scope: 'any_player' },
+    abilityReturnView: 'active_turn_player',
     abilityEffects: [
       { kind: 'return_cards_to_hand', source: 'discard', amount: 3 },
       { kind: 'set_prep_limit', amount: 2 },
