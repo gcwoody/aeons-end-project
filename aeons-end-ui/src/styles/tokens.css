@@ -59,6 +59,7 @@
   --hand-to-pile-flight-duration: 200ms;
   --played-to-nemesis-specific-deck-flight-duration: 300ms;
   --discard-phase-flight-duration: 200ms;
+  --destroy-card-flight-duration: 300ms;
   --card-flight-easing: cubic-bezier(.22, .78, .24, 1);
   --nemesis-draw-flight-duration: 500ms;
   --nemesis-draw-flip-duration: 150ms;

@@ -61,7 +61,12 @@ const decisionFormPreview = computed(() => {
     imageUrl: specificDeckCardImageUrl(preview.mageType, preview.cardId, preview.formSide),
   }
 })
-const isDirectBoardCardDecision = computed(() => isBoardCardSelectionActive())
+const isInlineRepeatedHandSpellConfirmation = computed(() =>
+  decision.value?.kind === 'select_collective_cards' && decision.value.repeat === true,
+)
+const isDirectBoardCardDecision = computed(() =>
+  isBoardCardSelectionActive() && !isInlineRepeatedHandSpellConfirmation.value,
+)
 const revealedCardId = computed(() => {
   const current = decision.value
   if (current?.kind === 'confirm_revealed_card') return current.cardId
@@ -124,6 +129,26 @@ const isLargeCardChoice = computed(() =>
 const isCenteredPromptWithCards = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'centered-prompt-cards',
 )
+const isCenteredPromptTokenAmount = computed(() =>
+  decision.value?.kind === 'choose_token_amount' && decision.value.layout === 'centered-prompt',
+)
+const isCenteredSubBoardChoice = computed(() =>
+  decision.value?.kind === 'choose_one' && decision.value.layout === 'sub-board-region-choice' &&
+  decision.value.options.some(option => !!option.regionId),
+)
+const isDividedDamageDecision = computed(() => decision.value?.kind === 'allocate_divided_damage')
+const dividedDamagePromptMessage = computed(() => {
+  const current = decision.value
+  if (current?.kind !== 'allocate_divided_damage') return ''
+  const allocation = state.game?.pendingEffect?.dividedDamageAllocation
+  if (!allocation) return decisionPrompt(current.prompt)
+  const assigned = allocation.total - allocation.remaining
+  return `Damage assigned: ${assigned}/${allocation.total}. Left-click an enemy to assign unassigned damage. Right-click to cancel 1 damage. Click the casting spell again to resolve.`
+})
+const centeredSourceTitle = computed(() => {
+  const sourceCardId = state.game?.pendingEffect?.sourceCardId ?? decision.value?.context?.sourceCardId
+  return sourceCardId ? getCard(sourceCardId).name : decision.value ? decisionPrompt(decision.value.prompt) : ''
+})
 const centeredPromptCardId = computed(() => {
   if (!isCenteredPromptWithCards.value) return undefined
   const pending = state.game?.pendingEffect
@@ -707,13 +732,42 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
         class="btn primary decision-option"
         :class="{ unavailable: option.disabled }"
         :disabled="option.disabled"
-        :title="option.disabled ? 'This option is not available right now.' : undefined"
         @click="answer({ kind: 'choose_one', optionId: option.id })"
       >
         {{ option.label }}
       </button>
     </template>
   </CenteredDecisionPrompt>
+
+  <CenteredDecisionPrompt
+    v-else-if="isCenteredSubBoardChoice"
+    :title="centeredSourceTitle"
+    :message="decision?.kind === 'choose_one' ? decisionPrompt(decision.prompt) : ''"
+    :allow-board-interaction="true"
+  />
+
+  <CenteredDecisionPrompt
+    v-else-if="isCenteredPromptTokenAmount && decision?.kind === 'choose_token_amount'"
+    :title="centeredSourceTitle"
+    :message="decisionPrompt(decision.prompt)"
+  >
+    <TokenAmountChoicePanel
+      token-name="Pulse"
+      :token-image-url="pulseTokenImageUrl()"
+      :min-amount="decision.minAmount"
+      :max-amount="decision.maxAmount"
+      :summary="decision.summary"
+      v-model="selectedTokenAmount"
+      @confirm="answer({ kind: 'choose_token_amount', amount: selectedTokenAmount })"
+    />
+  </CenteredDecisionPrompt>
+
+  <CenteredDecisionPrompt
+    v-else-if="isDividedDamageDecision"
+    :title="centeredSourceTitle"
+    :message="dividedDamagePromptMessage"
+    :allow-board-interaction="true"
+  />
 
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spells'"
@@ -832,7 +886,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
   </ModalBase>
 
   <ModalBase
-    v-if="decision && !isCenteredPromptWithCards && !isDirectBoardCardDecision && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'confirm_player_card_effect' && decision.kind !== 'await_card_motions' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'select_setup_exiled_pile' && decision.kind !== 'select_setup_supply_replacement' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'confirm_oracle_nemesis_damage_target' && decision.kind !== 'select_damage_target' && decision.kind !== 'allocate_divided_damage'"
+    v-if="decision && !isCenteredPromptWithCards && !isCenteredSubBoardChoice && !isCenteredPromptTokenAmount && !isDirectBoardCardDecision && !isInlineRepeatedHandSpellConfirmation && decision.kind !== 'select_breach' && decision.kind !== 'select_exhaust_breach' && decision.kind !== 'select_conjure_breach' && decision.kind !== 'confirm_prepped_effect' && decision.kind !== 'confirm_player_card_effect' && decision.kind !== 'await_card_motions' && decision.kind !== 'select_prepped_spell' && decision.kind !== 'select_prepped_spells' && decision.kind !== 'select_market_pile' && decision.kind !== 'select_setup_devour_pile' && decision.kind !== 'select_setup_exiled_pile' && decision.kind !== 'select_setup_supply_replacement' && decision.kind !== 'confirm_nemesis_draw' && decision.kind !== 'confirm_nemesis_effect' && decision.kind !== 'confirm_oracle_nemesis_damage_target' && decision.kind !== 'select_damage_target' && decision.kind !== 'allocate_divided_damage'"
     overlay-class="decision-overlay"
     :blocking="true"
     v-model:panel-ref="modalEl"
@@ -1005,7 +1059,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
           class="btn primary decision-option"
           :class="{ unavailable: option.disabled }"
           :disabled="option.disabled"
-          :title="option.disabled ? 'This option is not available right now.' : undefined"
           @click="answer({ kind: 'choose_one', optionId: option.id })"
         >
           {{ option.label }}
@@ -1017,7 +1070,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
           class="btn primary decision-option"
           :class="{ unavailable: decision.accept.disabled }"
           :disabled="decision.accept.disabled"
-          :title="decision.accept.disabled ? 'This option is not available right now.' : undefined"
           @click="answer({ kind: 'choose_optional', accepted: true })"
         >
           {{ decision.accept.label }}

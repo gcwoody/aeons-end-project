@@ -46,8 +46,19 @@
 ## Nemesis 主阶段卡牌结算顺序
 
 - Nemesis 主阶段按棋盘上的行从上到下处理卡牌；每一行内按从左到右处理。上方专用行的在场卡牌先于普通 Nemesis Play 行结算。
+- 卡牌进入某一行时，追加在该行已有卡牌的最右侧。换行也视为新到达：例如 Unbroken Reign 耗尽 Power 后移到上排，应位于已经在上排的 Regeneration 右侧。
 - 只有在本回合开始时已在场、且具有对应主阶段效果的卡牌才进入本回合队列；本回合刚进场的卡牌仍遵守其自身的入场规则。
 - 队列开始后保持该顺序，即使前面的效果暂停等待玩家操作，也要先完成当前卡牌，再继续队列中的下一张。
+
+## The Terror in Brass 的 Armor Chart 与 Worldsplitter Track
+
+- 玩家只能在自己的 Main Phase 花费 3 Aether，把 Nemesis token 放在未覆盖的 Armor Chart 格子，并结算该格效果。Fang of the First 在场时禁止这种放置；Havoc Smith 在场时，仍能放置 token，但不结算 Armor Chart 格子效果。
+- Armor Chart 五格全部被覆盖后，The Terror in Brass 进入 vulnerable 状态，并把 Regeneration 放入场上。若 Regeneration 此前已结算并被设在一旁，则再次进入 vulnerable 时仍会把同一张实体牌放回场上。
+- 未 vulnerable 时，Nemesis 每次受到的正数伤害降为 1；vulnerable 时伤害加倍。伤害为 0 时不会变成 1。
+- Worldsplitter Track 前进一次只移动一格，并结算落点效果。普通面上没有文字的格子只移动 token、不产生额外效果；抵达终点并结算后回到 Start。
+- Regeneration 耗尽 Power token 后，移除 Armor Chart 上所有 Nemesis token 并将自身设在一旁。若 Cruel Majesty 已设在一旁，同一时点还要推进 Worldsplitter Track。
+
+规则依据：[The Terror in Brass](https://aeonsend.wiki.gg/wiki/The_Terror_in_Brass)、[Regeneration](https://aeonsend.wiki.gg/wiki/Regeneration) 和 [Cruel Majesty](https://aeonsend.wiki.gg/wiki/Cruel_Majesty)。本项目开局把 Regeneration 放在 Nemesis specific deck 中，以符合项目约定；实体规则的默认设置是将它正面朝上放在 mat 旁。
 
 ## Mage 抽牌堆的可见状态
 

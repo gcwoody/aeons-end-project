@@ -13,6 +13,8 @@ import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import AttachedQuarterCard from './AttachedQuarterCard.vue'
 import HandMotionDemo from './HandMotionDemo.vue'
+import SubBoardLayoutEditor from './SubBoardLayoutEditor.vue'
+import { terrorSubBoardExamples } from './sub-board-gallery-fixtures'
 import CardSelectionPanel, { type CardSelectionItem } from './CardSelectionPanel.vue'
 import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardChoicePanel.vue'
 import CenteredDecisionPrompt from './CenteredDecisionPrompt.vue'
@@ -203,8 +205,22 @@ function reorderGalleryTurnOrder(keys: string[]) {
     <section class="ui-gallery-section" data-gallery-section="hand-motion">
       <article class="ui-gallery-item" data-component="Hand.Motion">
         <h2>Hand motion</h2>
-        <p class="ui-gallery-caption">Play a card, fly it to the discard pile, add cards, scroll an overflowing hand, or switch Mage. Repeat actions during movement to check how the shared flight and hand-shift animations finish.</p>
+        <p class="ui-gallery-caption">Play a card, discard cards, destroy three cards into the trash one at a time, add cards, scroll an overflowing hand, or switch Mage. The trash count updates when each destroyed card arrives.</p>
         <HandMotionDemo />
+      </article>
+    </section>
+
+    <section class="ui-gallery-section" data-gallery-section="sub-board-layout">
+      <div class="ui-gallery-section-heading">
+        <div>
+          <p class="ui-gallery-index">Board tools · layout editor</p>
+          <h2>Sub board layout editor</h2>
+        </div>
+        <span class="ui-gallery-note">Edit regions and token anchors on the board image</span>
+      </div>
+      <article class="ui-gallery-item" data-component="SubBoard.LayoutEditor">
+        <p class="ui-gallery-caption">Edit the current board layout, then use the live token simulator below it to place, move, and remove tokens on the same regions and anchors. Import your saved JSON to preview your layout.</p>
+        <SubBoardLayoutEditor :examples="terrorSubBoardExamples" />
       </article>
     </section>
 

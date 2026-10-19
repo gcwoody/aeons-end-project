@@ -111,7 +111,7 @@ export const tourmalineShard: GemCard = {
         skipIfUnavailable: true,
         effects: [
           { kind: 'deal_player_damage', amount: 1, target: 'ally' },
-          { kind: 'destroy_cards', source: 'hand', minAmount: 1, maxAmount: 1 },
+          { kind: 'destroy_cards', source: 'hand', minAmount: 1, maxAmount: 1, target: 'ally' },
         ],
       },
     ],

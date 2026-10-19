@@ -12,6 +12,7 @@ export type CardFlightTiming =
   | 'hand-to-pile'
   | 'played-to-nemesis-specific-deck'
   | 'discard-phase'
+  | 'destroy'
 
 interface CardFlightTimingConfig {
   durationVariable: string
@@ -28,6 +29,7 @@ const motionDurationFallbacks: Record<string, number> = {
   '--hand-to-pile-flight-duration': 200,
   '--played-to-nemesis-specific-deck-flight-duration': 300,
   '--discard-phase-flight-duration': 200,
+  '--destroy-card-flight-duration': 300,
   '--hand-gain-reflow-duration': 220,
   '--hand-card-reflow-duration': 220,
   '--hand-draw-stagger-duration': 45,
@@ -40,7 +42,7 @@ const motionDurationFallbacks: Record<string, number> = {
 const persistentPileZones = new Set([
   'deck', 'discard', 'specific_deck', 'trinket_deck',
   'nemesis_deck', 'nemesis_discard', 'corruption_deck',
-  'strike_deck', 'strike_discard',
+  'strike_deck', 'strike_discard', 'destroyed',
 ])
 
 function normalizePileZone(zone: string): string {
@@ -80,6 +82,7 @@ const cardFlightTimingConfig: Record<CardFlightTiming, CardFlightTimingConfig> =
   'hand-to-pile': { durationVariable: '--hand-to-pile-flight-duration' },
   'played-to-nemesis-specific-deck': { durationVariable: '--played-to-nemesis-specific-deck-flight-duration' },
   'discard-phase': { durationVariable: '--discard-phase-flight-duration' },
+  destroy: { durationVariable: '--destroy-card-flight-duration' },
 }
 
 /** Read a CSS animation duration using one shared parser and fallback rule. */
@@ -187,7 +190,8 @@ export function resolveCardMotionPolicy({
   reason,
 }: CardMotionPolicyInput): CardMotionPolicy {
   let timing: CardFlightTiming | undefined
-  if (reason === 'discard_phase' && sourceZone === 'played' && destinationZone === 'discard') timing = 'discard-phase'
+  if (destinationZone === 'destroyed') timing = 'destroy'
+  else if (reason === 'discard_phase' && sourceZone === 'played' && destinationZone === 'discard') timing = 'discard-phase'
   else if (sourceZone === 'played' && destinationZone === 'strike_deck') timing = 'played-to-nemesis-specific-deck'
   else if (sourceZone === 'breach' && destinationZone === 'discard') timing = 'breach-to-discard'
   else if (sourceZone === 'swap' && destinationZone === 'discard') timing = 'swap-to-discard'

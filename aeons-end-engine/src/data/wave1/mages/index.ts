@@ -64,8 +64,10 @@ export function createMages(makeBreach: BreachFactory): Record<string, MageDef> 
     abilityName: 'Black Mirror',
     abilityTrigger: { kind: 'main_phase', scope: 'current_player' },
     abilityEffects: [
-      { kind: 'cast_prepped_spell', source: 'any_prepped_spell', discard: false },
-      { kind: 'cast_prepped_spell', source: 'selected_prepped_spell', discard: true },
+      {
+        kind: 'cast_prepped_spell', source: 'any_prepped_spell', times: 2,
+        discard: false, repeatConfirmation: true,
+      },
     ],
     hp: 10,
     chargeThreshold: 4,

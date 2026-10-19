@@ -10,10 +10,12 @@ const props = withDefaults(defineProps<{
   message?: string
   previewCardIds?: string[]
   highlightedPreviewCardId?: string
+  allowBoardInteraction?: boolean
 }>(), {
   message: '',
   previewCardIds: () => [],
   highlightedPreviewCardId: '',
+  allowBoardInteraction: false,
 })
 
 const previewCards = computed(() => props.previewCardIds.map(cardId => ({
@@ -28,7 +30,10 @@ const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
     overlay-class="decision-overlay non-blocking-decision-overlay non-blocking-market-selection-overlay centered-decision-overlay"
     :blocking="true"
     v-model:panel-ref="modalEl"
-    panel-class="decision-modal non-blocking-selection-modal centered-decision-modal draggable-modal"
+    :panel-class="[
+      'decision-modal non-blocking-selection-modal centered-decision-modal draggable-modal',
+      { 'centered-decision-modal--pass-through': allowBoardInteraction },
+    ]"
     :panel-style="modalStyle"
     :dragging="dragging"
     :panel-aria-labelledby="'centered-decision-prompt-title'"

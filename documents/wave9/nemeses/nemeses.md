@@ -102,9 +102,9 @@ Regeneration
   - Source: [Aether.png](https://aeonsend.wiki.gg/images/Aether.png?baf426)
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/nemesis/The Terror in Brass/The Terror in Brass Token.jpg`
   - Source: [The Terror in Brass Token.jpg](https://aeonsend.wiki.gg/images/The_Terror_in_Brass_Token.jpg?74b8c0)
-- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/nemesis/The Terror in Brass/Worldsplitter Track Normal.jpg`
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/nemesis/The Terror in Brass/Worldsplitter Track Normal.png`
   - Source: [Worldsplitter Track Normal.jpg](https://aeonsend.wiki.gg/images/Worldsplitter_Track_Normal.jpg?67aa1a)
-- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/nemesis/The Terror in Brass/Worldsplitter Track ID.jpg`
+- Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/nemesis/The Terror in Brass/Worldsplitter Track ID.png`
   - Source: [Worldsplitter Track ID.jpg](https://aeonsend.wiki.gg/images/Worldsplitter_Track_ID.jpg?b40573)
 - Local: `D:/coding/opencode_project/aeons-end-project/image-database/cards/wave9/nemesis/The Terror in Brass/Besieging Blade.jpg`
   - Source: [Besieging Blade.jpg](https://aeonsend.wiki.gg/images/Besieging_Blade.jpg?c98ff7)

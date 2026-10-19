@@ -19,6 +19,7 @@ const {
   state, undo, toggleDebug, selectPlayer, openPile, closePile,
   closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
   toMainPhase, requestEndTurn, resolveDecision, canRequestEndTurn, playAllGems,
+  canConfirmRepeatedSpell, confirmRepeatedSpell,
 } = useGame()
 
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
@@ -103,6 +104,13 @@ function onKeydown(e: KeyboardEvent) {
   if (e.key.toLowerCase() === 'w') {
     e.preventDefault()
     togglePlayerPile('discard')
+    return
+  }
+  if (e.code === 'Space' && !e.shiftKey && canConfirmRepeatedSpell()) {
+    e.preventDefault()
+    if (e.repeat || isEditableTarget(e.target) || state.viewPile || state.helpOpen ||
+      state.exitPrompt || state.debugOpen) return
+    confirmRepeatedSpell()
     return
   }
   if (e.code === 'Space' && !e.shiftKey && state.game?.pendingDecision?.kind === 'confirm_nemesis_draw') {
@@ -314,14 +322,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
           <h3>Keyboard Shortcuts</h3>
           <div class="help-list">
             <div class="help-row"><kbd>ESC</kbd><span>Open the exit menu. Press it again to close an open dialog.</span></div>
-            <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to twenty steps.</span></div>
+            <div class="help-row"><kbd>Ctrl + Z</kbd><span>Undo the last player operation, up to fifty steps.</span></div>
             <div class="help-row"><kbd>Ctrl + D</kbd><span>Toggle Debug Tools.</span></div>
             <div class="help-row"><kbd>A</kbd><span>Play all Gems in the current Mage's hand.</span></div>
             <div class="help-row"><kbd>1–4</kbd><span>Switch the mage currently shown on the board.</span></div>
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
-            <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise confirm an available decision or required player card, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise confirm an available decision, a repeated spell cast, or a required player card, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 

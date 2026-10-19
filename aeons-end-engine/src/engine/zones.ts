@@ -12,7 +12,7 @@ import type { CardInstanceRef } from './card-instances'
 import {
   createCardInZone, drawPlayerCardsToHand, getNemesisCardInstanceZone,
   getPlayerCardInstanceZone, moveCardBetweenZones, placeTemporaryCardInZone,
-  recordCardReveal, recordCardShuffle, recordCardTemporary,
+  recordCardMove, recordCardReveal, recordCardShuffle, recordCardTemporary,
 } from './card-movement'
 
 export function getPlayer(game: GameState, id: string): PlayerState {
@@ -111,9 +111,12 @@ export function putPlayerCardInDeck(
 export function shufflePlayerDiscardIntoDeck(game: GameState, player: PlayerState): void {
   const deckIds = ensurePlayerDeckInstances(game, player)
   const discardIds = ensurePlayerDiscardInstances(game, player)
+  const discardCards = player.discard.map((cardId, index) => ({
+    cardId, instanceId: discardIds[index]!, index,
+  }))
   const cards = [
     ...player.deck.map((cardId, index) => ({ cardId, instanceId: deckIds[index]! })),
-    ...player.discard.map((cardId, index) => ({ cardId, instanceId: discardIds[index]! })),
+    ...discardCards,
   ]
   const shuffled = shuffle(cards)
   player.deck.splice(0, player.deck.length, ...shuffled.map(card => card.cardId))
@@ -122,6 +125,13 @@ export function shufflePlayerDiscardIntoDeck(game: GameState, player: PlayerStat
   player.discardInstanceIds!.splice(0, player.discardInstanceIds!.length)
   resetCardInstancesAfterShuffle(game, player.deckInstanceIds)
   const deck = getPlayerCardInstanceZone(game, player.id, 'deck')
+  const finalIndexes = new Map(deck.instanceIds.map((instanceId, index) => [instanceId, index]))
+  for (const card of discardCards) {
+    recordCardMove(game, card.instanceId, card.cardId,
+      { zoneId: `player:${player.id}:discard`, zone: 'discard', ownerId: player.id, index: card.index },
+      { zoneId: deck.zoneId, zone: deck.zone, ownerId: deck.ownerId, index: finalIndexes.get(card.instanceId)! },
+      'shuffle')
+  }
   deck.instanceIds.forEach((instanceId, index) => {
     recordCardShuffle(game, instanceId, deck.cards[index]!, { zoneId: deck.zoneId, zone: deck.zone, ownerId: deck.ownerId, index })
   })

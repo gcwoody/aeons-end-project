@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 2,
+  "boardId": "terror-normal",
+  "boardName": "The Terror in Brass · Normal",
+  "imageFile": "Worldsplitter Track Normal.png",
+  "imageSize": {
+    "width": 1903,
+    "height": 1786
+  },
+  "regions": [
+    {
+      "id": "a5",
+      "label": "Armor space 5",
+      "x": 50.90,
+      "y": 18.17,
+      "width": 43.48,
+      "height": 12.30
+    },
+    {
+      "id": "w6",
+      "label": "The Terror in Brass Token Region",
+      "x": 5.72,
+      "y": 9.83,
+      "width": 37.20,
+      "height": 13.33
+    },
+    {
+      "id": "w5",
+      "label": "The Terror in Brass Token Region",
+      "x": 5.88,
+      "y": 24.23,
+      "width": 37.20,
+      "height": 13.33
+    },
+    {
+      "id": "w4",
+      "label": "The Terror in Brass Token Region",
+      "x": 5.64,
+      "y": 38.61,
+      "width": 37.20,
+      "height": 13.33
+    },
+    {
+      "id": "w3",
+      "label": "The Terror in Brass Token Region",
+      "x": 5.80,
+      "y": 53.01,
+      "width": 37.20,
+      "height": 13.33
+    },
+    {
+      "id": "w2",
+      "label": "The Terror in Brass Token Region",
+      "x": 5.72,
+      "y": 67.52,
+      "width": 37.20,
+      "height": 13.33
+    },
+    {
+      "id": "w1",
+      "label": "The Terror in Brass Token Region",
+      "x": 5.88,
+      "y": 81.92,
+      "width": 37.20,
+      "height": 13.33
+    },
+    {
+      "id": "a4",
+      "label": "Armor space 4",
+      "x": 51.30,
+      "y": 32.28,
+      "width": 43.08,
+      "height": 12.30
+    },
+    {
+      "id": "a3",
+      "label": "Armor space 3",
+      "x": 50.90,
+      "y": 46.60,
+      "width": 43.48,
+      "height": 12.30
+    },
+    {
+      "id": "a2",
+      "label": "Armor space 2",
+      "x": 50.82,
+      "y": 61.39,
+      "width": 43.08,
+      "height": 12.30
+    },
+    {
+      "id": "a1",
+      "label": "Armor space 1",
+      "x": 51.06,
+      "y": 75.84,
+      "width": 43.08,
+      "height": 12.30
+    }
+  ],
+  "anchors": [
+    {
+      "id": "tt6",
+      "label": "The Terror in Brass token",
+      "regionId": "w6",
+      "x": 24.32,
+      "y": 16.50,
+      "tokenSize": {
+        "width": 37.20,
+        "height": 13.33
+      }
+    },
+    {
+      "id": "tt5",
+      "label": "The Terror in Brass token",
+      "regionId": "w5",
+      "x": 24.48,
+      "y": 30.90,
+      "tokenSize": {
+        "width": 37.20,
+        "height": 13.33
+      }
+    },
+    {
+      "id": "tt4-2",
+      "label": "The Terror in Brass token",
+      "regionId": "w4",
+      "x": 24.24,
+      "y": 45.28,
+      "tokenSize": {
+        "width": 37.20,
+        "height": 13.33
+      }
+    },
+    {
+      "id": "tt3",
+      "label": "The Terror in Brass token",
+      "regionId": "w3",
+      "x": 24.40,
+      "y": 59.68,
+      "tokenSize": {
+        "width": 37.20,
+        "height": 13.33
+      }
+    },
+    {
+      "id": "tt2",
+      "label": "The Terror in Brass token",
+      "regionId": "w2",
+      "x": 24.32,
+      "y": 74.19,
+      "tokenSize": {
+        "width": 37.20,
+        "height": 13.33
+      }
+    },
+    {
+      "id": "tt1",
+      "label": "The Terror in Brass token",
+      "regionId": "w1",
+      "x": 24.48,
+      "y": 88.59,
+      "tokenSize": {
+        "width": 37.20,
+        "height": 13.33
+      }
+    },
+    {
+      "id": "n5",
+      "label": "nemesis token",
+      "regionId": "a5",
+      "x": 57.02,
+      "y": 24.15,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.10
+      }
+    },
+    {
+      "id": "n4",
+      "label": "nemesis token",
+      "regionId": "a4",
+      "x": 57.12,
+      "y": 38.34,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.10
+      }
+    },
+    {
+      "id": "n3",
+      "label": "nemesis token",
+      "regionId": "a3",
+      "x": 57.00,
+      "y": 52.64,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.10
+      }
+    },
+    {
+      "id": "n2",
+      "label": "nemesis token",
+      "regionId": "a2",
+      "x": 56.90,
+      "y": 67.33,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.10
+      }
+    },
+    {
+      "id": "n1",
+      "label": "nemesis token",
+      "regionId": "a1",
+      "x": 56.96,
+      "y": 81.85,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.10
+      }
+    }
+  ]
+}

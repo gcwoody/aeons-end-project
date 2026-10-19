@@ -14,6 +14,7 @@ interface HandCardDisplay {
   isSpell: boolean
   pending: boolean
   selected: boolean
+  repeatConfirmation?: boolean
   endTurnActionAttention: boolean
   heldForPlay?: boolean
 }
@@ -225,7 +226,9 @@ const renderedHandCards = computed(() => props.handCards.map((card, index) => ({
   handIndex: card.handIndex ?? index,
   visualKey: handCardVisualKeys.value[index] ?? `hand-card-${index}`,
 })))
-const hasHighlightedHandCard = computed(() => renderedHandCards.value.some(card => card.pending))
+const hasHighlightedHandCard = computed(() => renderedHandCards.value.some(card =>
+  card.pending || card.repeatConfirmation,
+))
 
 onUpdated(() => {
   const positions = pendingHandReflowPositions
@@ -273,10 +276,11 @@ onBeforeUnmount(() => {
               'held-play-card': card.heldForPlay,
               'pending-board-card': card.pending,
               'pending-board-card-selected': card.pending && card.selected,
-              'game-highlight': card.pending,
+              'game-highlight': card.pending || card.repeatConfirmation,
               'game-highlight--choice': card.pending && !card.selected,
               'game-highlight--selected': card.pending && card.selected,
-              'player-card-hover-feedback': !card.heldForPlay && (card.pending || (canActMain && !hasHighlightedHandCard)),
+              'game-highlight--required': card.repeatConfirmation,
+              'player-card-hover-feedback': !card.heldForPlay && (card.pending || card.repeatConfirmation || (canActMain && !hasHighlightedHandCard)),
               'end-turn-attention': card.endTurnActionAttention,
             }]"
             :aria-disabled="card.heldForPlay || undefined"

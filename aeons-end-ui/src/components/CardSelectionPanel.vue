@@ -124,7 +124,6 @@ function toggleAfterClick(key: string): void {
             :data-card-motion-suppress-flight="choice.motionInstanceId ? 'true' : undefined"
             :data-card-motion-key="choice.motionZone ? `decision-${choice.key}` : undefined"
             :data-sort-key="choice.key"
-            :title="choice.disabled ? choice.disabledReason : undefined"
             @click="toggleAfterClick(choice.key)"
             @pointerdown="onPointerDown($event, choice.key)"
           >
@@ -175,7 +174,6 @@ function toggleAfterClick(key: string): void {
                 :data-card-instance-id="choice.motionInstanceId"
                 :data-card-motion-suppress-flight="choice.motionInstanceId ? 'true' : undefined"
                 :data-card-motion-key="choice.motionZone ? `decision-${choice.key}` : undefined"
-                :title="choice.disabled ? choice.disabledReason : undefined"
                 @click="toggle(choice.key)"
               >
                 <img v-if="cardImageUrl(choice.cardId)" :src="cardImageUrl(choice.cardId)" :alt="choice.cardName" />

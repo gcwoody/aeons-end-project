@@ -1,6 +1,8 @@
-import { createTwoPlayerScenario } from '../data'
+import { ALL_NEMESIS_CARDS, createTwoPlayerScenario } from '../data'
+import type { NemesisCardDef } from '../types'
 import { clone } from '../engine/utilities'
-import { createCardInstance } from '../engine/card-instances'
+import { createCardInstance, isCardInstanceRevealed } from '../engine/card-instances'
+import { shufflePlayerDiscardIntoDeck } from '../engine/zones'
 import {
   beginCardMoveTransaction,
   captureCardInstanceLocations,
@@ -12,7 +14,7 @@ import {
   moveCardBetweenZones,
   withCardMoveTransaction,
 } from '../engine/card-movement'
-import { createGame, drawStrikeCard, returnStrikeCardToDeck } from '../engine'
+import { createGame, drawStrikeCard, resolveEffects, resolvePendingDecision, returnStrikeCardToDeck } from '../engine'
 
 declare const console: { log(message?: unknown): void }
 
@@ -187,6 +189,113 @@ function testCallerOwnedActionBoundary(): void {
   assertEqual(result.auditIssues.length, 0, 'The caller-owned action boundary audits its final state')
 }
 
+function testShuffledDiscardMovesKeepOriginalSourcesAndFinalDestinations(): void {
+  const game = makeGame()
+  const player = game.players[0]!
+  player.deck = ['spark', 'crystal']
+  player.deckInstanceIds = undefined
+  player.discard = ['jade', 'jade', 'crystal']
+  player.discardInstanceIds = undefined
+  const discardedIds = [...getPlayerCardInstanceZone(game, player.id, 'discard').instanceIds]
+  const existingDeckIds = [...getPlayerCardInstanceZone(game, player.id, 'deck').instanceIds]
+
+  const result = withCardMoveTransaction(game, 'effect', () => shufflePlayerDiscardIntoDeck(game, player))
+  const moves = result.events.filter(event => event.kind === 'move')
+  assertEqual(moves.length, discardedIds.length, 'Each discarded copy has a discard-to-deck move fact')
+  for (const [index, move] of moves.entries()) {
+    assertEqual(move.instanceId, discardedIds[index], 'Discard transfer order keeps each physical copy')
+    assertEqual(move.source.zone, 'discard', 'The original pile is recorded as the movement source')
+    assertEqual(move.source.index, index, 'The source index comes from the original discard order')
+    assertEqual(move.destination.zone, 'deck', 'The shuffled deck is the movement destination')
+    assertEqual(move.destination.index, player.deckInstanceIds!.indexOf(move.instanceId),
+      'The destination index matches the final shuffled deck position')
+    assertEqual(move.reason, 'shuffle', 'The movement explains why the discard enters the deck')
+  }
+  assertEqual(result.events.filter(event => event.kind === 'shuffle').length, 5,
+    'The original shuffle facts still describe every shuffled card')
+  assert([...existingDeckIds, ...discardedIds].every(instanceId => !isCardInstanceRevealed(game, instanceId)),
+    'Shuffle forgets the positions of both existing deck cards and discarded cards')
+  assertEqual(result.auditIssues.length, 0, 'Discard-to-deck transfers pass the location audit')
+}
+
+function startGatherDarkness(game: ReturnType<typeof makeGame>, playerId: string): void {
+  const card = ALL_NEMESIS_CARDS.gather_darkness! as NemesisCardDef
+  const effects = card.nemesisEffects!.find(block => block.trigger === 'immediately')!.effects
+  resolveEffects(game, undefined, effects, card.id)
+  const choice = game.pendingDecision
+  if (choice?.kind !== 'select_player_target') throw new Error('Gather Darkness must request a player')
+  const target = choice.targets.find(candidate => candidate.playerId === playerId)
+  if (!target) throw new Error('The requested player must remain a valid Gather Darkness target')
+  resolvePendingDecision(game, choice.id, { kind: 'select_player_target', target })
+}
+
+function acceptCardMotionBarrier(game: ReturnType<typeof makeGame>): void {
+  const decision = game.pendingDecision
+  if (decision?.kind !== 'await_card_motions') throw new Error('Card movements must finish before continuing')
+  resolvePendingDecision(game, decision.id, { kind: 'await_card_motions', accepted: true })
+}
+
+function testGatherDarknessWaitsForDiscardAndDestructionSeparately(): void {
+  const game = makeGame()
+  const player = game.players[0]!
+  player.deck = ['spark', 'crystal', 'jade']
+  player.deckInstanceIds = undefined
+  player.discard = ['crystal', 'crystal', 'spark', 'jade']
+  player.discardInstanceIds = undefined
+  game.nemesis.counters.fury = 0
+  const discardedIds = [...getPlayerCardInstanceZone(game, player.id, 'discard').instanceIds]
+
+  const transfer = withCardMoveTransaction(game, 'effect', () => startGatherDarkness(game, player.id))
+  assertEqual(game.pendingDecision?.kind, 'await_card_motions', 'Discard transfer pauses before destroying cards')
+  assertEqual(player.deck.length, 7, 'All discarded cards reach the shuffled deck before destruction')
+  assertEqual(player.discard.length, 0, 'The discard pile is emptied by the shuffle')
+  assertEqual(player.destroyedCards.length, 0, 'No top card is destroyed before the transfer barrier')
+  assertEqual(game.nemesis.counters.fury, 0, 'Unleash has not resolved during the transfer')
+  assertEqual(transfer.events.filter(event => event.kind === 'move').map(event => event.instanceId).join(','),
+    discardedIds.join(','), 'The transfer captures every original discarded copy in order')
+  assertEqual(transfer.auditIssues.length, 0, 'The transfer phase passes the movement audit')
+  const expectedDestroyedIds = player.deckInstanceIds!.slice(0, 4)
+
+  const destruction = withCardMoveTransaction(game, 'effect', () => acceptCardMotionBarrier(game))
+  assertEqual(game.pendingDecision?.kind, 'await_card_motions', 'Top-card destruction has a second barrier')
+  assertEqual(player.destroyedCards.length, 4, 'Exactly four top cards are removed after the transfer finishes')
+  assertEqual(destruction.events.filter(event => event.kind === 'destroy').map(event => event.instanceId).join(','),
+    expectedDestroyedIds.join(','), 'Destruction facts follow the actual shuffled top-card order')
+  assertEqual(game.nemesis.counters.fury, 0, 'Unleash waits until all four destroy movements finish')
+  assertEqual(destruction.auditIssues.length, 0, 'The destruction phase passes the movement audit')
+
+  acceptCardMotionBarrier(game)
+  assertEqual(game.nemesis.counters.fury, 2, 'Unleash twice resolves only after both movement phases')
+  assertEqual(game.pendingDecision, null, 'The completed attack leaves no movement decision behind')
+}
+
+function testGatherDarknessAllowsEmptyDiscardAndDoesNotWaitForMissingMoves(): void {
+  const game = makeGame()
+  const player = game.players[0]!
+  player.deck = ['crystal', 'spark']
+  player.deckInstanceIds = undefined
+  player.discard = []
+  player.discardInstanceIds = undefined
+  game.nemesis.counters.fury = 0
+
+  startGatherDarkness(game, player.id)
+  assertEqual(player.destroyedCards.length, 2, 'An empty discard remains valid and the available deck cards are destroyed')
+  assertEqual(game.pendingDecision?.kind, 'await_card_motions', 'Actual top-card destruction still waits for movement')
+  acceptCardMotionBarrier(game)
+  assertEqual(game.nemesis.counters.fury, 2, 'No extra transfer barrier is needed for an empty discard')
+
+  const emptyGame = makeGame()
+  const emptyPlayer = emptyGame.players[0]!
+  emptyPlayer.deck = []
+  emptyPlayer.deckInstanceIds = undefined
+  emptyPlayer.discard = []
+  emptyPlayer.discardInstanceIds = undefined
+  emptyGame.nemesis.counters.fury = 0
+  startGatherDarkness(emptyGame, emptyPlayer.id)
+  assertEqual(emptyGame.pendingDecision, null, 'An empty deck and discard do not create a movement stall')
+  assertEqual(emptyGame.nemesis.counters.fury, 2, 'With no moved cards, Unleash resolves immediately')
+}
+
 function getNemesisCardInstanceZoneForTest(game: ReturnType<typeof makeGame>) {
   return getNemesisCardInstanceZone(game, 'strike_deck')
 }
@@ -198,4 +307,7 @@ testLegacyZonesGetStableIds()
 testRepeatedZoneReadsWithTrinketsKeepIdArraysStable()
 testStrikeKeepsItsIdentityWhileResolving()
 testCallerOwnedActionBoundary()
+testShuffledDiscardMovesKeepOriginalSourcesAndFinalDestinations()
+testGatherDarknessWaitsForDiscardAndDestructionSeparately()
+testGatherDarknessAllowsEmptyDiscardAndDoesNotWaitForMissingMoves()
 console.log('Card movement identity and fact tests passed.')

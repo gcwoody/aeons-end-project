@@ -7,7 +7,8 @@ import {
   startTurn,
 } from '../engine'
 import { isCardInstanceRevealed } from '../engine/card-instances'
-import { getCard } from '../data'
+import { compareNemesisCardsInRow } from '../engine/nemesis-card-order'
+import { createTwoPlayerScenario, getCard } from '../data'
 import type { GameState, NemesisCardDef } from '../types'
 
 declare const console: { log(message?: unknown): void }
@@ -172,9 +173,71 @@ function testDarkConclusionWaitsBesideTurnOrderDeckUntilReset(): void {
   assertEqual(game.nemesis.turnOrderDeckResetCardId, undefined, 'The reset marker clears after use')
 }
 
+function testResolvedPowerArrivesAtTheRightEndOfTheUpperRow(): void {
+  const game = createGame(createTwoPlayerScenario(['jian', 'brama'], 'the_terror_in_brass'))
+  game.currentTurn = 'nemesis'
+  game.currentPhase = 'nemesis_main'
+  game.nemesis.playArea = [
+    {
+      cardId: 'unbroken_reign', cardType: 'power', placedAt: 1,
+      instanceId: 'unbroken-reign:ordering-test', enteredOnNemesisTurn: 0, powerTokens: 1,
+    },
+    {
+      cardId: 'regeneration', cardType: 'power', placedAt: 2, displayRow: 'top',
+      instanceId: 'regeneration:ordering-test', enteredOnNemesisTurn: 0, powerTokens: 3,
+    },
+  ]
+  game.nemesis.deck = []
+  game.nemesis.setAsideCards = []
+
+  advanceNemesisMain(game)
+  const unbroken = game.nemesis.setAsideCards?.[0]
+  assert(unbroken?.cardId === 'unbroken_reign', 'Depleted Unbroken Reign is set aside in the upper row')
+  assertEqual(unbroken.placedAt, 1, 'Moving rows preserves the card identity used for targeting')
+  assertEqual(unbroken.instanceId, 'unbroken-reign:ordering-test', 'Moving rows preserves the physical instance')
+  const upperRow = [
+    ...(game.nemesis.setAsideCards ?? []),
+    ...game.nemesis.playArea.filter(card => card.displayRow === 'top'),
+  ].sort(compareNemesisCardsInRow)
+  assertEqual(upperRow.map(card => card.cardId).join(','), 'regeneration,unbroken_reign',
+    'The newly set-aside card appends after the Regeneration already in the upper row')
+
+  const restored = JSON.parse(JSON.stringify(game)) as GameState
+  restored.nemesis.playArea.push({
+    cardId: 'cruel_majesty', cardType: 'power', placedAt: 4,
+    instanceId: 'cruel-majesty:ordering-test', enteredOnNemesisTurn: 0, powerTokens: 1,
+  })
+  advanceNemesisMain(restored)
+  const restoredUpperRow = [
+    ...(restored.nemesis.setAsideCards ?? []),
+    ...restored.nemesis.playArea.filter(card => card.displayRow === 'top'),
+  ].sort(compareNemesisCardsInRow)
+  assertEqual(restoredUpperRow.map(card => card.cardId).join(','), 'regeneration,unbroken_reign,cruel_majesty',
+    'A later resolved Power still appends right after a save and restore')
+}
+
+function testNemesisMainUsesTheVisibleRowOrder(): void {
+  const game = nemesisGame()
+  game.nemesis.playArea = [
+    { cardId: 'provoker', cardType: 'minion', placedAt: 1, instanceId: 'bottom-left', lifeTokens: 5 },
+    { cardId: 'agony_field', cardType: 'power', placedAt: 2, displayOrder: 9, displayRow: 'top', instanceId: 'top-right', powerTokens: 2 },
+    { cardId: 'dark_conclusion', cardType: 'power', placedAt: 3, displayOrder: 7, displayRow: 'top', instanceId: 'top-left', powerTokens: 3 },
+    { cardId: 'needlemaw', cardType: 'minion', placedAt: 4, instanceId: 'bottom-right', lifeTokens: 11 },
+  ]
+
+  advanceNemesisTurn(game)
+  assertEqual(game.nemesisResolution?.mainQueue.join(','), 'top-left,top-right,bottom-left,bottom-right',
+    'Main Phase queues active cards from left to right within the top row, then the lower row')
+  const decision = game.pendingDecision
+  assert(decision?.kind === 'confirm_nemesis_effect', 'The first active card waits for confirmation')
+  assertEqual(decision.instanceId, 'top-left', 'The first required confirmation belongs to the visible top-left card')
+}
+
 testNemesisMainAndDrawOrder()
 testDrawnCardsEnterWithFreshCounters()
 testNemesisResolutionIsSerializable()
 testLethalGraveholdDamageStopsNemesisTurn()
 testDarkConclusionWaitsBesideTurnOrderDeckUntilReset()
+testResolvedPowerArrivesAtTheRightEndOfTheUpperRow()
+testNemesisMainUsesTheVisibleRowOrder()
 console.log('Stage 2 Nemesis phase and lifecycle tests passed.')

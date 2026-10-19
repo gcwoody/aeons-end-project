@@ -4,16 +4,20 @@ import { isPresentBreach } from './breaches'
 import { getPlayer } from './zones'
 import { insertCardInstanceAt } from './card-instances'
 import { recordHealthChange } from './health-feedback'
+import { getNemesisRules } from '../nemesis/registry'
 import {
   destroyCardFromZone, getBreachAttachedRelicZone, getBreachCardInstanceZone,
   getNemesisCardInstanceZone, getPlayerCardInstanceZone, moveCardBetweenZones, recordCardMove,
 } from './card-movement'
 
 export function damageNemesis(game: GameState, amount: number, sourceCardId?: string): void {
-  const allowedSources = getNemesisDefinition(game.nemesis.definitionId)?.damageOnlyFromCardIds
-  const value = allowedSources && !allowedSources.includes(sourceCardId ?? '')
+  const definition = getNemesisDefinition(game.nemesis.definitionId)
+  const allowedSources = definition?.damageOnlyFromCardIds
+  const allowedValue = allowedSources && !allowedSources.includes(sourceCardId ?? '')
     ? 0
     : Math.max(0, amount)
+  const value = getNemesisRules(definition?.rulesModuleId ?? game.nemesis.definitionId)
+    ?.modifyDamageTaken?.(game, allowedValue, sourceCardId) ?? allowedValue
   if (value > 0) recordHealthChange(game, { kind: 'damage', targetId: 'nemesis', amount: value })
   game.nemesis.hp -= value
   if (game.nemesis.hp <= 0) {

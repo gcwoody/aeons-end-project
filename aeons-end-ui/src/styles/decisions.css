@@ -39,6 +39,7 @@
   padding: 14px 20px;
   text-align: center;
 }
+.decision-overlay > .centered-decision-modal--pass-through { pointer-events: none; }
 .centered-decision-modal:has(.centered-decision-preview-cards) {
   width: min(760px, calc(100vw - 32px));
   padding: 22px 26px;

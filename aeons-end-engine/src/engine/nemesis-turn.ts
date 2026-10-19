@@ -8,8 +8,10 @@ import { getNemesisRules } from '../nemesis/registry'
 import { leastExpensiveMarketPiles, marketPileChoices } from '../nemesis/market'
 import { shuffle } from './decks'
 import { getSpendableAether, spendAether } from './aether'
+import { autoSelectSameCardChoices } from './sequential-card-selection'
 import { ensurePlayerCollections } from './player-state'
 import { getPlayer } from './zones'
+import { markNemesisCardRowArrival, orderedNemesisMainCards } from './nemesis-card-order'
 import {
   createCardInstance, ensureCardInstanceZone, insertCardInstanceAt,
   markCardInstanceRevealed, removeCardInstanceAt, resetCardInstancesAfterShuffle,
@@ -62,8 +64,8 @@ function ensureNemesisRuntime(g: GameState): void {
   n.strikeDiscard ??= []
   n.counters ??= {}
   n.nemesisTurnNumber ??= 0
-  n.cardInstanceCounter ??= n.playArea.reduce(
-    (highest, card) => Math.max(highest, card.placedAt), 0,
+  n.cardInstanceCounter = [...n.playArea, ...(n.setAsideCards ?? [])].reduce(
+    (highest, card) => Math.max(highest, card.placedAt, card.displayOrder ?? 0), n.cardInstanceCounter ?? 0,
   )
   for (const card of n.playArea) {
     card.instanceId ??= `${card.cardId}:${card.placedAt}`
@@ -77,13 +79,6 @@ function ensureNemesisRuntime(g: GameState): void {
 
 function cardInstanceKey(card: NemesisCardInPlay): string {
   return card.instanceId ?? `${card.cardId}:${card.placedAt}`
-}
-
-function orderedNemesisMainCards(cards: NemesisCardInPlay[]): NemesisCardInPlay[] {
-  return [...cards].sort((a, b) => {
-    const rowOrder = (a.displayRow === 'top' ? 0 : 1) - (b.displayRow === 'top' ? 0 : 1)
-    return rowOrder || a.placedAt - b.placedAt
-  })
 }
 
 function initializeNemesisTurn(g: GameState): void {
@@ -133,6 +128,7 @@ function discardCompletedNemesisCard(g: GameState, resolution: NemesisResolution
     g.nemesis.playArea = g.nemesis.playArea.filter(candidate => candidate !== card)
     g.nemesis.setAsideCards ??= []
     if (!g.nemesis.setAsideCards.some(candidate => cardInstanceKey(candidate) === cardInstanceKey(card))) {
+      markNemesisCardRowArrival(g, card)
       g.nemesis.setAsideCards.push(card)
       recordCardMove(g, cardInstanceKey(card), card.cardId,
         { zoneId: 'nemesis:play_area', zone: 'nemesis_play_area', ownerId: 'nemesis', index: sourceIndex },
@@ -222,13 +218,24 @@ function resolveNemesisCardEffects(
     ?.filter(block => block.trigger === trigger)
     .filter(block => conditionMatches(g, undefined, block.condition, card.id))
     .flatMap(block => block.effects) ?? []
+  const depletedPower = trigger === 'power_resolved'
+    ? activeNemesisCard(g, resolution)
+    : null
+  const afterPowerTokenRemoved = depletedPower && (depletedPower.powerTokens ?? 0) <= 0
+    ? activeNemesisRules(g)?.afterPowerTokenRemoved?.(g, depletedPower) ?? []
+    : []
   if (trigger === 'persistent') {
     effects.push(...(activeNemesisRules(g)?.additionalPersistentEffects?.(g, card) ?? []))
   }
-  if (effects.length === 0) return []
+  if (effects.length === 0 && afterPowerTokenRemoved.length === 0) return []
   return runEffectResolution(g, {
     sourceCardId: card.id,
-    remainingEffects: [...effects],
+    remainingEffects: [
+      ...effects,
+      ...(afterPowerTokenRemoved.length > 0
+        ? [{ kind: 'finish_active_nemesis_card' as const }, ...afterPowerTokenRemoved]
+        : []),
+    ],
     nemesisResume: true,
   })
 }
@@ -651,6 +658,43 @@ function shuffleStrikeDeck(g: GameState): void {
     }
     return true
   }
+
+  function pendingNemesisDiscardCostsArePayable(g: GameState, pending: NonNullable<GameState['pendingNemesisDiscard']>): boolean {
+    const player = getPlayer(g, pending.playerId)
+    let aether = getSpendableAether(player, 'general')
+    let charge = player.charge
+    for (const [costIndex, cost] of pending.costs.entries()) {
+      if (cost.kind === 'spend_aether') {
+        aether -= Math.max(0, cost.amount)
+        if (aether < 0) return false
+      } else if (cost.kind === 'lose_charge') {
+        charge -= Math.max(0, cost.amount)
+        if (charge < 0) return false
+      } else if (cost.kind === 'discard_cards') {
+        const paid = pending.selectedCardPayments
+          .filter(payment => payment.costIndex === costIndex && payment.applied)
+          .reduce((sum, payment) => sum + payment.choices.length, 0)
+        const remaining = Math.max(0, cost.amount - paid)
+        if (remaining > 0 && getCardChoices(g, pending.playerId, cost.source).length < remaining) return false
+      } else if (!costIsCurrentlyPayable(g, pending.playerId, cost)) {
+        return false
+      }
+    }
+    return true
+  }
+
+  function waitForNemesisDiscardCardMotions(g: GameState): string[] {
+    const pending = g.pendingNemesisDiscard
+    if (!pending) return ['No pending To Discard action']
+    pending.awaitingCardMotions = true
+    const decision = createDecision(g, 'Waiting for card movement', 'await_card_motions', {})
+    const error = setPendingDecision(g, decision)
+    if (error) {
+      pending.awaitingCardMotions = false
+      return [error]
+    }
+    return [`Decision required: ${decision.prompt}`]
+  }
   
   /** Return Power cards that the active player can legally discard this Main Phase. */
   function getNemesisDiscardActions(
@@ -679,15 +723,21 @@ function shuffleStrikeDeck(g: GameState): void {
   function finishNemesisDiscard(g: GameState): string[] {
     const pending = g.pendingNemesisDiscard
     if (!pending) return ['No pending To Discard action']
-    const action = getNemesisDiscardActions(g, pending.playerId, true)
-      .find(candidate => candidate.instanceId === pending.cardInstanceId)
-    if (!action) {
+    const card = nemesisCardByInstance(g, pending.cardInstanceId)
+    if (!card || card.cardType !== 'power') {
       g.pendingNemesisDiscard = null
       return ['The Power card can no longer be discarded']
     }
+    const definition = getCard(card.cardId) as NemesisCardDef
+    const action: NemesisDiscardAction = {
+      instanceId: pending.cardInstanceId,
+      cardId: card.cardId,
+      cardName: definition.name,
+      costs: pending.costs,
+    }
   
     const player = getPlayer(g, pending.playerId)
-    if (!costsAreCurrentlyPayable(g, pending.playerId, pending.costs)) {
+    if (!pendingNemesisDiscardCostsArePayable(g, pending)) {
       g.pendingNemesisDiscard = null
       return ['The To Discard cost can no longer be paid']
     }
@@ -702,18 +752,22 @@ function shuffleStrikeDeck(g: GameState): void {
         messages.push(`${player.mageType} loses ${Math.max(0, cost.amount)} charge to discard ${action.cardName}`)
       }
     }
+    const paidDiscardCostIndices = new Set<number>()
     for (const payment of pending.selectedCardPayments) {
       const cost = pending.costs[payment.costIndex]
-      const removed = cost?.kind === 'discard_cards'
+      if (cost?.kind === 'discard_cards') paidDiscardCostIndices.add(payment.costIndex)
+      const removed = payment.applied ? [] : cost?.kind === 'discard_cards'
         ? discardSelectedCards(g, pending.playerId, payment.choices, true)
         : destroySelectedPlayerCards(g, pending.playerId, payment.choices)
       ensurePlayerCollections(player)
       const actionWord = cost?.kind === 'discard_cards' ? 'Discarded' : 'Destroyed'
-      messages.push(`${actionWord} ${removed.map(id => getCard(id).name).join(', ')} to discard ${action.cardName}`)
-      if (cost?.kind === 'discard_cards' && (cost.drawAfter ?? 0) > 0) {
-        const drawn = drawCardsForPlayer(g, pending.playerId, cost.drawAfter!)
-        messages.push(`${player.mageType} draws ${drawn} card${drawn === 1 ? '' : 's'} after paying ${action.cardName}'s To Discard cost`)
-      }
+      if (!payment.applied) messages.push(`${actionWord} ${removed.map(id => getCard(id).name).join(', ')} to discard ${action.cardName}`)
+    }
+    for (const costIndex of paidDiscardCostIndices) {
+      const cost = pending.costs[costIndex]
+      if (cost?.kind !== 'discard_cards' || (cost.drawAfter ?? 0) <= 0) continue
+      const drawn = drawCardsForPlayer(g, pending.playerId, cost.drawAfter!)
+      messages.push(`${player.mageType} draws ${drawn} card${drawn === 1 ? '' : 's'} after paying ${action.cardName}'s To Discard cost`)
     }
     for (const payment of pending.selectedPreppedSpellPayments) {
       const removed: string[] = []
@@ -728,12 +782,6 @@ function shuffleStrikeDeck(g: GameState): void {
       messages.push(`Destroyed ${removed.map(id => getCard(id).name).join(', ')} to discard ${action.cardName}`)
     }
   
-    const card = nemesisCardByInstance(g, pending.cardInstanceId)
-    if (!card) {
-      g.pendingNemesisDiscard = null
-      return ['The Power card is no longer in play']
-    }
-    const definition = getCard(card.cardId) as NemesisCardDef
     if (definition.returnToSpecificDeckOnDiscard) {
       if (definition.discardUnderCardsToNemesisDiscard) {
         const stack = getNemesisCardStackZone(g, card)
@@ -800,13 +848,47 @@ function shuffleStrikeDeck(g: GameState): void {
       const candidates = getCardChoices(g, pending.playerId, cost.source)
         .filter(choice => cost.kind === 'discard_cards' || getCard(choice.cardId).cost >= (cost.minCost ?? 0))
       const amount = Math.max(0, cost.amount)
-      if (candidates.length < amount) {
+      const costIndex = pending.nextCostIndex - 1
+      const alreadyPaid = cost.kind === 'discard_cards'
+        ? pending.selectedCardPayments
+          .filter(payment => payment.costIndex === costIndex && payment.applied)
+          .reduce((sum, payment) => sum + payment.choices.length, 0)
+        : 0
+      const remaining = Math.max(0, amount - alreadyPaid)
+      if (remaining === 0) continue
+      if (candidates.length < remaining) {
         g.pendingNemesisDiscard = null
         return ['The To Discard card requirement is no longer available']
       }
+      const sequentialHandDiscard = cost.kind === 'discard_cards' &&
+        (cost.selectionMode === 'one_at_a_time' ||
+          (cost.selectionMode !== 'together' && amount > 1))
+      if (sequentialHandDiscard) {
+        const automatic = autoSelectSameCardChoices(candidates, remaining)
+        if (automatic) {
+          pending.selectedCards.push(...automatic)
+          pending.selectedCardPayments.push({ costIndex, choices: automatic, applied: true })
+          const removed = discardSelectedCards(g, pending.playerId, automatic, true)
+          if (removed.length > 0) {
+            return [
+              `Discarded ${removed.map(id => getCard(id).name).join(', ')} to pay the Power cost`,
+              ...waitForNemesisDiscardCardMotions(g),
+            ]
+          }
+          continue
+        }
+        const decision = createDecision(g,
+          `Choose one card to discard the Power (${remaining} remaining)`,
+          'select_cards',
+          { source: cost.source, candidates, min: 1, max: 1, layout: 'instant-card-choice' },
+        )
+        const error = setPendingDecision(g, decision)
+        if (error) return [error]
+        return [`Decision required: ${decision.prompt}`]
+      }
       if (candidates.length === amount) {
         pending.selectedCards.push(...candidates)
-        pending.selectedCardPayments.push({ costIndex: pending.nextCostIndex - 1, choices: candidates })
+        pending.selectedCardPayments.push({ costIndex, choices: candidates })
         continue
       }
       const actionPrompt = cost.kind === 'discard_cards'

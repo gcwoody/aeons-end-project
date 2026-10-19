@@ -146,6 +146,7 @@ export const WAVE1_BASIC_NEMESIS_CARDS: Record<string, NemesisCardDef> = {
   },
   reality_rupture: {
     ...makeNemesisCard('reality_rupture', 'Reality Rupture', 'power', 3, { power: 1 }),
+    nemesisEffects: powerResolved(unleash(3)),
     toDiscard: { costs: [{ kind: 'destroy_prepped_spells', amount: 2, minCost: 3 }] },
   },
   sunder: {

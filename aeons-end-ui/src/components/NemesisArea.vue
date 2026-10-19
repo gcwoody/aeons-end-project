@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getCard, getNemesisDefinition } from '@engine/data'
-import { getSpendableAether } from '@engine/engine'
+import { canPlaceNemesisSubBoardToken, getSpendableAether, isNemesisVulnerable } from '@engine/engine'
 import type { NemesisCardDef, NemesisCardInPlay } from '@engine/types'
+import { compareNemesisCardsInRow } from '@engine/engine/nemesis-card-order'
 import { cardImageUrl, nemesisCardBackUrl, nemesisMatImageUrl, nemesisSpecificDeckBackUrl, nemesisTokenImageUrl } from '../card-images'
 import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import AttachedQuarterCard from './AttachedQuarterCard.vue'
 import NemesisSpecificPile from './NemesisSpecificPile.vue'
+import NemesisSubBoard from './NemesisSubBoard.vue'
 import TurnOrderBar from './TurnOrderBar.vue'
 import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
@@ -19,13 +21,33 @@ const {
   state, nemesisDiscardActions, discardNemesisCard, resolveDecision,
   buyNemesisSpecificTopCard, openNemesisDeckPile, openNemesisDiscardPile,
   openNemesisSpecificPile, openNemesisSpecificDiscardPile, canActMain,
+  placeNemesisSubBoardToken,
 } = useGame()
 const nemesis = computed(() => state.game!.nemesis)
+const nemesisVulnerable = computed(() => isNemesisVulnerable(state.game!))
 const hasUnlimitedNemesisLife = computed(() => getNemesisDefinition(nemesis.value.definitionId)?.noLifeMaximum === true)
 const nemesisLifeBarMaximum = computed(() =>
   getNemesisDefinition(nemesis.value.definitionId)?.lifeLossThreshold ?? nemesis.value.maxHp,
 )
-const presentation = computed(() => getNemesisPresentation(nemesis.value.type))
+const presentation = computed(() => getNemesisPresentation(nemesis.value.type, nemesis.value.difficulty))
+const subBoardTokens = computed(() => nemesis.value.subBoardTokens ?? [])
+const availableSubBoardRegionIds = computed(() => {
+  const game = state.game
+  const layout = presentation.value.subBoard.layout
+  if (!game || !layout || !canActMain.value) return []
+  return layout.regions
+    .filter(region => canPlaceNemesisSubBoardToken(game, state.selectedPlayer, 'nemesis', region.id))
+    .map(region => region.id)
+})
+const subBoardRegionDecision = computed(() => {
+  const decision = state.game?.pendingDecision
+  return decision?.kind === 'choose_one' && decision.layout === 'sub-board-region-choice' &&
+    decision.options.some(option => !!option.regionId)
+    ? decision
+    : null
+})
+const selectableSubBoardRegionIds = computed(() => subBoardRegionDecision.value?.options
+  .flatMap(option => !option.disabled && option.regionId ? [option.regionId] : []) ?? [])
 const strikeDeckDisplay = computed(() => state.cardPileDisplayOverrides['nemesis:strike_deck'])
 const specificTopCard = computed(() => {
   if (presentation.value.specificDeck.display !== 'face_up') return null
@@ -92,7 +114,7 @@ const stationedCards = computed(() => {
       instanceId: nemesis.value.turnOrderDeckResetCardInstanceId ?? `stationed:${resetCardId}`,
     })
   }
-  return cards.sort((a, b) => a.placedAt - b.placedAt)
+  return cards.sort(compareNemesisCardsInRow)
 })
 function isStationedNemesisCard(card: NemesisCardInPlay): boolean {
   return stationedCards.value.some(stationed => stationed.cardId === card.cardId &&
@@ -101,7 +123,7 @@ function isStationedNemesisCard(card: NemesisCardInPlay): boolean {
 }
 const playCards = computed(() => [...nemesis.value.playArea]
   .filter(card => !isStationedNemesisCard(card))
-  .sort((a, b) => a.placedAt - b.placedAt))
+  .sort(compareNemesisCardsInRow))
 const damageDecision = computed(() => {
   const decision = state.game?.pendingDecision
   return decision?.kind === 'select_damage_target' || decision?.kind === 'allocate_divided_damage'
@@ -118,6 +140,8 @@ const matPreviewWidth = computed(() => matPreviewHeight * matRatio.value)
 const matSide = ref<'front' | 'back'>('front')
 const matModalOpen = ref(false)
 const { modalEl: matModalEl, modalStyle: matModalStyle, dragging: matDragging, startDrag: startMatDrag } = useModalDrag()
+const subBoardModalOpen = ref(false)
+const { modalEl: subBoardModalEl, modalStyle: subBoardModalStyle, dragging: subBoardModalDragging, startDrag: startSubBoardModalDrag } = useModalDrag()
 const playScroll = ref<HTMLElement | null>(null)
 let scrollTarget = 0
 let scrollFrame: number | null = null
@@ -154,6 +178,14 @@ function openMat() {
   matSide.value = 'front'
   matModalOpen.value = true
 }
+
+function openSubBoardPreview() {
+  if (presentation.value.subBoard.enabled && presentation.value.subBoard.layout) {
+    subBoardModalOpen.value = true
+  }
+}
+
+function closeSubBoardPreview() { subBoardModalOpen.value = false }
 
 function isDamageTarget(targetId: string): boolean {
   return damageDecision.value?.targets.some(target => target.id === targetId) ?? false
@@ -228,11 +260,18 @@ function activateNemesisCard(card: NemesisCardInPlay) {
 
 function closeMat() { matModalOpen.value = false }
 
-watch(() => state.dismissibleOverlayVersion, closeMat)
+watch(() => state.dismissibleOverlayVersion, () => {
+  closeMat()
+  closeSubBoardPreview()
+})
 
 const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
   if (matModalOpen.value) {
     closeMat()
+    return true
+  }
+  if (subBoardModalOpen.value) {
+    closeSubBoardPreview()
     return true
   }
   return false
@@ -252,6 +291,21 @@ function cardCounter(card: NemesisCardInPlay): string | null {
   if (card.cardType === 'minion' && card.lifeTokens != null) return `Life ${card.lifeTokens}`
   if (card.cardType === 'power' && card.powerTokens != null) return `Power ${card.powerTokens}`
   return null
+}
+
+function subBoardTokenImageUrl(tokenId: string): string | undefined {
+  return nemesisTokenImageUrl(nemesis.value.type, tokenId)
+}
+
+function activateSubBoardRegion(regionId: string) {
+  if (availableSubBoardRegionIds.value.includes(regionId)) void placeNemesisSubBoardToken(regionId)
+}
+
+function selectSubBoardRegion(regionId: string) {
+  const option = subBoardRegionDecision.value?.options.find(candidate =>
+    !candidate.disabled && candidate.regionId === regionId,
+  )
+  if (option) resolveDecision({ kind: 'choose_one', optionId: option.id })
 }
 
 function nemesisTokenCounter(card: NemesisCardInPlay): string | null {
@@ -292,6 +346,7 @@ onBeforeUnmount(() => {
           @contextmenu="cancelDamageTarget('nemesis', $event)"
         >
           <img class="nemesis-mat-image" :src="nemesisMatImageUrl(nemesis.type, 'front')" :alt="`${nemesis.name} mat`" draggable="false" @load="measureMat" />
+          <span v-if="nemesisVulnerable" class="nemesis-card-counter nemesis-vulnerable-badge">Vulnerable</span>
           <span v-if="dividedDamageAssigned('nemesis') > 0" class="damage-allocation-badge" :aria-label="`${dividedDamageAssigned('nemesis')} damage assigned`">−{{ dividedDamageAssigned('nemesis') }}</span>
         </button>
       </CardHoverPreview>
@@ -301,15 +356,38 @@ onBeforeUnmount(() => {
 
     <div class="nemesis-board">
       <div class="nemesis-board-upper">
+        <CardHoverPreview
+          v-if="presentation.subBoard.enabled && presentation.subBoard.imageUrl && presentation.subBoard.layout"
+          :image-url="presentation.subBoard.imageUrl"
+          :image-alt="presentation.subBoard.layout.boardName"
+          :preview-width="460"
+          :preview-height="460 / (presentation.subBoard.layout.imageSize.width / presentation.subBoard.layout.imageSize.height)"
+          image-object-fit="fill"
+          preview-class="nemesis-sub-board-hover-preview"
+          :disabled="subBoardModalOpen || !!subBoardRegionDecision"
+        >
+          <NemesisSubBoard
+            :image-url="presentation.subBoard.imageUrl"
+            :layout="presentation.subBoard.layout"
+            :tokens="subBoardTokens"
+            :available-region-ids="availableSubBoardRegionIds"
+            :selectable-region-ids="selectableSubBoardRegionIds"
+            :token-image-url="subBoardTokenImageUrl"
+            @activate="activateSubBoardRegion"
+            @select-region="selectSubBoardRegion"
+            @preview="openSubBoardPreview"
+          />
+        </CardHoverPreview>
+
         <div class="nemesis-pile-column" aria-label="Nemesis discard piles">
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :data-card-flight-target="presentation.specificDiscard.enabled ? 'strike-discard' : undefined" :data-card-motion-zone="presentation.specificDiscard.enabled ? 'strike_discard' : undefined" data-card-motion-owner-id="nemesis" data-card-motion-key="nemesis-specific-discard-top" data-card-motion-face="front" :data-card-motion-card-id="specificDiscardTopCard ?? undefined" :data-card-instance-id="specificDiscardTopInstanceId || undefined" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled, 'is-empty': !presentation.specificDiscard.enabled || specificDiscardCount === 0 }" :aria-disabled="!presentation.specificDiscard.enabled || specificDiscardCount === 0" :aria-label="`Open ${presentation.specificDiscard.label}`" :title="presentation.specificDiscard.label" @click="openNemesisSpecificDiscardPile">
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :data-card-flight-target="presentation.specificDiscard.enabled ? 'strike-discard' : undefined" :data-card-motion-zone="presentation.specificDiscard.enabled ? 'strike_discard' : undefined" data-card-motion-owner-id="nemesis" data-card-motion-key="nemesis-specific-discard-top" data-card-motion-face="front" :data-card-motion-card-id="specificDiscardTopCard ?? undefined" :data-card-instance-id="specificDiscardTopInstanceId || undefined" :class="{ 'is-unavailable': !presentation.specificDiscard.enabled, 'is-empty': !presentation.specificDiscard.enabled || specificDiscardCount === 0 }" :aria-disabled="!presentation.specificDiscard.enabled || specificDiscardCount === 0" :aria-label="`Open ${presentation.specificDiscard.label}`" @click="openNemesisSpecificDiscardPile">
             <CardHoverPreview v-if="presentation.specificDiscard.enabled && specificDiscardTopCard" :card-id="specificDiscardTopCard">
               <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="specificDiscardTopCard" />
             </CardHoverPreview>
             <span v-else class="nemesis-pile-placeholder">{{ presentation.specificDiscard.enabled ? `${presentation.specificDiscard.label} 0` : 'Not used' }}</span>
             <span v-if="presentation.specificDiscard.enabled && specificDiscardCount > 0" class="nemesis-pile-count">{{ specificDiscardCount }}</span>
           </button>
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" data-card-flight-target="nemesis-discard" data-card-motion-zone="nemesis_discard" data-card-motion-owner-id="nemesis" data-card-motion-key="nemesis-discard-top" data-card-motion-face="front" :data-card-motion-card-id="nemesisDiscardTopCard ?? undefined" :data-card-instance-id="nemesisDiscardTopInstanceId || undefined" :class="{ 'is-empty': nemesisDiscardCount === 0 }" :aria-disabled="nemesisDiscardCount === 0" aria-label="Open Nemesis Discard" title="Nemesis Discard" @click="openNemesisDiscardPile">
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" data-card-flight-target="nemesis-discard" data-card-motion-zone="nemesis_discard" data-card-motion-owner-id="nemesis" data-card-motion-key="nemesis-discard-top" data-card-motion-face="front" :data-card-motion-card-id="nemesisDiscardTopCard ?? undefined" :data-card-instance-id="nemesisDiscardTopInstanceId || undefined" :class="{ 'is-empty': nemesisDiscardCount === 0 }" :aria-disabled="nemesisDiscardCount === 0" aria-label="Open Nemesis Discard" @click="openNemesisDiscardPile">
             <CardHoverPreview v-if="nemesisDiscardTopCard" :card-id="nemesisDiscardTopCard">
               <CardSurface base-class="nemesis-pile-card" size="pile" :card-id="nemesisDiscardTopCard" />
             </CardHoverPreview>
@@ -334,17 +412,12 @@ onBeforeUnmount(() => {
             @activate="activateSpecificTopCard"
             @inspect="openNemesisSpecificPile"
           />
-          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-empty': nemesisDeckCount === 0 }" :aria-disabled="nemesisDeckCount === 0" aria-label="Open Nemesis Deck" title="Nemesis Deck" @click="openNemesisDeckPile">
+          <button type="button" class="nemesis-pile-slot nemesis-discard-button" :class="{ 'is-empty': nemesisDeckCount === 0 }" :aria-disabled="nemesisDeckCount === 0" aria-label="Open Nemesis Deck" @click="openNemesisDeckPile">
             <CardSurface v-if="nemesisDeckCount > 0" data-nemesis-deck-pile="true" base-class="nemesis-pile-card" size="pile" :image-url="nemesisCardBackUrl()" image-alt="Nemesis Deck card back" />
             <span v-else class="nemesis-pile-placeholder">Nemesis Deck 0</span>
             <span v-if="nemesisDeckCount > 0" class="nemesis-pile-count">{{ nemesisDeckCount }}</span>
           </button>
         </div>
-
-        <section v-if="presentation.subBoard.enabled" class="nemesis-sub-board" aria-label="Nemesis Sub Board" :style="{ '--sub-board-ratio': presentation.subBoard.aspectRatio }">
-          <img v-if="presentation.subBoard.imageUrl" :src="presentation.subBoard.imageUrl" alt="Nemesis Sub Board" draggable="false" />
-          <span v-else class="nemesis-section-title">Nemesis Sub Board</span>
-        </section>
 
         <section class="nemesis-play" aria-label="Nemesis Cards in Play">
           <div class="nemesis-play-top" aria-label="Nemesis upper row">
@@ -380,10 +453,6 @@ onBeforeUnmount(() => {
                 <div class="nemesis-card-meta"><span v-if="cardCounter(card)" class="nemesis-card-counter">{{ cardCounter(card) }}</span></div>
               </div>
             </CardHoverPreview>
-            <div v-if="dividedDamageDecision && dividedDamageAllocation" class="divided-damage-instructions" role="status" aria-live="polite">
-              <strong>Damage assigned: {{ dividedDamageAllocation.total - dividedDamageAllocation.remaining }}/{{ dividedDamageAllocation.total }}</strong>
-              <span>Left-click to assign unassigned damage. Right-click to cancel 1 damage. Click the casting spell again to resolve.</span>
-            </div>
           </div>
           <div v-if="playCards.length > 0" ref="playScroll" class="nemesis-play-row nemesis-card-scroll">
             <div class="nemesis-card-track">
@@ -391,7 +460,7 @@ onBeforeUnmount(() => {
                 <div class="nemesis-play-card game-highlight" data-card-motion-zone="nemesis_play_area" data-card-motion-owner-id="nemesis" :data-card-motion-card-id="card.cardId" :data-card-motion-key="`nemesis-play-${nemesisCardInstanceId(card)}`" :data-card-instance-id="nemesisCardInstanceId(card)" :data-damage-target="card.cardType === 'minion' ? minionTargetId(card.placedAt) : undefined" :data-main-action-id="isEndTurnActionCard(card) ? `nemesis-card:${nemesisCardInstanceId(card)}` : undefined" :class="[`nemesis-${card.cardType}`, { discardable: nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'damage-target': isDamageTarget(minionTargetId(card.placedAt)), 'effect-target': isMainEffectTarget(nemesisCardInstanceId(card)), 'game-highlight--available': nemesisDiscardActions.some(action => action.instanceId === nemesisCardInstanceId(card)), 'game-highlight--choice': isDamageTarget(minionTargetId(card.placedAt)), 'game-highlight--required': isMainEffectTarget(nemesisCardInstanceId(card)), 'end-turn-attention': isEndTurnActionCard(card) }]" @click="activateNemesisCard(card)" @contextmenu="cancelDamageTarget(minionTargetId(card.placedAt), $event)">
                   <img v-if="cardImageUrl(card.cardId)" :src="cardImageUrl(card.cardId)" :alt="getCard(card.cardId).name" draggable="false" />
                   <div v-else class="nemesis-card-fallback">{{ getCard(card.cardId).name }}</div>
-                <div v-if="card.underCards?.length && (getCard(card.cardId) as NemesisCardDef).underCardDisplay !== 'attached_quarter'" class="nemesis-under-card-stack" :title="nemesisCardStackTitle(card)" :aria-label="nemesisCardStackTitle(card)" @click.stop>
+                <div v-if="card.underCards?.length && (getCard(card.cardId) as NemesisCardDef).underCardDisplay !== 'attached_quarter'" class="nemesis-under-card-stack" :aria-label="nemesisCardStackTitle(card)" @click.stop>
                   <CardSurface
                     v-for="(underCardId, index) in card.underCards"
                     :key="nemesisCardStackInstanceId(card, index)"
@@ -432,7 +501,7 @@ onBeforeUnmount(() => {
       <div class="nemesis-info-bar" role="region" aria-label="Nemesis Info Bar">
         <div class="nemesis-info-region nemesis-info-nemesis" aria-label="Nemesis Info">
           <div v-if="Object.keys(nemesis.counters).length > 0" class="nemesis-info-counters" aria-label="Token Info">
-            <span v-for="(value, name) in nemesis.counters" :key="name" class="nemesis-info-token" :title="`${name} tokens`">
+            <span v-for="(value, name) in nemesis.counters" :key="name" class="nemesis-info-token">
               <img v-if="nemesisTokenImageUrl(nemesis.type, String(name))" :src="nemesisTokenImageUrl(nemesis.type, String(name))" :alt="`${name} token`" draggable="false" />
               <span v-else>{{ name }}</span>
               <strong>{{ value }}</strong>
@@ -475,6 +544,33 @@ onBeforeUnmount(() => {
           <button class="btn" @click="matSide = matSide === 'front' ? 'back' : 'front'">{{ matSide === 'front' ? 'Flip to Back' : 'Show Front' }}</button>
           <button class="btn" @click="closeMat">Close</button>
         </div>
+    </ModalBase>
+
+    <ModalBase
+      v-if="subBoardModalOpen && presentation.subBoard.layout && presentation.subBoard.imageUrl"
+      overlay-class="mage-overlay"
+      v-model:panel-ref="subBoardModalEl"
+      panel-class="mage-modal draggable-modal sub-board-preview-modal"
+      :panel-style="subBoardModalStyle"
+      :dragging="subBoardModalDragging"
+      @overlay-click="closeSubBoardPreview"
+      @panel-pointerdown="startSubBoardModalDrag"
+    >
+      <div
+        class="nemesis-sub-board-modal-frame"
+        :style="{ aspectRatio: String(presentation.subBoard.layout.imageSize.width / presentation.subBoard.layout.imageSize.height) }"
+      >
+        <NemesisSubBoard
+          :image-url="presentation.subBoard.imageUrl"
+          :layout="presentation.subBoard.layout"
+          :tokens="subBoardTokens"
+          :available-region-ids="[]"
+          :token-image-url="subBoardTokenImageUrl"
+        />
+      </div>
+      <div class="overlay-actions">
+        <button class="btn" @click="closeSubBoardPreview">Close</button>
+      </div>
     </ModalBase>
 
   </div>

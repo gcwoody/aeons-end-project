@@ -228,7 +228,7 @@ function isPreppedSpellHighlighted(breach: BreachState, spellIndex: number): boo
                 type="button"
                 class="breach-spell-card-frame divided-damage-confirm-spell game-highlight game-highlight--choice"
                 :aria-label="`Confirm ${getCard(pendingSpell.cardId).name} damage allocation`"
-                :title="`Click to confirm ${getCard(pendingSpell.cardId).name}`"
+
                 @click.stop="emit('confirm-divided-damage')"
               >
                 <img v-if="cardImageUrl(pendingSpell.cardId)" :src="cardImageUrl(pendingSpell.cardId)" :alt="getCard(pendingSpell.cardId).name" draggable="false" />

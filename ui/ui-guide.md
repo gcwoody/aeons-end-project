@@ -4,7 +4,7 @@
 
 UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 
-更新时间：2026-10-14
+更新时间：2026-10-18
 
 ## 1. UI 与规则的边界
 
@@ -37,6 +37,12 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 | `PileModal.vue`、`ZoneScroller.vue` | 查看牌堆、横向滚动牌区 |
 | `DamageFeedbackLayer.vue` | Mage、Nemesis、Gravehold 等位置的受击反馈 |
 | `UiGallery.vue` | 共用 UI 状态和组件的可视化目录 |
+| `SubBoardLayoutEditor.vue` | Gallery 中校准 sub board 点击区域、token 锚点和 token 矩形尺寸；坐标可拖动调整，并导出独立 JSON 布局。操作步骤与术语说明见 [Sub Board Layout Editor 使用说明](sub-board-editor-sop.md) |
+| `NemesisSubBoard.vue` | 游戏桌面上的通用子棋盘显示：读取布局 JSON、显示引擎 token 状态、标出可放置或可选择的区域，并把点击的 region ID 交给引擎操作 |
+
+`SubBoardLayoutEditor.vue` 是开发工具，不负责判定规则。Region 标注可点击/高亮的矩形范围；每个 Region 必须与一个 Anchor 一对一绑定。Anchor 记录 token 中心、所绑定 Region 的 ID，以及 token 矩形宽高；游戏由此可将一次区域点击对应到正确的 token。拖动 Anchor 会按中心所在的可用 Region 自动更新绑定；也可用属性面板按钮将 Anchor 的中心和大小匹配为 Region 的完整矩形。坐标和尺寸以实际棋盘图片为基准使用 0–100% 百分比，精确到两位小数。选中 Region 或 Anchor 后可用方向键按 0.1% 微调位置；多选时会一起移动，操作可用 Ctrl+Z 撤回。复制 Region 会一并复制配对 Anchor；单独复制 Anchor 会得到暂未绑定的副本，拖入未占用 Region 后自动建立关联。一对一配对校验仅显示红色提醒，不会阻止 Save 或 Export；单独删除 Anchor 会保留 Region，删除 Region 会一并删除配对 Anchor。可用 Ctrl+左键多选并批量编辑 Shared label 或通过 Group X/Y 平移整组（保留相对位置），按 Delete 按选中内容执行删除，Ctrl+Z 撤回最近一次编辑；在 Select 模式右键 Region 可在中心创建 Anchor。旧版 schema version 1 可导入并尝试自动关联；导出统一使用 schema version 2。Save 始终显示，新布局首次保存时选择文件路径，后续覆盖同一文件；导入布局优先写回来源文件。完成绘制 Region 后会自动切回 Select，方便立即拖动或调整尺寸。Gallery 的 token 交互模拟器直接读取编辑器当前图片、Region 和 Anchor；放置/删除模拟 token 仅用于预览，拖动 token 会修改对应 Anchor 的中心，拖动 token 边或角会修改尺寸，方向键可按 0.1% 微调位置。编辑结果写回当前 layout、支持撤回，并可用模拟器内的 Save layout 保存。删除 Anchor 会清理使用它的模拟 token。模拟器不处理规则，也不写入 `GameState`。导出的布局应作为 UI 配置登记，不能写入 `GameState`。The Terror 的正常与增加难度布局已作为游戏配置保存在 `src/game/sub-board-layouts/the-terror-in-brass/`，坐标来自实际设计文件。完整操作步骤见 [使用说明](sub-board-editor-sop.md)。
+
+正式对局使用的子棋盘 JSON 存放在 `aeons-end-ui/src/game/sub-board-layouts/<nemesis>/`。Nemesis 专属规则模块维护 token 的稳定实例 ID、region ID、路线和放置条件；`NemesisSubBoard.vue` 不复制这些规则，只显示由引擎提供的状态和合法 region。每个 Anchor 通过其 `regionId` 定位 token；卡面图片由 token ID 映射，坐标仍然只留在布局 JSON。增加新子棋盘时，复用此组件和编辑器，新增该 Nemesis 的背景图、布局 JSON、token 图片和规则模块即可。
 
 ## 3. 卡牌、牌区和边界线
 
@@ -94,10 +100,15 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 | 移动整理与画面落点 | `src/game/card-motion-projection.ts`、`src/game/card-zone-motion.ts`、`src/game/card-motion-regions.ts` | 把引擎记录整理成实际的画面移动，并找到对应牌区位置。 |
 | 飞行规则 | `src/game/card-motion-policy.ts`、`src/game/card-motion-flight.ts` | 根据起点和终点选择速度、缓动、到达时的显示方式及是否需要翻面；Trinket 牌背图片由 `src/card-images.ts` 提供。 |
 | 动画基本动作 | `src/game/card-flight.ts`、`src/game/card-flight-geometry.ts` | 绘制卡牌飞行、翻面、揭示和牌列收拢；飞行缩放时同步补偿圆角，维持与静止卡面一致的圆角。 |
+| 摧毁与垃圾桶落点 | `src/game/card-destroy-motion.ts` | 将通用摧毁记录接入移动队列；手牌等待决策的卡也复用同一路线，垃圾桶落点保留卡牌比例。 |
 | 串行与等待 | `src/game/card-motion-queue.ts`、`src/game/card-motion-wait.ts`、`src/game/breach-motion.ts` | 卡牌移动逐项播放；相关飞行、Breach 动画和手牌收拢完成后，游戏操作再继续。 |
 | 动画中的临时画面 | `src/game/card-motion-display.ts`、`src/game/card-pile-motion-display.ts`、`src/game/card-motion-board-display.ts`、`src/game/card-motion-hand-display.ts`、`src/game/card-motion-visibility.ts` | 暂留原牌、牌堆顶牌、数量或新到达的卡面，避免卡牌提前出现、重复显示或闪回。 |
 
-新增移动路线时，按起点和终点补充可复用规则，不按单张卡牌 ID 写分支。实体卡从背面区域移到背面区域时直接飞行；只有起点和终点显示面不同，或效果明确要求背面朝上时才翻面。桌面卡牌统一使用 `--card-radius`，卡面内沿按边框宽度收进；飞行过程中，圆角会随卡牌缩放同步补偿，因此卡牌放大或缩小时看起来仍与静止卡牌一致。从 Played Zone 飞入 Nemesis Specific Deck（Vortex）使用 300ms 的较快路线。决策窗口中展示的卡牌是供查看的副本，确认后直接出现在规则指定区域，不从窗口位置飞出。独立的反馈动画可以按设计与卡牌移动同时播放，但不能让后续游戏流程越过它所依赖的动效。
+新增移动路线时，按起点和终点补充可复用规则，不按单张卡牌 ID 写分支。实体卡从背面区域移到背面区域时直接飞行；只有起点和终点显示面不同，或效果明确要求背面朝上时才翻面。桌面卡牌统一使用 `--card-radius`，卡面内沿按边框宽度收进；飞行过程中，圆角会随卡牌缩放同步补偿，因此卡牌放大或缩小时看起来仍与静止卡牌一致。从 Played Zone 飞入 Nemesis Specific Deck（Vortex）使用 300ms 的较快路线。决策窗口中的卡牌只是查看副本，不能把窗口当作飞行起点；普通选牌转移直接显示最终位置，摧毁则从真实来源牌区飞向垃圾桶。独立的反馈动画可以按设计与卡牌移动同时播放，但不能让后续游戏流程越过它所依赖的动效。
+
+Destroy 使用引擎的 `destroy` 记录，无论来源是手牌、牌库、弃牌堆、Breach、Played、Swap、专属牌堆或在场 Treasure，都逐张飞向右下角垃圾桶。飞行开始时更新来源数量，到达时才更新 destroyed 数量；牌库中的每个实体副本保留自己的卡面和牌背。真正被规则替换为返回 Swap 或 Corruption deck 的卡，仍按实际去向移动。其他 Mage 的棋盘未显示时，沿用该 Mage 的 Control Bar 状态栏作为备用来源；选择单一玩家执行洗入弃牌堆或摧毁牌库顶牌时，先切到该玩家棋盘再捕获来源。撤销必须同时取消当前飞行、尚未开始的逐张移动，以及等待图片解码后才启动的动画。
+
+明确要求把弃牌堆洗入牌库的效果，会先把弃牌作为一摞正面牌平移、翻面并放到牌库；到达后再显示新的牌库数量和洗牌后的顶牌。普通抽牌补牌时的弃牌循环不播放这段效果。共享的 `shuffle_discard_into_deck` 和 `destroy_top_cards` 在发生移动后接 `await_card_motions`，因此 Gather Darkness 先完成洗入，再逐张摧毁四张，最后才继续 Unleash；不用按卡牌 ID 另写时序。
 
 桌面牌堆的数量和会变化的顶牌图片共用 `card-pile-motion-display.ts`。每个玩家操作在引擎改动牌区之前，先固定相关牌堆的卡牌顺序、顶牌和数量；自动效果也必须在界面刷新前建立同样的显示状态。卡牌开始飞行时更新来源牌堆；卡牌落到目标后，再同时更新目标顶牌和数量，并等界面完成渲染后才移除飞行卡。没有飞行动画或没有可见落点的移动直接显示结算后的状态。这样空堆不会提前出现新牌，已有正面顶牌也不会在飞行动画前消失。桌面牌堆组件在动效期间要读取这份显示状态，不能单独从实时引擎状态读取顶牌。Supply 等按钮的可购买性仍读取引擎状态，临时数量只控制动画画面。新增或调整牌堆时，把它的稳定牌区地址和显示方式接入共用模块，不要在组件里单独估算数量或顶牌。Nemesis 抽牌等独立动画也要在相应飞行边界更新牌堆画面。
 
@@ -105,6 +116,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 
 ### 玩家视角和 Breach
 
+- 为处理跨玩家牌区而临时切换的视角，在决策结算后回到当前回合 Mage；若当前是 Nemesis 回合，则回到切换前的玩家视角。玩家手动切换视角会取消这次自动回切。
 - 回合切换时，先播放 Turn Order token 到位/放大淡出的动效，再切换玩家区域；棋盘短暂拦截重复输入。
 - 玩家区域的淡入只用于玩家区域内容。底部 Control Bar 和全局 Trinket deck 不跟随淡入；切换 Mage 也不播放 Breach Focus/Open 动画。
 - Breach 只有自身方向或开合状态改变时才播放动效。Focus 按当前方向顺时针旋转；Open 使用随开口方向调整翻转轴的 3D 翻面。动作动画结束后，回合自动结束和后续阶段才会继续。
@@ -113,7 +125,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 - 从手牌飞向自己的牌库或弃牌堆时，牌堆表面等卡牌落地后再更新；手牌同时开始收拢。Vapor Wraith、Flailer 和 Conjure 回牌库顶都使用对应的统一飞行时长。Conjure 临时牌不计入真实手牌。
 - Conjure 牌进入 Breach 时复用手牌准备法术的飞行时长；飞行途中从正面翻到牌背，Breach 里的静态牌面要等飞行结束后才显示。
 - 其他牌区到玩家牌区的飞行由引擎的卡牌移动记录确定具体牌副和最终去向。Supply 新获得的牌用“创建记录”标识来源牌堆；Crooked Mask、Mage/Nemesis 专属牌堆等来源用牌副 ID 跟踪原卡。新增来源时，提供可见来源锚点并复用 `useGame.ts` 的移动队列，不要比较动作前后牌数来猜是哪张卡。
-- 决策窗口中展示的实体卡牌只是供玩家查看和选择的副本；选择确认后，无论规则把它移到哪个牌区，都直接更新最终位置，不从窗口或原牌区播放飞行。Supply 等没有实体牌副 ID 的卡牌选项仍按其真实牌堆来源处理。
+- 决策窗口中的实体卡是查看副本：普通转移直接显示最终位置；Destroy 始终从真实牌区飞向垃圾桶，窗口副本不参与飞行。Supply 等没有实体牌副 ID 的选项仍按真实牌堆来源处理。
 - 落到玩家牌库时保留现有牌堆图像；落到新加入的手牌或弃牌顶牌时暂时隐藏新渲染的静止卡面，避免飞行卡与目标卡重叠。手牌打出的 Gem/Relic 在等待决策期间继续显示在手牌中；如果后续决策把这张牌本身列为 Played this Turn 的候选，则先完成飞入 Played Zone，再开放选择；其他情况在决策结束后按引擎最终牌区飞行一次。Swap 先完成进场，再让旧牌飞向 Discard。弃牌阶段也逐张飞行，并等待飞行和手牌/牌区收拢完成后再继续。
 
 ### 决策和拖动
@@ -121,7 +133,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 - 可选的单张预备法术施放，点击棋盘上高亮的法术即提交选择并继续施放，弹窗只提供 Skip，不显示 Selected 计数或 Confirm。多张法术选择仍保留选中计数和 Confirm；引擎的候选校验、Skip 分支与施放规则不变。`PreppedSpellChoicePanel` 的 `confirmSelection` 控制这两种展示方式，Gallery 同步展示点击即施放。
 - 引擎决策使用可复用模式：多选后 Confirm/Skip 用 `CardSelectionPanel`；读卡后立即选一张用 `LargeCardChoicePanel`；双选用等宽上下排列按钮；token 数量选择用共享的 `DebugNumberInput` 与 Confirm。
 - 阻塞式决策不能被 Esc 或遮罩点击取消；普通查看弹窗可按其组件配置关闭。
-- `CenteredDecisionPrompt.vue` 用于必须说明当前目标、但仍需点击棋盘或市场目标的流程。它在屏幕中央显示提示，保留面板背景色，并让弹窗外的棋盘保持可点击；需要展示相关卡牌时，使用 `previewCardIds` 在提示文字下方显示 large 卡图。Gallery 同时展示不带卡图和带卡图的版本。
+- `CenteredDecisionPrompt.vue` 用于必须说明当前目标、但仍需点击棋盘或市场目标的流程。它在屏幕中央显示提示，保留面板背景色，并让弹窗外的棋盘保持可点击；需点选 sub-board 区域时，提示面板本身也允许点击穿透到橙色区域。需要展示相关卡牌时，使用 `previewCardIds` 在提示文字下方显示 large 卡图。Gallery 同时展示不带卡图和带卡图的版本。
 - Debug Tools 的文本框聚焦时，游戏快捷键交给文本输入；Esc 关闭 Debug Tools，Tab 切换玩家视角而不移动原生焦点。游戏界面不显示对象的原生键盘焦点环；鼠标悬停反馈仍保留。牌序编辑入口常驻，选定 Mage 后在独立牌堆窗口里用大图拖动排序。
 - Power 卡的 To Discard 条件满足时高亮整张卡，点击卡牌触发；不显示常驻的独立 Discard 按钮。
 - 玩家在 Main Phase 首次点击 End Turn 且仍有合法操作时，保留现有内联提醒，同时用引擎的 `getMainPhaseActionHint` 显示一个具体操作说明，并短暂闪亮该操作位置。若操作属于另一位 Mage，先闪亮其 Control Bar 选择按钮；切换视角后再闪亮实际操作目标。此提示不新增弹窗，`canPlayerAct` 与提示必须共用同一引擎判断。
@@ -164,6 +176,7 @@ Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；�
 | 手牌飞向弃牌堆 | `--hand-to-pile-flight-duration: 200ms` |
 | Played Zone 飞入 Nemesis Specific Deck（Vortex） | `--played-to-nemesis-specific-deck-flight-duration: 300ms` |
 | 弃牌阶段飞入 Discard | `--discard-phase-flight-duration: 200ms` |
+| 摧毁卡牌飞入垃圾桶 | `--destroy-card-flight-duration: 300ms` |
 | 其他卡牌飞行动画（购买、其他牌区移动） | `--card-flight-duration: 600ms`、`--card-flight-easing` |
 | 手牌收拢/新增卡牌重排 | `--hand-card-reflow-duration: 220ms`、`--hand-gain-reflow-duration: 220ms` |
 | Played、Swap、Develop 等牌区重排 | `--card-zone-reflow-duration: 240ms` |

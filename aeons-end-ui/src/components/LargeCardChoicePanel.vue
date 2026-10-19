@@ -31,7 +31,6 @@ const emit = defineEmits<{
         type="button"
         :aria-label="`Choose ${choice.cardName}`"
         :disabled="choice.disabled"
-        :title="choice.disabled ? choice.disabledReason : undefined"
         :data-card-motion-zone="choice.motionZone"
         :data-card-motion-card-id="choice.motionZone ? choice.cardId : undefined"
         :data-card-motion-owner-id="choice.motionOwnerId"

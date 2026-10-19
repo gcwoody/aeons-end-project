@@ -116,6 +116,7 @@ export const frostfireMaelstrom = makeSpell('frostfire_maelstrom', 'Frostfire Ma
       kind: 'choose_token_amount',
       token: 'pulse',
       prompt: 'Choose how many Pulse tokens to lose',
+      layout: 'centered-prompt',
       minAmount: 0,
       maxAmount: 5,
       summary: {

@@ -21,6 +21,8 @@ import {
   placeTemporaryCardInZone, recordCardDestruction, recordCardMove, recordCardShuffle, recordCardTemporary,
 } from './card-movement'
 import { availableCardEffectOptionIds } from './effect-conditions'
+import { autoSelectSameCardChoices } from './sequential-card-selection'
+import { addSubBoardToken, getSubBoardTokens, moveSubBoardToken, removeSubBoardToken } from './sub-board'
 import { getSourceMinion, retainFullyResolvableOrMaximumTargets } from './targets'
 
 export function createEffectResolver(services: EffectResolutionServices) {
@@ -1606,6 +1608,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
         messages.push('The selected ally spell is no longer in hand')
         continue
       }
+      if (effect.repeatConfirmation && !effect.repeatConfirmed) {
+        const candidate = { playerId: owner.id, choice: { zone: 'hand', cardId: effect.cardId, index } } as const
+        const decision = createDecision(g, `Click ${getCard(effect.cardId).name} to cast it again`,
+          'select_collective_cards', { candidates: [candidate], min: 1, max: 1, repeat: true }, resolution.sourceCardId)
+        messages.push(...pauseEffect(g, resolution, effect, decision))
+        return messages
+      }
       // The first cast in a repeated hand-spell effect is the explicit
       // "without discarding it" exception. The final cast is a normal cast,
       // so move the physical card to its owner's discard before resolving its
@@ -1647,7 +1656,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
         { kind: 'resolve_spell_damage_bonus' },
         { kind: 'finalize_spell_cast' },
         outerContext,
-        ...(effect.remaining > 1 ? [{ kind: 'cast_selected_spell_from_hand', playerId: effect.playerId, cardId: effect.cardId, remaining: effect.remaining - 1 } satisfies CardEffect] : []),
+        ...(effect.remaining > 1 ? [{
+          kind: 'cast_selected_spell_from_hand',
+          playerId: effect.playerId,
+          cardId: effect.cardId,
+          remaining: effect.remaining - 1,
+          repeatConfirmation: true,
+        } satisfies CardEffect] : []),
       ])
       messages.push(`Cast ${getCard(effect.cardId).name} from an ally's hand${discardThisCast ? '' : ' without discarding it'}`)
       continue
@@ -2092,6 +2107,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
       if (card.powerTokens === 0) {
         const previousNemesisContext = restoreCurrentNemesisCard()
         const previousEffectContext = restoreCurrentEffectContext()
+        const afterPowerTokenRemoved = activeNemesisRules(g)?.afterPowerTokenRemoved?.(g, card) ?? []
         if (g.nemesisResolution) {
           g.nemesisResolution.activeCardInstanceId = effect.instanceId
           g.nemesisResolution.activeCardId = card.cardId
@@ -2106,6 +2122,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         addRemainingEffects(resolution, [
           ...nemesisEffectsFor(getCard(card.cardId) as NemesisCardDef, 'power_resolved'),
           { kind: 'finish_active_nemesis_card' },
+          ...afterPowerTokenRemoved,
           previousNemesisContext,
           previousEffectContext,
         ])
@@ -2115,6 +2132,163 @@ export function createEffectResolver(services: EffectResolutionServices) {
 
     if (effect.kind === 'finish_active_nemesis_card') {
       if (g.nemesisResolution) discardCompletedNemesisCard(g, g.nemesisResolution)
+      continue
+    }
+
+    if (effect.kind === 'play_set_aside_nemesis_card') {
+      const setAside = g.nemesis.setAsideCards ??= []
+      const setAsideIndex = setAside.findIndex(card => card.cardId === effect.cardId)
+      if (setAsideIndex < 0) {
+        messages.push(`${getCard(effect.cardId).name} is not set aside`)
+        continue
+      }
+      const card = setAside.splice(setAsideIndex, 1)[0]!
+      const definition = getCard(effect.cardId) as NemesisCardDef
+      const instanceId = card.instanceId ?? `${card.cardId}:${card.placedAt}`
+      const previousNemesisContext = restoreCurrentNemesisCard()
+      const previousEffectContext = restoreCurrentEffectContext()
+      createNemesisCardInPlay(effect.cardId, instanceId, definition, false, {
+        zoneId: 'nemesis:set_aside',
+        zone: 'nemesis_set_aside',
+        ownerId: 'nemesis',
+        index: setAsideIndex,
+      })
+      if (g.nemesisResolution) {
+        g.nemesisResolution.activeCardInstanceId = instanceId
+        g.nemesisResolution.activeCardId = effect.cardId
+        g.nemesisResolution.activeTrigger = 'immediately'
+        g.nemesisResolution.activeCardPendingDiscard = definition.type === 'attack'
+      }
+      resolution.sourcePlayerId = undefined
+      resolution.sourceCardOwnerId = undefined
+      resolution.sourceCardId = effect.cardId
+      resolution.effectPlayerId = undefined
+      resolution.pendingSpellCast = undefined
+      addRemainingEffects(resolution, [
+        ...nemesisEffectsFor(definition, 'immediately'),
+        ...(definition.type === 'attack' ? [{ kind: 'finish_active_nemesis_card' as const }] : []),
+        previousNemesisContext,
+        previousEffectContext,
+      ])
+      messages.push(`Returned ${definition.name} from beside the mat to play`)
+      continue
+    }
+
+    if (effect.kind === 'place_sub_board_token') {
+      const subBoard = activeNemesisRules(g)?.subBoard
+      if (!subBoard || subBoard.id === '' ||
+        (subBoard.canPlaceToken && !subBoard.canPlaceToken(g,
+          resolution.sourcePlayerId ?? resolution.effectPlayerId ?? currentPlayerId,
+          effect.tokenId, effect.regionId))) {
+        messages.push('That sub-board space cannot receive a token')
+        continue
+      }
+      if (getSubBoardTokens(g).some(token => token.tokenId === effect.tokenId && token.regionId === effect.regionId)) {
+        messages.push('That sub-board space is already occupied')
+        continue
+      }
+      addSubBoardToken(g, effect.tokenId, effect.regionId, effect.instanceId)
+      messages.push(`Placed a token on ${effect.regionId}`)
+      addRemainingEffects(resolution, [
+        ...(subBoard.afterTokenPlaced?.(g, effect.tokenId, effect.regionId) ?? []),
+        ...(subBoard.effectsForRegion?.(g, effect.tokenId, effect.regionId) ?? []),
+      ])
+      continue
+    }
+
+    if (effect.kind === 'move_sub_board_token') {
+      const moved = moveSubBoardToken(g, effect.tokenId, effect.regionId, effect.instanceId)
+      if (moved) messages.push(`Moved ${effect.tokenId} token to ${effect.regionId}`)
+      else messages.push(`No ${effect.tokenId} token is available to move`)
+      continue
+    }
+
+    if (effect.kind === 'advance_sub_board_token') {
+      const subBoard = activeNemesisRules(g)?.subBoard
+      const route = subBoard?.tokenRoute?.(effect.tokenId)
+      const token = [...getSubBoardTokens(g)].reverse().find(candidate => candidate.tokenId === effect.tokenId)
+      const currentIndex = token && route ? route.indexOf(token.regionId) : -1
+      if (!token || !route || currentIndex < 0 || currentIndex >= route.length - 1) {
+        messages.push(`The ${effect.tokenId} token cannot advance on this route`)
+        continue
+      }
+      const nextRegionId = route[currentIndex + 1]!
+      moveSubBoardToken(g, effect.tokenId, nextRegionId, token.instanceId)
+      messages.push(`Advanced ${effect.tokenId} token to ${nextRegionId}`)
+      addRemainingEffects(resolution, [
+        ...(subBoard?.effectsForRegion?.(g, effect.tokenId, nextRegionId) ?? []),
+        ...(subBoard?.returnToStartAtRouteEnd && currentIndex + 1 === route.length - 1 && route[0]
+          ? [{ kind: 'move_sub_board_token' as const, tokenId: effect.tokenId, regionId: route[0], instanceId: token.instanceId }]
+          : []),
+      ])
+      continue
+    }
+
+    if (effect.kind === 'resolve_sub_board_space') {
+      const subBoard = activeNemesisRules(g)?.subBoard
+      const regionId = effect.regionId ?? [...getSubBoardTokens(g)].reverse()
+        .find(token => token.tokenId === effect.tokenId)?.regionId
+      if (regionId) addRemainingEffects(resolution, subBoard?.effectsForRegion?.(g, effect.tokenId, regionId) ?? [])
+      continue
+    }
+
+    if (effect.kind === 'remove_sub_board_tokens') {
+      const candidates = getSubBoardTokens(g).filter(token => token.tokenId === effect.tokenId &&
+        (!effect.regionIds || effect.regionIds.includes(token.regionId)))
+      if (effect.amount === 'all') {
+        for (const candidate of [...candidates]) removeSubBoardToken(g, candidate.instanceId)
+        if (candidates.length > 0) messages.push(`Removed ${candidates.length} ${effect.tokenId} token(s)`)
+        continue
+      }
+      const remaining = Math.max(0, Math.floor(effect.amount))
+      if (remaining === 0 || candidates.length === 0) {
+        if (remaining > 0) messages.push(`No ${effect.tokenId} tokens are available to remove`)
+        continue
+      }
+      const nextRemoval: CardEffect[] = remaining > 1
+        ? [{ ...effect, amount: remaining - 1 }]
+        : []
+      const selectableTokens = effect.selectByRegion
+        ? [...new Map(candidates.map(candidate => [candidate.regionId, candidate])).values()]
+        : candidates
+      const options = selectableTokens.map(candidate => ({
+        id: effect.selectByRegion ? candidate.regionId : candidate.instanceId,
+        label: effect.selectByRegion ? `Armor Chart ${candidate.regionId}` : `Remove token from ${candidate.regionId}`,
+        ...(effect.selectByRegion ? { regionId: candidate.regionId } : {}),
+        effects: [
+          { kind: 'remove_sub_board_token_instance' as const, instanceId: candidate.instanceId },
+          ...nextRemoval,
+        ],
+      }))
+      if (options.length === 1) addRemainingEffects(resolution, options[0]!.effects)
+      else {
+        const prompt = effect.selectByRegion
+          ? `Choose an Armor Chart space to remove a ${effect.tokenId} token from`
+          : `Choose a ${effect.tokenId} token to remove`
+        const choiceEffect: CardEffect = {
+          kind: 'choose_one',
+          prompt,
+          options,
+          ...(effect.selectByRegion ? { layout: 'sub-board-region-choice' as const } : {}),
+        }
+        const decision = createDecision(g,
+          prompt,
+          'choose_one',
+          {
+            options: options.map(({ id, label, regionId }) => ({ id, label, regionId })),
+            ...(effect.selectByRegion ? { layout: 'sub-board-region-choice' } : {}),
+          },
+          resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, choiceEffect, decision))
+        return messages
+      }
+      continue
+    }
+
+    if (effect.kind === 'remove_sub_board_token_instance') {
+      const removed = removeSubBoardToken(g, effect.instanceId)
+      if (removed) messages.push(`Removed ${removed.tokenId} token from ${removed.regionId}`)
       continue
     }
 
@@ -2215,8 +2389,18 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'unleash') {
-      const configured = activeNemesisRules(g)?.unleashEffects
-      if (configured && configured.length > 0) {
+      const rules = activeNemesisRules(g)
+      const dynamicEffects = rules?.unleashEffectsFor
+      const configured = rules?.unleashEffects
+      if (dynamicEffects) {
+        const count = Math.max(0, effect.amount ?? 1)
+        if (count > 0) {
+          addRemainingEffects(resolution, [
+            ...dynamicEffects(g),
+            ...(count > 1 ? [{ kind: 'unleash' as const, amount: count - 1 }] : []),
+          ])
+        }
+      } else if (configured && configured.length > 0) {
         // An amount means the Nemesis performs its complete Unleash effect
         // that many times. Repeat the whole configured sequence so non-counter
         // effects (for example Prince of Gluttons' Devour) are not collapsed.
@@ -2936,6 +3120,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
       }
       const decision = createDecision(g, effect.prompt, 'choose_token_amount', {
         token: effect.token, minAmount, maxAmount, available, summary: effect.summary,
+        layout: effect.layout,
       }, resolution.sourceCardId)
       messages.push(...pauseEffect(g, resolution, effect, decision))
       return messages
@@ -3040,6 +3225,12 @@ export function createEffectResolver(services: EffectResolutionServices) {
       if (effect.preferTargetWithCardNamesInHand?.length) {
         const eligibleTargets = targets.filter(target => getPlayer(g, target.playerId).hand.some(cardId =>
           effect.preferTargetWithCardNamesInHand!.includes(getCard(cardId).name),
+        ))
+        if (eligibleTargets.length > 0) targets = eligibleTargets
+      }
+      if (effect.preferTargetWithCardTypesInHand?.length) {
+        const eligibleTargets = targets.filter(target => getPlayer(g, target.playerId).hand.some(cardId =>
+          effect.preferTargetWithCardTypesInHand!.includes(getCard(cardId).type),
         ))
         if (eligibleTargets.length > 0) targets = eligibleTargets
       }
@@ -3761,10 +3952,67 @@ export function createEffectResolver(services: EffectResolutionServices) {
       const min = Math.min(Math.max(0, effect.minAmount ?? effect.amount), candidates.length)
       const max = Math.min(Math.max(min, effect.maxAmount ?? effect.amount), candidates.length)
       if (max === 0) {
-        resolution.lastSelectedCardCount = 0
-        resolution.lastSelectedCardCost = 0
+        resolution.lastSelectedCardCount = effect.sequentialProgress?.discarded ?? 0
+        resolution.lastSelectedCardCost = effect.sequentialProgress?.highestCost ?? 0
+        if (effect.restoreToSourceAfterSelection) {
+          resolution.effectPlayerId = resolution.sourcePlayerId ?? currentPlayerId
+        }
         messages.push('No cards available to discard')
         continue
+      }
+      const requestedMin = effect.minAmount ?? effect.amount
+      const requestedMax = effect.maxAmount ?? effect.amount
+      const sequentialHandDiscard = effect.source === 'hand' && requestedMin === requestedMax &&
+        (effect.selectionMode === 'one_at_a_time' ||
+          (effect.selectionMode !== 'together' && requestedMax > 1))
+      if (sequentialHandDiscard) {
+        const progress = effect.sequentialProgress ?? {
+          remaining: min,
+          discarded: 0,
+          highestCost: 0,
+        }
+        const remaining = Math.min(progress.remaining, candidates.length)
+        const automatic = autoSelectSameCardChoices(candidates, remaining)
+        if (automatic) {
+          const removed = discardSelectedCards(g, discardPlayerId, automatic, true)
+          const discarded = progress.discarded + removed.length
+          const highestCost = Math.max(progress.highestCost,
+            ...removed.map(cardId => getCard(cardId).cost))
+          const stillRequired = Math.max(0, progress.remaining - removed.length)
+          resolution.lastSelectedCardCount = discarded
+          resolution.lastSelectedCardCost = highestCost
+          if (stillRequired > 0) {
+            addRemainingEffects(resolution, [{
+              ...effect,
+              amount: stillRequired,
+              minAmount: stillRequired,
+              maxAmount: stillRequired,
+              selectionMode: 'one_at_a_time',
+              sequentialProgress: { remaining: stillRequired, discarded, highestCost },
+            }])
+          } else if (effect.restoreToSourceAfterSelection) {
+            resolution.effectPlayerId = resolution.sourcePlayerId ?? currentPlayerId
+          }
+          messages.push(`Discarded ${removed.map(id => getCard(id).name).join(', ')}`)
+          if (removed.length > 0) {
+            addRemainingEffects(resolution, [{ kind: 'await_card_motions' }])
+            return [...messages, ...runEffectResolution(g, resolution)]
+          }
+          continue
+        }
+        const sequenceEffect: CardEffect = {
+          ...effect,
+          selectionMode: 'one_at_a_time',
+          sequentialProgress: progress,
+        }
+        const decision = createDecision(g,
+          `Choose one card to discard (${remaining} remaining)`,
+          'select_cards',
+          { source: effect.source, candidates, min: 1, max: 1, layout: 'instant-card-choice' },
+          resolution.sourceCardId,
+        )
+        messages.push(...pauseEffect(g, resolution, sequenceEffect, decision))
+        return messages
       }
       if (!fixedAmount || candidates.length > min || max > 1) {
         const decision = createDecision(g, min === max ? `Choose ${min} card(s) to discard` : `Choose up to ${max} card(s) to discard`, 'select_cards',
@@ -3849,8 +4097,10 @@ export function createEffectResolver(services: EffectResolutionServices) {
         return messages
       }
       const target = getPlayer(g, targets[0]?.playerId ?? currentPlayerId)
+      const movedCount = target.discard.length
       shufflePlayerDiscardIntoDeck(g, target)
       messages.push(`${target.mageType} shuffles their discard pile into their deck`)
+      if (movedCount > 0) addRemainingEffects(resolution, [{ kind: 'await_card_motions' }])
       continue
     }
 
@@ -3876,6 +4126,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         destroyed.push(cardId)
       }
       messages.push(`${target.mageType} destroys ${destroyed.length} card(s) from the top of their deck`)
+      if (destroyed.length > 0) addRemainingEffects(resolution, [{ kind: 'await_card_motions' }])
       continue
     }
 
@@ -4110,6 +4361,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
             id: option.id,
             label: option.label,
             cardId: option.cardId,
+            regionId: option.regionId,
             disabled: !availableOptionIds.has(option.id),
           })),
           layout: effect.layout,
@@ -4405,10 +4657,13 @@ export function createEffectResolver(services: EffectResolutionServices) {
             // `discard: false` is an exception for this cast only. A repeated
             // cast is a new cast and therefore uses the normal discard rule.
             discard: effect.discard === false ? undefined : effect.discard,
+            // Every repeated cast needs a fresh player confirmation, even if
+            // the original effect did not opt into the older flag explicitly.
+            repeatConfirmation: true,
           }]
           : []),
       ])
-      if ((effect.times ?? 1) > 1 && effect.repeatConfirmation === true) {
+      if ((effect.times ?? 1) > 1) {
         // The next cast is still the same selected card, but it must be
         // explicitly confirmed by the player before resolving.
         resolution.confirmedPreppedSpell = undefined

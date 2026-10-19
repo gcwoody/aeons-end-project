@@ -24,7 +24,7 @@ test('pile counts advance once per card at the departure and arrival boundaries'
     const session = createCardPileMotionDisplaySession({
       get: () => overrides,
       set: value => { overrides = value },
-    }, events as never, { 'supply:0': 3, 'player:p1:deck': 2 }, new Set(['copy-1', 'copy-2']))
+    }, events as never, { 'supply:0': { count: 3 }, 'player:p1:deck': { count: 2 } }, new Set(['copy-1', 'copy-2']))
     const counts = () => [overrides['supply:0']?.count, overrides['player:p1:deck']?.count]
     const frames = [counts()]
     session.depart('copy-1')

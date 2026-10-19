@@ -52,7 +52,7 @@ function activateOrInspect() {
     :data-card-motion-top-always-revealed="topCardAlwaysRevealed ? 'true' : undefined"
     :class="{ 'is-unavailable': !enabled, 'is-empty': cardCount === 0, 'shows-face-up-card': display === 'face_up' }"
     :aria-label="label"
-    :title="label"
+
   >
     <FaceUpPileCard
       v-if="showsFaceUpCard"

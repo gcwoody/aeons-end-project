@@ -138,6 +138,16 @@ export function conditionMatches(
     if (condition.comparison === 'greater_than') return game.nemesis.hp > condition.amount
     return game.nemesis.hp >= condition.amount
   }
+  if (condition.kind === 'sub_board_token_count') {
+    const count = (game.nemesis.subBoardTokens ?? []).filter(token =>
+      token.tokenId === condition.tokenId &&
+      (!condition.regionIds || condition.regionIds.includes(token.regionId)),
+    ).length
+    if (condition.comparison === 'equals') return count === condition.count
+    if (condition.comparison === 'at_most') return count <= condition.count
+    if (condition.comparison === 'greater_than') return count > condition.count
+    return count >= condition.count
+  }
   if (condition.kind === 'nemesis_specific_deck_accepts_cards') {
     return !game.nemesis.playArea.some(card =>
       (getCard(card.cardId) as NemesisCardDef).blocksPlacementIntoSpecificDeck === true,

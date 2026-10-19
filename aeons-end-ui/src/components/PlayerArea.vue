@@ -36,7 +36,7 @@ const {
   playCard, playAllGems, castSpell, requestEndTurn, toMainPhase,
   gainFirethornTopCard,
   selectPlayer, clickDiscardCard, openPile, openDestroyedCardsPile, openSpecificDeckPile, openTrinketDeckPile, openPlayerCardsInPlayPile, resolveDecision, toggleHelp,
-  getRecallActionsForPlayer, developCard,
+  getRecallActionsForPlayer, developCard, confirmRepeatedSpell,
 } = useGame()
 
 const players = computed(() => state.game?.players ?? [])
@@ -545,6 +545,9 @@ const handCardDisplay = computed(() => {
   }
   return cards.map(({ cardId, instanceId, handIndex, presentationKey, heldForPlay }) => {
     const selection = boardCardChoice('hand', handIndex, cardId)
+    const repeatConfirmation = !heldForPlay && isRepeatedHandSpellConfirmation(
+      player.value.id, handIndex, cardId,
+    )
     return {
       cardId,
       instanceId,
@@ -553,8 +556,9 @@ const handCardDisplay = computed(() => {
       heldForPlay: !!heldForPlay,
       typeClass: typeClass(cardId),
       isSpell: getCard(cardId).type === 'spell',
-      pending: !heldForPlay && !!selection,
-      selected: !heldForPlay && !!selection && isPendingBoardCardSelected(selection),
+      pending: !heldForPlay && !repeatConfirmation && !!selection,
+      selected: !heldForPlay && !repeatConfirmation && !!selection && isPendingBoardCardSelected(selection),
+      repeatConfirmation,
       endTurnActionAttention: !heldForPlay && isEndTurnActionTarget(`hand-card:${player.value.id}:${handIndex}`),
     }
   })
@@ -568,6 +572,9 @@ const conjuredCardDisplay = computed(() => conjuredCard.value
   : null)
 const playerCardsInPlayDisplay = computed(() => playerCardPlacementsInPlay.value.map((placement, index) => ({
   cardId: placement.cardId,
+  instanceId: state.game
+    ? getPlayerCardInstanceZone(state.game, player.value.id, 'player_cards_in_play').instanceIds[placement.cardIndex]
+    : undefined,
   cardIndex: placement.cardIndex,
   typeClass: typeClass(placement.cardId),
   actionAvailable: isPlayerCardInPlayAction(index, placement.cardId),
@@ -660,6 +667,14 @@ function boardCardChoice(zone: CardChoice['zone'], index: number, cardId: string
   return getBoardCardSelection(player.value.id, zone, index, cardId)
 }
 
+function isRepeatedHandSpellConfirmation(playerId: string, index: number, cardId: string): boolean {
+  const decision = state.game?.pendingDecision
+  return decision?.kind === 'select_collective_cards' && decision.repeat === true &&
+    decision.candidates.some(candidate => candidate.playerId === playerId &&
+      candidate.choice.zone === 'hand' && candidate.choice.index === index &&
+      candidate.choice.cardId === cardId)
+}
+
 function clickPlayedCard(index: number) {
   const cardId = player.value.playedThisTurn[index]
   if (!cardId) return
@@ -735,6 +750,10 @@ function clickHand(i: number) {
   if (state.cardMotionBatchActive) return
   const cid = player.value.hand[i]
   if (!cid) return
+  if (isRepeatedHandSpellConfirmation(player.value.id, i, cid)) {
+    confirmRepeatedSpell()
+    return
+  }
   const boardChoice = boardCardChoice('hand', i, cid)
   if (boardChoice) {
     togglePendingBoardCard(boardChoice)
@@ -905,7 +924,6 @@ const developZoneDisplay = computed(() => {
       typeClass: typeClass(cardId),
       actionAvailable,
       endTurnActionAttention: isEndTurnActionTarget(`develop-zone-card:${index}`),
-      title: actionAvailable ? `Develop for ${getCard(cardId).developCost ?? 0} Aether to gain this card` : undefined,
     }
   })
 })

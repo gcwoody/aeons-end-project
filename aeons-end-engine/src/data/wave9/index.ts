@@ -20,6 +20,7 @@ import * as CrookedMask from './nemeses/crooked-mask'
 import * as OracleOfFilth from './nemeses/oracle-of-filth'
 import * as TheTimeless from './nemeses/the-timeless'
 import * as TwiceDeadProphet from './nemeses/twice-dead-prophet'
+import * as TheTerrorInBrass from './nemeses/the-terror-in-brass'
 
 export * from './cards/basic'
 export * from './cards/gems'
@@ -41,6 +42,7 @@ export * from './nemeses/crooked-mask'
 export * from './nemeses/oracle-of-filth'
 export * from './nemeses/the-timeless'
 export * from './nemeses/twice-dead-prophet'
+export * from './nemeses/the-terror-in-brass'
 
 export const WAVE9_MAGE_CARDS: Record<string, CardDef> = mergeCatalogs(
   Dezmodia.DEZMODIA_CARDS,
@@ -61,12 +63,14 @@ export const WAVE9_NEMESIS_CARDS = mergeCatalogs(
   OracleOfFilth.ORACLE_OF_FILTH_NEMESIS_CARDS,
   TheTimeless.THE_TIMELESS_NEMESIS_CARDS_WITH_CURSE,
   TwiceDeadProphet.TWICE_DEAD_PROPHET_NEMESIS_CARDS,
+  TheTerrorInBrass.THE_TERROR_IN_BRASS_NEMESIS_CARDS,
 )
 export const WAVE9_NEMESES = {
   [CrookedMask.crookedMask.type]: CrookedMask.crookedMask,
   [OracleOfFilth.oracleOfFilth.type]: OracleOfFilth.oracleOfFilth,
   [TheTimeless.theTimeless.type]: TheTimeless.theTimeless,
   [TwiceDeadProphet.twiceDeadProphet.type]: TwiceDeadProphet.twiceDeadProphet,
+  [TheTerrorInBrass.theTerrorInBrass.type]: TheTerrorInBrass.theTerrorInBrass,
 }
 
 export const WAVE9_INITIAL_CARDS: Record<string, CardDef> = mergeCatalogs(

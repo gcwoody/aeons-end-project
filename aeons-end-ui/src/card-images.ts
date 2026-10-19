@@ -8,6 +8,7 @@ import nemesisCardBack from '../../image-database/common images/nemesis card bac
 import rageborneStrikeDeckBack from '../../image-database/cards/wave1/nemesis/Rageborne/strike deck/Strike Deck Back.png'
 import rageborneFuryToken from '../../image-database/cards/wave1/nemesis/Rageborne/Fury Token UI.png'
 import nemesisToken from '../../image-database/common images/NemesisToken.png'
+import terrorInBrassToken from '../../image-database/cards/wave9/nemesis/The Terror in Brass/The Terror in Brass Token.jpg'
 import aetherToken from '../../image-database/common images/Aether Token.png'
 import pulseToken from '../../image-database/common images/Pulse_token.png'
 import trinketDeckBack from '../../image-database/cards/wave9/trinkets/trinket deck back.png'
@@ -46,6 +47,7 @@ export function nemesisSpecificDeckBackUrl(nemesisType: string): string {
 
 export function nemesisTokenImageUrl(nemesisType: string, tokenName: string): string | undefined {
   if (nemesisType === 'rageborne' && tokenName === 'fury') return rageborneFuryToken
+  if (nemesisType === 'the_terror_in_brass' && tokenName === 'terror') return terrorInBrassToken
   if (tokenName === 'nemesis' || tokenName === 'nemesis_token') return nemesisToken
   return undefined
 }

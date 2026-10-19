@@ -367,7 +367,7 @@ test('A plays all Gems and does not trigger while help or a text field is active
 
   await page.getByRole('button', { name: 'Open game help' }).click()
   await expect(page.getByText('Play all Gems in the current Mage\'s hand.')).toBeVisible()
-  await expect(page.getByText('Undo the last player operation, up to twenty steps.')).toBeVisible()
+  await expect(page.getByText('Undo the last player operation, up to fifty steps.')).toBeVisible()
   await page.keyboard.press('a')
   await expect(page.locator('.hand [data-hand-card-id="crystal"]')).toHaveCount(2)
   await expect(page.locator('.played-zone-center [data-played-card-id="crystal"]')).toHaveCount(0)

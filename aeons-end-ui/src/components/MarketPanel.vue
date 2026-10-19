@@ -3,7 +3,7 @@ import { computed } from 'vue'
 import { useGame } from '../game/useGame'
 import { cardImageUrl } from '../card-images'
 import { getCard } from '@engine/data'
-import { getDevelopActions, getPlayerCardInPlayActions } from '@engine/engine'
+import { getDevelopActions, getPlayerCardInPlayActions, getPlayerCardInstanceZone } from '@engine/engine'
 import CardHoverPreview from './CardHoverPreview.vue'
 
 const { state, buyables, buyCard, developCard, resolveDecision, activatePlayerCardInPlayAction } = useGame()
@@ -58,15 +58,9 @@ function onPileContextMenu(event: MouseEvent, pileIndex: number) {
   developCard('supply', pileIndex)
 }
 
-function developHint(pileIndex: number, developCost?: number): string | undefined {
-  if (developCost === undefined) return undefined
-  return canDevelopSupplyPile(pileIndex)
-    ? `Left-click to buy. Right-click to Develop for ${developCost} Aether.`
-    : `Develop cost: ${developCost} Aether.`
-}
-
 interface SetCardPlacement {
   cardId: string
+  instanceId: string
   ownerId: string
   cardIndex: number
 }
@@ -75,7 +69,8 @@ function setCardsForPile(pileIndex: number): SetCardPlacement[] {
   return (state.game?.players ?? []).flatMap(player =>
     (player.playerCardsInPlay ?? []).flatMap((cardId, cardIndex) =>
       player.playerCardSupplyTargets?.[cardIndex] === pileIndex
-        ? [{ cardId, ownerId: player.id, cardIndex }]
+        ? [{ cardId, ownerId: player.id, cardIndex,
+            instanceId: getPlayerCardInstanceZone(state.game!, player.id, 'player_cards_in_play').instanceIds[cardIndex] ?? '' }]
         : [],
     ),
   )
@@ -133,7 +128,6 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             }"
             :data-main-action-id="endTurnActionAttention(b.pileIndex) ? `market-pile:${b.pileIndex}` : undefined"
             :aria-disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy || !b.affordable"
-            :title="developHint(b.pileIndex, b.developCost)"
             :disabled="marketDecision ? !marketChoice(b.pileIndex) : !canBuy"
             @click="onPileClick(b.pileIndex)"
             @contextmenu="onPileContextMenu($event, b.pileIndex)"
@@ -158,6 +152,11 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
               <span
                 v-if="displayedRemaining(b.pileIndex, b.remaining) > 0 && cardImageUrl(setCardId.cardId)"
                 class="market-set-card-overlay"
+                data-card-motion-zone="player_cards_in_play"
+                :data-card-motion-card-id="setCardId.cardId"
+                :data-card-motion-owner-id="setCardId.ownerId"
+                :data-card-motion-key="`in-play-${setCardId.ownerId}-${setCardId.instanceId}`"
+                :data-card-instance-id="setCardId.instanceId"
                 :class="{
                   'market-set-card-overlay-action': setCardHasAction(setCardId),
                   'game-highlight': setCardHasAction(setCardId),
@@ -203,6 +202,11 @@ function onSetCardClick(event: MouseEvent, placement: SetCardPlacement): void {
             <span
               v-if="cardImageUrl(setCard.cardId)"
               class="market-set-card-overlay"
+              data-card-motion-zone="player_cards_in_play"
+              :data-card-motion-card-id="setCard.cardId"
+              :data-card-motion-owner-id="setCard.ownerId"
+              :data-card-motion-key="`in-play-${setCard.ownerId}-${setCard.instanceId}`"
+              :data-card-instance-id="setCard.instanceId"
               :class="{
                 'market-set-card-overlay-action': setCardHasAction(setCard),
                 'game-highlight': setCardHasAction(setCard),

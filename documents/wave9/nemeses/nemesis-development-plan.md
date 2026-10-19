@@ -1,6 +1,6 @@
-# Wave 9 Nemesis 开发计划：Oracle of Filth、The Timeless、Twice-Dead Prophet
+# Wave 9 Nemesis 开发计划：Oracle of Filth、The Timeless、Twice-Dead Prophet、The Terror in Brass
 
-这份计划记录三场战斗的规则理解、实现分工和进度。Oracle of Filth、The Timeless 与 Twice-Dead Prophet 均已实现。
+这份计划记录各场战斗的规则理解、实现分工和进度。Oracle of Filth、The Timeless、Twice-Dead Prophet 与 The Terror in Brass 均已接入。The Terror in Brass 也验证了可复用 sub board 编辑器、布局格式、引擎状态和桌面显示组件。
 
 项目目前固定为两名 Mage 对战一名 Nemesis。因此本轮先按双人局实现；卡牌资料里写出的 1–4 人数量表会保留为规则数据，但不借这次开发扩展多人局。
 
@@ -15,26 +15,31 @@
 - Twice-Dead Prophet 已接通 Prophecy deck、Nemesis deck 底牌附着、结算/弃置后回到底部、Nemesis end-turn 阈值、无生命上限和特殊失败条件。
 - Prophecy 下方的卡按“刚抽到”处理，包含可用的 Nemesis 抽牌响应；卡牌使用 Gallery 的 `Card.AttachedQuarter` 组件展示。
 - Nemesis deck 底牌与 face-up 专属牌堆顶的来源锚点已加入通用卡牌移动捕获模块。
-- 引擎和 UI 类型检查已通过；本次未运行游戏测试。
+- `SubBoardLayoutEditor` 已在 UI Gallery 提供：支持载入图片、编辑区域和 token anchor、导入/保存 JSON；用法见 [Sub Board Layout Editor 使用说明](../../ui/sub-board-editor-sop.md)。
+- The Terror in Brass 的 Normal 和 Increased difficulty JSON 布局已放入 `aeons-end-ui/src/game/sub-board-layouts/the-terror-in-brass/`；实际游戏使用用户设计的坐标。
+- The Terror 的卡牌、Regeneration 生命周期、Armor Chart/Worldsplitter Track、token 状态和通用桌面组件均已接入。
+- 引擎与 UI 类型检查、UI 生产构建均已通过；本次尚未进行真实对局的浏览器验收。
 
-## 一眼看懂三场战斗的核心
+## 一眼看懂各场战斗的核心
 
 | Nemesis | 主要压力 | 最需要的新规则 |
 | --- | --- | --- |
 | Oracle of Filth | 把玩家的牌送进 Vortex，再靠 Vortex 里的牌强化法术或让玩家取回牌 | Vortex 牌区、Expunge 分发、对 Nemesis 的伤害限制、法术被送入 Vortex |
 | The Timeless | 持续 Exile 玩家牌，并用 Nemesis token 不断召出 Finality | Exiled pile、从 Exiled pile 购买、手牌中的 Curse 自动触发、重复召出 Finality |
 | Twice-Dead Prophet | 用 Nemesis token 推进 Prophecy；Prophecy 会把 Nemesis deck 底牌变成延迟威胁 | Prophecy deck、卡牌叠放、按结束回合触发、特殊胜负条件 |
+| The Terror in Brass | 玩家逐格拆掉 Armor Chart 的防护；与此同时 Worldsplitter Track 持续威胁 Gravehold | 双面 sub board、两个 token 系统、格子操作、易伤状态和伤害修正 |
 
 ## 建议的代码分工
 
-三位 Nemesis 各自使用独立的卡牌数据和规则文件，不把它们的专属规则塞进一个总文件：
+每位 Nemesis 各自使用独立的卡牌数据和规则文件，不把专属规则塞进一个总文件：
 
 - 卡牌数据分别放在 `aeons-end-engine/src/data/wave9/nemeses/oracle-of-filth.ts`、`the-timeless.ts`、`twice-dead-prophet.ts`。
+- The Terror in Brass 卡牌数据位于 `aeons-end-engine/src/data/wave9/nemeses/the-terror-in-brass.ts`，专属规则位于 `aeons-end-engine/src/nemesis/the-terror-in-brass.ts`。
 - 需要额外回合规则的内容分别放在 `aeons-end-engine/src/nemesis/oracle-of-filth.ts`、`the-timeless.ts`、`twice-dead-prophet.ts`。
 - 共用的牌移动、Exile、辅助牌堆、伤害来源和回合结束处理放在职责对应的 engine 模块里；不按单张卡 ID 在通用解析器里堆分支。
 - 每个 Nemesis 的卡牌清单和牌堆构建留在自己的数据文件中；Nemesis 规则文件只处理卡牌数据难以表达的初始化、回合时点和持续规则。
 - 每张实体牌都要有自己的编号；同名的多张牌也不能混为一张。新牌区使用这些编号和引擎移动记录。UI 根据记录显示移动和动效，并为每个新牌区提供实际的卡牌落点。
-- 在 `wave9/index.ts` 登记三组卡牌和 Nemesis 定义，在 `nemesis/registry.ts` 登记需要的特殊规则；之后再由现有数据入口提供给设置页和游戏。
+- 在 `wave9/index.ts` 登记各组卡牌和 Nemesis 定义，在 `nemesis/registry.ts` 登记需要的特殊规则；之后再由现有数据入口提供给设置页和游戏。
 - Vortex、Exiled pile、Finality pile、Prophecy deck 和卡牌下方压着的牌，都属于可保存的游戏状态；需要一起保存牌的顺序、可见状态和归属。
 
 现在已有 Nemesis 数据、基础卡牌池、Unleash、Minion/Power/Attack 结算、`setup` 和 `endTurn` 规则入口，以及有序卡牌移动记录。Oracle 的 Vortex、The Timeless 的 Exiled/Finality 和 Twice-Dead Prophet 的 Prophecy deck 均复用 Nemesis specific deck/discard 状态；Prophecy 下方的牌使用通用 Nemesis 卡牌叠放结构。
@@ -191,7 +196,98 @@ Prophecy 是 Power。每张 Prophecy 进场时，把 Nemesis deck 底牌正面�
 - 加入 Nemesis deck 特殊失败条件，并确认 deck 最后一张牌抽出后的检查时点。
 - Prophecy 回到底部、Finality 回专属堆、Exiled card 移到玩家弃牌堆等牌移动，都要通过统一移动记录串行播放，后续流程等必要动效结束再继续。
 
-## 建议实现顺序
+## 4. The Terror in Brass
+
+### 基本设置与核心规则
+
+- 起始生命 99，难度 5，Beyond the Breach Expedition Battle 1。
+- 使用普通难度一面的 Worldsplitter Track / Armor Chart 双面板；增加难度时翻到另一面。面板由 sub board 组件显示，不是额外牌堆。
+- 开局把 Nemesis token 放在 Armor Chart 的 “Cast any player's prepped spell” 格；把 The Terror in Brass token 放到 Worldsplitter Track 的 Start 格；Regeneration 放在 Nemesis specific deck 区域。
+- Armor Chart 所有格子被 Nemesis token 覆盖时，The Terror in Brass 进入 vulnerable 状态；若 Regeneration 此时仍在 Nemesis specific deck 区域，就将这张实体牌移到 `nemesis-play-top`，不创建副本。
+- 对未 vulnerable 的 Terror 造成伤害时，该次伤害改为 1；处于 vulnerable 时，对它造成的伤害翻倍。伤害改写应通过通用伤害流程处理，不能在 UI 或单张卡牌里各写一份判断。
+- Nemesis additional rules 允许任一玩家在自己的 Main Phase 花费 3 Aether，把一个 Nemesis token 放到未覆盖的 Armor Chart 格子并结算该格效果。交互接入排在 sub board 通用组件完成之后；届时再确定“高亮 sub board 后点击”的具体步骤。费用不足、目标格已覆盖或效果禁止放置时，不提供可点击操作。
+- 每次 Worldsplitter Track 前进时，将 Terror token 上移一格，再结算落点效果。到达最上方的格子后结算其效果，并按格面文字回到 Start。
+- Unleash：Regeneration 在场上时，Terror 获得 5 点生命；否则 Worldsplitter Track 前进一步。
+- 增加难度会翻到另一面 sub board；起始生命和 Nemesis 的其他规则不变。
+
+### 双面 sub board 上的格子
+
+下表按 Armor Chart 从上到下，以及 Terror token 从 Start 沿 Track 向上移动的顺序记录。两面的格子布局左右互换，因此界面坐标必须分别配置。
+
+| 位置 | 普通难度面 | 增加难度面 |
+| --- | --- | --- |
+| Armor Chart 1 | Gain 1 Charge. | The Terror in Brass gains 1 life. |
+| Armor Chart 2 | Gain 1 Aether. | Gravehold gains 1 life. |
+| Armor Chart 3 | Any ally draws a card and discards a card. | Destroy a card in your hand. |
+| Armor Chart 4 | Any ally gains 1 Aether token. | Any ally may Conjure. |
+| Armor Chart 5 | Cast any player's prepped spell. | Cast any player's prepped spell. |
+| Worldsplitter Track | 见下方格子顺序。 | 见下方格子顺序。 |
+
+Track 从 Start 向上移动的顺序：
+
+- **普通难度面**：1) 一个图片上没有文字的空格；2) Terror 生命不高于 89 时获得 10 生命，否则任一玩家受 2 伤害；3) Gravehold 受 2 伤害；4) Gravehold 受 3 伤害；5) Gravehold 受 5 伤害，然后回到 Start。
+- **增加难度面**：1–2) 两格相同条件：Terror 生命不高于 89 时获得 10 生命，否则任一玩家受 2 伤害；3) Gravehold 受 3 伤害；4) Gravehold 受 4 伤害；5) Gravehold 受 5 伤害，然后回到 Start。
+
+普通难度面在图片上有一个没有文字的 Track 格子。本次按资料中的 Worldsplitter 规则处理：token 移到该格并结算时，没有额外效果；如果后续核对实体牌发现有不同文字，再单独调整该格规则。
+
+### 专属 Nemesis 卡牌清单
+
+Terror 的九张 Tier 卡加入正常的 Nemesis deck。Regeneration 是额外的特殊 Power：开局放在 Nemesis specific deck 区域，进入游戏时移动到 `nemesis-play-top`；它结算后按卡面要求设在一旁，不混入正常的 Tier 牌堆。
+
+| 卡牌 | 资料摘要 | 与 sub board / 状态的关系 |
+| --- | --- | --- |
+| Besieging Blade（Tier 1 Minion，5 生命） | Worldsplitter 对 Gravehold 造成伤害时再加 1；Persistent：任一玩家弃 2 张手牌。 | 修正 Track 伤害。 |
+| Cruel Majesty（Tier 1 Power，3） | Immediately Unleash；To Discard：弃 4 张手牌；结算后放在 mat 旁。之后 Regeneration 最后一个 Power token 被移除时，Track 前进一步。 | 留在场外的卡会建立持续触发。 |
+| Servant of Brass（Tier 1 Minion，5 生命） | Persistent：移除 Armor Chart 上的一个 Nemesis token，或任一玩家受 1 伤害并弃一张 Gem。 | 校验是否有 token；两个 OR 选项遵守通用裁定。 |
+| Forge Fiend（Tier 2 Minion，8 生命） | Persistent：移除 Armor Chart 上的一个 Nemesis token，或生命最低的玩家受 2 伤害。 | 校验图表上是否有 token；遵守通用 OR 裁定。 |
+| Havoc Smith（Tier 2 Minion，10 生命） | 不结算 Armor Chart 格子效果；Persistent：任一玩家受 2 伤害。 | 放置 token 时仍占格，但暂时不结算格子效果。 |
+| Unbroken Reign（Tier 2 Power，3） | Immediately Unleash 两次；结算后放在 Armor Chart 旁。之后 Track 对 Gravehold 造成伤害时再加 1。 | 持续修正 Track 的 Gravehold 伤害。 |
+| Adjudicate（Tier 3 Attack） | Terror 生命不高于 40 时恢复 25 生命；否则 Unleash 三次。 | 读取当前生命。 |
+| Fang of the First（Tier 3 Minion，12 生命） | 玩家不能在 Armor Chart 放置 Nemesis token；Persistent：Terror 获得 5 生命并 Unleash 两次。 | 禁用玩家的 Armor Chart 操作。 |
+| Feral Authority（Tier 3 Power，1） | Unleash 两次，然后移除 Armor Chart 上两个 Nemesis token。 | 多个 token 的移除要按实际格子更新。 |
+| Regeneration（特殊 Power，3） | 开局在 Nemesis specific deck 区域；进入游戏时放到 `nemesis-play-top`。Immediately：Terror token 回到 Track Start；若玩家数超过 2，在此卡上多放一个 Power token。结算时移除 Armor Chart 上所有 Nemesis token，然后将这张实体牌飞回 Nemesis specific deck。Armor Chart 再次填满时，它会再次入场。 | 清除 Armor token 后 Terror 退出 vulnerable；Cruel Majesty 会在最后一个 Power token 移除时推进 Track。 |
+
+### Sub board 的开发方案
+
+`NemesisSubBoard.vue` 放在 Nemesis mat 右侧、Nemesis 牌堆列左侧，并位于 Nemesis Info Bar 上方。它读取 Gallery 编辑器生成的 JSON 布局，显示引擎 token 状态、可点击区域和 token 图片。引擎决定哪些格子能操作、操作会产生什么效果；UI 不包含 Terror 的规则判断。
+
+#### 1. 先建一个只供开发使用的布局编辑器
+
+把 **Sub Board Layout Editor** 加进 UI Gallery。编辑器加载 sub board 图片后，在图片上叠加可拖动的参考点和可调整大小的点击区域：
+
+- **Token 锚点**：标记 token 或 standee 的中心位置。使用百分比坐标，棋盘随屏幕缩放时位置仍然正确。
+- **可操作格子**：用鼠标拖出一个矩形，标明哪些图片范围属于一个格子；每格有稳定名称，例如 `armor-1`、`track-start`。点击区域和 token 锚点分开设置，避免 token 图挡住格子的点击。
+- **两面分别校准**：编辑器能切换普通/增加难度图片，各自保存独立坐标。Terror 两面把 Armor Chart 与 Track 左右换位，不能用翻转 CSS 后沿用同一组坐标。
+- **预览与导出**：显示命中区域边界、格子 ID、token 图；支持真实棋盘尺寸预览、保存草稿，并把结果导出为 JSON。JSON 再登记为 UI 静态布局数据，不写进引擎规则。
+- **基础操作**：选择背景图、添加/删除格子、拖动锚点、拖动或调整点击区域、重置、导入和导出；不需要写代码或手算像素。
+
+坐标以实际显示的图片画布左上角为 `(0, 0)`、右下角为 `(100, 100)`。画布必须保持和背景图相同的长宽比；token 与点击区域都相对于同一画布定位，不能相对于带有 `object-fit: contain` 留白的外框定位。
+
+#### 2. 让规则状态和图片坐标各管各的
+
+- 引擎保存玩法状态：Worldsplitter 当前所在格、Armor Chart 每个格子是否有 Nemesis token、当前是否 vulnerable、Regeneration 和持续 Power 的状态。保存、撤销和恢复都以稳定的逻辑 ID 为准。
+- UI 布局资料只保存图片、图片版本、宽高比、格子点击区域和 token 锚点。坐标不能进入 `GameState`，也不能改变游戏规则。
+- 通用 `NemesisSubBoard` 组件接收“显示哪面图、各格当前状态、token 类型、可操作格子”，负责画图、token 和高亮；点击格子只把稳定的格子 ID 交给游戏操作层。能否付费、能否放置、如何结算和更新 vulnerable 状态都由引擎校验。
+- Nemesis token 使用现有通用 token 图片与组件；The Terror in Brass token 使用自己的 standee 图片。以后 Rampaging Vin、The Terror in Brass、Wayward Reflection 等只需提供各自的图片和布局数据，不必重写定位逻辑。
+- Token 移动和格子变化由引擎的真实状态驱动；UI 负责展示和轻量位置过渡。卡牌动效等待规则沿用项目现有队列，不为 sub board 另造流程队列。
+
+#### 3. The Terror in Brass 的整体实施顺序
+
+**实现进度：** 下列实现步骤均已完成，Normal 和 Increased difficulty 布局来自用户提供的 JSON。引擎与 UI 类型检查通过；浏览器内的真实对局验收仍待进行。
+
+1. **锁定规则和卡牌生命周期。** 开局时 Regeneration 放在 Nemesis specific deck；Armor Chart 全部覆盖时放入 `nemesis-play-top`，Power 结算后飞回 Nemesis specific deck；再次 vulnerable 时从专属牌堆返回同一张实体卡。
+2. **完成可复用的 sub board 编辑工具。** Gallery 中的编辑器可载入图片、绘制和调整 Region/Anchor、导入布局、保存回原文件或另存。
+3. **完成通用 sub board 运行时组件。** `NemesisSubBoard.vue` 从独立布局 JSON 读取坐标，接收引擎 token 状态和合法 region 列表，并按图片比例显示区域与 token。
+4. **建立 The Terror 的引擎棋盘状态和开局。** 开局放置 Armor Chart Nemesis token 与 Worldsplitter Track token；token 用稳定实例 ID 和 region ID 保存。
+5. **完成棋盘移动与格子结算。** Track 每次推进一格并按落点结算；Armor token 能按规则放置/移除；Havoc Smith 抑制 Armor 格子效果。
+6. **接入玩家的 3 Aether 操作。** Main Phase 费用足够且没有禁止条件时，高亮未覆盖 Armor 格子；点击区域后引擎重新校验并结算。
+7. **接入 Regeneration、vulnerable 状态和伤害。** 统一伤害入口按 Armor 状态改写伤害；Regeneration 入场、重返、清除 Armor token 和 Cruel Majesty 的 Track 触发均复用规则/卡牌移动机制。
+8. **接入全部九张 Tier 卡。** 所有卡牌使用 typed effects、通用选项和子棋盘 token 操作；通用解析器不按单张卡 ID 分支。
+9. **静态检查已通过；真实对局视觉验收尚未完成。** 仍需检查两种难度的桌面布局、费用不足/足够、格子效果、token 移除和禁止条件、Regeneration 反复进出、存档/撤销及动画时序。
+
+这个顺序先把规则和牌的去向说清楚，再做可视化工具与可复用组件，然后接入引擎状态和操作，最后才逐批添加依赖这些基础能力的卡牌。以后实现其他 sub board 时，可复用编辑器、布局格式和渲染组件，只替换背景图、格子 ID、token 和规则状态。
+
+## 前面三位 Nemesis：既有实现顺序
 
 1. **先打牢实体牌区和规则状态。** 为 Vortex、Exiled pile、Finality pile、Prophecy deck 和“牌下压着另一张牌”的关系设计可保存的数据结构。统一接入副本 ID、移动记录和撤销/恢复。
 2. **先实现 The Timeless 的 Exile 基础。** 它能验证玩家牌 Exile、牌堆顺序、特殊牌区和获得顶牌的基本路径；再实现 Curse 的进手触发和 Finality 回收。
@@ -205,10 +301,11 @@ Prophecy 是 Power。每张 Prophecy 进场时，把 Nemesis deck 底牌正面�
 
 ### 引擎
 
-- 三位 Nemesis 在选择列表中显示正确，起始生命、难度、三层卡牌数和专属牌堆内容正确。
+- Oracle of Filth、The Timeless、Twice-Dead Prophet 在选择列表中显示正确，起始生命、难度、三层卡牌数和专属牌堆内容正确。
 - Oracle：Vortex 初始 5 张 Crystal；Vortex Blast 伤害随费用总和变化；Expunge 发 6 次且缺牌时每次造成 4 Gravehold 伤害；只有 Vortex Blast 能伤害 Oracle；Pupil 最低保留 1 点生命，法术命中后只移动一次。
 - The Timeless：Exile 永远放在顶端；只能购买顶牌且费用加 1；Curse 进入手牌后按卡面顺序自动结算；Finality 阈值重复到 token 不超过 2；空 Finality pile 时使用 10 点 Gravehold 伤害；增加难度规则只允许从手牌 Exile。
 - Twice-Dead Prophet：阈值触发、Prophecy 底牌装载/结算/弃置和回到底部顺序正确；被放出的牌不提前结算；99 生命和空 Nemesis deck 按指定时点结束游戏。
+- The Terror in Brass：Regeneration 开局位于 Nemesis specific deck，入场移动到 `nemesis-play-top`；普通与增加难度面初始正确；两个 token 起始位置正确；5 个 Armor Chart 格子的占据/点击状态可见；Track 每次只前进一格并结算正确落点；Regeneration 清空格子后 vulnerable 状态和伤害倍率正确。
 - Torment、Abyssal Vial 的大写 `OR` 按全组选项验证，前端禁用和引擎提交校验一致。
 - 所有需要选玩家、手牌、预备法术或 Power 的效果，都覆盖无人满足、多人并列、可部分完成和状态在选择期间改变的情况。
 
@@ -218,6 +315,7 @@ Prophecy 是 Power。每张 Prophecy 进场时，把 Nemesis deck 底牌正面�
 - 玩家能看清目标和不可用选项；不允许的按钮不能靠直接提交绕过。
 - 每张牌只从实际来源移动一次；从选择窗口确认的卡不从窗口中央飞出。
 - Vortex / Exiled pile / Prophecy deck 的连续移动按顺序播放；动画完成前不能翻开下一张 Nemesis 卡或继续后续阶段。
+- The Terror 的两面布局在目标桌面尺寸下位置准确；token 锚点与可点击区域对齐；玩家无法点击已经覆盖的格子或违反卡牌限制的格子。
 - 中断后恢复游戏，卡牌归属、顺序、token、压叠关系、可见状态和待续结算完全一致。
 
 ## 仍需后续核对的假设
@@ -230,6 +328,7 @@ Prophecy 是 Power。每张 Prophecy 进场时，把 Nemesis deck 底牌正面�
 4. **Twice-Dead Prophet 的空牌堆失败时点：** 我暂按 Nemesis deck 最后一张牌被抽出后立即判负、该牌效果不再结算；Prophecy 装载 Nemesis deck 底牌时如果因此掏空牌堆，也要立刻判负。第二种情况尤其需要你确认是否符合卡面意图。
 5. **Twice-Dead Prophet 结束回合：** 卡面没有写“重复”，所以即使扣 4 后仍有 6 个或更多 token，也暂按本回合只放一张 Prophecy。
 6. **Oracle 增加难度：** Oracle 或 Pupil 的 3 点治疗目标由玩家选择；Pupil 仍无生命上限。
+7. **The Terror 普通难度 Track：** Wiki 规则说明每次移动后结算落点；图上的无文字格没有效果，因此只移动 token。用户指定的 Regeneration 开局放在 Nemesis specific deck，优先于实体规则中的 mat 旁设置。
 
 Oracle 的供给牌堆、Vortex 可见状态、Pupil 上排位置及 Expunge 起始玩家/发牌方式已按用户补充确定。其他待核对项仍需确认；实现中不把未确认的推断固化为通用规则。
 
@@ -237,6 +336,8 @@ Oracle 的供给牌堆、Vortex 可见状态、Pupil 上排位置及 Expunge 起
 
 - 项目整理的卡牌文字：[Wave 9 Nemesis 卡牌资料](nemeses.md)
 - 本地 The Timeless 卡图：`image-database/cards/wave9/nemesis/The Timeless/`
+- The Terror in Brass 双面 sub board 与 standee：[The Terror in Brass](https://aeonsend.wiki.gg/wiki/The_Terror_in_Brass)、[The Terror in Brass 卡牌与图像资料](nemeses.md#the-terror-in-brass)；本地图片位于 `image-database/cards/wave9/nemesis/The Terror in Brass/`。
+- [Regeneration](https://aeonsend.wiki.gg/wiki/Regeneration)、[Besieging Blade](https://aeonsend.wiki.gg/wiki/Besieging_Blade)、[Cruel Majesty](https://aeonsend.wiki.gg/wiki/Cruel_Majesty)、[Servant of Brass](https://aeonsend.wiki.gg/wiki/Servant_of_Brass)、[Forge Fiend](https://aeonsend.wiki.gg/wiki/Forge_Fiend)、[Havoc Smith](https://aeonsend.wiki.gg/wiki/Havoc_Smith)、[Unbroken Reign](https://aeonsend.wiki.gg/wiki/Unbroken_Reign)、[Adjudicate](https://aeonsend.wiki.gg/wiki/Adjudicate)、[Fang of the First](https://aeonsend.wiki.gg/wiki/Fang_of_the_First)、[Feral Authority](https://aeonsend.wiki.gg/wiki/Feral_Authority)
 - [Oracle of Filth](https://aeonsend.wiki.gg/wiki/Oracle_of_Filth)、[Vortex Blast](https://aeonsend.wiki.gg/wiki/Vortex_Blast)、[Unrelenting Fear](https://aeonsend.wiki.gg/wiki/Unrelenting_Fear)、[Abyssal Vial 裁定](https://aeonsend.wiki.gg/wiki/Rulings#Abyssal_Vial)
 - [The Timeless](https://aeonsend.wiki.gg/wiki/The_Timeless)、[Curse of Exhaustion](https://aeonsend.wiki.gg/wiki/Curse_of_Exhaustion)、[Finality](https://aeonsend.wiki.gg/wiki/Finality)、[Subside](https://aeonsend.wiki.gg/wiki/Subside)
 - [Prophecy of Fire](https://aeonsend.wiki.gg/wiki/Prophecy_of_Fire)、[Prophecy of Ruin](https://aeonsend.wiki.gg/wiki/Prophecy_of_Ruin)、[Vile Petition](https://aeonsend.wiki.gg/wiki/Vile_Petition)

@@ -100,6 +100,7 @@ async function startMotionTrace(page: Page, playerId: string) {
       cardMotionTrace?: Array<Record<string, unknown>>
       cardMotionTraceActive?: boolean
       cardMotionTraceFrame?: number
+      cardMotionTraceSample?: () => void
     }
     trackedWindow.cardMotionTrace = []
     trackedWindow.cardMotionTraceActive = true
@@ -125,6 +126,8 @@ async function startMotionTrace(page: Page, playerId: string) {
         clones: clones.map(clone => ({
           src: clone.querySelector('img')?.currentSrc ?? null,
           instanceId: clone.dataset.cardFlightInstanceId ?? null,
+          sourceZone: clone.dataset.cardMotionSourceZone ?? null,
+          destinationZone: clone.dataset.cardMotionDestinationZone ?? null,
           x: Number(clone.getBoundingClientRect().x.toFixed(2)),
           y: Number(clone.getBoundingClientRect().y.toFixed(2)),
           durations: clone.getAnimations().map(animation =>
@@ -136,6 +139,7 @@ async function startMotionTrace(page: Page, playerId: string) {
         trackedWindow.cardMotionTraceFrame = requestAnimationFrame(sample)
       }
     }
+    trackedWindow.cardMotionTraceSample = sample
     trackedWindow.cardMotionTraceFrame = requestAnimationFrame(sample)
   }, playerId)
 }
@@ -146,7 +150,12 @@ async function stopMotionTrace(page: Page) {
       cardMotionTrace?: Array<Record<string, unknown>>
       cardMotionTraceActive?: boolean
       cardMotionTraceFrame?: number
+      cardMotionTraceSample?: () => void
     }
+    // High-refresh displays can exhaust the bounded frame trace before the
+    // final landing. Capture the completed DOM once without dropping any
+    // intermediate-frame assertions.
+    trackedWindow.cardMotionTraceSample?.()
     trackedWindow.cardMotionTraceActive = false
     if (trackedWindow.cardMotionTraceFrame) cancelAnimationFrame(trackedWindow.cardMotionTraceFrame)
     return trackedWindow.cardMotionTrace ?? []
@@ -193,6 +202,7 @@ test('Woven Sky reveals each Discard arrival as its hand card lands', async ({ p
   await startMotionTrace(page, playerId)
   await page.getByRole('button', { name: 'Confirm', exact: true }).click()
   await expect(page.locator('.card-motion-shield')).toBeHidden({ timeout: 10000 })
+  await expect(page.locator('.player-discard-pile .player-pile-count')).toHaveText('4')
   const trace = await stopMotionTrace(page)
   expect(trace.length).toBeGreaterThan(0)
   expect(trace.some(frame => Array.isArray(frame.clones) && frame.clones.length > 0)).toBe(true)
@@ -208,6 +218,8 @@ test('Woven Sky reveals each Discard arrival as its hand card lands', async ({ p
   expect(Math.max(...trace.map(frame => Array.isArray(frame.clones) ? frame.clones.length : 0))).toBeLessThanOrEqual(1)
   const flightInstanceIds = [...new Set(trace.flatMap(frame => Array.isArray(frame.clones)
     ? frame.clones.flatMap(clone => typeof clone === 'object' && clone !== null &&
+      'sourceZone' in clone && clone.sourceZone === 'hand' &&
+      'destinationZone' in clone && clone.destinationZone === 'discard' &&
       'instanceId' in clone && typeof clone.instanceId === 'string' ? [clone.instanceId] : [])
     : []))]
   expect(flightInstanceIds.sort()).toEqual((selectedInstanceIds as string[]).sort())

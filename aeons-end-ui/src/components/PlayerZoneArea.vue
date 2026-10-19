@@ -20,7 +20,6 @@ interface ZoneCardDisplay {
   preppedAction?: boolean
   actionAvailable?: boolean
   endTurnActionAttention?: boolean
-  title?: string
   heldForDeparture?: boolean
 }
 
@@ -181,7 +180,6 @@ onBeforeUnmount(() => {
             <CardSurface
               :card-id="card.cardId"
               size="mini"
-              :title="card.title"
               data-card-motion-zone="develop"
               data-card-motion-from-zones="supply"
               :data-card-motion-card-id="card.cardId"

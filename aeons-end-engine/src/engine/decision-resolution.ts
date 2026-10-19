@@ -317,6 +317,14 @@ function resolvePendingDecision(
   if (pendingNemesisDiscard) {
     if (!decision) return ['No pending card decision']
     if (decision.id !== decisionId) return ['Stale card decision']
+    if (pendingNemesisDiscard.awaitingCardMotions) {
+      if (decision.kind !== 'await_card_motions' || answer.kind !== 'await_card_motions' || !answer.accepted) {
+        return ['Invalid card movement continuation']
+      }
+      pendingNemesisDiscard.awaitingCardMotions = false
+      g.pendingDecision = null
+      return continueNemesisDiscard(g)
+    }
     const cost = pendingNemesisDiscard.costs[pendingNemesisDiscard.nextCostIndex - 1]
     if (!cost) return ['Pending To Discard cost is invalid']
     if (cost.kind === 'destroy_prepped_spells') {
@@ -360,6 +368,37 @@ function resolvePendingDecision(
     }
     const selected = answer.choices
     const amount = Math.max(0, cost.amount)
+    const costIndex = pendingNemesisDiscard.nextCostIndex - 1
+    const sequentialHandDiscard = cost.kind === 'discard_cards' &&
+      (cost.selectionMode === 'one_at_a_time' ||
+        (cost.selectionMode !== 'together' && amount > 1))
+    if (sequentialHandDiscard) {
+      if (selected.length !== 1 || selected[0]?.zone !== 'hand' ||
+        !cardChoiceMatches(selected[0]!, 'hand')) {
+        return ['Choose one card from hand to discard']
+      }
+      const candidates = getCardChoices(g, pendingNemesisDiscard.playerId, 'hand')
+      if (!selectedChoicesAreCurrent(g, pendingNemesisDiscard.playerId, candidates, selected)) {
+        return ['The selected card is no longer available to discard']
+      }
+      const removed = discardSelectedCards(g, pendingNemesisDiscard.playerId, selected, true)
+      if (removed.length !== 1) return ['The selected card could not be discarded']
+      pendingNemesisDiscard.selectedCards.push(...selected)
+      pendingNemesisDiscard.selectedCardPayments.push({ costIndex, choices: selected, applied: true })
+      pendingNemesisDiscard.nextCostIndex = Math.max(0, pendingNemesisDiscard.nextCostIndex - 1)
+      pendingNemesisDiscard.awaitingCardMotions = true
+      g.pendingDecision = null
+      const motionDecision = createDecision(g, 'Waiting for card movement', 'await_card_motions', {})
+      const error = setPendingDecision(g, motionDecision)
+      if (error) {
+        pendingNemesisDiscard.awaitingCardMotions = false
+        return [error]
+      }
+      return [
+        `Discarded ${removed.map(id => getCard(id).name).join(', ')}`,
+        `Decision required: ${motionDecision.prompt}`,
+      ]
+    }
     if (selected.length !== amount || !selected.every(choice =>
       (cost.kind === 'discard_cards' || getCard(choice.cardId).cost >= (cost.minCost ?? 0)) &&
       cardChoiceMatches(choice, cost.source))) {
@@ -372,7 +411,7 @@ function resolvePendingDecision(
     }
     pendingNemesisDiscard.selectedCards.push(...selected)
     pendingNemesisDiscard.selectedCardPayments.push({
-      costIndex: pendingNemesisDiscard.nextCostIndex - 1,
+      costIndex,
       choices: selected,
     })
     g.pendingDecision = null
@@ -1171,6 +1210,52 @@ function resolvePendingDecision(
           return ['Choose only the most expensive eligible card(s)']
         }
       }
+      if (effect.selectionMode === 'one_at_a_time' && effect.sequentialProgress) {
+        if (selected.length !== 1 || selected[0]?.zone !== 'hand') {
+          restore()
+          return ['Choose one card from hand to discard']
+        }
+        let eligible = getCardChoices(g, currentPlayerId, 'hand')
+          .filter(choice => (!effect.cardType || getCard(choice.cardId).type === effect.cardType) &&
+            (!effect.cardIds || effect.cardIds.includes(choice.cardId)) &&
+            getCard(choice.cardId).cost >= (effect.minCost ?? 0))
+        if (effect.mostExpensive && eligible.length > 0) {
+          const highestCost = Math.max(...eligible.map(choice => getCard(choice.cardId).cost))
+          eligible = eligible.filter(choice => getCard(choice.cardId).cost === highestCost)
+        }
+        if (!selectedChoicesAreCurrent(g, currentPlayerId, eligible, selected)) {
+          restore()
+          return ['The selected card is no longer available to discard']
+        }
+        const progress = effect.sequentialProgress
+        const removed = discardSelectedCards(g, currentPlayerId, selected, true)
+        const discarded = progress.discarded + removed.length
+        const highestCost = Math.max(progress.highestCost,
+          ...removed.map(cardId => getCard(cardId).cost))
+        const remaining = Math.max(0, progress.remaining - removed.length)
+        resolution.lastSelectedCardCount = discarded
+        resolution.lastSelectedCardCost = highestCost
+        if (effect.restoreToSourceAfterSelection && remaining === 0) {
+          resolution.effectPlayerId = resolution.sourcePlayerId ?? currentPlayerId
+        }
+        if (remaining > 0) {
+          addRemainingEffects(resolution, [{
+            ...effect,
+            amount: remaining,
+            minAmount: remaining,
+            maxAmount: remaining,
+            selectionMode: 'one_at_a_time',
+            sequentialProgress: { remaining, discarded, highestCost },
+          }])
+        }
+        if (removed.length > 0) addRemainingEffects(resolution, [{ kind: 'await_card_motions' }])
+        return [
+          removed.length > 0
+            ? `Discarded ${removed.map(id => getCard(id).name).join(', ')}`
+            : 'No cards were discarded',
+          ...runEffectResolution(g, resolution),
+        ]
+      }
       const removed = discardSelectedCards(g, currentPlayerId, selected, true)
       resolution.lastSelectedCardCount = removed.length
       resolution.lastSelectedCardCost = removed.length > 0 ? Math.max(...removed.map(id => getCard(id).cost)) : 0
@@ -1576,6 +1661,20 @@ function resolvePendingDecision(
       ).flat()
       addRemainingEffects(resolution, [...repeatedEffects, restoreOuterContext])
       return [`Resolved Recall from ${getCard(cardId).name}`, ...runEffectResolution(g, resolution)]
+    }
+    if (effect.kind === 'cast_selected_spell_from_hand' && decision.repeat === true) {
+      const selectedSpell = selected[0]
+      const owner = getPlayer(g, effect.playerId)
+      if (selected.length !== 1 || !selectedSpell ||
+        selectedSpell.playerId !== effect.playerId ||
+        selectedSpell.choice.zone !== 'hand' ||
+        selectedSpell.choice.cardId !== effect.cardId ||
+        owner.hand[selectedSpell.choice.index] !== effect.cardId) {
+        restore()
+        return ['Confirm the same spell from the same ally hand']
+      }
+      addRemainingEffects(resolution, [{ ...effect, repeatConfirmed: true }])
+      return [`Confirmed ${getCard(effect.cardId).name} for another cast`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'cast_spell_from_hand') {
       if (selected.length !== 1 || selected[0]!.playerId === effectPlayerId(g, resolution) ||

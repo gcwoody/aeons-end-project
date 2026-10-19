@@ -145,7 +145,7 @@ onBeforeUnmount(() => {
         :placeholder="searchPlaceholder"
         aria-label="Search debug cards"
       />
-      <button v-if="search" class="btn small" type="button" title="Clear search" @click="clearSearch">Clear</button>
+      <button v-if="search" class="btn small" type="button" @click="clearSearch">Clear</button>
     </div>
 
     <div v-if="allowTypeFilter && filters.length > 2" class="debug-card-filters" role="toolbar" aria-label="Filter debug cards">
@@ -169,7 +169,6 @@ onBeforeUnmount(() => {
           :class="{ selected: modelValue === card.id, 'game-highlight--choice': modelValue === card.id }"
           :data-card-id="card.id"
           type="button"
-          :title="cardOptionTitle(card)"
           :aria-label="cardOptionTitle(card)"
           :aria-pressed="modelValue === card.id"
           @click="selectCard(card)"
@@ -208,7 +207,6 @@ onBeforeUnmount(() => {
               :class="{ selected: modelValue === card.id, 'game-highlight--choice': modelValue === card.id }"
               :data-card-id="card.id"
               type="button"
-              :title="cardOptionTitle(card)"
               :aria-label="cardOptionTitle(card)"
               :aria-pressed="modelValue === card.id"
               @click="selectCard(card)"

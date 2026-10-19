@@ -1,0 +1,223 @@
+{
+  "schemaVersion": 2,
+  "boardId": "terror-increased",
+  "boardName": "The Terror in Brass · Increased difficulty",
+  "imageFile": "Worldsplitter Track ID.png",
+  "imageSize": {
+    "width": 1280,
+    "height": 1198
+  },
+  "regions": [
+    {
+      "id": "a5",
+      "label": "Armor space 5",
+      "x": 4.84,
+      "y": 18.15,
+      "width": 43.72,
+      "height": 12.48
+    },
+    {
+      "id": "w6",
+      "label": "The Terror in Brass Token Region",
+      "x": 56.44,
+      "y": 10.03,
+      "width": 37.72,
+      "height": 13.50
+    },
+    {
+      "id": "a4",
+      "label": "Armor space 4",
+      "x": 4.62,
+      "y": 32.28,
+      "width": 43.72,
+      "height": 12.48
+    },
+    {
+      "id": "a3",
+      "label": "Armor space 3",
+      "x": 4.58,
+      "y": 46.85,
+      "width": 43.72,
+      "height": 12.48
+    },
+    {
+      "id": "a2",
+      "label": "Armor space 2",
+      "x": 4.56,
+      "y": 61.38,
+      "width": 43.72,
+      "height": 12.48
+    },
+    {
+      "id": "a1",
+      "label": "Armor space 1 ",
+      "x": 4.58,
+      "y": 76.10,
+      "width": 43.72,
+      "height": 12.48
+    },
+    {
+      "id": "w5",
+      "label": "The Terror in Brass Token Region",
+      "x": 56.28,
+      "y": 24.34,
+      "width": 37.72,
+      "height": 13.50
+    },
+    {
+      "id": "w4",
+      "label": "The Terror in Brass Token Region",
+      "x": 56.44,
+      "y": 39.04,
+      "width": 37.72,
+      "height": 13.50
+    },
+    {
+      "id": "w3",
+      "label": "The Terror in Brass Token Region",
+      "x": 56.28,
+      "y": 53.35,
+      "width": 37.72,
+      "height": 13.50
+    },
+    {
+      "id": "w2",
+      "label": "The Terror in Brass Token Region",
+      "x": 56.60,
+      "y": 68.28,
+      "width": 37.72,
+      "height": 13.50
+    },
+    {
+      "id": "w1",
+      "label": "The Terror in Brass Token Region",
+      "x": 56.44,
+      "y": 82.59,
+      "width": 37.72,
+      "height": 13.50
+    }
+  ],
+  "anchors": [
+    {
+      "id": "n5",
+      "label": "nemesis token",
+      "regionId": "a5",
+      "x": 42.64,
+      "y": 24.36,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.29
+      }
+    },
+    {
+      "id": "n4",
+      "label": "nemesis token",
+      "regionId": "a4",
+      "x": 42.40,
+      "y": 38.42,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.29
+      }
+    },
+    {
+      "id": "n3",
+      "label": "nemesis token",
+      "regionId": "a3",
+      "x": 42.48,
+      "y": 53.54,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.29
+      }
+    },
+    {
+      "id": "n2",
+      "label": "nemesis token",
+      "regionId": "a2",
+      "x": 42.24,
+      "y": 67.60,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.29
+      }
+    },
+    {
+      "id": "n1",
+      "label": "nemesis token",
+      "regionId": "a1",
+      "x": 42.40,
+      "y": 82.33,
+      "tokenSize": {
+        "width": 11.36,
+        "height": 12.29
+      }
+    },
+    {
+      "id": "tt6",
+      "label": "The Terror in Brass Token",
+      "regionId": "w6",
+      "x": 75.30,
+      "y": 16.78,
+      "tokenSize": {
+        "width": 37.72,
+        "height": 13.50
+      }
+    },
+    {
+      "id": "tt5",
+      "label": "The Terror in Brass Token",
+      "regionId": "w5",
+      "x": 75.14,
+      "y": 31.09,
+      "tokenSize": {
+        "width": 37.72,
+        "height": 13.50
+      }
+    },
+    {
+      "id": "tt4",
+      "label": "The Terror in Brass Token",
+      "regionId": "w4",
+      "x": 75.30,
+      "y": 45.79,
+      "tokenSize": {
+        "width": 37.72,
+        "height": 13.50
+      }
+    },
+    {
+      "id": "tt3",
+      "label": "The Terror in Brass Token",
+      "regionId": "w3",
+      "x": 75.14,
+      "y": 60.10,
+      "tokenSize": {
+        "width": 37.72,
+        "height": 13.50
+      }
+    },
+    {
+      "id": "tt2",
+      "label": "The Terror in Brass Token",
+      "regionId": "w2",
+      "x": 75.46,
+      "y": 75.03,
+      "tokenSize": {
+        "width": 37.72,
+        "height": 13.50
+      }
+    },
+    {
+      "id": "tt1",
+      "label": "The Terror in Brass Token",
+      "regionId": "w1",
+      "x": 75.30,
+      "y": 89.43,
+      "tokenSize": {
+        "width": 37.72,
+        "height": 13.50
+      }
+    }
+  ]
+}

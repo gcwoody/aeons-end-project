@@ -220,14 +220,72 @@
   text-align: center;
 }
 .nemesis-sub-board {
+  position: relative;
   flex: 0 0 calc(100cqh * var(--sub-board-ratio));
+  min-width: 0;
+  min-height: 0;
   border: var(--pixel-border-width) solid var(--border);
   border-radius: 9px;
-  display: grid;
-  place-items: center;
   overflow: hidden;
+  cursor: pointer;
 }
-.nemesis-sub-board img { width: 100%; height: 100%; object-fit: contain; }
+.nemesis-sub-board-image { position: absolute; inset: 0; z-index: 0; display: block; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.nemesis-sub-board-region {
+  position: absolute;
+  z-index: 1;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: inherit;
+  transition: background-color .12s ease, box-shadow .12s ease;
+}
+.nemesis-sub-board-region.is-available,
+.nemesis-sub-board-region.is-selectable { cursor: pointer; }
+.nemesis-sub-board-region.game-highlight { position: absolute; }
+.nemesis-sub-board-region.is-available::after,
+.nemesis-sub-board-region.is-selectable::after { transition: background-color .12s ease; }
+.nemesis-sub-board-region.is-available:hover::after,
+.nemesis-sub-board-region.is-selectable:hover::after { background-color: rgba(0, 0, 0, .1); }
+.nemesis-sub-board-token {
+  position: absolute;
+  z-index: 2;
+  display: block;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  user-select: none;
+  transition: left .25s ease, top .25s ease;
+}
+.nemesis-sub-board-token--terror { border-radius: var(--card-radius); }
+.nemesis-sub-board-modal-frame {
+  height: min(74vh, 800px);
+  width: auto;
+  max-width: 84vw;
+  overflow: hidden;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 9px;
+  background: #151a29;
+}
+.nemesis-sub-board-modal-frame .nemesis-sub-board {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  flex: none;
+  border: 0;
+  border-radius: inherit;
+  cursor: default;
+}
+.card-hover-preview.nemesis-sub-board-hover-preview {
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
 .nemesis-info-bar {
   min-width: 0;
   min-height: 0;
@@ -300,21 +358,6 @@
 
 .nemesis-play { flex: 1 1 auto; min-width: 0; min-height: 0; border: 0; border-radius: 8px; padding: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--nemesis-pile-gap); background: #20283a; overflow: visible; }
 .nemesis-play-top { display: flex; min-width: 0; min-height: 0; align-items: center; justify-content: flex-start; gap: 10px; }
-.divided-damage-instructions {
-  display: grid;
-  gap: .2em;
-  max-width: 100%;
-  padding: .4em .9em;
-  border: .1em solid rgba(201, 54, 62, .7);
-  border-radius: .7em;
-  background: rgba(21, 26, 41, .88);
-  color: var(--text);
-  font-size: calc(10px * var(--damage-assigned-size));
-  line-height: 1.2;
-  text-align: center;
-}
-.divided-damage-instructions strong { color: #fff; font-size: 1.1em; }
-.divided-damage-instructions span { color: var(--muted); }
 .nemesis-play-row { min-width: 0; min-height: 0; }
 .nemesis-play-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }
 .nemesis-play-order { color: var(--muted); font-size: 10px; }
@@ -342,5 +385,11 @@
   color: var(--text);
   font-size: 10px;
   line-height: 1;
+}
+.nemesis-vulnerable-badge {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  z-index: 4;
 }
 

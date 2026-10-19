@@ -29,7 +29,7 @@ const emit = defineEmits<{
         class="btn primary decision-option mage-ability-choice-button"
         :class="{ unavailable: option.disabled }"
         :disabled="option.disabled"
-        :title="option.disabled ? 'This option is not available right now.' : undefined"
+
         type="button"
         @click="emit('select', option.id)"
       >

@@ -66,6 +66,8 @@ Wave 数据由各自的 `index.ts` 汇总，再通过引擎数据注册表提供
 
 新增移动路线时，应按起点和终点补充通用处理，并检查同名卡牌副本、牌背方向、落地时机和连续操作；不要按单张卡牌 ID 增加通用动效特例。完整行为约定和 Gallery 示例见 [UI 开发指南](ui/ui-guide.md) 的“卡牌动效结构”部分。`useGame.ts` 仍是较大的游戏操作协调文件；涉及已有动效职责时，先检查上表对应模块，避免把基础动画规则继续塞回协调入口。
 
+摧毁动效复用通用 `destroy` 实体记录和 `card-destroy-motion.ts`，不在每张卡的数据里添加飞行路线。决策窗口中的副本不能当作来源；摧毁选择在确认后从真实牌区飞入垃圾桶。明确的弃牌洗入和摧毁顶牌效果各自通过 `await_card_motions` 保留后续步骤；无实际移动时不创建等待。Nemesis 卡牌的 `placedAt` 用于稳定身份，换行顺序另用 `displayOrder` 记录；UI 与 Main Phase 通过 `nemesis-card-order.ts` 使用同一排序。
+
 ## 效果来源与卡牌归属
 
 执行卡牌效果时，必须分清“谁在执行效果”和“卡牌属于谁”。**持有卡牌的 Mage 不会自动成为效果来源。** 这决定 `you/your` 与 `ally` 的含义，也决定目标是谁；卡牌归属则决定实体卡从哪里移动、最后进入谁的牌区。
@@ -96,6 +98,7 @@ Wave 数据由各自的 `index.ts` 汇总，再通过引擎数据注册表提供
 
 - **施法生命周期：** 执行法术的 Cast 效果后，法术通常进入弃牌堆；只有效果明确要求保留或转移时才改变去向。卡面注明 “without discarding” 就是明确例外。
 - **Nemesis Power 的 To Discard：** 除非卡面明确允许其他玩家支付，费用和代价由启动该行动的 Mage 承担。费用校验不能用其他玩家的牌或资源满足。
+- 可选效果的可行性检查和实际结算必须使用相同目标。效果先让一名 ally 承受代价、再让其选择手牌时，后续选牌效果要明确写 `target: 'ally'`，不能让检查默认查看来源 Mage 的手牌。
 - To Discard 代价上的后续抽牌（如 `drawAfter`）必须在同一轮引擎结算中完成，再把状态交给 UI 检查 Main Phase 是否可自动结束。
 - **Additional damage：** 额外伤害应作为原伤害实例的修正处理，不能误算成第二次独立伤害。
 - **伤害与治疗反馈：** 通用伤害/治疗结算函数按每次实际效果写入 `GameState.healthChangeEvents`，前端 `DamageFeedbackLayer` 按目标和数值显示气泡。新增效果必须复用这些结算函数；不要按卡牌 ID、触发来源或调用入口单独补气泡。
@@ -134,9 +137,11 @@ Reveal Turn Order deck 时也使用共享补牌逻辑，但先洗混 Turn Order 
 
 将 Nemesis 卡牌放在对应 Wave 的 `nemeses/` 数据中，把独有 setup、Unleash 或回合处理放到 `aeons-end-engine/src/nemesis/`。能用共享 `CardEffect` 和 Nemesis effect block 表达的部分继续复用公共解释器。专属牌堆的构筑方式、查看方式和可否获得要分别配置，不要把特例塞进通用 UI 组件。
 
+带有子棋盘的 Nemesis 将规则状态保存在 `GameState.nemesis.subBoardTokens`，卡牌位置、点击区域和 token 锚点保存在 UI 的布局 JSON。用 `NemesisRuleModule.subBoard` 提供合法放置、移动路线和格子效果；通用 UI 组件只显示布局并把点击的 region ID 交还给引擎。不要把坐标或合法性判断写进 Vue 组件。
+
 ## 当前规则范围
 
-产品当前实现固定两名不同 Mage 对抗一名 Nemesis 的场景。Turn Order 一轮六个位置（每位 Mage 两个、Nemesis 两个）；1、3、4 人流程暂未实现。Wave 9 的 22 张 Basic Nemesis Cards 已加入共享基础牌池，Crooked Mask 已按 Wave 9 版本接入；其余未接入内容见 [design/wave9-plan.md](design/wave9-plan.md)。
+产品当前实现固定两名不同 Mage 对抗一名 Nemesis 的场景。Turn Order 一轮六个位置（每位 Mage 两个、Nemesis 两个）；1、3、4 人流程暂未实现。Wave 9 的 22 张 Basic Nemesis Cards 已加入共享基础牌池；Crooked Mask、Oracle of Filth、The Timeless、Twice-Dead Prophet 和 The Terror in Brass 已接入。其他未接入内容见 [design/wave9-plan.md](design/wave9-plan.md)。
 
 稳定玩家 ID、重复选择校验和当前 v3 本地存档格式都由引擎/前端数据类型管理；不要在新功能中写死 `p1/p2` 或绕过现有创建入口。
 

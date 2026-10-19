@@ -42,6 +42,7 @@ interface CardPileMotionFlow extends CardPileMotionRoute {}
 type TrackedCardMoveEvent = Extract<CardMoveEvent, { kind: 'move' }>
   | Extract<CardMoveEvent, { kind: 'create' }>
   | Extract<CardMoveEvent, { kind: 'destroy' }>
+  | Extract<CardMoveEvent, { kind: 'temporary' }>
 
 export interface CardPileMotionDisplaySession {
   depart(instanceId: string): void
@@ -140,8 +141,11 @@ export function releaseCardPileMotionDisplayBaseline(
 
 function normalizedFlows(events: readonly CardMoveEvent[]): CardPileMotionFlow[] {
   const byInstance = new Map<string, TrackedCardMoveEvent[]>()
+  const destroyedInstances = new Set(events.flatMap(event =>
+    event.kind === 'destroy' && event.reason === 'destroy' ? [event.instanceId] : []))
   for (const event of events) {
-    if (event.kind !== 'move' && event.kind !== 'create' && event.kind !== 'destroy') continue
+    if (event.kind !== 'move' && event.kind !== 'create' && event.kind !== 'destroy' &&
+      !(event.kind === 'temporary' && destroyedInstances.has(event.instanceId))) continue
     const flow = byInstance.get(event.instanceId) ?? []
     flow.push(event)
     byInstance.set(event.instanceId, flow)
@@ -238,6 +242,7 @@ export function createCardPileMotionDisplaySession(
     : reverseFlows(finalPiles, flows)
   const appliedDeparture = new Set<string>()
   const appliedArrival = new Set<string>()
+  const shuffledZones = new Set(events.flatMap(event => event.kind === 'shuffle' ? [event.zone.zoneId] : []))
 
   const adjustDelta = (zoneId: string | undefined, amount: number) => {
     if (!zoneId || (finalPiles[zoneId] === undefined && baseline?.counts[zoneId] === undefined)) return
@@ -340,7 +345,19 @@ export function createCardPileMotionDisplaySession(
       if (appliedArrival.has(instanceId)) return
       appliedArrival.add(instanceId)
       const flow = flowsByInstance.get(instanceId)
-      if (flow) arriveFlow(flow)
+      if (flow) {
+        arriveFlow(flow)
+        const destination = flow.destinationZoneId
+        // The last arriving card completes a shuffle. Only now may a pile
+        // expose its final shuffled top (including a different card back).
+        if (destination && shuffledZones.has(destination) && flows.every(candidate =>
+          candidate.destinationZoneId !== destination || appliedArrival.has(candidate.instanceId) ||
+          !animatedInstanceIds.has(candidate.instanceId))) {
+          const finalCards = finalPiles[destination]?.cardIds
+          if (finalCards) projectedCards.set(destination, [...finalCards])
+          publish()
+        }
+      }
     },
     finish() {
       const overrides = { ...access.get() }

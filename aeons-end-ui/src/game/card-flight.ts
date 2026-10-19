@@ -27,6 +27,14 @@ export interface CardFlightSnapshot {
   height: number
 }
 
+export interface CardFlightOptions {
+  destinationMode?: CardFlightDestinationMode
+  timing?: CardFlightTiming
+  restoreDestinationVisibility?: string
+  afterFlight?: () => void | Promise<void>
+  isCurrent?: () => boolean
+}
+
 export interface CardRowPosition {
   left: number
   top: number
@@ -43,6 +51,8 @@ export interface CardZoneMotionCardSnapshot {
   instanceId: string
   face?: 'front' | 'back'
   flight: CardFlightSnapshot | null
+  /** Real board source reserved for motions that must show a physical departure. */
+  physicalFlight?: CardFlightSnapshot | null
 }
 
 export interface CardZoneMotionSnapshot {
@@ -116,11 +126,15 @@ export function discardCardMoveSourceSnapshot(snapshot: CardMoveSourceSnapshot |
 }
 
 /** Keep a visual copy before the engine moves a card to another zone. */
-export function captureCardFlight(element: HTMLElement | null): CardFlightSnapshot | null {
+export function captureCardFlight(
+  element: HTMLElement | null,
+  options: { ignoreDecisionPresentation?: boolean } = {},
+): CardFlightSnapshot | null {
   if (!element || typeof document === 'undefined') return null
   if (element.dataset.cardMotionSuppressFlight === 'true') return null
   const instanceId = element.dataset.cardInstanceId
-  if (instanceId && isCardInstancePresentedInDecision(instanceId, element.ownerDocument)) return null
+  if (!options.ignoreDecisionPresentation && instanceId &&
+    isCardInstancePresentedInDecision(instanceId, element.ownerDocument)) return null
   const rect = element.getBoundingClientRect()
   if (rect.width <= 0 || rect.height <= 0) return null
 
@@ -218,6 +232,11 @@ export function captureCardZoneMotion(
     if (!zone || !cardId || !key) return []
     const ownerId = element.dataset.cardMotionOwnerId ?? ''
     const visibility = getComputedStyle(element).visibility
+    const flight = visibility === 'hidden' ? null : captureCardFlight(element)
+    const physicalFlight = !flight && visibility !== 'hidden' &&
+      !key.startsWith('decision-') && element.dataset.cardMotionSuppressFlight !== 'true'
+      ? captureCardFlight(element, { ignoreDecisionPresentation: true })
+      : null
     return [{
       zone,
       cardId,
@@ -227,7 +246,8 @@ export function captureCardZoneMotion(
       ...(element.dataset.cardMotionFace === 'front' || element.dataset.cardMotionFace === 'back'
         ? { face: element.dataset.cardMotionFace as 'front' | 'back' }
         : {}),
-      flight: visibility === 'hidden' ? null : captureCardFlight(element),
+      flight,
+      ...(physicalFlight ? { physicalFlight } : {}),
     }]
   })
   return { rows, cards }
@@ -254,6 +274,7 @@ export function discardCardZoneMotionSource(
   if (index < 0) return false
   const [card] = snapshot.cards.splice(index, 1)
   discardCardFlight(card?.flight ?? null)
+  discardCardFlight(card?.physicalFlight ?? null)
   return true
 }
 
@@ -537,14 +558,9 @@ export async function animateCardRevealFlight(
 export async function animateCardFlight(
   flight: CardFlightSnapshot | null,
   destination: HTMLElement | null,
-  options: {
-    destinationMode?: CardFlightDestinationMode
-    timing?: CardFlightTiming
-    restoreDestinationVisibility?: string
-    afterFlight?: () => void | Promise<void>
-  } = {},
+  options: CardFlightOptions = {},
 ): Promise<void> {
-  if (!flight || !destination || typeof document === 'undefined') {
+  if (!flight || !destination || typeof document === 'undefined' || options.isCurrent?.() === false) {
     discardCardFlight(flight)
     return
   }
@@ -593,7 +609,7 @@ export async function animateCardFlight(
     // Navigation or teardown can cancel a flight; the transient clone is still removed.
   }
   try {
-    if (completed) await options.afterFlight?.()
+    if (completed && options.isCurrent?.() !== false) await options.afterFlight?.()
   } finally {
     clone.remove()
     if (hideDestination) destination.style.visibility = destinationVisibility
@@ -605,14 +621,9 @@ export async function animateCardFlightWithReveal(
   flight: CardFlightSnapshot | null,
   destination: HTMLElement | null,
   faceImageUrl: string,
-  options: {
-    destinationMode?: CardFlightDestinationMode
-    timing?: CardFlightTiming
-    restoreDestinationVisibility?: string
-    afterFlight?: () => void | Promise<void>
-  } = {},
+  options: CardFlightOptions = {},
 ): Promise<void> {
-  if (!flight || !destination || typeof document === 'undefined') {
+  if (!flight || !destination || typeof document === 'undefined' || options.isCurrent?.() === false) {
     discardCardFlight(flight)
     return
   }
@@ -640,6 +651,10 @@ export async function animateCardFlightWithReveal(
   }
 
   const imageStyle = getComputedStyle(back)
+  if (options.isCurrent?.() === false) {
+    discardCardFlight(flight)
+    return
+  }
   const face = document.createElement('div')
   face.className = 'card-flight-flip-face'
   face.style.borderRadius = imageStyle.borderRadius
@@ -725,7 +740,7 @@ export async function animateCardFlightWithReveal(
     // Navigation or teardown can cancel the flight; the transient clone is still removed.
   }
   try {
-    if (completed) await options.afterFlight?.()
+    if (completed && options.isCurrent?.() !== false) await options.afterFlight?.()
   } finally {
     clone.remove()
     if (hideDestination) destination.style.visibility = destinationVisibility
@@ -762,14 +777,9 @@ export async function animateCardFlightWithFaceDownReveal(
   flight: CardFlightSnapshot | null,
   destination: HTMLElement | null,
   cardBackImageUrl: string,
-  options: {
-    destinationMode?: CardFlightDestinationMode
-    timing?: CardFlightTiming
-    afterFlight?: () => void | Promise<void>
-    backBorderRadius?: string
-  } = {},
+  options: CardFlightOptions & { backBorderRadius?: string } = {},
 ): Promise<void> {
-  if (!flight || !destination || typeof document === 'undefined') {
+  if (!flight || !destination || typeof document === 'undefined' || options.isCurrent?.() === false) {
     discardCardFlight(flight)
     return
   }
@@ -833,6 +843,11 @@ export async function animateCardFlightWithFaceDownReveal(
 
   const decodedBack = decodeCardBackOnce(cardBackImageUrl)
   await decodedBack
+  if (options.isCurrent?.() === false) {
+    discardCardFlight(flight)
+    if (hideDestination) destination.style.visibility = destinationVisibility
+    return
+  }
 
   const { duration, easing } = resolveCardFlightTiming(options.timing)
 
@@ -884,7 +899,7 @@ export async function animateCardFlightWithFaceDownReveal(
     // Navigation or teardown can cancel a flight; the transient clone is removed below.
   } finally {
     try {
-      if (completed) await options.afterFlight?.()
+      if (completed && options.isCurrent?.() !== false) await options.afterFlight?.()
     } finally {
       clone.remove()
       if (hideDestination) destination.style.visibility = destinationVisibility
@@ -897,11 +912,7 @@ export function animateCardFlightToPlayerDeck(
   flight: CardFlightSnapshot | null,
   destination: HTMLElement | null,
   playerCardBackImageUrl: string,
-  options: {
-    destinationMode?: CardFlightDestinationMode
-    timing?: CardFlightTiming
-    afterFlight?: () => void | Promise<void>
-  } = {},
+  options: CardFlightOptions = {},
 ): Promise<void> {
   return animateCardFlightWithFaceDownReveal(flight, destination, playerCardBackImageUrl, {
     ...options,

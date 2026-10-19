@@ -147,6 +147,7 @@ export type CardEffectCondition =
   | { kind: 'any_player_below_max_life' }
   | { kind: 'has_bottom_nemesis_discard_attack_with_effect' }
   | { kind: 'nemesis_life'; comparison: EffectComparison; amount: number }
+  | { kind: 'sub_board_token_count'; tokenId: string; comparison: EffectComparison; count: number; regionIds?: string[] }
   | { kind: 'nemesis_difficulty_is'; difficulty: NemesisDifficulty }
 
 /** A conditional amount added to one existing damage instance. */
@@ -457,8 +458,10 @@ export interface PendingNemesisDiscard {
   nextCostIndex: number
   selectedCards: CardChoice[]
   selectedPreppedSpells: PreppedSpellChoice[]
-  selectedCardPayments: Array<{ costIndex: number; choices: CardChoice[] }>
+  selectedCardPayments: Array<{ costIndex: number; choices: CardChoice[]; applied?: boolean }>
   selectedPreppedSpellPayments: Array<{ costIndex: number; choices: PreppedSpellChoice[] }>
+  /** A sequentially discarded hand card must finish flying before the next choice. */
+  awaitingCardMotions?: boolean
 }
 
 export interface DecisionOption {
@@ -466,6 +469,8 @@ export interface DecisionOption {
   label: string
   /** Card shown as the visual choice for card-selection style decisions. */
   cardId?: string
+  /** Sub-board region associated with a board-click choice. */
+  regionId?: string
   /** The option is shown for context but cannot be selected in the current state. */
   disabled?: boolean
 }
@@ -482,7 +487,7 @@ export type PendingDecision = PendingDecisionBase & (
       kind: 'choose_one'
       options: DecisionOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice' | 'centered-prompt-cards'
+      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice' | 'centered-prompt-cards' | 'centered-prompt' | 'sub-board-region-choice'
     }
   | DamageTargetDecisionContinuation
   | {
@@ -493,6 +498,7 @@ export type PendingDecision = PendingDecisionBase & (
       maxAmount: number
       available: number
       summary?: TokenAmountChoiceSummary
+      layout?: 'centered-prompt'
     }
   | {
       kind: 'choose_optional'
@@ -558,6 +564,8 @@ export type PendingDecision = PendingDecisionBase & (
       candidates: CollectiveCardChoice[]
       min: number
       max: number
+      /** This single card must be clicked again to confirm a repeated spell cast. */
+      repeat?: boolean
     }
   | {
       kind: 'select_life_target'
@@ -719,6 +727,8 @@ export interface CardEffectOption {
   effects: CardEffect[]
   /** Card shown when this option is presented as a visual card choice. */
   cardId?: string
+  /** Sub-board region associated with a board-click choice. */
+  regionId?: string
   /** Optional dynamic rule used to determine whether this choice is available. */
   condition?: CardEffectCondition
   /** Resolve this option automatically when it is the only available choice. */
@@ -746,6 +756,7 @@ export type CardEffect =
       minAmount?: number
       maxAmount?: number
       summary?: TokenAmountChoiceSummary
+      layout?: 'centered-prompt'
       effects: CardEffect[]
     }
   | { kind: 'gain_knowledge'; amount: number; target?: 'self' | 'breach_owner' }
@@ -925,6 +936,8 @@ export type CardEffect =
       selection?: PlayerSelectionRule
       /** If any target has one of these in hand, restrict the choice to those players. */
       preferTargetWithCardNamesInHand?: string[]
+      /** If any target has one of these card types in hand, restrict the choice to those players. */
+      preferTargetWithCardTypesInHand?: CardType[]
     }
   | {
       kind: 'draw_cards'
@@ -1020,6 +1033,10 @@ export type CardEffect =
       mostExpensive?: boolean
       /** Restore the effect to its source Mage after a player-targeted discard. */
       restoreToSourceAfterSelection?: boolean
+      /** Fixed multi-card hand discards default to one-at-a-time; use together to retain multi-select. */
+      selectionMode?: 'one_at_a_time' | 'together'
+      /** Saved progress for a paused one-at-a-time hand discard. */
+      sequentialProgress?: { remaining: number; discarded: number; highestCost: number }
     }
   | {
       kind: 'discard_prepped_spells'
@@ -1090,7 +1107,16 @@ export type CardEffect =
   | { kind: 'deal_damage_from_last_selection_cost'; target: DamageTargetScope; base?: number }
   | { kind: 'play_card_from_hand'; cardType: 'gem'; times: number; destroy: boolean }
   | { kind: 'cast_spell_from_hand'; times: number }
-  | { kind: 'cast_selected_spell_from_hand'; playerId: PlayerId; cardId: string; remaining: number }
+  | {
+      kind: 'cast_selected_spell_from_hand'
+      playerId: PlayerId
+      cardId: string
+      remaining: number
+      /** This cast is a repeat and waits for an explicit confirmation first. */
+      repeatConfirmation?: boolean
+      /** Set only after the player confirms this repeated hand spell. */
+      repeatConfirmed?: boolean
+    }
   | { kind: 'play_card_instance'; cardId: string; destroyAfter: boolean; recordPlay?: boolean }
   | { kind: 'destroy_played_card'; cardId: string; playerId?: PlayerId }
   /** Remove a face-up Mage-specific card from the Player cards in play area. */
@@ -1106,7 +1132,7 @@ export type CardEffect =
       prompt: string
       options: CardEffectOption[]
       /** Optional presentation hint for choices with long text. */
-      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice' | 'centered-prompt-cards'
+      layout?: 'stacked-panels' | 'two-button-choice' | 'mage-ability' | 'large-card-selection' | 'large-card-choice' | 'centered-prompt-cards' | 'centered-prompt' | 'sub-board-region-choice'
     }
   | {
       kind: 'choose_optional'
@@ -1185,6 +1211,8 @@ export type CardEffect =
       /** Internal continuation after any draw response has been offered. */
       drawAbilityResolved?: boolean
     }
+  /** Return a named card from the Nemesis mat to play, keeping its physical instance. */
+  | { kind: 'play_set_aside_nemesis_card'; cardId: string }
   /** Attach the bottom Nemesis-deck card, face-up, to the active Nemesis card. */
   | { kind: 'attach_bottom_nemesis_deck_card_under_source' }
   /** Play the card under the active Nemesis card as if it had been drawn. */
@@ -1223,6 +1251,16 @@ export type CardEffect =
   /** Cancel the currently revealed Attack/Power before it resolves. */
   | { kind: 'discard_current_nemesis_card' }
   | { kind: 'gain_minion_life'; amount: number; minionCardId: string }
+  /** Add or move a token on the active Nemesis' UI sub board. */
+  | { kind: 'place_sub_board_token'; tokenId: string; regionId: string; instanceId?: string }
+  | { kind: 'move_sub_board_token'; tokenId: string; regionId: string; instanceId?: string }
+  | { kind: 'advance_sub_board_token'; tokenId: string }
+  | { kind: 'resolve_sub_board_space'; tokenId: string; regionId?: string }
+  /** Remove a fixed number of tokens (asking the player which one) or all matching tokens. */
+  | { kind: 'remove_sub_board_tokens'; tokenId: string; amount: number | 'all'; regionIds?: string[]; selectByRegion?: boolean }
+  | { kind: 'remove_sub_board_token_instance'; instanceId: string }
+  /** Re-enter a Nemesis card that was set aside, resetting its printed Power tokens. */
+  | { kind: 'play_set_aside_nemesis_card'; cardId: string }
   /** Move selected Mage cards to the top of the Nemesis specific-deck zone. */
   | {
       kind: 'move_cards_to_nemesis_specific_deck'
@@ -1362,6 +1400,12 @@ export interface NemesisCardDef extends CardDef {
   gainCardsUnderneathOnDefeat?: boolean
   /** This Nemesis card prevents adding cards to its specific deck while in play. */
   blocksPlacementIntoSpecificDeck?: boolean
+  /** This Nemesis card prevents players from placing tokens on a named sub-board. */
+  blocksNemesisSubBoardPlacement?: string
+  /** This Nemesis card suppresses effects printed on a named sub-board. */
+  suppressesNemesisSubBoardEffects?: string
+  /** Additional damage to a target when an effect from a named sub-board deals it. */
+  subBoardDamageBonus?: { subBoardId: string; target: 'gravehold'; amount: number }
   /** Remove this card from the play area to the Nemesis mat after its Power resolves. */
   setAsideWhenResolved?: boolean
   /** Extra life added when this Minion enters play on Increased Difficulty. */
@@ -1387,7 +1431,14 @@ export type NemesisDiscardCost =
       amount: number
       minCost?: number
     }
-  | { kind: 'discard_cards'; source: 'hand'; amount: number; drawAfter?: number }
+  | {
+      kind: 'discard_cards'
+      source: 'hand'
+      amount: number
+      drawAfter?: number
+      /** Multi-card hand payments default to one-at-a-time selection; use together for bulk choice. */
+      selectionMode?: 'one_at_a_time' | 'together'
+    }
   | {
       kind: 'destroy_prepped_spells'
       amount: number
@@ -1531,6 +1582,8 @@ export interface NemesisCardInPlay {
   /** Attacks are shown here temporarily while their effects resolve. */
   cardType: 'attack' | 'minion' | 'power'
   placedAt: number
+  /** Monotonic order when this card most recently entered its current board row. */
+  displayOrder?: number
   instanceId?: string
   enteredOnNemesisTurn?: number
   lifeTokens?: number
@@ -1667,6 +1720,9 @@ export interface NemesisState {
   turnOrderDeckResetCardInstanceId?: string
   /** Face-up Nemesis cards set aside beside the active play row. */
   setAsideCards?: NemesisCardInPlay[]
+  /** Physical tokens currently placed on a Nemesis sub board. */
+  subBoardTokens?: NemesisSubBoardToken[]
+  subBoardTokenCounter?: number
   counters: Record<string, number>
   /** Number of Nemesis turns that have started for this game. */
   nemesisTurnNumber?: number
@@ -1674,6 +1730,12 @@ export interface NemesisState {
   cardInstanceCounter?: number
   playArea: NemesisCardInPlay[]
   tierAnnounced: boolean[]
+}
+
+export interface NemesisSubBoardToken {
+  instanceId: string
+  tokenId: string
+  regionId: string
 }
 
 export interface MarketPile {

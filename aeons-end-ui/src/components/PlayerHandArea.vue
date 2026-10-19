@@ -17,11 +17,13 @@ interface HandCardDisplay {
   isSpell: boolean
   pending: boolean
   selected: boolean
+  repeatConfirmation: boolean
   endTurnActionAttention: boolean
 }
 
 interface PlayerInPlayCardDisplay {
   cardId: string
+  instanceId?: string
   cardIndex: number
   typeClass: string
   actionAvailable: boolean
@@ -145,6 +147,11 @@ function activateSpecificDeckPrimary(canBuy: boolean) {
             :card-id="card.cardId"
             size="mini"
             class="player-in-play-card"
+            data-card-motion-zone="player_cards_in_play"
+            :data-card-motion-card-id="card.cardId"
+            :data-card-motion-owner-id="playerId"
+            :data-card-motion-key="`in-play-${playerId}-${card.instanceId}`"
+            :data-card-instance-id="card.instanceId"
             :class="[card.typeClass, {
               'in-play-action': card.actionAvailable || card.requiredConfirmation,
               'game-highlight': card.actionAvailable || card.requiredConfirmation,
@@ -204,7 +211,6 @@ function activateSpecificDeckPrimary(canBuy: boolean) {
       :class="{ 'has-cards': discardCount > 0, 'is-empty': discardCount === 0, 'recall-action-available': recallAvailable, 'end-turn-attention': recallActionAttention }"
       :data-main-action-id="recallActionAttention ? `discard-pile:${playerId}` : undefined"
       :aria-disabled="discardCount === 0"
-      :title="recallAvailable ? 'Recall is available from this Discard' : undefined"
       @click="discardCount > 0 && emit('open-discard')"
       @contextmenu.prevent="discardCount > 0 && emit('open-discard')"
     >

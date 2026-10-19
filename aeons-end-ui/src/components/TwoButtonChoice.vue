@@ -16,7 +16,6 @@ const emit = defineEmits<{
       class="btn primary decision-option"
       :class="{ unavailable: option.disabled }"
       :disabled="option.disabled"
-      :title="option.disabled ? 'This option is not available right now.' : undefined"
       @click="emit('select', option.id)"
     >
       {{ option.label }}

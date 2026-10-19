@@ -9,6 +9,7 @@ import {
 import type { CardFlightSnapshot } from './card-flight'
 import { cardFaceForZone, cardMotionChangesFace, resolveCardMotionPolicy } from './card-motion-policy'
 import type { CardFlightDestinationMode, CardFlightTiming } from './card-motion-policy'
+import { createDestroyedCardFlightTarget } from './card-destroy-motion'
 
 export interface CardMotionFlightInput {
   cardId: string
@@ -29,10 +30,24 @@ export interface CardMotionFlightInput {
   faceDownImageUrl?: string
   revealFromFaceDown?: boolean
   revealFrontImageUrl?: string
+  isCurrent?: () => boolean
 }
 
 /** Apply the shared route, speed, card-back and reveal rules to a single flight. */
 export function animateCardMotionFlight(input: CardMotionFlightInput): Promise<void> {
+  if (input.flight) {
+    input.flight.clone.dataset.cardMotionSourceZone = input.sourceZone
+    input.flight.clone.dataset.cardMotionDestinationZone = input.destinationZone
+  }
+  if (input.destinationZone === 'destroyed' && input.destination && input.flight) {
+    const target = createDestroyedCardFlightTarget(input.destination, input.flight)
+    return renderCardMotionFlight({ ...input, destination: target, destinationMode: 'overlay' })
+      .finally(() => target.remove())
+  }
+  return renderCardMotionFlight(input)
+}
+
+function renderCardMotionFlight(input: CardMotionFlightInput): Promise<void> {
   const policy = resolveCardMotionPolicy({
     sourceZone: input.sourceZone,
     destinationZone: input.destinationZone,
@@ -45,6 +60,7 @@ export function animateCardMotionFlight(input: CardMotionFlightInput): Promise<v
     timing: input.timing ?? policy.timing,
     restoreDestinationVisibility: input.restoreDestinationVisibility,
     afterFlight: input.afterFlight,
+    isCurrent: input.isCurrent,
   }
   const faceDownOnArrival = input.faceDownOnArrival ?? policy.faceDownOnArrival
   const destinationFaceDown = faceDownOnArrival ?? (cardFaceForZone(input.destinationZone) === 'back')
@@ -73,6 +89,7 @@ export function animateCardMotionFlight(input: CardMotionFlightInput): Promise<v
         destinationMode: options.destinationMode,
         timing: options.timing,
         afterFlight: input.afterFlight,
+        isCurrent: input.isCurrent,
       },
     )
   }
@@ -104,6 +121,7 @@ export function animateCardMotionFlight(input: CardMotionFlightInput): Promise<v
         destinationMode: options.destinationMode,
         timing: options.timing,
         afterFlight: input.afterFlight,
+        isCurrent: input.isCurrent,
       },
     )
   }

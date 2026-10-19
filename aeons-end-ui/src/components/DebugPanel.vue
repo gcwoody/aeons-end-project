@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import { computed, ref, reactive, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { drawCardsForPlayer, ensurePlayerDeckInstances, getPlayer, MAX_PULSE_TOKENS, putPlayerCardInDeck, toRoman } from '@engine/engine'
-import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, ALL_NEMESIS_CARDS, NEMESIS_CARDS } from '@engine/data'
-import type { CardDef, GameState, PlayerState } from '@engine/types'
+import { getCard, INITIAL_CARDS, ALL_MARKET_CARDS, ALL_NEMESIS_CARDS } from '@engine/data'
+import type { CardDef, GameState, NemesisCardDef, PlayerState, StrikeCardDef } from '@engine/types'
 import { useGame } from '../game/useGame'
 import { cardImageUrl } from '../card-images'
 import DebugCardPicker from './DebugCardPicker.vue'
@@ -130,6 +130,10 @@ const currentTurnPlayerId = computed(() => {
     ?? ''
 })
 
+function isNemesisSideCard(card: CardDef): card is NemesisCardDef | StrikeCardDef {
+  return card.type === 'attack' || card.type === 'minion' || card.type === 'power' || card.type === 'strike'
+}
+
 const allCards = computed<CardDef[]>(() => {
   const ids = [
     ...Object.keys(INITIAL_CARDS),
@@ -138,10 +142,12 @@ const allCards = computed<CardDef[]>(() => {
   ]
   return [...new Set(ids)]
     .map(cardId => getCard(cardId))
+    // Nemesis-side cards belong only in the Nemesis picker, even when a search
+    // query reveals types hidden from the player's initial view.
+    .filter(card => !isNemesisSideCard(card))
 })
-const allNemesisCards = computed(() => Object.keys(NEMESIS_CARDS).filter(cardId => {
-  const card = getCard(cardId)
-  return card.type === 'attack' || card.type === 'minion' || card.type === 'power'
+const allNemesisCards = computed(() => Object.keys(ALL_NEMESIS_CARDS).filter(cardId => {
+  return isNemesisSideCard(ALL_NEMESIS_CARDS[cardId]!)
 }))
 const allNemesisCardDefs = computed<CardDef[]>(() => allNemesisCards.value.map(cardId => getCard(cardId)))
 const addPlayer = ref('')
@@ -205,11 +211,15 @@ function drawOneCardForPlayer() {
 }
 
 function addCardToNemesis() {
-  const card = NEMESIS_CARDS[addNemesisCard.value]
-  if (!card) return
+  const card = ALL_NEMESIS_CARDS[addNemesisCard.value]
+  if (!card || !isNemesisSideCard(card)) return
   const n = state.game!.nemesis
   if (card.type === 'attack') {
     n.deck.unshift(card.id)
+    return
+  }
+  if (card.type === 'strike') {
+    n.strikeDeck.unshift(card.id)
     return
   }
   if (card.type !== 'minion' && card.type !== 'power') return
@@ -445,7 +455,7 @@ onBeforeUnmount(() => {
           :allow-type-filter="false"
           :show-cost="false"
           :show-meta="false"
-          title="Add card"
+
         />
         <div class="debug-card-selected" aria-live="polite">
           <CardHoverPreview v-if="cardImageUrl(addCard)" :card-id="addCard" :preview-width="210" :preview-height="291.02">
@@ -462,7 +472,7 @@ onBeforeUnmount(() => {
         <DebugCardPicker
           v-model="addNemesisCard"
           :cards="allNemesisCardDefs"
-          title="Add Nemesis card"
+
           search-placeholder="Search Nemesis cards..."
           :show-cost="false"
           :global-shortcut="false"
@@ -477,7 +487,7 @@ onBeforeUnmount(() => {
             <span class="debug-hint">{{ getCard(addNemesisCard).type }} card</span>
           </div>
         </div>
-        <span class="debug-hint">Minion and Power cards enter play; Attack cards go to the top of the Nemesis deck.</span>
+        <span class="debug-hint">Minion and Power cards enter play; Attack cards go to the top of the Nemesis deck; Strike cards go to the top of the Nemesis specific deck.</span>
         <button class="btn small" @click="addCardToNemesis()">Add to Nemesis</button>
       </div>
 
@@ -507,7 +517,7 @@ onBeforeUnmount(() => {
       class="debug-resize-handle"
       type="button"
       aria-label="Resize debug tools"
-      title="Drag to resize"
+
       data-debug-resize
       @pointerdown.stop="startResize"
     ></button>

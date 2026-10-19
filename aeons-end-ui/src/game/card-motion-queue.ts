@@ -4,16 +4,21 @@ export interface CardMotionQueue {
   current(): Promise<void>
   waitUntilIdle(): Promise<void>
   changedSince(observed: Promise<void>): boolean
+  /** Drop work that has not started and prevent it from running after undo. */
+  cancelAll(): void
 }
 
 export function createCardMotionQueue(): CardMotionQueue {
   let queue: Promise<void> = Promise.resolve()
+  let generation = 0
 
   return {
     enqueue(runMotion: () => Promise<void>): Promise<void> {
       // The callback starts later, so callers must capture changing state
       // before they enqueue it.
-      const queuedMotion = queue.then(runMotion, runMotion)
+      const queuedGeneration = generation
+      const startIfCurrent = () => queuedGeneration === generation ? runMotion() : undefined
+      const queuedMotion = queue.then(startIfCurrent, startIfCurrent)
       // Let later motions continue if one visual task fails. The returned
       // promise still reports that failure to the operation that enqueued it.
       queue = queuedMotion.catch(() => undefined)
@@ -31,6 +36,10 @@ export function createCardMotionQueue(): CardMotionQueue {
     },
     changedSince(observed: Promise<void>): boolean {
       return observed !== queue
+    },
+    cancelAll(): void {
+      generation += 1
+      queue = Promise.resolve()
     },
   }
 }

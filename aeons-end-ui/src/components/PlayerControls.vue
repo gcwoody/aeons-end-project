@@ -128,7 +128,7 @@ const emit = defineEmits<{
         v-if="aether.aetherTokens > 0"
         class="aether-token-status"
         :aria-label="`${aether.aetherTokens} Aether Tokens`"
-        :title="`${aether.aetherTokens} Aether Tokens`"
+
       >
         <img :src="aetherTokenImageUrl()" alt="Aether Token" draggable="false" />
         <strong class="controls-number">{{ aether.aetherTokens }}</strong>
@@ -137,7 +137,7 @@ const emit = defineEmits<{
         v-if="pulseTokenCount !== null"
         class="pulse-token-status"
         :aria-label="`${pulseTokenCount} Pulse Tokens`"
-        :title="`${pulseTokenCount} Pulse Tokens`"
+
       >
         <img :src="pulseTokenImageUrl()" alt="Pulse Token" draggable="false" />
         <strong class="controls-number">{{ pulseTokenCount }}</strong>
@@ -181,7 +181,7 @@ const emit = defineEmits<{
         class="doom-token-track"
         role="img"
         :aria-label="doomTokenTrack.label"
-        :title="doomTokenTrack.label"
+
       >
         <img
           v-for="tokenIndex in 5"
@@ -199,8 +199,8 @@ const emit = defineEmits<{
     <div class="controls-utility">
       <button
         class="btn utility-icon-button destroyed-cards-button"
+        data-card-flight-target="destroyed"
         :aria-label="`View destroyed cards (${players.find(candidate => candidate.selected)?.destroyedCount ?? 0})`"
-        :title="`Destroyed Cards: ${players.find(candidate => candidate.selected)?.destroyedCount ?? 0}`"
         :data-destroyed-card-count="players.find(candidate => candidate.selected)?.destroyedCount ?? 0"
         @click="emit('open-destroyed')"
       >
@@ -211,7 +211,7 @@ const emit = defineEmits<{
           {{ players.find(candidate => candidate.selected)?.destroyedCount ?? 0 }}
         </span>
       </button>
-      <button class="btn utility-icon-button help-button" aria-label="Open game help" title="Game Help" @click="emit('toggle-help')">?</button>
+      <button class="btn utility-icon-button help-button" aria-label="Open game help" @click="emit('toggle-help')">?</button>
     </div>
   </div>
 </template>

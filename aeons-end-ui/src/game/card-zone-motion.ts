@@ -9,6 +9,7 @@ import { animateCardMotionFlight } from './card-motion-flight'
 import type { CardFlightSnapshot, CardZoneMotionCardSnapshot, CardZoneMotionSnapshot } from './card-flight'
 import { resolveCardMotionPolicy } from './card-motion-policy'
 import type { CardFlightTiming } from './card-motion-policy'
+import { cardMovesForAnimation } from './card-destroy-motion'
 
 export interface CardZoneMotionTransfer {
   sourceZone: string
@@ -18,6 +19,8 @@ export interface CardZoneMotionTransfer {
   destinationZoneId: string
   destinationIndex: number
   sourceInstanceId?: string
+  /** A whole pile can move as one visible stack while retaining each card's count. */
+  sourceInstanceIds?: string[]
   destinationInstanceId?: string
   moveId?: string
   moveIds?: string[]
@@ -34,6 +37,7 @@ export interface CardZoneMotionTransfer {
   /** Settle the visible destination under the clone before the clone is removed. */
   afterFlight?: () => void | Promise<void>
   timing?: CardFlightTiming
+  reason?: string
 }
 /** Map rule-side zones to the visible names used by card surfaces. */
 const motionZoneByEngineZone: Partial<Record<CardMoveZone, string>> = {
@@ -72,6 +76,7 @@ function eventDestination(
   zone: string,
   sourceZone: string,
 ): HTMLElement | null {
+  if (zone === 'destroyed') return root.querySelector<HTMLElement>('[data-card-flight-target="destroyed"]')
   const instanceDestination = [...root.querySelectorAll<HTMLElement>('[data-card-instance-id][data-card-motion-zone]')]
     .find(element => element.dataset.cardInstanceId === event.instanceId &&
       element.dataset.cardMotionZone === zone)
@@ -117,18 +122,26 @@ export function resolveCardZoneMotionFromEvents(
   root: ParentNode = document,
   alreadyClaimedMoveIds: ReadonlySet<string> = new Set(),
 ): CardZoneMotionEventResolution {
-  const relevant = events.filter((event): event is Extract<CardMoveEvent, { kind: 'move' }> =>
-    event.kind === 'move' &&
+  const animationMoves = cardMovesForAnimation(events)
+  const destroyedInstances = new Set(animationMoves.flatMap(event =>
+    event.destination.zone === 'destroyed' ? [event.instanceId] : []))
+  const capturedInstances = new Set(snapshot.cards.map(card => card.instanceId))
+  for (const event of animationMoves) {
+    if (destroyedInstances.has(event.instanceId) && snapshot.cards.some(card =>
+      card.key === event.source.zoneId && card.cardId === event.cardId)) capturedInstances.add(event.instanceId)
+  }
+  const relevant = animationMoves.filter(event =>
       !!motionZoneByEngineZone[event.source.zone] && !!motionZoneByEngineZone[event.destination.zone] &&
-      snapshot.cards.some(card => card.instanceId === event.instanceId) &&
+      capturedInstances.has(event.instanceId) &&
       !alreadyClaimedMoveIds.has(event.moveId) &&
-      // Recycling a player's discard pile updates the piles without flying
-      // each card back into the deck.
-      !(event.source.zone === 'discard' && event.destination.zone === 'deck') &&
+      // Ordinary draw recycling stays immediate. Explicit shuffle effects
+      // move the discard pile as one stack before the next effect resumes.
+      (destroyedInstances.has(event.instanceId) || (
+      !(event.source.zone === 'discard' && event.destination.zone === 'deck' && event.reason !== 'shuffle') &&
       // These routes have their own exact, ordered flight queue.
       !(event.source.zone === 'hand' && ['deck', 'discard'].includes(event.destination.zone)) &&
       !(event.reason === 'discard_phase' && event.source.zone === 'played_this_turn' && event.destination.zone === 'discard') &&
-      !(event.source.zone === 'temporary' && event.destination.zone === 'deck'),
+      !(event.source.zone === 'temporary' && event.destination.zone === 'deck'))),
   ).sort((left, right) => left.sequence - right.sequence)
   const supplyDevelopCreations = events.filter((event): event is Extract<CardMoveEvent, { kind: 'create' }> =>
     event.kind === 'create' && event.reason === 'develop' &&
@@ -145,8 +158,8 @@ export function resolveCardZoneMotionFromEvents(
   const settleImmediatelyInstanceIds: string[] = []
   const usedOrigins = new Set<CardZoneMotionCardSnapshot>()
   const transferredFlights = new Set<CardFlightSnapshot>()
-  const takeOriginFlight = (origin: CardZoneMotionCardSnapshot) => {
-    const flight = usedOrigins.has(origin) ? cloneCardFlightSnapshot(origin.flight) : origin.flight
+  const takeOriginFlight = (origin: CardZoneMotionCardSnapshot, captured = origin.flight) => {
+    const flight = captured && transferredFlights.has(captured) ? cloneCardFlightSnapshot(captured) : captured
     usedOrigins.add(origin)
     if (flight) transferredFlights.add(flight)
     return flight
@@ -155,13 +168,19 @@ export function resolveCardZoneMotionFromEvents(
     const first = moves[0]!
     const last = moves[moves.length - 1]!
     const sourceZone = motionZoneByEngineZone[first.source.zone]!
-    const origins = snapshot.cards.filter(card => card.instanceId === instanceId && card.zone === sourceZone)
-    const origin = origins.find(card => card.key.startsWith('decision-')) ?? origins[0]
-    if (!origin?.flight) continue
     const destinationZone = motionZoneByEngineZone[last.destination.zone]!
+    const origins = snapshot.cards.filter(card => card.zone === sourceZone &&
+      (card.instanceId === instanceId || (destinationZone === 'destroyed' &&
+        card.key === first.source.zoneId && card.cardId === first.cardId)))
+    const usePhysicalSource = destinationZone === 'destroyed' ||
+      (sourceZone === 'discard' && destinationZone === 'deck' && first.reason === 'shuffle')
+    const origin = usePhysicalSource
+      ? origins.find(card => !card.key.startsWith('decision-') && (card.physicalFlight || card.flight))
+      : origins.find(card => card.key.startsWith('decision-')) ?? origins[0]
+    const captured = usePhysicalSource ? origin?.physicalFlight ?? origin?.flight : origin?.flight
+    if (!origin || !captured) continue
     const destination = eventDestination(root, last, destinationZone, sourceZone)
     if (!destination) {
-      discardCardFlight(origin.flight)
       settleImmediatelyInstanceIds.push(instanceId)
       continue
     }
@@ -181,6 +200,8 @@ export function resolveCardZoneMotionFromEvents(
         : displayedFace === 'back'
           ? true
           : motionPolicy.faceDownOnArrival
+    const flight = takeOriginFlight(origin, captured)
+    if (flight) flight.clone.dataset.cardFlightInstanceId = instanceId
     transfers.push({
       sourceZone,
       sourceZoneId: first.source.zoneId,
@@ -197,10 +218,11 @@ export function resolveCardZoneMotionFromEvents(
       moveId: last.moveId,
       moveIds: moves.map(move => move.moveId),
       sequence: first.sequence,
-      flight: takeOriginFlight(origin),
+      flight,
       destination,
       timing: motionPolicy.timing,
       faceDownOnArrival,
+      reason: first.reason,
     })
   }
   for (const event of supplyDevelopCreations) {
@@ -244,10 +266,33 @@ export function resolveCardZoneMotionFromEvents(
       destination,
     })
   }
+  // A shuffle transfers a discard pile, not a row of individually played
+  // cards. Keep its physical IDs together for one departure and one arrival.
+  const pileTransfers = new Map<string, CardZoneMotionTransfer>()
+  const visibleTransfers: CardZoneMotionTransfer[] = []
+  for (const transfer of transfers) {
+    if (transfer.sourceZone !== 'discard' || transfer.destinationZone !== 'deck' || transfer.reason !== 'shuffle') {
+      visibleTransfers.push(transfer)
+      continue
+    }
+    const key = `${transfer.sourceZoneId}->${transfer.destinationZoneId}`
+    const stack = pileTransfers.get(key)
+    if (!stack) {
+      transfer.sourceInstanceIds = transfer.sourceInstanceId ? [transfer.sourceInstanceId] : []
+      pileTransfers.set(key, transfer)
+      visibleTransfers.push(transfer)
+    } else {
+      if (transfer.sourceInstanceId) stack.sourceInstanceIds!.push(transfer.sourceInstanceId)
+      stack.moveIds!.push(...(transfer.moveIds ?? []))
+      discardCardFlight(transfer.flight)
+    }
+  }
   snapshot.cards.forEach(card => {
-    if (card.flight && !transferredFlights.has(card.flight)) discardCardFlight(card.flight)
+    for (const flight of [card.flight, card.physicalFlight]) {
+      if (flight && !transferredFlights.has(flight)) discardCardFlight(flight)
+    }
   })
-  return { transfers, settleImmediatelyInstanceIds }
+  return { transfers: visibleTransfers, settleImmediatelyInstanceIds }
 }
 
 function cloneCardFlightSnapshot(flight: CardFlightSnapshot | null): CardFlightSnapshot | null {
@@ -261,7 +306,10 @@ function cloneCardFlightSnapshot(flight: CardFlightSnapshot | null): CardFlightS
 }
 
 export function discardCardZoneMotion(snapshot: CardZoneMotionSnapshot | null) {
-  snapshot?.cards.forEach(card => discardCardFlight(card.flight))
+  snapshot?.cards.forEach(card => {
+    discardCardFlight(card.flight)
+    discardCardFlight(card.physicalFlight ?? null)
+  })
 }
 
 /** Animate board-zone flights in engine order, honoring authored zone dependencies. */
@@ -271,9 +319,12 @@ export async function animateCardZoneMotion(
   prepareTransfer?: (transfer: CardZoneMotionTransfer) => Promise<HTMLElement | null>,
   faceDownImageUrl?: string | ((transfer: CardZoneMotionTransfer) => string),
   pileMotionDisplay?: { depart(instanceId: string): void; arrive(instanceId: string): void },
+  isCurrent: () => boolean = () => true,
 ): Promise<void> {
   const animateTransfer = async (transfer: CardZoneMotionTransfer) => {
+    if (!isCurrent()) return
     const sourceRow = await prepareTransfer?.(transfer) ?? null
+    if (!isCurrent()) return
     // A destination can be hidden while this transfer waits for another
     // zone's animation. Restore its original visibility before starting the
     // flight; overlay destinations intentionally remain visible beneath the
@@ -284,20 +335,24 @@ export async function animateCardZoneMotion(
     const arrivalBackImage = typeof faceDownImageUrl === 'function'
       ? faceDownImageUrl(transfer)
       : faceDownImageUrl
-    pileMotionDisplay?.depart(transfer.sourceInstanceId ?? '')
+    const instanceIds = transfer.sourceInstanceIds ?? (transfer.sourceInstanceId ? [transfer.sourceInstanceId] : [])
+    instanceIds.forEach(instanceId => pileMotionDisplay?.depart(instanceId))
     const flight = animateCardMotionFlight({
       cardId: transfer.cardId,
       sourceZone: transfer.sourceZone,
       sourceFace: transfer.sourceFace,
       destinationZone: transfer.destinationZone,
       flight: transfer.flight,
+      isCurrent,
       destination: transfer.destination,
       timing: transfer.timing,
       restoreDestinationVisibility: transfer.destinationVisibilityBefore,
       afterFlight: async () => {
+        if (!isCurrent()) return
         await transfer.afterFlight?.()
-        if (transfer.sourceInstanceId) {
-          pileMotionDisplay?.arrive(transfer.sourceInstanceId)
+        if (!isCurrent()) return
+        if (instanceIds.length > 0) {
+          instanceIds.forEach(instanceId => pileMotionDisplay?.arrive(instanceId))
           await nextTick()
         }
       },
@@ -342,7 +397,10 @@ export async function animateCardZoneMotion(
         if (barrier) await barrier
         const zoneTransfers = [...(transfersByDestination.get(zone) ?? [])]
           .sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0))
-        for (const transfer of zoneTransfers) await settleTransfer(transfer)
+        for (const transfer of zoneTransfers) {
+          if (!isCurrent()) break
+          await settleTransfer(transfer)
+        }
       } finally {
         settlingZones.delete(zone)
       }
@@ -359,7 +417,9 @@ export async function animateCardZoneMotion(
       try {
         const barrier = zoneBarriers.get(transfer.destinationZone)
         if (barrier) await barrier
+        if (!isCurrent()) return
         for (const zone of transfer.waitForZones) await settleZone(zone)
+        if (!isCurrent()) return
         await animateTransfer(transfer)
       } finally {
         settlingTransfers.delete(transfer)
@@ -371,7 +431,14 @@ export async function animateCardZoneMotion(
 
   const orderedTransfers = [...transfers]
     .sort((left, right) => (left.sequence ?? 0) - (right.sequence ?? 0))
-  for (const transfer of orderedTransfers) await settleTransfer(transfer)
-  for (const zone of zoneBarriers.keys()) await settleZone(zone)
+  for (const transfer of orderedTransfers) {
+    if (!isCurrent()) break
+    await settleTransfer(transfer)
+  }
+  if (isCurrent()) {
+    for (const zone of zoneBarriers.keys()) await settleZone(zone)
+  } else {
+    transfers.forEach(transfer => discardCardFlight(transfer.flight))
+  }
 }
 

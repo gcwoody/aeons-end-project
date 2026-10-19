@@ -38,9 +38,12 @@ export function resolveHandCardZoneTransfers(
     moveIds: string[]
     sequence: number
   }>()
+  const destroyedInstances = new Set(events.flatMap(event =>
+    event.kind === 'destroy' && event.reason === 'destroy' ? [event.instanceId] : []))
 
   for (const event of events) {
     if (event.kind !== 'move') continue
+    if (destroyedInstances.has(event.instanceId)) continue
     if (event.source.zone === 'hand' &&
       (event.destination.zone === 'discard' || event.destination.zone === 'deck') &&
       !capturedByInstance.has(event.instanceId)) {

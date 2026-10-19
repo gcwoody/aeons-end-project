@@ -99,6 +99,13 @@ export const dealDamage = combatDealDamage
 export const sufferPlayerDamage = combatSufferPlayerDamage
 const finishGame = combatFinishGame
 
+/** Read the active Nemesis' rules-defined vulnerable state for shared UI. */
+export function isNemesisVulnerable(game: GameState): boolean {
+  const definition = getNemesisDefinition(game.nemesis.definitionId)
+  return getNemesisRules(definition?.rulesModuleId ?? game.nemesis.definitionId)
+    ?.isVulnerable?.(game) ?? false
+}
+
 // ===== Utilities =====
 
 const DIR_ARROW: Record<string, string> = { east: '→', south: '↓', west: '←', north: '↑' }
@@ -1389,7 +1396,8 @@ function optionalEffectAvailable(
       'selection' in selection ? selection.selection : undefined,
     )
     const hasEligibleCard = targets.some(target => getCardChoices(g, target.playerId, selection.source as CardSelectionSource)
-      .some(choice => (!('cardType' in selection) || !selection.cardType || getCard(choice.cardId).type === selection.cardType) &&
+      .some(choice => (selection.kind !== 'destroy_cards' || getCard(choice.cardId).cannotBeDestroyed !== true) &&
+        (!('cardType' in selection) || !selection.cardType || getCard(choice.cardId).type === selection.cardType) &&
         (!('cardTypes' in selection) || !selection.cardTypes || selection.cardTypes.includes(getCard(choice.cardId).type)) &&
         (!('cardIds' in selection) || !selection.cardIds || selection.cardIds.includes(choice.cardId)) &&
         getCard(choice.cardId).cost >= (selection.minCost ?? 0)))
@@ -1787,6 +1795,39 @@ export function resolveEffects(
     lastGainedCardId,
     afterAbilityPlayerId,
   })
+}
+
+/** Whether a player can currently pay to use the active Nemesis' sub-board placement rule. */
+export function canPlaceNemesisSubBoardToken(
+  g: GameState,
+  playerId: string,
+  tokenId: string,
+  regionId: string,
+): boolean {
+  if (g.currentPhase !== 'main' || g.currentTurn !== playerId || g.pendingDecision ||
+    g.pendingEffect || g.pendingNemesisDiscard) return false
+  const subBoard = activeNemesisRules(g)?.subBoard
+  const placement = subBoard?.placement
+  if (!subBoard || !placement || placement.tokenId !== tokenId ||
+    !placement.regionIds.includes(regionId)) return false
+  return getSpendableAether(getPlayer(g, playerId), 'general') >= placement.cost &&
+    (subBoard.canPlaceToken?.(g, playerId, tokenId, regionId) ?? true)
+}
+
+/** Pay for and resolve one placement using the active Nemesis' typed sub-board rules. */
+export function placeNemesisSubBoardToken(
+  g: GameState,
+  playerId: string,
+  tokenId: string,
+  regionId: string,
+): string[] {
+  if (!canPlaceNemesisSubBoardToken(g, playerId, tokenId, regionId)) {
+    return ['This sub-board token cannot be placed right now']
+  }
+  const placement = activeNemesisRules(g)!.subBoard!.placement!
+  spendAether(getPlayer(g, playerId), placement.cost, 'general')
+  return resolveEffects(g, playerId, [{ kind: 'place_sub_board_token', tokenId, regionId }],
+    undefined, 0, playerId)
 }
 
 export function resolveCardEffects(
@@ -3318,6 +3359,21 @@ export function getMainPhaseActionHint(g: GameState, playerId: string): MainPhas
         viewPlayerId: candidate.id,
         label: `Activate ${def.abilityName}`,
       }
+    }
+  }
+
+  // A Nemesis may add a Main Phase sub-board action with a generic token and
+  // placement cost. Keep the turn open while at least one such space is legal.
+  const subBoard = activeNemesisRules(g)?.subBoard
+  const placement = subBoard?.placement
+  if (placement && g.currentPhase === 'main' && g.currentTurn === playerId &&
+    placement.regionIds.some(regionId => canPlaceNemesisSubBoardToken(
+      g, playerId, placement.tokenId, regionId,
+    ))) {
+    return {
+      targetId: 'nemesis-sub-board',
+      viewPlayerId: playerId,
+      label: `Place a ${placement.tokenId} token on the Nemesis sub-board`,
     }
   }
 
