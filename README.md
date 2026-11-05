@@ -2,7 +2,9 @@
 
 ## 中文
 
-这是《Aeon's End》的非官方双人本地网页试玩版。两名玩家使用同一台电脑和浏览器合作对抗 Nemesis。
+这是《Aeon's End》的非官方网页试玩版。目前由一名玩家控制两位 Mage，共同对抗 Nemesis。
+
+在线游玩：[打开试玩页面](https://aeons-end-demo.xiaoas.xyz/)。
 
 ### Windows 本地游玩
 
@@ -14,7 +16,9 @@
 
 ## English
 
-This is an unofficial local browser demo of *Aeon's End*. Two players share one computer and work together to defeat a Nemesis.
+This is an unofficial browser demo of *Aeon's End*. One player controls both Mages as they work together to defeat a Nemesis.
+
+Play online: [Open the demo](https://aeons-end-demo.xiaoas.xyz/).
 
 ### Play locally on Windows
 
