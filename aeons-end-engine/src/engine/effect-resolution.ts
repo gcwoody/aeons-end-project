@@ -1355,7 +1355,11 @@ export function createEffectResolver(services: EffectResolutionServices) {
     }
 
     if (effect.kind === 'conditional') {
-      if (conditionMatches(g, currentPlayerId, effect.condition, resolution)) addRemainingEffects(resolution, effect.effects)
+      addRemainingEffects(resolution,
+        conditionMatches(g, currentPlayerId, effect.condition, resolution)
+          ? effect.effects
+          : effect.elseEffects ?? [],
+      )
       continue
     }
 
@@ -3145,21 +3149,24 @@ export function createEffectResolver(services: EffectResolutionServices) {
         g, currentPlayerId, effect.amount, effect.additionalDamage, resolution.sourceCardId, resolution,
       ))
       // A divided-damage effect is one pool. Apply cast-wide damage modifiers
-      // once before the player allocates individual points among enemies.
+      // once before targets receive their individual points.
       const damagePool = Math.floor(applySpellDamageBonus(resolution, amount))
       if (damagePool <= 0) continue
-      if (targets.length === 1) {
+      if (targets.length === 1 && effect.target !== 'all_players') {
         messages.push(dealNemesisTargetDamage(g, resolution, targets[0]!, damagePool))
         continue
       }
+      const playerDamageAllocation = effect.target === 'all_players'
       resolution.dividedDamageAllocation = {
         total: damagePool,
-        remaining: 0,
+        remaining: playerDamageAllocation ? damagePool : 0,
         target: effect.target,
-        amounts: automaticallyAllocateDamage(g, targets, damagePool),
+        amounts: playerDamageAllocation ? {} : automaticallyAllocateDamage(g, targets, damagePool),
       }
       const decision = createDecision(g,
-        `Review the ${damagePool} assigned damage, then click the Spell again to resolve`,
+        playerDamageAllocation
+          ? `Allocate ${damagePool} damage among the players`
+          : `Review the ${damagePool} assigned damage, then click the Spell again to resolve`,
         'allocate_divided_damage', { targets, total: damagePool }, resolution.sourceCardId)
       messages.push(...pauseEffect(g, resolution, effect, decision))
       return messages

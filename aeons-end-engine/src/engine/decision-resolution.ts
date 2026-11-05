@@ -1524,6 +1524,7 @@ function resolvePendingDecision(
     }
     if (decision.kind !== 'select_prepped_spells' ||
       (effect.kind !== 'discard_prepped_spells' &&
+        effect.kind !== 'discard_prepped_spells_collectively' &&
         !(effect.kind === 'cast_prepped_spell' && effect.allowSkip && decision.confirmSelection))) {
       restore()
       return ['Decision answer has the wrong type']

@@ -312,6 +312,53 @@ export function discardCardZoneMotion(snapshot: CardZoneMotionSnapshot | null) {
   })
 }
 
+async function revealMotionDestination(destination: HTMLElement | null): Promise<void> {
+  if (!destination || typeof window === 'undefined') return
+  let scroller = destination.parentElement
+  while (scroller && scroller !== document.body) {
+    const style = getComputedStyle(scroller)
+    if (scroller.scrollWidth > scroller.clientWidth + 1 &&
+      (style.overflowX === 'auto' || style.overflowX === 'scroll')) break
+    scroller = scroller.parentElement
+  }
+  if (!scroller || scroller === document.body) return
+
+  const nextFrame = () => new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+  await nextTick()
+  await nextFrame()
+
+  const clipping = () => {
+    const viewport = scroller!.getBoundingClientRect()
+    const left = viewport.left + scroller!.clientLeft
+    const right = left + scroller!.clientWidth
+    const target = destination.getBoundingClientRect()
+    return {
+      leftOverflow: Math.max(0, left - target.left),
+      rightOverflow: Math.max(0, target.right - right),
+    }
+  }
+  const { leftOverflow, rightOverflow } = clipping()
+  if (leftOverflow <= 1 && rightOverflow <= 1) return
+
+  // Try the direction implied by the clipped edge, then its inverse. The
+  // inverse handles browsers whose RTL scrollLeft range runs below zero.
+  const delta = rightOverflow > leftOverflow ? rightOverflow : -leftOverflow
+  const initialScrollLeft = scroller.scrollLeft
+  const before = leftOverflow + rightOverflow
+  scroller.scrollLeft = initialScrollLeft + delta
+  let remaining = clipping()
+  if (remaining.leftOverflow + remaining.rightOverflow >= before - 0.5) {
+    scroller.scrollLeft = initialScrollLeft - delta
+    remaining = clipping()
+    if (remaining.leftOverflow + remaining.rightOverflow >= before - 0.5) {
+      scroller.scrollLeft = initialScrollLeft
+    }
+  }
+
+  await nextTick()
+  await nextFrame()
+}
+
 /** Animate board-zone flights in engine order, honoring authored zone dependencies. */
 export async function animateCardZoneMotion(
   transfers: readonly CardZoneMotionTransfer[],
@@ -324,6 +371,10 @@ export async function animateCardZoneMotion(
   const animateTransfer = async (transfer: CardZoneMotionTransfer) => {
     if (!isCurrent()) return
     const sourceRow = await prepareTransfer?.(transfer) ?? null
+    if (!isCurrent()) return
+    if (transfer.destinationZone === 'swap') {
+      await revealMotionDestination(transfer.destination)
+    }
     if (!isCurrent()) return
     // A destination can be hidden while this transfer waits for another
     // zone's animation. Restore its original visibility before starting the

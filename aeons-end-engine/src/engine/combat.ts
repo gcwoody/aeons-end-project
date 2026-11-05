@@ -44,6 +44,8 @@ export function dealDamage(game: GameState, target: DamageTargetRef, amount: num
     return `Gravehold takes ${before - game.gravehold.hp} damage (${game.gravehold.hp}/${game.gravehold.maxHp})`
   }
 
+  if (target.kind === 'player') return sufferPlayerDamage(game, target.playerId, value)
+
   const minion = game.nemesis.playArea.find(card =>
     card.cardType === 'minion' && card.placedAt === target.placedAt,
   )

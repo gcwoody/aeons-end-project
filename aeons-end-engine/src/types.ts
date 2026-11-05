@@ -199,6 +199,7 @@ export type PlayerSelectionRule =
 export type PlayerTargetRef = { kind: 'player'; playerId: PlayerId }
 export type LifeTargetScope = PlayerTargetScope | 'nemesis' | 'gravehold'
 export type DamageTargetScope = 'nemesis' | 'minion' | 'source_minion' | 'gravehold' | 'nemesis_or_minion'
+export type DividedDamageTargetScope = DamageTargetScope | 'all_players'
 export type CardSelectionSource = 'hand' | 'discard' | 'deck' | 'hand_or_discard' | 'deck_or_discard' | 'played_gem_this_turn' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
 export type CardSelectionLayout = 'simple' | 'pile' | 'instant-card-choice'
 export type CardZone = 'deck' | 'hand' | 'discard' | 'played_this_turn' | 'swap_zone' | 'specific_deck' | 'player_cards_in_play'
@@ -313,6 +314,7 @@ export type LifeTargetRef =
 export type DamageTargetRef =
   | { kind: 'nemesis'; id: 'nemesis'; label: string }
   | { kind: 'gravehold'; id: 'gravehold'; label: string }
+  | { kind: 'player'; id: string; playerId: PlayerId; label: string }
   | { kind: 'minion'; id: string; placedAt: number; cardId: string; label: string }
 
 export interface PendingDecisionContext {
@@ -422,7 +424,7 @@ export interface PendingEffectResolution {
   dividedDamageAllocation?: {
     total: number
     remaining: number
-    target: DamageTargetScope
+    target: DividedDamageTargetScope
     amounts: Record<string, number>
   }
 }
@@ -769,7 +771,7 @@ export type CardEffect =
   | {
       kind: 'deal_damage_divided'
       amount: EffectAmount
-      target: DamageTargetScope
+      target: DividedDamageTargetScope
       /** Damage modifiers are added to this single pool before players divide it. */
       additionalDamage?: AdditionalDamage[]
     }
@@ -1085,7 +1087,13 @@ export type CardEffect =
       /** Choose a target able to complete the full amount, or the target able to do the most. */
       targetAvailability?: 'full_or_max'
     }
-  | { kind: 'conditional'; condition: CardEffectCondition; effects: CardEffect[] }
+  | {
+      kind: 'conditional'
+      condition: CardEffectCondition
+      effects: CardEffect[]
+      /** Optional mutually exclusive branch evaluated against the same state. */
+      elseEffects?: CardEffect[]
+    }
   | {
       kind: 'focus_breach'
       target: 'self' | 'ally' | 'any_player'

@@ -150,11 +150,21 @@ export function createCardMotionBoardDisplay(
           candidate.kind === 'move' && candidate.instanceId === event.instanceId)
         const finalMove = chain.at(-1)
         if (finalMove?.kind !== 'move' || finalMove.destination.zone !== 'discard') continue
-        if (player.discardInstanceIds?.[0] !== event.instanceId) continue
-
-        const origin = snapshot.cards.find(card => card.instanceId === event.instanceId && card.flight &&
+        const origin = snapshot.cards.find(card => card.instanceId === event.instanceId &&
           (route === 'develop' || card.zone === (event.source.zone === 'played_this_turn' ? 'played' : 'breach')))
-        if (!origin) continue
+
+        // The discard surface must show its incoming top card even when the
+        // source could not be captured for a flight. Otherwise the pile-count
+        // projection can keep the old empty pile visible during a pending
+        // decision, making a card that is already in discard appear missing.
+        const discardInstanceIds = player.discardInstanceIds ?? []
+        const arrivalIndex = discardInstanceIds.indexOf(event.instanceId)
+        const isTopArrival = arrivalIndex === 0 ||
+          (arrivalIndex < 0 && player.discard[0] === event.cardId)
+        if (!isTopArrival) {
+          if (origin?.flight) holdFlightAtOrigin(origin.flight)
+          continue
+        }
 
         const holds = holdsFor(snapshot)
         const existing = holds.get(player.id)

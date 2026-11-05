@@ -285,6 +285,90 @@ function testMostExpensivePreppedSpellSelection(): void {
     kind: 'select_prepped_spells', choices: [sameBreachDecision.requiredChoices![0]!, sameBreachDecision.candidates.find(choice => choice.cardId === 'spark')!],
   })
   assertEqual(sameBreachGame.players[0]!.breaches[0]!.prepSpells.join(','), 'spark', 'Prepped-spell indexes stay valid after forced removal')
+
+  const collectiveGame = nemesisGame()
+  collectiveGame.players[0]!.breaches[0]!.prepSpells = ['spark', 'spark']
+  collectiveGame.players[1]!.breaches[0]!.prepSpells = ['lava_tendril']
+  resolveEffects(collectiveGame, collectiveGame.players[0]!.id, [{
+    kind: 'discard_prepped_spells_collectively', amount: 2, mostExpensive: true,
+  }])
+  const collectiveDecision = collectiveGame.pendingDecision
+  assert(collectiveDecision?.kind === 'select_prepped_spells',
+    'A tied cutoff in a collective discard opens the prepped-spell selection')
+  assertEqual(collectiveGame.players[1]!.discard.length, 0,
+    'Collective spells remain prepared until the selection is confirmed')
+  assertEqual(collectiveDecision.requiredChoices?.length, 1,
+    'The uniquely most expensive collective spell is required')
+  const chosenSpark = collectiveDecision.candidates.find(choice => choice.cardId === 'spark')!
+  const collectiveMessages = resolvePendingDecision(collectiveGame, collectiveDecision.id, {
+    kind: 'select_prepped_spells', choices: [collectiveDecision.requiredChoices![0]!, chosenSpark],
+  })
+  assert(collectiveMessages.some(message => message.includes('Discarded')),
+    'Confirming a collective prepped-spell selection resolves instead of rejecting its answer type')
+  assertEqual(collectiveGame.players[1]!.breaches[0]!.prepSpells.length, 0,
+    'The required spell is removed from its owner’s Breach')
+  assertEqual(collectiveGame.players[1]!.discard[0], 'lava_tendril',
+    'The required collective spell enters its owner’s discard pile')
+  assertEqual(collectiveGame.players[0]!.breaches[0]!.prepSpells.length, 1,
+    'Exactly one tied spell is removed from the other player’s Breach')
+}
+
+function testAbsorbUsesExclusiveBranchAndSharedPlayerDamage(): void {
+  const absorb = getCard('absorb') as NemesisCardDef
+  const immediate = absorb.nemesisEffects?.find(block => block.trigger === 'immediately')
+  assert(immediate, 'Absorb has an immediate effect block')
+
+  const lowLifeGame = nemesisGame()
+  lowLifeGame.nemesis.hp = 30
+  lowLifeGame.players[0]!.breaches[0]!.prepSpells = ['spark', 'spark']
+  lowLifeGame.players[1]!.breaches[0]!.prepSpells = ['spark']
+  const lowLifePlayerHp = lowLifeGame.players.map(player => player.hp)
+  resolveEffects(lowLifeGame, lowLifeGame.players[0]!.id, immediate.effects)
+  assertEqual(lowLifeGame.nemesis.hp, 40, 'Absorb heals when the Nemesis starts at 30 life')
+  const discardDecision = lowLifeGame.pendingDecision
+  assert(discardDecision?.kind === 'select_prepped_spells', 'The low-life branch asks the players to discard two spells')
+  resolvePendingDecision(lowLifeGame, discardDecision.id, {
+    kind: 'select_prepped_spells', choices: discardDecision.candidates.slice(0, 2),
+  })
+  assertEqual(lowLifeGame.pendingDecision, null, 'The low-life branch finishes after the shared spell discard')
+  assertEqual(lowLifeGame.players.map(player => player.hp).join(','), lowLifePlayerHp.join(','),
+    'Healing above 30 does not activate Absorb’s other branch')
+
+  const highLifeGame = nemesisGame()
+  highLifeGame.nemesis.hp = 31
+  const [firstPlayer, secondPlayer] = highLifeGame.players
+  const firstHp = firstPlayer!.hp
+  const secondHp = secondPlayer!.hp
+  resolveEffects(highLifeGame, firstPlayer!.id, immediate.effects)
+  const allocationDecision = highLifeGame.pendingDecision
+  assert(allocationDecision?.kind === 'allocate_divided_damage',
+    'The high-life branch opens a shared damage allocation')
+  const allocation = highLifeGame.pendingEffect?.dividedDamageAllocation
+  assertEqual(allocation?.total, 7, 'Absorb creates one seven-point damage pool')
+  assertEqual(allocation?.remaining, 7, 'All seven damage points await player allocation')
+  assertEqual(Object.keys(allocation?.amounts ?? {}).length, 0,
+    'The player allocation starts with no damage assigned')
+  assert(allocationDecision.targets.every(target => target.kind === 'player'),
+    'Only player targets are available for Absorb damage')
+
+  for (let index = 0; index < 5; index++) {
+    resolvePendingDecision(highLifeGame, allocationDecision.id, {
+      kind: 'allocate_divided_damage', action: 'add', targetId: `player:${firstPlayer!.id}`,
+    })
+  }
+  resolvePendingDecision(highLifeGame, allocationDecision.id, {
+    kind: 'allocate_divided_damage', action: 'remove', targetId: `player:${firstPlayer!.id}`,
+  })
+  for (let index = 0; index < 3; index++) {
+    resolvePendingDecision(highLifeGame, allocationDecision.id, {
+      kind: 'allocate_divided_damage', action: 'add', targetId: `player:${secondPlayer!.id}`,
+    })
+  }
+  resolvePendingDecision(highLifeGame, allocationDecision.id, {
+    kind: 'allocate_divided_damage', action: 'confirm',
+  })
+  assertEqual(firstPlayer!.hp, firstHp - 4, 'The first player receives the confirmed four-point share')
+  assertEqual(secondPlayer!.hp, secondHp - 3, 'The second player receives the confirmed three-point share')
 }
 
 function testAdelheimPreResolutionResponse(): void {
@@ -543,6 +627,7 @@ testCauterizerPersistentUsesItsCurrentLife()
 testPlayerDiscardChoiceIncludesImmediateDraw()
 testStrikeEffectsAndMinionDamageRule()
 testMostExpensivePreppedSpellSelection()
+testAbsorbUsesExclusiveBranchAndSharedPlayerDamage()
 testAdelheimPreResolutionResponse()
 testPrinceOfGluttonsDevouredPileAndCards()
 testToDiscardKeepsMainPhaseActionsAvailable()

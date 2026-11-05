@@ -3093,6 +3093,10 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
     decisionGame.pendingDecision.source !== 'specific_deck'
   if (!nextNemesisDrawPending) state.nemesisDrawRevealQueued = false
   const decisionMoveEvents = previous ? finishActionMovementCapture(previous) : []
+  const decisionBoardMotion = previous ? cardZoneMotionsByUndo.get(previous) ?? null : null
+  cardMotionBoardDisplay.holdDiscardArrivals(
+    decisionBoardMotion, zoneBaseline, decisionGame.players, decisionMoveEvents,
+  )
   if (previous) {
     prepareHandDeparturePresentation(previous)
     prepareActionPileTransfers(previous, decisionMoveEvents)
@@ -3168,10 +3172,6 @@ export async function resolveDecision(answer: PendingDecisionAnswer) {
       discardCardFlight(conjureReturnFlight)
     }
   }
-  const decisionBoardMotion = previous ? cardZoneMotionsByUndo.get(previous) ?? null : null
-  cardMotionBoardDisplay.holdDiscardArrivals(
-    decisionBoardMotion, zoneBaseline, decisionGame.players, decisionMoveEvents,
-  )
   if (presentationPlayerBefore) {
     // Stage hand cards selected for a discard or a deck-top transfer so they
     // stay rendered until their flights start; the flight then removes each

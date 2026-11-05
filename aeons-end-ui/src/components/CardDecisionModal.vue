@@ -136,7 +136,30 @@ const isCenteredSubBoardChoice = computed(() =>
   decision.value?.kind === 'choose_one' && decision.value.layout === 'sub-board-region-choice' &&
   decision.value.options.some(option => !!option.regionId),
 )
-const isDividedDamageDecision = computed(() => decision.value?.kind === 'allocate_divided_damage')
+const isPlayerDamageAllocation = computed(() =>
+  decision.value?.kind === 'allocate_divided_damage' && decision.value.targets.length > 0 &&
+  decision.value.targets.every(target => target.kind === 'player'),
+)
+const playerDamageAllocation = computed(() => state.game?.pendingEffect?.dividedDamageAllocation ?? null)
+const playerDamageAllocationChoices = computed<PlayerDamageChoiceItem[]>(() => {
+  const current = decision.value
+  if (current?.kind !== 'allocate_divided_damage' || !isPlayerDamageAllocation.value) return []
+  const allocation = playerDamageAllocation.value
+  return current.targets.flatMap(target => {
+    if (target.kind !== 'player') return []
+    const player = state.game?.players.find(candidate => candidate.id === target.playerId)
+    return [{
+      target: { kind: 'player' as const, playerId: target.playerId },
+      mageName: playerName(target.playerId),
+      hp: player?.hp ?? null,
+      tokenUrl: turnOrderTokenUrl(target.playerId),
+      damage: allocation?.amounts[target.id] ?? 0,
+    }]
+  })
+})
+const isDividedDamageDecision = computed(() =>
+  decision.value?.kind === 'allocate_divided_damage' && !isPlayerDamageAllocation.value,
+)
 const dividedDamagePromptMessage = computed(() => {
   const current = decision.value
   if (current?.kind !== 'allocate_divided_damage') return ''
@@ -619,6 +642,14 @@ function choosePlayerDamageTarget(target: PlayerTargetRef) {
   answer({ kind: 'select_player_target', target })
 }
 
+function changeAllocatedPlayerDamage(target: PlayerTargetRef, action: 'add' | 'remove') {
+  answer({ kind: 'allocate_divided_damage', action, targetId: `player:${target.playerId}` })
+}
+
+function confirmPlayerDamageAllocation() {
+  answer({ kind: 'allocate_divided_damage', action: 'confirm' })
+}
+
 function choosePlayerLifeTarget(target: LifeTargetRef) {
   answer({ kind: 'select_life_target', target })
 }
@@ -768,6 +799,27 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onDecisionKeydown,
     :message="dividedDamagePromptMessage"
     :allow-board-interaction="true"
   />
+
+  <ModalBase
+    v-if="isPlayerDamageAllocation && decision?.kind === 'allocate_divided_damage'"
+    overlay-class="decision-overlay"
+    :blocking="true"
+    v-model:panel-ref="modalEl"
+    panel-class="decision-modal player-damage-allocation-modal draggable-modal"
+    :panel-style="modalStyle"
+    :dragging="dragging"
+    @panel-pointerdown="startDrag"
+  >
+    <h2>{{ centeredSourceTitle }}</h2>
+    <p class="decision-hint">Allocate {{ decision.total }} damage among the players. Left-click a player to assign 1 damage; right-click to cancel 1 damage.</p>
+    <PlayerDamageChoice
+      :choices="playerDamageAllocationChoices"
+      :allocation="playerDamageAllocation ?? undefined"
+      @allocate="changeAllocatedPlayerDamage($event, 'add')"
+      @remove="changeAllocatedPlayerDamage($event, 'remove')"
+      @confirm="confirmPlayerDamageAllocation"
+    />
+  </ModalBase>
 
   <ModalBase
     v-if="decision?.kind === 'select_prepped_spells'"

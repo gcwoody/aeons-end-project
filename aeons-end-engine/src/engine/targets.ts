@@ -1,5 +1,5 @@
 import type {
-  DamageTargetRef, DamageTargetScope, GameState, LifeTargetRef, LifeTargetScope,
+  DamageTargetRef, DividedDamageTargetScope, GameState, LifeTargetRef, LifeTargetScope,
   PendingEffectResolution, PlayerSelectionRule, PlayerState, PlayerTargetRef, PlayerTargetScope,
 } from '../types'
 import { getCard, getNemesisDefinition, MAGES } from '../data'
@@ -180,7 +180,7 @@ export function gainLife(game: GameState, target: LifeTargetRef, amount: number)
   return `Gravehold gains ${gained} life (${game.gravehold.hp}/${game.gravehold.maxHp})`
 }
 
-export function getDamageTargets(game: GameState, scope: DamageTargetScope, sourceCardId?: string): DamageTargetRef[] {
+export function getDamageTargets(game: GameState, scope: DividedDamageTargetScope, sourceCardId?: string): DamageTargetRef[] {
   const targets: DamageTargetRef[] = []
   if (scope === 'nemesis' || scope === 'nemesis_or_minion') {
     targets.push({ kind: 'nemesis', id: 'nemesis', label: 'Nemesis' })
@@ -204,12 +204,23 @@ export function getDamageTargets(game: GameState, scope: DamageTargetScope, sour
   if (scope === 'gravehold') {
     targets.push({ kind: 'gravehold', id: 'gravehold', label: 'Gravehold' })
   }
+  if (scope === 'all_players') {
+    for (const player of game.players) {
+      targets.push({
+        kind: 'player',
+        id: `player:${player.id}`,
+        playerId: player.id,
+        label: player.mageType,
+      })
+    }
+  }
   return targets
 }
 
 function damageTargetCurrentHealth(game: GameState, target: DamageTargetRef): number {
   if (target.kind === 'nemesis') return Math.max(0, game.nemesis.hp)
   if (target.kind === 'gravehold') return Math.max(0, game.gravehold.hp)
+  if (target.kind === 'player') return Math.max(0, getPlayer(game, target.playerId).hp)
   const minion = game.nemesis.playArea.find(card =>
     card.cardType === 'minion' && card.placedAt === target.placedAt,
   )

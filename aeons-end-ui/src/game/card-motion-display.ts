@@ -14,6 +14,11 @@ export interface DiscardPileDisplayValue extends PileDisplayValue {
 export interface PileDisplayBaseline {
   discard: Partial<Record<PlayerId, DiscardPileDisplayValue>>
   deck: Partial<Record<PlayerId, PileDisplayValue>>
+  /** Temporary values installed by holdAction and eligible for restoration. */
+  held?: {
+    discard: Partial<Record<PlayerId, DiscardPileDisplayValue>>
+    deck: Partial<Record<PlayerId, PileDisplayValue>>
+  }
 }
 
 export interface PileDisplayPlayer {
@@ -41,6 +46,7 @@ export function createCardMotionPileDisplay(
   report: CardMotionDisplayDiagnostic = () => undefined,
 ) {
   const baselinesByAction = new WeakMap<object, PileDisplayBaseline>()
+  const heldValuesByAction = new WeakMap<object, NonNullable<PileDisplayBaseline['held']>>()
 
   function capture(): PileDisplayBaseline {
     return {
@@ -90,18 +96,25 @@ export function createCardMotionPileDisplay(
     if (!baselinesByAction.has(action)) baselinesByAction.set(action, capture())
     const nextDiscard = { ...access.getDiscard() }
     const nextDeck = { ...access.getDeck() }
+    const heldDiscard: NonNullable<PileDisplayBaseline['held']>['discard'] = {}
+    const heldDeck: NonNullable<PileDisplayBaseline['held']>['deck'] = {}
     for (const player of players) {
       if (nextDiscard[player.id] === undefined) {
-        nextDiscard[player.id] = legacyDiscard?.playerId === player.id
+        const held = legacyDiscard?.playerId === player.id
           ? legacyDiscard
           : { cardId: player.discard[0] ?? null, count: player.discard.length }
+        nextDiscard[player.id] = held
+        heldDiscard[player.id] = held
       }
       if (nextDeck[player.id] === undefined) {
-        nextDeck[player.id] = legacyDeck?.playerId === player.id
+        const held = legacyDeck?.playerId === player.id
           ? legacyDeck
           : { cardId: player.deck[0] ?? null, count: player.deck.length }
+        nextDeck[player.id] = held
+        heldDeck[player.id] = held
       }
     }
+    heldValuesByAction.set(action, { discard: heldDiscard, deck: heldDeck })
     access.setDiscard(nextDiscard)
     access.setDeck(nextDeck)
   }
@@ -138,11 +151,14 @@ export function createCardMotionPileDisplay(
     access.setDiscard(nextDiscard)
     access.setDeck(nextDeck)
     baselinesByAction.delete(action)
-    return baseline
+    const held = heldValuesByAction.get(action)
+    heldValuesByAction.delete(action)
+    return held ? { ...baseline, held } : baseline
   }
 
   function cancelAction(action: object) {
     baselinesByAction.delete(action)
+    heldValuesByAction.delete(action)
   }
 
   function beginArrivals(
@@ -225,8 +241,6 @@ export function createCardMotionPileDisplay(
         if (previous) currentDiscard[playerId] = previous
         else delete currentDiscard[playerId]
       }
-      access.setDiscard(currentDiscard)
-
       const currentDeck = { ...access.getDeck() }
       for (const [playerId, latest] of latestDeck) {
         if (currentDeck[playerId] !== latest) continue
@@ -234,6 +248,21 @@ export function createCardMotionPileDisplay(
         if (previous) currentDeck[playerId] = previous
         else delete currentDeck[playerId]
       }
+      for (const [playerId, held] of Object.entries(baseline?.held?.discard ?? {})) {
+        const id = playerId as PlayerId
+        if (currentDiscard[id] !== held) continue
+        const previous = priorDiscard[id]
+        if (previous) currentDiscard[id] = previous
+        else delete currentDiscard[id]
+      }
+      for (const [playerId, held] of Object.entries(baseline?.held?.deck ?? {})) {
+        const id = playerId as PlayerId
+        if (currentDeck[id] !== held) continue
+        const previous = priorDeck[id]
+        if (previous) currentDeck[id] = previous
+        else delete currentDeck[id]
+      }
+      access.setDiscard(currentDiscard)
       access.setDeck(currentDeck)
     }
 

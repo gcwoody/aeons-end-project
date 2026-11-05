@@ -120,9 +120,7 @@ export const TWICE_DEAD_PROPHET_NEMESIS_CARDS: Record<string, NemesisCardDef> = 
         { kind: 'gain_life', amount: 10, target: 'nemesis' },
         { kind: 'discard_prepped_spells_collectively', amount: 2, mostExpensive: true },
       ],
-    }, {
-      kind: 'conditional', condition: { kind: 'nemesis_life', comparison: 'greater_than', amount: 30 },
-      effects: [{ kind: 'deal_player_damage_all', amount: 7 }],
+      elseEffects: [{ kind: 'deal_damage_divided', amount: 7, target: 'all_players' }],
     }),
   },
   omen_hulk: {

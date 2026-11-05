@@ -2294,7 +2294,7 @@ function resolveDividedDamageAllocationAction(
     const target = decision.targets.find(candidate => candidate.id === answer.targetId)
     const currentTarget = getDamageTargets(g, allocation.target, resolution.sourceCardId)
       .find(candidate => candidate.id === answer.targetId)
-    if (!target || !currentTarget) return ['The selected enemy is no longer available']
+    if (!target || !currentTarget) return ['The selected damage target is no longer available']
 
     const assigned = allocation.amounts[answer.targetId] ?? 0
     if (answer.action === 'add') {
@@ -2322,7 +2322,7 @@ function resolveDividedDamageAllocationAction(
     return target && amount > 0 ? [{ target, amount }] : []
   })
   if (assignedTargets.reduce((sum, item) => sum + item.amount, 0) !== allocation.total) {
-    return ['An assigned enemy is no longer available']
+    return ['An assigned damage target is no longer available']
   }
 
   g.pendingDecision = null
@@ -2330,7 +2330,23 @@ function resolveDividedDamageAllocationAction(
   resolution.dividedDamageAllocation = undefined
   const messages = [`Resolved ${allocation.total} divided damage`]
   for (const { target, amount } of assignedTargets) {
-    messages.push(dealNemesisTargetDamage(g, resolution, target, amount))
+    if (target.kind === 'player') {
+      const player = getPlayer(g, target.playerId)
+      messages.push(sufferPlayerDamage(g, player.id, amount))
+      const excess = Math.max(0, -player.hp)
+      const death = checkPlayerDeath(g, player.id, true)
+      if (death) {
+        messages.push(death)
+        queuePlayerExhaustion(resolution, player.id, excess)
+      }
+      const gameOver = checkGameOver(g)
+      if (gameOver) {
+        messages.push(gameOver)
+        resolution.remainingEffects = []
+      }
+    } else {
+      messages.push(dealNemesisTargetDamage(g, resolution, target, amount))
+    }
     if (g.gameOver) break
   }
   return [...messages, ...runEffectResolution(g, resolution)]
