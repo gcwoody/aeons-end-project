@@ -21,9 +21,20 @@
 
 面向桌面浏览器，建议最大化窗口或按 `F11` 全屏，以 16:9 横屏游玩；推荐 1920×1080 或更高分辨率。最低设计目标是浏览器内容区 1440×900 CSS 像素；小于此尺寸不保证布局和操作体验。
 
-## 启动项目
+## 下载后本地游玩（Windows）
 
-在仓库根目录的 PowerShell 中运行：
+本地运行会直接从下载包中的 `image-database/` 读取卡牌图片，图片加载更快；游玩不需要安装 Node.js、npm 或 VS Code。
+
+1. [下载 friend-preview 项目压缩包](https://github.com/gcwoody/aeons-end-project/archive/refs/heads/friend-preview.zip)。
+2. 下载完成后，右键压缩包并选择“全部解压”，不要直接在压缩包预览中启动。
+3. 打开解压后的项目文件夹，双击根目录里的 `Play Aeon's End Demo.cmd`。
+4. 游戏会自动在浏览器中打开。游玩时保留弹出的命令窗口；关闭该窗口即可停止本地服务。
+
+本地游戏使用固定的 `127.0.0.1:47381` 地址，存档保存在当前浏览器的本地存储中。再次双击启动文件时，原浏览器中的存档仍可继续使用。启动器和 `image-database/` 必须与下载包一起保留。
+
+## 本地开发和验证
+
+开发或修改项目时，才需要在仓库根目录运行以下命令：
 
 ```powershell
 cd aeons-end-engine
@@ -33,6 +44,12 @@ npm test
 cd ..\aeons-end-ui
 npm ci
 npm run dev        # http://localhost:5173
+```
+
+要重新生成供项目下载包双击启动的静态版本，在 `aeons-end-ui/` 中运行：
+
+```powershell
+npm run build:local-demo
 ```
 
 首次运行浏览器测试时安装 Playwright 浏览器：
