@@ -16,6 +16,8 @@
   /* Stay above ordinary board content while hand hover cards remain above it;
      modal dialogs and the full-size card preview still sit higher. */
   z-index: var(--z-controls);
+  margin-inline: -14px;
+  padding-inline: 14px;
 }
 .controls-left {
   display: flex;

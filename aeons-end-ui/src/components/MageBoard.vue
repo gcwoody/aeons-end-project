@@ -7,6 +7,7 @@ import { useGame } from '../game/useGame'
 import { useModalDrag } from '../game/useModalDrag'
 import { registerDismissibleOverlay } from '../game/dismissible-overlays'
 import ModalBase from './ModalBase.vue'
+import ModalCloseButton from './ModalCloseButton.vue'
 
 const props = defineProps<{ mageType: string }>()
 
@@ -62,18 +63,28 @@ onBeforeUnmount(unregisterDismissibleOverlay)
       @overlay-click="closeModal"
       @panel-pointerdown="startDrag"
     >
-        <div class="mage-modal-frame" :class="{ flipped: showBack }">
+        <ModalCloseButton label="Close Mage mat" @close="closeModal" />
+        <button
+          type="button"
+          class="mage-modal-frame mage-modal-flip-scene"
+          :aria-label="showBack ? `Show ${displayMageName(props.mageType)} mat front` : `Flip ${displayMageName(props.mageType)} mat to back`"
+          @click="showBack = !showBack"
+        >
+          <span class="mage-modal-flip-card" :class="{ flipped: showBack }">
           <img
-            class="mage-modal-image"
-            :src="showBack ? images.back : images.front"
-            :alt="`${displayMageName(props.mageType)} mage board ${showBack ? 'back' : 'front'}`"
+            class="mage-modal-image mage-modal-face"
+            :src="images.front"
+            :alt="`${displayMageName(props.mageType)} mage board front`"
             draggable="false"
           />
-        </div>
-        <div class="overlay-actions">
-          <button class="btn" @click="showBack = !showBack">{{ showBack ? 'Show Front' : 'Flip to Back' }}</button>
-          <button class="btn" @click="closeModal">Close</button>
-        </div>
+          <img
+            class="mage-modal-image mage-modal-face mage-modal-face--back"
+            :src="images.back"
+            :alt="`${displayMageName(props.mageType)} mage board back`"
+            draggable="false"
+          />
+          </span>
+        </button>
     </ModalBase>
   </div>
 </template>

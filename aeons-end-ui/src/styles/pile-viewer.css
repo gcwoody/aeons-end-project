@@ -7,6 +7,7 @@
   max-height: min(88vh, 720px);
   overflow-y: auto;
 }
+.pile-modal > h3 { padding-inline: 42px; text-align: center; }
 .pile-modal:not(.pile-modal-with-labels) {
   width: min(calc(var(--pile-columns, 5) * 92px + 64px), calc(100vw - 32px));
   min-width: min(440px, calc(100vw - 32px));

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useGame } from '../game/useGame'
 import { displayMageName } from '../game/display-name'
 import { useModalDrag } from '../game/useModalDrag'
@@ -10,6 +10,8 @@ import { mageImageUrls } from '../mage-images'
 import CardHoverPreview from './CardHoverPreview.vue'
 import ModalBase from './ModalBase.vue'
 import MatPreviewButton from './MatPreviewButton.vue'
+import SetupCharacterInspector from './SetupCharacterInspector.vue'
+import ModalCloseButton from './ModalCloseButton.vue'
 
 const {
   state, newGame, resumeGame,
@@ -51,6 +53,7 @@ const magePickerPlayer = ref<1 | 2 | null>(null)
 const magePickerEl = ref<HTMLElement | null>(null)
 const nemesisPickerOpen = ref(false)
 const nemesisPickerEl = ref<HTMLElement | null>(null)
+const inspectorTarget = ref<{ kind: 'mage'; type: string } | { kind: 'nemesis'; type: string } | null>(null)
 function cardsForSlot(index: number) {
   return marketCards.value.filter(card => card.type === marketSlotTypes[index])
 }
@@ -122,11 +125,19 @@ function randomizeSetupMages() {
 
 randomizeSetupMages()
 
-function randomizeNemesis() {
-  const candidates = nemesisWaveOptions.value.filter(nemesis => nemesis.type !== state.nemesisType)
-  const selected = randomChoice(candidates.length > 0 ? candidates : nemesisWaveOptions.value)
-  if (selected) state.nemesisType = selected.type
+function randomizeNemesis(wave?: number) {
+  const options = wave === undefined
+    ? nemesisOptions.value
+    : nemesisOptions.value.filter(nemesis => (nemesis.wave ?? 1) === wave)
+  const candidates = options.filter(nemesis => nemesis.type !== state.nemesisType)
+  const selected = randomChoice(candidates.length > 0 ? candidates : options)
+  if (selected) {
+    state.nemesisType = selected.type
+    nemesisWave.value = selected.wave ?? 1
+  }
 }
+
+randomizeNemesis()
 
 watch(() => [state.mage1, state.mage2, state.marketMode, ...state.marketSlots], () => {
   selectionError.value = ''
@@ -187,7 +198,6 @@ function replaceMarketCard(cardId: string) {
   if (index === null) return
   if (!replacementCards.value.some(card => card.id === cardId)) return
   state.marketSlots[index] = cardId
-  replacementSlot.value = null
 }
 
 function openMagePicker(player: 1 | 2) {
@@ -208,9 +218,13 @@ function mageOptionDisabled(mageType: string) {
 function selectMage(mageType: string) {
   const player = magePickerPlayer.value
   if (player === null || mageOptionDisabled(mageType)) return
+  if (magePickerCurrent.value === mageType) {
+    window.dispatchEvent(new Event('card-preview-dismiss'))
+    inspectorTarget.value = { kind: 'mage', type: mageType }
+    return
+  }
   if (player === 1) state.mage1 = mageType
   else state.mage2 = mageType
-  magePickerPlayer.value = null
 }
 
 const magePickerOptions = computed(() => mageOptions.value.filter(mage => mage.wave === magePickerWave.value))
@@ -226,9 +240,13 @@ function closeNemesisPicker() {
 
 function selectNemesis(nemesisType: string) {
   if (!nemesisOptions.value.some(nemesis => nemesis.type === nemesisType)) return
+  if (state.nemesisType === nemesisType) {
+    window.dispatchEvent(new Event('card-preview-dismiss'))
+    inspectorTarget.value = { kind: 'nemesis', type: nemesisType }
+    return
+  }
   state.nemesisType = nemesisType
   nemesisWave.value = NEMESES[nemesisType]?.wave ?? 1
-  nemesisPickerOpen.value = false
 }
 
 function saveTime(timestamp: number): string {
@@ -278,6 +296,25 @@ function cancelSaveRename() {
   editingSaveId.value = null
   saveNameDraft.value = ''
 }
+
+function handleSetupEscape(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || event.defaultPrevented) return
+  // The inspector is stacked above these setup pickers and handles its own
+  // Escape key event, so leave the first press to the topmost window.
+  if (inspectorTarget.value) return
+
+  if (pendingDeleteSaveCount.value > 0) cancelDeleteSave()
+  else if (replacementSlot.value !== null) closeReplacement()
+  else if (magePickerPlayer.value !== null) closeMagePicker()
+  else if (nemesisPickerOpen.value) closeNemesisPicker()
+  else if (editingSaveId.value) cancelSaveRename()
+  else return
+
+  event.preventDefault()
+}
+
+onMounted(() => window.addEventListener('keydown', handleSetupEscape))
+onBeforeUnmount(() => window.removeEventListener('keydown', handleSetupEscape))
 </script>
 
 <template>
@@ -339,7 +376,7 @@ function cancelSaveRename() {
         <div class="setup-mage-field">
           <label for="nemesis-select">Nemesis</label>
           <span class="wave-tabs" role="group" aria-label="Nemesis Wave Tabs">
-            <button v-for="wave in nemesisWaves" :key="`nemesis-wave-${wave}`" type="button" :aria-pressed="nemesisWave === wave" :class="{ active: nemesisWave === wave }" @click="nemesisWave = wave; randomizeNemesis()">Wave {{ wave }}</button>
+            <button v-for="wave in nemesisWaves" :key="`nemesis-wave-${wave}`" type="button" :aria-pressed="nemesisWave === wave" :class="{ active: nemesisWave === wave }" @click="nemesisWave = wave; randomizeNemesis(wave)">Wave {{ wave }}</button>
           </span>
           <span class="setup-select-row">
             <select id="nemesis-select" v-model="state.nemesisType" aria-label="Nemesis">
@@ -347,7 +384,7 @@ function cancelSaveRename() {
                 {{ nemesis.name }}
               </option>
             </select>
-            <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis">Reroll</button>
+            <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis()">Reroll</button>
           </span>
         </div>
         <label>
@@ -391,7 +428,8 @@ function cancelSaveRename() {
             :card-id="state.marketSlots[index]"
             :preview-width="280"
             :preview-height="388.03"
-            :preview-delay="200"
+            :preview-delay="500"
+            :disabled="inspectorTarget !== null"
           >
             <button
               type="button"
@@ -504,7 +542,7 @@ function cancelSaveRename() {
     >
         <div class="setup-market-picker-head">
           <h2 id="market-picker-title">Choose {{ replacementSlotLabel }}</h2>
-          <button type="button" class="btn small" aria-label="Close market card picker" @click="closeReplacement">Close</button>
+          <ModalCloseButton label="Close market card picker" @close="closeReplacement" />
         </div>
         <p class="setup-hint">Choose one {{ replacementSlotType }}. Cards already used in another slot are unavailable.</p>
         <div class="wave-tabs mage-picker-wave-tabs" role="tablist" aria-label="Market Card Wave">
@@ -525,7 +563,8 @@ function cancelSaveRename() {
             :card-id="card.id"
             :preview-width="280"
             :preview-height="388.03"
-            :preview-delay="200"
+            :preview-delay="500"
+            :disabled="inspectorTarget !== null"
             preview-class="setup-market-picker-preview"
           >
             <button
@@ -552,11 +591,12 @@ function cancelSaveRename() {
     >
         <div class="setup-market-picker-head">
           <h2 id="mage-picker-title">{{ magePickerTitle }}</h2>
-          <button type="button" class="btn small" aria-label="Close Mage picker" @click="closeMagePicker">Close</button>
+          <ModalCloseButton label="Close Mage picker" @close="closeMagePicker" />
         </div>
         <div class="wave-tabs mage-picker-wave-tabs" role="tablist" aria-label="Mage Wave">
           <button v-for="wave in mageWaves" :key="`picker-wave-${wave}`" type="button" role="tab" :aria-selected="magePickerWave === wave" :class="{ active: magePickerWave === wave }" @click="magePickerWave = wave">Wave {{ wave }}</button>
         </div>
+        <p class="setup-picker-hint">Select a mat, then click the selected mat to view its details.</p>
         <div class="mage-picker-grid">
           <CardHoverPreview
             v-for="mage in magePickerOptions"
@@ -565,9 +605,9 @@ function cancelSaveRename() {
             :image-alt="`${displayMageName(mage.type)} mage mat`"
             :preview-width="840"
             :preview-height="604"
-            :preview-delay="200"
+            :preview-delay="500"
             preview-class="mage-preview"
-            :disabled="mageOptionDisabled(mage.type)"
+            :disabled="mageOptionDisabled(mage.type) || inspectorTarget !== null"
           >
             <button
               type="button"
@@ -598,11 +638,12 @@ function cancelSaveRename() {
     >
         <div class="setup-market-picker-head">
           <h2 id="nemesis-picker-title">{{ nemesisPickerTitle }}</h2>
-          <button type="button" class="btn small" aria-label="Close Nemesis picker" @click="closeNemesisPicker">Close</button>
+          <ModalCloseButton label="Close Nemesis picker" @close="closeNemesisPicker" />
         </div>
         <div class="wave-tabs mage-picker-wave-tabs" role="tablist" aria-label="Nemesis Wave">
           <button v-for="wave in nemesisWaves" :key="`nemesis-picker-wave-${wave}`" type="button" role="tab" :aria-selected="nemesisPickerWave === wave" :class="{ active: nemesisPickerWave === wave }" @click="nemesisPickerWave = wave">Wave {{ wave }}</button>
         </div>
+        <p class="setup-picker-hint">Select a mat, then click the selected mat to view its details.</p>
         <div class="nemesis-picker-grid">
           <CardHoverPreview
             v-for="nemesis in nemesisPickerOptions"
@@ -611,9 +652,10 @@ function cancelSaveRename() {
             :image-alt="`${nemesis.name} nemesis mat`"
             :preview-width="630"
             :preview-height="840"
-            :preview-delay="200"
+            :preview-delay="500"
             image-object-fit="contain"
             preview-class="nemesis-mat-preview"
+            :disabled="inspectorTarget !== null"
           >
             <button
               type="button"
@@ -632,5 +674,14 @@ function cancelSaveRename() {
           </CardHoverPreview>
         </div>
     </ModalBase>
+
+    <SetupCharacterInspector
+      v-if="inspectorTarget"
+      :key="`${inspectorTarget.kind}-${inspectorTarget.type}`"
+      :kind="inspectorTarget.kind"
+      :mage-type="inspectorTarget.kind === 'mage' ? inspectorTarget.type : undefined"
+      :nemesis-type="inspectorTarget.kind === 'nemesis' ? inspectorTarget.type : undefined"
+      @close="inspectorTarget = null"
+    />
   </div>
 </template>

@@ -19,6 +19,8 @@ const boundaryConstrained = ref(false)
 const overflowDistance = ref(0)
 let resizeObserver: ResizeObserver | null = null
 let mutationObserver: MutationObserver | null = null
+let scrollTarget = 0
+let scrollFrame: number | null = null
 
 function alignEndAnchoredCards(zone: HTMLElement) {
   if (props.overflowAnchor !== 'end' || zone.scrollWidth <= zone.clientWidth) return
@@ -33,6 +35,21 @@ function alignEndAnchoredCards(zone: HTMLElement) {
   if (Math.abs(delta) < 1) return
   const maxScroll = Math.max(0, zone.scrollWidth - zone.clientWidth)
   zone.scrollLeft = Math.max(-maxScroll, Math.min(0, zone.scrollLeft - delta))
+}
+
+function alignEndScrollTarget(zone: HTMLElement, target: number): number {
+  if (props.overflowAnchor !== 'end' || zone.scrollWidth <= zone.clientWidth) return target
+  const viewport = zone.getBoundingClientRect()
+  const scrollDelta = target - zone.scrollLeft
+  const firstVisibleCard = [...zone.querySelectorAll<HTMLElement>('.zone-card-track .card')]
+    .map(card => {
+      const bounds = card.getBoundingClientRect()
+      return { left: bounds.left - scrollDelta, right: bounds.right - scrollDelta }
+    })
+    .find(card => card.right > viewport.left + 1 && card.left < viewport.right - 1)
+  if (!firstVisibleCard) return target
+  const maxScroll = Math.max(0, zone.scrollWidth - zone.clientWidth)
+  return Math.max(-maxScroll, Math.min(0, target - (viewport.left - firstVisibleCard.left)))
 }
 
 function updateOverflow() {
@@ -84,6 +101,22 @@ function observeOverflow() {
   mutationObserver.observe(zone, { childList: true, subtree: true })
 }
 
+function animateWheelScroll(zone: HTMLElement) {
+  const maxScroll = Math.max(0, zone.scrollWidth - zone.clientWidth)
+  const isRtl = getComputedStyle(zone).direction === 'rtl'
+  scrollTarget = isRtl
+    ? Math.max(-maxScroll, Math.min(0, scrollTarget))
+    : Math.max(0, Math.min(maxScroll, scrollTarget))
+  const distance = scrollTarget - zone.scrollLeft
+  if (Math.abs(distance) < 0.5) {
+    zone.scrollLeft = scrollTarget
+    scrollFrame = null
+    return
+  }
+  zone.scrollLeft += distance * 0.2
+  scrollFrame = requestAnimationFrame(() => animateWheelScroll(zone))
+}
+
 function handleWheel(event: WheelEvent) {
   const zone = event.currentTarget
   if (!(zone instanceof HTMLElement) || zone.scrollWidth <= zone.clientWidth || event.deltaY === 0) return
@@ -95,17 +128,18 @@ function handleWheel(event: WheelEvent) {
     // Chromium exposes RTL overflow as a negative scrollLeft range. Keeping
     // the range explicit prevents the end-anchored Played track from jumping
     // outside its viewport when the wheel moves it.
-    zone.scrollLeft = Math.max(
+    scrollTarget = Math.max(
       -maxScroll,
-      Math.min(0, zone.scrollLeft - event.deltaY * props.wheelScale),
+      Math.min(0, (scrollFrame === null ? zone.scrollLeft : scrollTarget) - event.deltaY * props.wheelScale),
     )
-    alignEndAnchoredCards(zone)
-    return
+    scrollTarget = alignEndScrollTarget(zone, scrollTarget)
+  } else {
+    scrollTarget = Math.min(
+      Math.max(0, (scrollFrame === null ? zone.scrollLeft : scrollTarget) + event.deltaY * props.wheelScale),
+      maxScroll,
+    )
   }
-  zone.scrollLeft = Math.min(
-    Math.max(0, zone.scrollLeft + event.deltaY * props.wheelScale),
-    maxScroll,
-  )
+  if (scrollFrame === null) scrollFrame = requestAnimationFrame(() => animateWheelScroll(zone))
 }
 
 watch(overflowing, async (isOverflowing) => {
@@ -132,6 +166,7 @@ onMounted(observeOverflow)
 onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   mutationObserver?.disconnect()
+  if (scrollFrame !== null) cancelAnimationFrame(scrollFrame)
 })
 </script>
 

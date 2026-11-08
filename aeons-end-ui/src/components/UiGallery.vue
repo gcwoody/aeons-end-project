@@ -20,6 +20,7 @@ import LargeCardChoicePanel, { type LargeCardChoiceOption } from './LargeCardCho
 import CenteredDecisionPrompt from './CenteredDecisionPrompt.vue'
 import ZoneScroller from './ZoneScroller.vue'
 import ModalBase from './ModalBase.vue'
+import ModalCloseButton from './ModalCloseButton.vue'
 import MageAbilityChoice from './MageAbilityChoice.vue'
 import TwoButtonChoice from './TwoButtonChoice.vue'
 import TokenAmountChoicePanel from './TokenAmountChoicePanel.vue'
@@ -464,6 +465,32 @@ function reorderGalleryTurnOrder(keys: string[]) {
         <button class="btn" data-gallery-open="token-amount" @click="modal = 'token-amount'">Open Token Amount Choice</button>
         <button class="btn" data-gallery-open="turn-order" @click="modal = 'turn-order'">Open Turn Order Tokens</button>
       </div>
+      <article class="ui-gallery-item" data-component="Modal.CloseButtonAlignment">
+        <h3>Modal.CloseButton alignment</h3>
+        <p class="ui-gallery-caption">Compare the previous SVG cross with the revised cross, whose strokes are anchored to the circle's exact center.</p>
+        <div class="ui-gallery-surface gallery-close-button-comparison">
+          <div class="gallery-close-button-sample">
+            <span>Before</span>
+            <div class="gallery-close-button-stage">
+              <button
+                class="modal-close-button gallery-close-button-preview gallery-close-button-before"
+                type="button"
+                aria-label="Previous close button style"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M5 5l14 14M19 5L5 19" />
+                </svg>
+              </button>
+            </div>
+          </div>
+          <div class="gallery-close-button-sample">
+            <span>After</span>
+            <div class="gallery-close-button-stage">
+              <ModalCloseButton class="gallery-close-button-preview gallery-close-button-after" label="Revised close button style" @close="modal = null" />
+            </div>
+          </div>
+        </div>
+      </article>
       <article class="ui-gallery-item" data-component="Interaction.PointerReorder">
         <h3>Interaction.PointerReorder</h3>
         <p class="ui-gallery-caption">Shared by revealed-card sorting, Debug deck editing and Turn Order tokens</p>
@@ -587,7 +614,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
       :highlighted-preview-card-id="modal === 'centered-prompt-cards' ? 'vortex_blast' : undefined"
     >
       <template #actions>
-        <button class="btn primary" @click="modal = null">Close</button>
+        <ModalCloseButton label="Close prompt preview" @close="modal = null" />
       </template>
     </CenteredDecisionPrompt>
 
@@ -600,7 +627,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
       data-gallery-modal
       @overlay-click="modal = null"
     >
-        <button class="ui-gallery-modal-close" aria-label="Close gallery modal" @click="modal = null">×</button>
+        <ModalCloseButton label="Close gallery modal" @close="modal = null" />
         <template v-if="modal === 'pile'">
           <p class="ui-gallery-index">PileViewer · top → bottom</p>
           <h2>Specific Deck</h2>
@@ -611,7 +638,6 @@ function reorderGalleryTurnOrder(keys: string[]) {
               </div>
             </CardHoverPreview>
           </div>
-          <button class="btn" @click="modal = null">Close</button>
         </template>
         <template v-else-if="modal === 'decision'">
           <p class="ui-gallery-index">Interaction.PointerReorder · Decision.CardSelection</p>
@@ -896,16 +922,22 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .ui-gallery-code-example code { color: var(--accent); font-size: 12px; }
 .ui-gallery-code-example span { color: var(--muted); font-size: 12px; }
 .ui-gallery-modal-overlay { position: fixed; inset: 0; z-index: var(--z-pile-viewer); display: grid; place-items: center; overflow: auto; padding: 20px; background: var(--overlay-backdrop); }
-.ui-gallery-modal { position: relative; width: min(900px, calc(100vw - 40px)); max-height: min(88vh, 720px); overflow: auto; padding: 26px; border: var(--pixel-border-width) solid var(--border); border-radius: 12px; background: var(--panel); text-align: center; }
+.ui-gallery-modal { position: relative; width: min(900px, calc(100vw - 40px)); max-height: min(88vh, 720px); overflow: auto; padding: 52px 26px 26px; border: var(--pixel-border-width) solid var(--border); border-radius: 12px; background: var(--panel); text-align: center; }
 .ui-gallery-modal:focus { outline: none; }
 .ui-gallery-modal h2 { margin: 0 0 8px; }
-.ui-gallery-modal-close { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 26px; line-height: 1; }
 .ui-gallery-modal-hint { margin: 0 0 14px; color: var(--muted); }
 .ui-gallery-modal-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
 .gallery-modal-card { width: 100%; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: 0; border-radius: var(--card-radius); }
 .ui-gallery-modal-reveal { display: flex; justify-content: center; gap: 20px; margin: 16px 0 20px; }
 .gallery-modal-reveal-card { width: 220px; height: auto; aspect-ratio: var(--card-aspect-ratio); overflow: hidden; border: 0; border-radius: var(--card-radius); }
 .ui-gallery-modal-actions { display: flex; justify-content: center; gap: 10px; }
+.gallery-close-button-comparison { display: flex; flex-wrap: wrap; justify-content: center; gap: 24px; }
+.gallery-close-button-sample { display: flex; min-width: 120px; flex-direction: column; align-items: center; gap: 8px; color: var(--muted); font-size: 12px; font-weight: 700; }
+.gallery-close-button-stage { position: relative; display: grid; width: 76px; height: 76px; place-items: center; border: var(--pixel-border-width) dashed var(--border); border-radius: 8px; background: var(--panel-2); }
+.gallery-close-button-preview.modal-close-button { top: 50%; right: auto; left: 50%; transform: translate(-50%, -50%); }
+.gallery-close-button-before::before,
+.gallery-close-button-before::after { display: none; }
+.gallery-close-button-before svg { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-width: 2; }
 .ui-gallery-turn-order-hidden {
   display: flex;
   align-items: center;
@@ -942,10 +974,9 @@ function reorderGalleryTurnOrder(keys: string[]) {
 /* Modal.Base renders this panel in its own component scope, so keep the
    Gallery fixture's shell selectors global while the rest stays scoped. */
 .ui-gallery-modal-overlay { position: fixed; inset: 0; z-index: var(--z-pile-viewer); display: grid; place-items: center; overflow: auto; padding: 20px; background: var(--overlay-backdrop); }
-.ui-gallery-modal { position: relative; width: min(900px, calc(100vw - 40px)); max-height: min(88vh, 720px); overflow: auto; padding: 26px; border: var(--pixel-border-width) solid var(--border); border-radius: 12px; background: var(--panel); text-align: center; }
+.ui-gallery-modal { position: relative; width: min(900px, calc(100vw - 40px)); max-height: min(88vh, 720px); overflow: auto; padding: 52px 26px 26px; border: var(--pixel-border-width) solid var(--border); border-radius: 12px; background: var(--panel); text-align: center; }
 .ui-gallery-modal:focus { outline: none; }
 .ui-gallery-modal h2 { margin: 0 0 8px; }
-.ui-gallery-modal-close { position: absolute; top: 8px; right: 10px; border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 26px; line-height: 1; }
 .ui-gallery-modal-hint { margin: 0 0 14px; color: var(--muted); }
 .ui-gallery-modal-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
 .ui-gallery-modal-actions { display: flex; justify-content: center; gap: 10px; }

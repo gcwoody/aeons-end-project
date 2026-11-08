@@ -1,10 +1,15 @@
-param([switch] $NoOpenBrowser)
+param(
+  [switch] $NoOpenBrowser,
+  [string] $RepositoryRoot
+)
 
 $ErrorActionPreference = 'Stop'
 
-$repositoryRoot = $PSScriptRoot
-$siteRoot = Join-Path $repositoryRoot 'local-demo-site'
-$imageRoot = Join-Path $repositoryRoot 'image-database'
+if (-not $RepositoryRoot) {
+  $RepositoryRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+}
+$siteRoot = Join-Path $RepositoryRoot 'local-demo-site'
+$imageRoot = Join-Path $RepositoryRoot 'image-database'
 $port = 47381
 $address = [System.Net.IPAddress]::Loopback
 $baseUrl = "http://127.0.0.1:$port/"
@@ -62,29 +67,38 @@ function Send-Response(
 
   if (-not $headOnly -and $length -gt 0) {
     $fileStream = [System.IO.File]::OpenRead($filePath)
-    try { $fileStream.CopyTo($stream) } finally { $fileStream.Dispose() }
+    try {
+      $buffer = New-Object byte[] 65536
+      while ($true) {
+        $bytesRead = $fileStream.Read($buffer, 0, $buffer.Length)
+        if ($bytesRead -le 0) { break }
+        $stream.Write($buffer, 0, $bytesRead)
+      }
+    } finally {
+      $fileStream.Close()
+    }
   }
 }
 
 # Reuse one stable origin so localStorage saves remain available on later launches.
-$listener = [System.Net.Sockets.TcpListener]::new($address, $port)
+$listener = New-Object -TypeName System.Net.Sockets.TcpListener -ArgumentList $address, $port
 try {
   $listener.Start()
 } catch {
   $existingInstance = $false
-  $probe = [System.Net.Sockets.TcpClient]::new()
+  $probe = New-Object -TypeName System.Net.Sockets.TcpClient
   try {
     $probe.Connect($address, $port)
     $probeStream = $probe.GetStream()
     $probeStream.ReadTimeout = 1000
     $request = [System.Text.Encoding]::ASCII.GetBytes("GET /__aeons_end_local_server_check__ HTTP/1.1`r`nHost: 127.0.0.1`r`nConnection: close`r`n`r`n")
     $probeStream.Write($request, 0, $request.Length)
-    $reader = [System.IO.StreamReader]::new($probeStream, [System.Text.Encoding]::ASCII, $false, 1024, $true)
+    $reader = New-Object -TypeName System.IO.StreamReader -ArgumentList $probeStream
     $existingInstance = $reader.ReadLine() -match '^HTTP/1\.1 204 '
   } catch {
     $existingInstance = $false
   } finally {
-    $probe.Dispose()
+    $probe.Close()
   }
 
   if ($existingInstance) {
@@ -108,7 +122,7 @@ try {
       $stream = $client.GetStream()
       $stream.ReadTimeout = 5000
       $stream.WriteTimeout = 30000
-      $reader = [System.IO.StreamReader]::new($stream, [System.Text.Encoding]::ASCII, $false, 1024, $true)
+      $reader = New-Object -TypeName System.IO.StreamReader -ArgumentList $stream
       $requestLine = $reader.ReadLine()
       if (-not $requestLine) { continue }
 
@@ -129,7 +143,7 @@ try {
         if ($null -eq $headerLine -or $headerLine.Length -eq 0) { break }
       }
 
-      $requestUri = [System.Uri]::new("http://127.0.0.1:$port$($requestParts[1])")
+      $requestUri = New-Object -TypeName System.Uri -ArgumentList "http://127.0.0.1:$port$($requestParts[1])"
       $requestPath = [System.Uri]::UnescapeDataString($requestUri.AbsolutePath)
       if ($requestPath -eq '/__aeons_end_local_server_check__') {
         Send-Response $stream 204 'No Content' 'text/plain' $null
@@ -162,7 +176,7 @@ try {
     } catch {
       try { Send-Response $stream 500 'Internal Server Error' 'text/plain; charset=utf-8' $null } catch { }
     } finally {
-      $client.Dispose()
+      $client.Close()
     }
   }
 } finally {

@@ -21,6 +21,8 @@ const flip = ref<{
   front: ReturnType<typeof breachPresentation>
   back: ReturnType<typeof breachPresentation>
   axis: [number, number]
+  frontLabel: 'closed' | 'open'
+  backLabel: 'closed' | 'open'
 } | null>(null)
 let activeAnimation: Animation | null = null
 
@@ -120,6 +122,21 @@ watch(
         front: breachAt(false, previous.focusDirection),
         back: breachAt(true, next.focusDirection),
         axis: flipAxis[previous.focusDirection],
+        frontLabel: 'closed',
+        backLabel: 'open',
+      }
+      void animateOpen()
+      return
+    }
+
+    if (!next.opened && previous.opened) {
+      activeAnimation?.cancel()
+      flip.value = {
+        front: breachAt(true, previous.focusDirection),
+        back: breachAt(false, next.focusDirection),
+        axis: flipAxis[previous.focusDirection],
+        frontLabel: 'open',
+        backLabel: 'closed',
       }
       void animateOpen()
       return
@@ -157,15 +174,15 @@ onBeforeUnmount(() => activeAnimation?.cancel())
         <img
           class="breach-flip-face breach-flip-front"
           :src="flip.front.imageUrl"
-          :alt="`${alt} before opening`"
+          :alt="`${alt} ${flip.frontLabel}`"
           :style="{ transform: `rotate(${flip.front.rotation}deg)` }"
           draggable="false"
         />
         <img
           class="breach-flip-face breach-flip-back"
           :src="flip.back.imageUrl"
-          :alt="`${alt} open`"
-          :style="{ transform: `rotate3d(${flip.axis[0]}, ${flip.axis[1]}, 0, 180deg)` }"
+          :alt="`${alt} ${flip.backLabel}`"
+          :style="{ transform: `rotate3d(${flip.axis[0]}, ${flip.axis[1]}, 0, 180deg) rotate(${flip.back.rotation}deg)` }"
           draggable="false"
         />
       </div>

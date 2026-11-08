@@ -21,6 +21,8 @@
   justify-content: space-between;
   align-items: center;
   gap: 12px;
+  min-height: 32px;
+  padding-right: 40px;
   margin-bottom: 10px;
   cursor: move;
 }
@@ -141,6 +143,7 @@
 .debug-card-count { color: var(--muted); font-size: 10px; white-space: nowrap; }
 .debug-card-search-row { display: flex; gap: 6px; align-items: center; }
 .debug-card-search { flex: 1; min-width: 0; height: 30px; padding: 5px 9px; }
+.debug-card-search-row > .btn { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; height: 30px; box-sizing: border-box; white-space: nowrap; }
 .debug-card-filters { display: flex; flex-wrap: wrap; gap: 5px; }
 .debug-card-filters .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(122, 162, 255, .12); }
 .debug-card-groups { display: flex; flex-direction: column; gap: 9px; }

@@ -1537,6 +1537,8 @@ export interface NemesisDef {
   /** Builders for this Nemesis' decks. Definitions may omit unused auxiliary decks. */
   deckBuilder?: () => string[]
   specificDeckBuilder?: () => string[]
+  /** Optional Nemesis-specific discard pile used by mechanics such as Finality. */
+  specificDiscardBuilder?: () => string[]
   /** Auxiliary deck for Nemesis mechanics such as Crooked Mask's Corruptions. */
   corruptionDeckBuilder?: () => string[]
   /** How the otherwise generic specific-deck zone is used by this Nemesis. */

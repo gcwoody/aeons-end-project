@@ -12,6 +12,7 @@ import { useGame } from '../game/useGame'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import ModalBase from './ModalBase.vue'
+import ModalCloseButton from './ModalCloseButton.vue'
 import { chunkCards, groupPileCards, pileRowLabel, type PileKind } from '../game/pile-layout'
 import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
@@ -217,6 +218,7 @@ function specificCardImage(cardId: string): string | undefined {
     @overlay-click="closePile"
     @panel-pointerdown="startDrag"
   >
+      <ModalCloseButton label="Close pile viewer" @close="closePile" />
       <h3>
         {{ title }}
         <span class="muted">{{ orderLabel }}</span>
@@ -276,6 +278,5 @@ function specificCardImage(cardId: string): string | undefined {
           </template>
         </div>
       </div>
-      <button class="btn" @click="closePile">Close</button>
   </ModalBase>
 </template>

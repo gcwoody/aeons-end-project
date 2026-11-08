@@ -135,6 +135,24 @@ export function createEffectResolver(services: EffectResolutionServices) {
   g: GameState, resolution: PendingEffectResolution,
 ): string[] {
   const messages: string[] = []
+  const deferDamageUntilPrerequisitesResolve = (effect: CardEffect) => {
+    // Keep a damage effect that depends on a later choice inside its current
+    // card-effect block. Appending it to the whole resolution queue can put it
+    // after resolve_spell_damage_bonus, which mistakes the cast for a spell
+    // with no damage and creates a separate bonus-only damage instance.
+    const blockEndIndex = resolution.remainingEffects.findIndex(candidate =>
+      candidate.kind === 'restore_effect_context' && candidate.preserveSpellDamageState,
+    )
+    const spellBonusIndex = resolution.remainingEffects.findIndex(candidate =>
+      candidate.kind === 'resolve_spell_damage_bonus',
+    )
+    const insertAt = blockEndIndex >= 0
+      ? blockEndIndex
+      : spellBonusIndex >= 0
+        ? spellBonusIndex
+        : resolution.remainingEffects.length
+    resolution.remainingEffects.splice(insertAt, 0, effect)
+  }
   g.pendingEffect = null
   if (resolution.sourceCardOwnerId === undefined && resolution.sourceCardId) {
     resolution.sourceCardOwnerId = resolution.pendingSpellCast?.cardId === resolution.sourceCardId
@@ -3142,7 +3160,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         resolution.lastSelectedCardCount = 0
         resolution.lastSelectedCardCost = 0
         resolution.lastOptionalAccepted = false
-        resolution.remainingEffects.push(effect)
+        deferDamageUntilPrerequisitesResolve(effect)
         continue
       }
       const amount = Math.floor(damageEffectAmountValue(
@@ -3182,7 +3200,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
         resolution.lastSelectedCardCount = 0
         resolution.lastSelectedCardCost = 0
         resolution.lastOptionalAccepted = false
-        resolution.remainingEffects.push(effect)
+        deferDamageUntilPrerequisitesResolve(effect)
         continue
       }
       const amount = damageEffectAmountValue(

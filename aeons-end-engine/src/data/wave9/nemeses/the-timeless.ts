@@ -167,4 +167,5 @@ export const theTimeless: NemesisDef = {
   rulesModuleId: 'the_timeless',
   deckBuilder: () => buildTieredNemesisDeck(theTimeless),
   specificDeckBuilder: () => [],
+  specificDiscardBuilder: () => Array.from({ length: 8 }, () => 'finality'),
 }

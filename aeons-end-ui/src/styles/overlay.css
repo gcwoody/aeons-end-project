@@ -12,6 +12,7 @@
   animation: overlay-fade-in var(--overlay-in-duration) ease-out both;
 }
 .overlay-card {
+  position: relative;
   background: var(--panel);
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--radius-modal);
@@ -21,6 +22,38 @@
   will-change: opacity, transform, filter;
   animation: modal-pop-in var(--modal-in-duration) cubic-bezier(.2, .8, .2, 1) both;
 }
+.modal-close-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  padding: 0;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 50%;
+  background: var(--panel-2);
+  color: var(--muted);
+  cursor: pointer;
+}
+.modal-close-button::before,
+.modal-close-button::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 14px;
+  height: 2px;
+  border-radius: var(--radius-pill);
+  background: currentColor;
+  transform-origin: center;
+}
+.modal-close-button::before { transform: translate(-50%, -50%) rotate(45deg); }
+.modal-close-button::after { transform: translate(-50%, -50%) rotate(-45deg); }
+.modal-close-button:hover,
+.modal-close-button:focus-visible { border-color: var(--accent); color: var(--text); }
 .overlay-card h2 { margin: 0 0 8px; }
 .draggable-modal { position: relative; cursor: default; }
 .draggable-modal.dragging { cursor: default; user-select: none; }

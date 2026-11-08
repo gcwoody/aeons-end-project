@@ -16,6 +16,7 @@ import { useModalDrag } from '../game/useModalDrag'
 import { getNemesisPresentation } from '../game/nemesis-presentation'
 import { registerDismissibleOverlay } from '../game/dismissible-overlays'
 import ModalBase from './ModalBase.vue'
+import ModalCloseButton from './ModalCloseButton.vue'
 
 const {
   state, nemesisDiscardActions, discardNemesisCard, resolveDecision,
@@ -537,13 +538,28 @@ onBeforeUnmount(() => {
       @overlay-click="closeMat"
       @panel-pointerdown="startMatDrag"
     >
-        <div class="mage-modal-frame nemesis-mat-modal-frame">
-          <img class="mage-modal-image" :src="nemesisMatImageUrl(nemesis.type, matSide)" :alt="`${nemesis.name} mat ${matSide}`" draggable="false" />
-        </div>
-        <div class="overlay-actions">
-          <button class="btn" @click="matSide = matSide === 'front' ? 'back' : 'front'">{{ matSide === 'front' ? 'Flip to Back' : 'Show Front' }}</button>
-          <button class="btn" @click="closeMat">Close</button>
-        </div>
+        <ModalCloseButton label="Close Nemesis mat" @close="closeMat" />
+        <button
+          type="button"
+          class="mage-modal-frame mage-modal-flip-scene nemesis-mat-modal-frame"
+          :aria-label="matSide === 'front' ? `Flip ${nemesis.name} mat to back` : `Show ${nemesis.name} mat front`"
+          @click="matSide = matSide === 'front' ? 'back' : 'front'"
+        >
+          <span class="mage-modal-flip-card" :class="{ flipped: matSide === 'back' }">
+            <img
+              class="mage-modal-image mage-modal-face"
+              :src="nemesisMatImageUrl(nemesis.type, 'front')"
+              :alt="`${nemesis.name} mat front`"
+              draggable="false"
+            />
+            <img
+              class="mage-modal-image mage-modal-face mage-modal-face--back"
+              :src="nemesisMatImageUrl(nemesis.type, 'back')"
+              :alt="`${nemesis.name} mat back`"
+              draggable="false"
+            />
+          </span>
+        </button>
     </ModalBase>
 
     <ModalBase
@@ -556,6 +572,7 @@ onBeforeUnmount(() => {
       @overlay-click="closeSubBoardPreview"
       @panel-pointerdown="startSubBoardModalDrag"
     >
+      <ModalCloseButton label="Close Nemesis board preview" @close="closeSubBoardPreview" />
       <div
         class="nemesis-sub-board-modal-frame"
         :style="{ aspectRatio: String(presentation.subBoard.layout.imageSize.width / presentation.subBoard.layout.imageSize.height) }"
@@ -567,9 +584,6 @@ onBeforeUnmount(() => {
           :available-region-ids="[]"
           :token-image-url="subBoardTokenImageUrl"
         />
-      </div>
-      <div class="overlay-actions">
-        <button class="btn" @click="closeSubBoardPreview">Close</button>
       </div>
     </ModalBase>
 

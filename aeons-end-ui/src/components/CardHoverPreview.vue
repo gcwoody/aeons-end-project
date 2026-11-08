@@ -2,8 +2,9 @@
 import { ref, onBeforeUnmount, onMounted, watch } from 'vue'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
+import { clearActiveCardPreviewWheelHandler, setActiveCardPreviewWheelHandler } from '../game/card-preview-wheel'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   cardId?: string
   imageUrl?: string
   imageAlt?: string
@@ -13,8 +14,11 @@ const props = defineProps<{
   previewDelay?: number
   imageObjectFit?: 'cover' | 'contain' | 'fill'
   previewClass?: string
+  resizeOnWheel?: boolean
   disabled?: boolean
-}>()
+}>(), {
+  resizeOnWheel: true,
+})
 
 const visible = ref(false)
 const position = ref({ left: 0, top: 0 })
@@ -62,10 +66,7 @@ function startPreview(event: MouseEvent) {
   updatePosition(event.clientX, event.clientY)
   showTimer = setTimeout(() => {
     visible.value = true
-    // Capture the wheel before board/hand scroll handlers. Once a preview is
-    // visible, the pointer is over the card preview interaction, so wheel
-    // input must resize it instead of scrolling the source hand horizontally.
-    window.addEventListener('wheel', resizePreview, { capture: true, passive: false })
+    setActiveCardPreviewWheelHandler(props.resizeOnWheel === false ? null : resizePreview)
   }, props.previewDelay ?? 500)
 }
 
@@ -99,8 +100,11 @@ function handleMouseOver(event: MouseEvent) {
 }
 
 function resizePreview(event: WheelEvent) {
+  if (!visible.value || props.resizeOnWheel === false) return
   event.preventDefault()
-  event.stopPropagation()
+  // A preview owns wheel input while visible. Stop board-level capture
+  // handlers from also scrolling the hand or Nemesis card row underneath it.
+  event.stopImmediatePropagation()
   const scale = event.deltaY < 0 ? 1.1 : 0.9
   const width = previewSize.value.width * scale
   const defaultSize = getPreviewSize()
@@ -114,7 +118,7 @@ function stopPreview() {
   clearTimeout(showTimer)
   showTimer = undefined
   visible.value = false
-  window.removeEventListener('wheel', resizePreview, true)
+  clearActiveCardPreviewWheelHandler(resizePreview)
 }
 
 function dismissFromSpellDrag() {

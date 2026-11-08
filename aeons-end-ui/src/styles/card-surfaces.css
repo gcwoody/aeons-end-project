@@ -161,18 +161,49 @@ body.spell-dragging .card-hover-preview {
 }
 .mage-modal { padding: 18px; }
 .mage-modal-frame {
+  display: block;
+  position: relative;
   width: min(80vw, 900px);
   height: min(62vw, 650px);
-  overflow: hidden;
+  padding: 0;
+  border: 0;
   border-radius: var(--mage-modal-radius);
-  background: var(--panel);
+  background: transparent;
 }
+.mage-modal-flip-scene {
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  perspective: 1400px;
+  overflow: visible;
+}
+.mage-modal-flip-card {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 560ms cubic-bezier(.4, 0, .2, 1);
+}
+.mage-modal-flip-card.flipped { transform: rotateY(180deg); }
 .mage-modal-image {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   border-radius: var(--mage-modal-radius);
+}
+.mage-modal-face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+}
+.mage-modal-face--back { transform: rotateY(180deg); }
+.mage-modal-flip-scene:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.mage-modal-flip-scene:focus { z-index: 3; }
+.mage-modal-flip-scene.nemesis-mat-modal-frame .mage-modal-face {
+  object-fit: contain;
+  border-radius: var(--nemesis-mat-radius);
 }
 .overlay.mage-overlay { z-index: var(--z-mage-modal); }
 .nemesis-mat-preview { border-radius: var(--nemesis-mat-radius); }
@@ -183,7 +214,6 @@ body.spell-dragging .card-hover-preview {
   aspect-ratio: var(--nemesis-mat-ratio);
   border-radius: var(--nemesis-mat-radius);
 }
-.nemesis-mat-modal-frame .mage-modal-image { object-fit: contain; border-radius: var(--nemesis-mat-radius); }
 .nemesis-reveal-overlay { z-index: var(--z-decision); }
 .decision-overlay.nemesis-draw-reveal-screen {
   align-items: center;

@@ -12,6 +12,7 @@ import CardDecisionModal from './components/CardDecisionModal.vue'
 import DebugPanel from './components/DebugPanel.vue'
 import UiGallery from './components/UiGallery.vue'
 import ModalBase from './components/ModalBase.vue'
+import ModalCloseButton from './components/ModalCloseButton.vue'
 import { useModalDrag } from './game/useModalDrag'
 import { dismissTopmostOverlay } from './game/dismissible-overlays'
 
@@ -158,8 +159,7 @@ function onKeydown(e: KeyboardEvent) {
       cancelExit()
       return
     }
-    if (state.debugOpen) {
-      toggleDebug()
+    if (dismissTopmostOverlay()) {
       return
     }
     // Nemesis Main's red-highlighted card is an inline confirmation rather
@@ -168,7 +168,12 @@ function onKeydown(e: KeyboardEvent) {
     if ((state.game.pendingDecision || state.game.pendingEffect) && !canConfirmNemesisEffectWithSpace()) {
       return
     }
-    if (dismissTopmostOverlay()) {
+    if (state.debugOpen) {
+      toggleDebug()
+      return
+    }
+    if (state.phase === 'gameover') {
+      returnToMainMenu()
       return
     }
     requestExit()
@@ -315,7 +320,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
     >
         <div class="help-head">
           <h2 id="help-title">Game Help</h2>
-          <button class="btn small" aria-label="Close game help" @click="closeHelp">Close</button>
+          <ModalCloseButton label="Close game help" @close="closeHelp" />
         </div>
 
         <section class="help-section">
@@ -330,6 +335,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
             <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise confirm an available decision, a repeated spell cast, or a required player card, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+          </div>
+        </section>
+
+        <section class="help-section">
+          <h3>Card Previews</h3>
+          <div class="help-list">
+            <div class="help-row"><kbd>Mouse Wheel</kbd><span>Scroll while a card preview is visible to zoom in or out.</span></div>
           </div>
         </section>
 

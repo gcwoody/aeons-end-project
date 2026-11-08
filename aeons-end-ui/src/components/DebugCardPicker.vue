@@ -137,6 +137,7 @@ onBeforeUnmount(() => {
     </div>
 
     <div class="debug-card-search-row">
+      <slot name="search-action" />
       <input
         ref="searchInput"
         v-model="search"

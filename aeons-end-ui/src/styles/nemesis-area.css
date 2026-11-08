@@ -224,7 +224,7 @@
   flex: 0 0 calc(100cqh * var(--sub-board-ratio));
   min-width: 0;
   min-height: 0;
-  border: var(--pixel-border-width) solid var(--border);
+  border: 0;
   border-radius: 9px;
   overflow: hidden;
   cursor: pointer;
@@ -265,9 +265,9 @@
   width: auto;
   max-width: 84vw;
   overflow: hidden;
-  border: var(--pixel-border-width) solid var(--border);
+  border: 0;
   border-radius: 9px;
-  background: #151a29;
+  background: transparent;
 }
 .nemesis-sub-board-modal-frame .nemesis-sub-board {
   width: 100%;

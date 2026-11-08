@@ -10,6 +10,7 @@ import DebugNumberInput from './DebugNumberInput.vue'
 import CardHoverPreview from './CardHoverPreview.vue'
 import DebugDeckOrderModal from './DebugDeckOrderModal.vue'
 import { displayMageName, displayPlayerId } from '../game/display-name'
+import ModalCloseButton from './ModalCloseButton.vue'
 
 const props = defineProps<{ logVisible: boolean }>()
 const emit = defineEmits<{
@@ -335,7 +336,7 @@ onBeforeUnmount(() => {
   >
     <div class="debug-head">
       <h3>Debug Tools</h3>
-      <button class="btn small" @click="toggleDebug()">Close (Ctrl+D)</button>
+      <ModalCloseButton label="Close Debug Tools (Ctrl+D)" @close="toggleDebug()" />
     </div>
 
     <div class="debug-content">
@@ -446,7 +447,6 @@ onBeforeUnmount(() => {
               <option value="deck_top">Top of deck</option>
             </select>
           </label>
-          <button class="btn small" :disabled="!selectedAddPlayer" @click="addCardToPlayer()">Add Card</button>
         </div>
         <DebugCardPicker
           v-model="addCard"
@@ -455,8 +455,13 @@ onBeforeUnmount(() => {
           :allow-type-filter="false"
           :show-cost="false"
           :show-meta="false"
-
-        />
+        >
+          <template #search-action>
+            <button class="btn small" type="button" :disabled="!selectedAddPlayer" @click="addCardToPlayer()">
+              Add Card
+            </button>
+          </template>
+        </DebugCardPicker>
         <div class="debug-card-selected" aria-live="polite">
           <CardHoverPreview v-if="cardImageUrl(addCard)" :card-id="addCard" :preview-width="210" :preview-height="291.02">
             <img :src="cardImageUrl(addCard)" :alt="getCard(addCard).name" draggable="false" />
@@ -476,7 +481,13 @@ onBeforeUnmount(() => {
           search-placeholder="Search Nemesis cards..."
           :show-cost="false"
           :global-shortcut="false"
-        />
+        >
+          <template #search-action>
+            <button class="btn small" type="button" :disabled="!addNemesisCard" @click="addCardToNemesis()">
+              Add to Nemesis
+            </button>
+          </template>
+        </DebugCardPicker>
         <div class="debug-card-selected" aria-live="polite">
           <CardHoverPreview v-if="cardImageUrl(addNemesisCard)" :card-id="addNemesisCard" :preview-width="210" :preview-height="291.02">
             <img :src="cardImageUrl(addNemesisCard)" :alt="getCard(addNemesisCard).name" draggable="false" />
@@ -488,7 +499,6 @@ onBeforeUnmount(() => {
           </div>
         </div>
         <span class="debug-hint">Minion and Power cards enter play; Attack cards go to the top of the Nemesis deck; Strike cards go to the top of the Nemesis specific deck.</span>
-        <button class="btn small" @click="addCardToNemesis()">Add to Nemesis</button>
       </div>
 
       <div class="debug-section">

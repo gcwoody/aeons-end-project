@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import type { PlayerState } from '@engine/types'
 import { getCard } from '@engine/data'
 import { cardImageUrl } from '../card-images'
 import { displayMageName } from '../game/display-name'
 import { useModalDrag } from '../game/useModalDrag'
 import { usePointerReorder } from '../game/usePointerReorder'
+import { registerDismissibleOverlay } from '../game/dismissible-overlays'
 import CardHoverPreview from './CardHoverPreview.vue'
 import CardSurface from './CardSurface.vue'
 import ModalBase from './ModalBase.vue'
+import ModalCloseButton from './ModalCloseButton.vue'
 
 const props = defineProps<{
   player?: PlayerState
@@ -17,6 +19,13 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: []
 }>()
+
+const unregisterDismissibleOverlay = registerDismissibleOverlay(() => {
+  if (!props.player) return false
+  emit('close')
+  return true
+})
+onBeforeUnmount(unregisterDismissibleOverlay)
 
 const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
 interface DeckEntry {
@@ -79,6 +88,7 @@ const { draggingKey, onPointerDown } = usePointerReorder({
     @overlay-click="emit('close')"
     @panel-pointerdown="startDrag"
   >
+    <ModalCloseButton label="Close deck order editor" @close="emit('close')" />
     <h3 id="debug-deck-order-title">
       {{ displayMageName(player.mageType) }} Deck
       <span class="muted">(top → bottom)</span>
@@ -116,6 +126,5 @@ const { draggingKey, onPointerDown } = usePointerReorder({
         />
       </CardHoverPreview>
     </TransitionGroup>
-    <button class="btn" type="button" @click="emit('close')">Close</button>
   </ModalBase>
 </template>

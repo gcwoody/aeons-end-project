@@ -293,7 +293,133 @@
 .setup-nemesis-picker { width: min(1120px, calc(100vw - 32px)); max-height: min(88vh, 760px); overflow-y: auto; }
 .setup-nemesis-picker:focus { outline: none; }
 .setup-nemesis-picker .mage-picker-wave-tabs { margin-bottom: 14px; }
-.setup-market-picker-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.setup-picker-hint { margin: -4px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
+.setup-inspector-overlay { z-index: calc(var(--z-decision) + 1); }
+.setup-inspector-deck-overlay { z-index: calc(var(--z-decision) + 2); }
+.setup-inspector-modal {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(1200px, calc(100vw - 32px));
+  height: auto;
+  max-height: min(92vh, 900px);
+  padding: 14px 18px 18px;
+  overflow: hidden;
+}
+.setup-inspector-modal--nemesis { width: fit-content; max-width: min(1080px, calc(100vw - 32px)); }
+.setup-inspector-modal--nemesis-cards-only { width: fit-content; max-width: min(680px, calc(100vw - 32px)); max-height: min(98vh, 980px); }
+.setup-inspector-header { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; min-height: 26px; padding-inline: 42px; }
+.setup-inspector-header h2 { margin: 0; font-size: 18px; text-align: center; }
+.setup-inspector-section-title { margin: 0; color: var(--muted); font-size: 12px; font-weight: 700; letter-spacing: .08em; text-align: center; text-transform: uppercase; }
+.setup-inspector-layout { display: grid; flex: 1 1 auto; grid-template-columns: minmax(0, 1fr) 470px; gap: 8px; min-height: 0; overflow: visible; }
+.setup-inspector-layout--nemesis { grid-template-columns: minmax(0, 1fr) 470px; }
+.setup-inspector-mat-column { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 0; overflow: visible; }
+.setup-inspector-breaches { display: flex; flex: 0 0 auto; flex-direction: column; gap: 0; }
+.setup-inspector-breach-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; width: 100%; }
+.setup-inspector-breach-slot { display: grid; min-width: 0; aspect-ratio: 1; place-items: center; }
+.setup-inspector-breach {
+  position: relative;
+  display: block;
+  width: 92%;
+  height: 92%;
+  min-width: 0;
+  aspect-ratio: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.setup-inspector-breach:disabled { cursor: default; }
+.setup-inspector-breach:focus { z-index: 3; }
+.setup-inspector-breach:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.setup-inspector-breach .breach-artwork { position: absolute; inset: 0; }
+.setup-inspector-mat-area { position: relative; display: flex; flex: 0 0 auto; justify-content: center; align-items: center; min-height: 0; overflow: visible; }
+.setup-inspector-layout--nemesis .setup-inspector-mat-area { justify-content: flex-end; }
+.setup-inspector-mat-scene {
+  display: block;
+  position: relative;
+  max-height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  perspective: 1400px;
+  cursor: pointer;
+  overflow: visible;
+}
+.setup-inspector-mat-scene:focus { z-index: 3; }
+.setup-inspector-mat-scene:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.setup-inspector-mat-card {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 560ms cubic-bezier(.4, 0, .2, 1);
+}
+.setup-inspector-mat-card.flipped { transform: rotateY(180deg); }
+.setup-inspector-mat-face {
+  display: block;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: var(--mage-radius);
+  backface-visibility: hidden;
+}
+.setup-inspector-mat-back { transform: rotateY(180deg); }
+.setup-inspector-mage-mat { width: 100%; aspect-ratio: var(--mage-mat-ratio); border-radius: var(--mage-radius); }
+.setup-inspector-nemesis-mat {
+  height: min(68vh, 720px);
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  aspect-ratio: var(--nemesis-mat-ratio);
+  cursor: pointer;
+  border-radius: var(--nemesis-mat-radius);
+}
+.setup-inspector-nemesis-mat:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.setup-inspector-nemesis-mat .setup-inspector-mat-face { object-fit: contain; border-radius: var(--nemesis-mat-radius); }
+.setup-inspector-zone-grid { position: relative; display: flex; width: 470px; max-width: 100%; flex: 0 0 auto; flex-direction: column; justify-content: center; gap: 8px; min-width: 0; min-height: 0; }
+.setup-inspector-zone-grid--mage { top: -16px; }
+.setup-inspector-layout--nemesis-cards-only { grid-template-columns: minmax(0, min(500px, 50vh, calc(100vw - 68px))); grid-template-rows: max-content max-content; justify-content: center; align-content: start; gap: 12px; flex: 0 0 auto; }
+.setup-inspector-layout--nemesis-cards-only .setup-inspector-mat-column,
+.setup-inspector-zone-grid--nemesis-cards-only { width: 100%; }
+.setup-inspector-layout--nemesis-cards-only .setup-inspector-mat-area { justify-content: center; }
+.setup-inspector-layout--nemesis-cards-only .setup-inspector-nemesis-mat { width: 100%; height: auto; max-height: min(68vh, 720px); }
+.setup-inspector-zone {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  gap: 8px;
+  min-width: 0;
+  min-height: 0;
+  padding: 4px 6px 5px;
+  overflow: visible;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.setup-inspector-zone[role="button"] { cursor: pointer; }
+.setup-inspector-zone[role="button"]:hover,
+.setup-inspector-zone[role="button"]:focus-visible { border-color: var(--accent); outline: none; }
+.setup-inspector-zone h3 { flex: 0 0 auto; margin: 0; font-size: 11px; line-height: 1.2; text-align: center; }
+.setup-inspector-zone .muted { display: grid; flex: 1; place-items: center; margin: 0; color: var(--muted); font-size: 11px; text-align: center; }
+.setup-inspector-card-grid { display: flex; flex: 0 0 auto; align-items: center; height: 144px; min-height: 0; overflow-x: auto; overflow-y: hidden; padding: 4px 2px 12px; overscroll-behavior-x: contain; scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+.setup-inspector-card-row { display: flex; align-items: center; justify-content: flex-start; gap: 8px; width: max-content; min-width: 100%; height: 100%; }
+.setup-inspector-card-row--centered { justify-content: center; }
+.setup-inspector-card.card-image,
+.setup-inspector-card.card-image:hover { flex: 0 0 82px; width: 82px; min-width: 82px; max-width: 82px; height: auto; aspect-ratio: var(--card-aspect-ratio); cursor: default; transform: none; filter: none; transition: none; }
+.setup-inspector-card.card-image img { object-fit: cover; }
+.setup-inspector-deck-modal { box-sizing: border-box; width: fit-content; max-width: min(1400px, calc(100vw - 24px)); max-height: calc(100dvh - 24px); overflow: auto; padding: 18px 20px 16px; }
+.setup-inspector-deck-modal h2 { margin: 0 42px 10px; font-size: 18px; }
+.setup-inspector-deck-scroller { box-sizing: border-box; width: fit-content; max-width: 100%; height: 390px; margin-inline: auto; overflow-x: auto; overflow-y: hidden; padding: 12px 8px 14px; overscroll-behavior-x: contain; scrollbar-color: var(--border) transparent; scrollbar-width: thin; }
+.setup-inspector-deck-row { display: flex; align-items: center; justify-content: center; gap: 12px; width: max-content; min-width: 100%; height: 100%; }
+.setup-inspector-large-card.card-image { flex: 0 0 var(--large-card-width); width: var(--large-card-width); min-width: var(--large-card-width); max-width: var(--large-card-width); height: var(--large-card-height); cursor: default; }
+.setup-inspector-large-card.card-image img { object-fit: cover; }
+.setup-inspector-nemesis-mat .setup-inspector-mat-card { width: 100%; height: 100%; }
+.setup-market-picker-head { display: flex; align-items: center; justify-content: flex-start; gap: 16px; padding-right: 42px; }
 .setup-market-picker-head h2 { margin: 0; }
 .market-picker-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
 .market-picker-card {
@@ -357,6 +483,17 @@
   .market-picker-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .mage-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .nemesis-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .setup-inspector-modal { max-height: calc(100dvh - 12px); padding: 8px; gap: 6px; }
+  .setup-inspector-layout,
+  .setup-inspector-layout--nemesis { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, .85fr) minmax(0, 1.15fr); gap: 8px; }
+  .setup-inspector-layout--nemesis-cards-only { grid-template-columns: minmax(0, min(500px, 50vh, 100%)); grid-template-rows: max-content max-content; align-content: start; gap: 12px; flex: 0 0 auto; }
+  .setup-inspector-zone-grid--mage { top: 0; }
+  .setup-inspector-layout--nemesis .setup-inspector-mat-area { justify-content: center; }
+  .setup-inspector-mat-column { min-height: 0; }
+  .setup-inspector-breach { width: 92%; height: 92%; }
+  .setup-inspector-zone-grid { width: 100%; }
+  .setup-inspector-zone { padding: 4px 5px; }
+  .setup-inspector-card-grid { height: 144px; }
 }
 @media (max-width: 520px) {
   .setup { padding-inline: 12px; }
@@ -368,5 +505,13 @@
   .market-picker-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .mage-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .nemesis-picker-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-height: 720px) {
+  .setup-inspector-modal { max-height: calc(100dvh - 8px); gap: 4px; padding-block: 6px; }
+  .setup-inspector-modal--nemesis-cards-only { max-height: calc(100dvh - 8px); }
+  .setup-inspector-layout--nemesis-cards-only { grid-template-columns: minmax(0, min(500px, 44vh, 100%)); }
+  .setup-inspector-zone { gap: 8px; padding-block: 4px; }
+  .setup-inspector-card-grid { height: 144px; }
 }
 

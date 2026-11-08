@@ -125,6 +125,7 @@
   align-items: center;
   gap: 6px;
 }
+.breach:has(.breach-flip-scene) { z-index: var(--z-card-hover); }
 .breach.absent { visibility: hidden; pointer-events: none; }
 .breach-token-wrap {
   width: 100%;
@@ -162,7 +163,7 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  overflow: hidden;
+  overflow: visible;
   border-radius: var(--breach-radius);
   transform-style: preserve-3d;
 }
