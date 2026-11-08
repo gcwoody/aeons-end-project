@@ -14,6 +14,7 @@
 
 # Local game saves
 /aeons-end-engine/save.json
+/.aeons-end-update/
 
 # Logs and debug output
 npm-debug.log*

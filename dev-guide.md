@@ -160,3 +160,9 @@ npm run test:e2e -- --workers=2
 `npm run build` 会先生成图片导入映射。Playwright 适合验证交互、决策、几何位置与动画状态；最终观感仍需在桌面浏览器中检查。当前 E2E 回归基线及已知复跑差异见 [E2E 基线记录](aeons-end-ui/tests/E2E_BASELINE.md)。不要仅为迎合窄屏而增加布局分支；目标窗口见 [UI 开发指南](ui/ui-guide.md)。
 
 牌库数组 `[0]` 是顶牌：抽牌用 `shift()`，放到弃牌堆顶用 `unshift()`。用户可见文字用英文；代码标识符和注释用英文，内部说明文档可用中文。
+
+## 本地试玩更新包
+
+发布 `friend-preview` 的本地试玩版本前，在 `aeons-end-ui/` 运行 `npm run build:local-demo`，并提交生成的 `local-demo-site/` 与根目录 `local-update-manifest.tsv`。更新清单由 `scripts/generate-local-update-manifest.mjs` 生成，列出本地网页、图片和启动服务脚本的相对路径、大小与 SHA-256；不要手工编辑。玩家的启动器从 GitHub `friend-preview` 分支读取清单，只下载发生变化的文件。
+
+`Play Aeon's End Demo.cmd` 与 `update-local-demo.ps1` 是自动更新器的启动引导文件，不包含在增量清单中，以免更新进程替换自身或正在执行的 CMD。修改这两个引导文件后，玩家需要重新获取最新启动文件；应用界面和图片仍可通过自动更新增量下载。

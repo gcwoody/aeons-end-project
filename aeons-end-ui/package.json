@@ -7,7 +7,7 @@
     "dev": "vite",
     "prebuild": "npm run generate:images",
     "build": "vite build",
-    "build:local-demo": "npm run generate:images && vite build --mode local-demo --outDir ../local-demo-site --emptyOutDir",
+    "build:local-demo": "npm run generate:images && vite build --mode local-demo --outDir ../local-demo-site --emptyOutDir && node ../scripts/generate-local-update-manifest.mjs",
     "generate:images": "node ../scripts/generate-image-imports.mjs",
     "preview": "vite preview",
     "test:e2e": "playwright test",
