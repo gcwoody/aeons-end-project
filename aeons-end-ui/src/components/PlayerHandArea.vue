@@ -219,7 +219,7 @@ function activateSpecificDeckPrimary(canBuy: boolean) {
           base-class="player-pile-card"
           size="pile"
           class="player-discard-top-card"
-          :class="recallAvailable ? ['game-highlight', 'game-highlight--context'] : undefined"
+          :class="recallAvailable ? ['game-highlight', 'game-highlight--recall'] : undefined"
           data-card-flight-target="discard"
           :data-discard-top-card="discardTopCard"
           data-card-motion-zone="discard"

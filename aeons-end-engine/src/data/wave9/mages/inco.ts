@@ -63,8 +63,11 @@ export const INCO_CARDS: Record<string, CardDef> = {
 export const INCO_UNIQUE_CARDS = Object.keys(INCO_CARDS)
 
 const firethornDeck = [
-  'arcing_firethorn', 'blooming_firethorn', 'calming_firethorn', 'imbued_firethorn', 'revealing_firethorn',
-  'arcing_firethorn', 'blooming_firethorn', 'calming_firethorn', 'imbued_firethorn', 'revealing_firethorn',
+  'arcing_firethorn', 'arcing_firethorn',
+  'blooming_firethorn', 'blooming_firethorn',
+  'calming_firethorn', 'calming_firethorn',
+  'imbued_firethorn', 'imbued_firethorn',
+  'revealing_firethorn', 'revealing_firethorn',
 ]
 
 export function createInco(makeBreach: BreachFactory): MageDef {

@@ -2,7 +2,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useGame } from '../game/useGame'
 import { displayMageName } from '../game/display-name'
-import { useModalDrag } from '../game/useModalDrag'
 import { MAGES, NEMESES, ALL_MARKET_CARDS, MARKET_SLOT_TYPES } from '@engine/data'
 import type { MarketSetupConfig } from '@engine/types'
 import { cardImageUrl, nemesisMatImageUrl } from '../card-images'
@@ -13,32 +12,18 @@ import MatPreviewButton from './MatPreviewButton.vue'
 import SetupCharacterInspector from './SetupCharacterInspector.vue'
 import ModalCloseButton from './ModalCloseButton.vue'
 
-const {
-  state, newGame, resumeGame,
-  rerollMarketTemplate,
-  requestDeleteSave, requestDeleteSaves, cancelDeleteSave, deleteSaves,
-  duplicateSave, renameSave,
-} = useGame()
-const { modalEl, modalStyle, dragging, startDrag } = useModalDrag()
+const emit = defineEmits<{ (event: 'back-to-menu'): void }>()
+const { state, newGame, rerollMarketTemplate } = useGame()
 const selectionError = ref('')
-const selectedSaveIds = ref<string[]>([])
-const editingSaveId = ref<string | null>(null)
-const saveNameDraft = ref('')
-const allSavesSelected = computed(() => state.saves.length > 0
-  && state.saves.every(save => selectedSaveIds.value.includes(save.id)))
-const pendingDeleteSaveCount = computed(() => state.deleteSaveIds.length)
 const mageOptions = computed(() => Object.values(MAGES))
 const mageWaves = computed(() => [...new Set(mageOptions.value.map(mage => mage.wave))].sort((a, b) => a - b))
 const mage1Wave = ref(MAGES[state.mage1]?.wave ?? mageWaves.value[0] ?? 1)
 const mage2Wave = ref(MAGES[state.mage2]?.wave ?? mageWaves.value[0] ?? 1)
 const magePickerWave = ref(mage1Wave.value)
-const mage1Options = computed(() => mageOptions.value.filter(mage => mage.wave === mage1Wave.value))
-const player2MageOptions = computed(() => mageOptions.value.filter(mage => mage.wave === mage2Wave.value && mage.type !== state.mage1))
 const nemesisOptions = computed(() => Object.values(NEMESES))
 const nemesisWaves = computed(() => [...new Set(nemesisOptions.value.map(nemesis => nemesis.wave ?? 1))].sort((a, b) => a - b))
 const nemesisWave = ref(NEMESES[state.nemesisType]?.wave ?? 1)
 const nemesisPickerWave = ref(nemesisWave.value)
-const nemesisWaveOptions = computed(() => nemesisOptions.value.filter(nemesis => (nemesis.wave ?? 1) === nemesisWave.value))
 const nemesisPickerOptions = computed(() => nemesisOptions.value.filter(nemesis => (nemesis.wave ?? 1) === nemesisPickerWave.value))
 const duplicateMage = computed(() => state.mage1 === state.mage2)
 const marketCards = computed(() => Object.values(ALL_MARKET_CARDS)
@@ -53,6 +38,12 @@ const magePickerPlayer = ref<1 | 2 | null>(null)
 const magePickerEl = ref<HTMLElement | null>(null)
 const nemesisPickerOpen = ref(false)
 const nemesisPickerEl = ref<HTMLElement | null>(null)
+type SetupDropdownId = 'marketTemplate'
+const activeSetupDropdown = ref<SetupDropdownId | null>(null)
+const setupRootEl = ref<HTMLElement | null>(null)
+const setupDropdownDirection = ref<'up' | 'down'>('up')
+const setupDropdownAlignment = ref<'left' | 'right'>('left')
+const setupDropdownMaxHeight = ref(0)
 const inspectorTarget = ref<{ kind: 'mage'; type: string } | { kind: 'nemesis'; type: string } | null>(null)
 function cardsForSlot(index: number) {
   return marketCards.value.filter(card => card.type === marketSlotTypes[index])
@@ -121,6 +112,88 @@ function randomizeSetupMages() {
   state.mage2 = second.type
   mage1Wave.value = first.wave
   mage2Wave.value = second.wave
+}
+
+function closeSetupDropdown() {
+  activeSetupDropdown.value = null
+  setupDropdownMaxHeight.value = 0
+}
+
+async function positionSetupDropdown() {
+  const dropdown = activeSetupDropdown.value
+  if (!dropdown) return
+  await nextTick()
+  if (activeSetupDropdown.value !== dropdown) return
+
+  const root = setupRootEl.value?.querySelector<HTMLElement>(`[data-setup-dropdown="${dropdown}"]`)
+  const trigger = root?.querySelector<HTMLElement>('.setup-preview-select__trigger')
+  const menu = root?.querySelector<HTMLElement>('.setup-preview-select__menu')
+  if (!trigger || !menu) return
+
+  const rect = trigger.getBoundingClientRect()
+  const margin = 12
+  const gap = 7
+  const above = Math.max(0, rect.top - margin - gap)
+  const below = Math.max(0, window.innerHeight - rect.bottom - margin - gap)
+  const desiredHeight = Math.min(menu.scrollHeight, 360)
+  const canFitAbove = above >= desiredHeight
+  const canFitBelow = below >= desiredHeight
+  const direction = canFitAbove || (!canFitBelow && above >= below) ? 'up' : 'down'
+  const availableHeight = direction === 'up' ? above : below
+  const menuWidth = menu.getBoundingClientRect().width
+  const rightEdge = window.innerWidth - margin
+  const leftAlignedOverflow = Math.max(0, margin - rect.left) + Math.max(0, rect.left + menuWidth - rightEdge)
+  const rightAlignedOverflow = Math.max(0, margin - (rect.right - menuWidth)) + Math.max(0, rect.right - rightEdge)
+
+  setupDropdownDirection.value = direction
+  setupDropdownMaxHeight.value = Math.max(0, Math.min(desiredHeight, availableHeight))
+  setupDropdownAlignment.value = rightAlignedOverflow < leftAlignedOverflow ? 'right' : 'left'
+}
+
+function toggleSetupDropdown(dropdown: SetupDropdownId) {
+  if (activeSetupDropdown.value === dropdown) {
+    closeSetupDropdown()
+    return
+  }
+  activeSetupDropdown.value = dropdown
+  void positionSetupDropdown()
+}
+
+function setupDropdownMenuClass(dropdown: SetupDropdownId) {
+  if (activeSetupDropdown.value !== dropdown) return {}
+  return {
+    'is-open-down': setupDropdownDirection.value === 'down',
+    'is-align-right': setupDropdownAlignment.value === 'right',
+  }
+}
+
+function setupDropdownMenuStyle(dropdown: SetupDropdownId) {
+  if (activeSetupDropdown.value !== dropdown) return undefined
+  const maxHeight = setupDropdownMaxHeight.value
+  return maxHeight < 12
+    ? { maxHeight: `${maxHeight}px`, paddingBlock: '0', borderBlockWidth: '0' }
+    : { maxHeight: `${maxHeight}px` }
+}
+
+function refreshSetupDropdownPosition() {
+  if (activeSetupDropdown.value) void positionSetupDropdown()
+}
+
+function handleSetupOutsidePointerDown(event: PointerEvent) {
+  const target = event.target
+  if (!activeSetupDropdown.value || !(target instanceof Element)) return
+  const dropdownRoot = target.closest<HTMLElement>('[data-setup-dropdown]')
+  if (dropdownRoot?.dataset.setupDropdown === activeSetupDropdown.value) return
+  closeSetupDropdown()
+}
+
+function toggleNemesisDifficulty() {
+  state.nemesisDifficulty = state.nemesisDifficulty === 'increased' ? 'standard' : 'increased'
+}
+
+function selectMarketTemplate(mode: MarketSetupConfig['mode']) {
+  state.marketMode = mode
+  closeSetupDropdown()
 }
 
 randomizeSetupMages()
@@ -249,170 +322,174 @@ function selectNemesis(nemesisType: string) {
   nemesisWave.value = NEMESES[nemesisType]?.wave ?? 1
 }
 
-function saveTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleString()
-}
-
-function turnLabel(turn: string): string {
-  return turn === 'nemesis' ? 'Nemesis' : turn.toUpperCase()
-}
-
-function setSaveSelected(saveId: string, event: Event) {
-  const checked = (event.target as HTMLInputElement).checked
-  selectedSaveIds.value = checked
-    ? [...new Set([...selectedSaveIds.value, saveId])]
-    : selectedSaveIds.value.filter(id => id !== saveId)
-}
-
-function setAllSavesSelected(event: Event) {
-  selectedSaveIds.value = (event.target as HTMLInputElement).checked
-    ? state.saves.map(save => save.id)
-    : []
-}
-
-function requestDeleteSelectedSaves() {
-  if (selectedSaveIds.value.length > 0) requestDeleteSaves([...selectedSaveIds.value])
-}
-
-function confirmDeleteSaves() {
-  deleteSaves([...state.deleteSaveIds])
-  selectedSaveIds.value = []
-}
-
-function beginSaveRename(save: (typeof state.saves)[number]) {
-  editingSaveId.value = save.id
-  saveNameDraft.value = save.name
-}
-
-function confirmSaveRename() {
-  const saveId = editingSaveId.value
-  if (!saveId || !saveNameDraft.value.trim()) return
-  renameSave(saveId, saveNameDraft.value)
-  editingSaveId.value = null
-  saveNameDraft.value = ''
-}
-
-function cancelSaveRename() {
-  editingSaveId.value = null
-  saveNameDraft.value = ''
-}
-
 function handleSetupEscape(event: KeyboardEvent) {
   if (event.key !== 'Escape' || event.defaultPrevented) return
   // The inspector is stacked above these setup pickers and handles its own
   // Escape key event, so leave the first press to the topmost window.
   if (inspectorTarget.value) return
 
-  if (pendingDeleteSaveCount.value > 0) cancelDeleteSave()
+  if (activeSetupDropdown.value) closeSetupDropdown()
   else if (replacementSlot.value !== null) closeReplacement()
   else if (magePickerPlayer.value !== null) closeMagePicker()
   else if (nemesisPickerOpen.value) closeNemesisPicker()
-  else if (editingSaveId.value) cancelSaveRename()
   else return
 
   event.preventDefault()
 }
 
-onMounted(() => window.addEventListener('keydown', handleSetupEscape))
-onBeforeUnmount(() => window.removeEventListener('keydown', handleSetupEscape))
+onMounted(() => {
+  window.addEventListener('keydown', handleSetupEscape)
+  window.addEventListener('resize', refreshSetupDropdownPosition)
+  setupRootEl.value?.addEventListener('scroll', refreshSetupDropdownPosition, true)
+  document.addEventListener('pointerdown', handleSetupOutsidePointerDown, true)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleSetupEscape)
+  window.removeEventListener('resize', refreshSetupDropdownPosition)
+  setupRootEl.value?.removeEventListener('scroll', refreshSetupDropdownPosition, true)
+  document.removeEventListener('pointerdown', handleSetupOutsidePointerDown, true)
+})
 </script>
 
 <template>
-  <div class="setup">
-    <header class="setup-header">
-      <h1>Aeon's End — Digital Demo</h1>
-      <p>Two players vs one Nemesis · Six turn-order cards</p>
-    </header>
-    <p v-if="selectionError || duplicateMage" class="setup-error">
-      {{ selectionError || 'This Mage has already been selected by another player.' }}
-    </p>
-    <main class="setup-layout">
+  <div ref="setupRootEl" class="setup">
+    <button class="btn small setup-back-button" type="button" aria-label="Back to Main Menu" @click="emit('back-to-menu')">
+      ← Main Menu
+    </button>
+    <div class="setup-content">
+      <header class="setup-header">
+        <p class="setup-design-kicker">PREPARE FOR THE BREACH · PLAYER 1 + PLAYER 2</p>
+        <h1>Choose Your Battle</h1>
+        <p>Choose two Mages, a Nemesis and nine market cards.</p>
+      </header>
+      <p v-if="selectionError || duplicateMage" class="setup-error">
+        {{ selectionError || 'This Mage has already been selected by another player.' }}
+      </p>
+      <main class="setup-layout">
       <section class="setup-mage-column setup-character-column" aria-label="Mage selection">
         <div class="setup-mage-field">
-          <label for="player1-mage-select">Player 1 Mage</label>
+          <span class="setup-field-label">Player 1 Mage</span>
           <span class="wave-tabs" role="tablist" aria-label="Mage Wave Tabs — First Player">
             <button v-for="wave in mageWaves" :key="`p1-wave-${wave}`" type="button" role="tab" :aria-selected="mage1Wave === wave" :class="{ active: mage1Wave === wave }" @click="randomizeMage(1, wave)">Wave {{ wave }}</button>
           </span>
-          <span class="setup-select-row">
-          <select id="player1-mage-select" v-model="state.mage1" aria-label="Player 1 Mage">
-            <option v-for="mage in mage1Options" :key="mage.type" :value="mage.type">
-              {{ displayMageName(mage.type) }}
-            </option>
-          </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Reroll</button>
+          <span class="setup-select-row setup-select-row--preview">
+            <div id="player1-mage-select" class="setup-selected-name" role="status" aria-label="Player 1 Mage">{{ displayMageName(state.mage1) }}</div>
+            <button type="button" class="btn primary small setup-random-button" aria-label="Randomize First Mage" @click="randomizeMage(1)">Reroll</button>
           </span>
         </div>
-        <MatPreviewButton
-          kind="mage"
-          :image-url="mage1Preview?.front"
-          :image-alt="`${displayMageName(state.mage1)} mage mat`"
-          label="Choose First Mage"
-          @click="openMagePicker(1)"
-        />
+        <div class="setup-mat-stage setup-mat-stage--mage" aria-label="Player 1 Mage mat preview">
+          <MatPreviewButton
+            kind="mage"
+            :fit-to-parent="true"
+            :image-url="mage1Preview?.front"
+            :image-alt="`${displayMageName(state.mage1)} mage mat`"
+            label="Choose First Mage"
+            @click="openMagePicker(1)"
+          />
+        </div>
         <div class="setup-mage-field">
-          <label for="player2-mage-select">Player 2 Mage</label>
+          <span class="setup-field-label">Player 2 Mage</span>
           <span class="wave-tabs" role="tablist" aria-label="Mage Wave Tabs — Second Player">
             <button v-for="wave in mageWaves" :key="`p2-wave-${wave}`" type="button" role="tab" :aria-selected="mage2Wave === wave" :class="{ active: mage2Wave === wave }" @click="randomizeMage(2, wave)">Wave {{ wave }}</button>
           </span>
-          <span class="setup-select-row">
-          <select id="player2-mage-select" v-model="state.mage2" aria-label="Player 2 Mage">
-            <option v-for="mage in player2MageOptions" :key="mage.type" :value="mage.type">
-              {{ displayMageName(mage.type) }}
-            </option>
-          </select>
-          <button type="button" class="btn small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Reroll</button>
+          <span class="setup-select-row setup-select-row--preview">
+            <div id="player2-mage-select" class="setup-selected-name" role="status" aria-label="Player 2 Mage">{{ displayMageName(state.mage2) }}</div>
+            <button type="button" class="btn primary small setup-random-button" aria-label="Randomize Second Mage" @click="randomizeMage(2)">Reroll</button>
           </span>
         </div>
-        <MatPreviewButton
-          kind="mage"
-          :image-url="mage2Preview?.front"
-          :image-alt="`${displayMageName(state.mage2)} mage mat`"
-          label="Choose Second Mage"
-          @click="openMagePicker(2)"
-        />
+        <div class="setup-mat-stage setup-mat-stage--mage" aria-label="Player 2 Mage mat preview">
+          <MatPreviewButton
+            kind="mage"
+            :fit-to-parent="true"
+            :image-url="mage2Preview?.front"
+            :image-alt="`${displayMageName(state.mage2)} mage mat`"
+            label="Choose Second Mage"
+            @click="openMagePicker(2)"
+          />
+        </div>
       </section>
 
       <section class="setup-nemesis-column setup-character-column" aria-label="Nemesis selection">
         <div class="setup-mage-field">
-          <label for="nemesis-select">Nemesis</label>
+          <span class="setup-field-label">Nemesis</span>
           <span class="wave-tabs" role="group" aria-label="Nemesis Wave Tabs">
             <button v-for="wave in nemesisWaves" :key="`nemesis-wave-${wave}`" type="button" :aria-pressed="nemesisWave === wave" :class="{ active: nemesisWave === wave }" @click="nemesisWave = wave; randomizeNemesis(wave)">Wave {{ wave }}</button>
           </span>
-          <span class="setup-select-row">
-            <select id="nemesis-select" v-model="state.nemesisType" aria-label="Nemesis">
-              <option v-for="nemesis in nemesisWaveOptions" :key="nemesis.type" :value="nemesis.type">
-                {{ nemesis.name }}
-              </option>
-            </select>
-            <button type="button" class="btn small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis()">Reroll</button>
+          <span class="setup-select-row setup-select-row--preview">
+            <div id="nemesis-select" class="setup-selected-name" role="status" aria-label="Nemesis">{{ NEMESES[state.nemesisType]?.name ?? state.nemesisType }}</div>
+            <button type="button" class="btn primary small setup-random-button" aria-label="Randomize Nemesis" @click="randomizeNemesis()">Reroll</button>
           </span>
         </div>
-        <label>
-          Nemesis Difficulty
-          <select v-model="state.nemesisDifficulty" aria-label="Nemesis Difficulty">
-            <option value="standard">Standard</option>
-            <option value="increased">Increased</option>
-          </select>
-        </label>
-        <MatPreviewButton
-          kind="nemesis"
-          :image-url="nemesisPreview"
-          :image-alt="`${NEMESES[state.nemesisType]?.name ?? state.nemesisType} nemesis mat`"
-          label="Choose Nemesis"
-          @click="openNemesisPicker"
-        />
+        <div class="setup-nemesis-difficulty">
+          <span class="setup-field-label">Nemesis Difficulty</span>
+          <button
+            type="button"
+            class="setup-preview-select__trigger setup-difficulty-toggle"
+            :aria-label="`Nemesis Difficulty: ${state.nemesisDifficulty === 'increased' ? 'Increased' : 'Standard'}. Click to switch.`"
+            :aria-pressed="state.nemesisDifficulty === 'increased'"
+            @click="toggleNemesisDifficulty"
+          >
+            {{ state.nemesisDifficulty === 'increased' ? 'Increased' : 'Standard' }}
+          </button>
+        </div>
+        <div class="setup-mat-stage setup-mat-stage--nemesis" aria-label="Nemesis mat preview">
+          <MatPreviewButton
+            kind="nemesis"
+            :fit-to-parent="true"
+            :image-url="nemesisPreview"
+            :image-alt="`${NEMESES[state.nemesisType]?.name ?? state.nemesisType} nemesis mat`"
+            label="Choose Nemesis"
+            @click="openNemesisPicker"
+          />
+        </div>
       </section>
 
       <section class="market-setup" aria-label="Market Setup">
         <div class="market-setup-toolbar">
           <h2>Market Setup</h2>
           <div class="market-template-controls">
-            <select v-model="state.marketMode" aria-label="Market Setup Template">
-              <option value="template1">Template One</option>
-            </select>
+            <div
+              class="setup-preview-select market-template-select"
+              :class="{ 'is-open': activeSetupDropdown === 'marketTemplate' }"
+              data-setup-dropdown="marketTemplate"
+            >
+              <button
+                type="button"
+                class="setup-preview-select__trigger"
+                aria-label="Market Setup Template"
+                aria-haspopup="listbox"
+                aria-controls="market-template-options"
+                :aria-expanded="activeSetupDropdown === 'marketTemplate'"
+                @click="toggleSetupDropdown('marketTemplate')"
+              >
+                <span>Template One</span>
+                <span class="setup-preview-select__chevron" aria-hidden="true"></span>
+              </button>
+              <div
+                v-if="activeSetupDropdown === 'marketTemplate'"
+                id="market-template-options"
+                class="setup-preview-select__menu"
+                :class="setupDropdownMenuClass('marketTemplate')"
+                :style="setupDropdownMenuStyle('marketTemplate')"
+                role="listbox"
+                aria-label="Market Setup Templates"
+              >
+                <button
+                  type="button"
+                  role="option"
+                  class="setup-preview-select__option"
+                  :class="{ 'is-current': state.marketMode === 'template1' }"
+                  :aria-selected="state.marketMode === 'template1'"
+                  @click="selectMarketTemplate('template1')"
+                >
+                  <span>Template One</span>
+                  <span v-if="state.marketMode === 'template1'" class="setup-preview-select__selected-mark" aria-hidden="true">✓</span>
+                </button>
+              </div>
+            </div>
             <button
               type="button"
-              class="btn small"
+              class="btn primary small"
               aria-label="Refresh semi-random market"
               @click="rerollMarketTemplate"
             >
@@ -448,89 +525,13 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleSetupEscape))
           </CardHoverPreview>
         </div>
       </section>
-    </main>
-    <div class="setup-start-row">
-      <button class="btn primary" style="font-size: 15px; padding: 10px 28px" @click="startSelectedGame">
-        Start Game
-      </button>
-    </div>
-    <section class="save-list" aria-label="Saved Games">
-      <div class="save-list-heading">
-        <h2>Saved Games ({{ state.saves.length }})</h2>
-        <div v-if="state.hasSave" class="save-bulk-actions">
-          <label class="save-select-all">
-            <input type="checkbox" aria-label="Select all saved games" :checked="allSavesSelected" @change="setAllSavesSelected" />
-            <span>Select all</span>
-          </label>
-          <button class="btn danger" :disabled="selectedSaveIds.length === 0" @click="requestDeleteSelectedSaves">
-            Delete selected ({{ selectedSaveIds.length }})
-          </button>
-        </div>
+      </main>
+      <div class="setup-start-row">
+        <button class="btn primary setup-start-button" @click="startSelectedGame">
+          Start Game
+        </button>
       </div>
-      <p v-if="!state.hasSave" class="muted">No saved games found.</p>
-      <article
-        v-for="save in state.saves"
-        :key="save.id"
-        class="save-entry"
-        :class="{ selected: selectedSaveIds.includes(save.id) }"
-      >
-        <label class="save-entry-select">
-          <input
-            type="checkbox"
-            :aria-label="`Select ${save.players.join(' + ')} vs ${save.nemesisType} save`"
-            :checked="selectedSaveIds.includes(save.id)"
-            @change="setSaveSelected(save.id, $event)"
-          />
-        </label>
-        <div class="save-entry-info">
-          <form v-if="editingSaveId === save.id" class="save-name-edit" @submit.prevent="confirmSaveRename">
-            <input
-              v-model="saveNameDraft"
-              type="text"
-              maxlength="60"
-              aria-label="Saved game name"
-              autofocus
-            />
-            <button class="btn small primary" type="submit" :disabled="!saveNameDraft.trim()">Save name</button>
-            <button class="btn small" type="button" @click="cancelSaveRename">Cancel</button>
-          </form>
-          <strong v-else>{{ save.name }}</strong>
-          <span class="save-details">
-            Round {{ save.round }} · Turn {{ save.turn }} · Current: {{ turnLabel(save.currentTurn) }} · {{ saveTime(save.updatedAt) }}
-          </span>
-        </div>
-        <div class="save-actions">
-          <button class="btn small" @click="resumeGame(save.id)">Resume Game</button>
-          <button class="btn small" @click="duplicateSave(save.id)">Copy Save</button>
-          <button class="btn small" @click="beginSaveRename(save)">Rename</button>
-          <button class="btn danger small" @click="requestDeleteSave(save.id)">Delete</button>
-        </div>
-      </article>
-    </section>
-
-    <ModalBase
-      v-if="pendingDeleteSaveCount > 0"
-      overlay-class="save-delete-overlay"
-      v-model:panel-ref="modalEl"
-      panel-class="draggable-modal"
-      :panel-style="modalStyle"
-      :dragging="dragging"
-      @overlay-click="cancelDeleteSave"
-      @panel-pointerdown="startDrag"
-    >
-        <h2>{{ pendingDeleteSaveCount === 1 ? 'Delete Saved Game?' : `Delete ${pendingDeleteSaveCount} Saved Games?` }}</h2>
-        <p class="exit-copy">
-          {{ pendingDeleteSaveCount === 1
-            ? 'Are you sure you want to delete this saved game?'
-            : 'Are you sure you want to delete all selected saved games?' }}
-        </p>
-        <div class="overlay-actions">
-          <button class="btn danger" @click="confirmDeleteSaves">
-            {{ pendingDeleteSaveCount === 1 ? 'Delete' : `Delete ${pendingDeleteSaveCount} Saves` }}
-          </button>
-          <button class="btn" @click="cancelDeleteSave">Cancel</button>
-        </div>
-    </ModalBase>
+    </div>
 
     <ModalBase
       v-if="replacementSlot !== null"

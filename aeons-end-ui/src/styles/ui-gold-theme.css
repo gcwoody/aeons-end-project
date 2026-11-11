@@ -1,0 +1,783 @@
+/* Permanent shared gold accent palette for every game screen. */
+.ui-gold-theme {
+  --gold: #f2ca61;
+  --gold-bright: #ffe69a;
+  --gold-soft: rgba(242, 202, 97, .16);
+  --accent: var(--gold);
+  --game-highlight-context: var(--gold);
+  --bg: #17140e;
+  --panel: #211c14;
+  --panel-2: #302719;
+  --panel-inset: #19150e;
+  --panel-raised: #392e1d;
+  --panel-glass: rgba(42, 34, 21, .84);
+  --panel-glass-strong: rgba(34, 28, 18, .94);
+  --border: #665638;
+  --muted: #b6a98f;
+  --text: #f0e8d7;
+  --modal-surface: rgba(35, 29, 19, .88);
+  --modal-border: rgba(242, 202, 97, .42);
+  --primary-button-gradient: linear-gradient(110deg, #f8df88, #dfa93e);
+  --primary-button-gradient-hover: linear-gradient(110deg, #ffedac, #edc45d);
+  --primary-button-gradient-text: #281b08;
+}
+
+.ui-gold-theme .btn.primary:not(:disabled) {
+  border-color: rgba(242, 202, 97, .9);
+  box-shadow: 0 4px 14px rgba(220, 169, 62, .18);
+}
+.ui-gold-theme .btn.primary:hover:not(:disabled) {
+  border-color: var(--gold-bright);
+  box-shadow: 0 6px 18px rgba(220, 169, 62, .26);
+}
+.ui-gold-theme .btn:hover:not(:disabled),
+.ui-gold-theme .btn:focus-visible:not(:disabled) {
+  border-color: var(--gold);
+}
+.ui-gold-theme button:disabled:not(.decision-card-choice) {
+  border-color: transparent;
+  box-shadow: none;
+}
+.ui-gold-theme .decision-options button:disabled:not(.decision-card-choice) {
+  border-color: transparent;
+  box-shadow: none;
+}
+.ui-gold-theme .decision-options.stacked-panels.mage-ability-choice-options .mage-ability-choice-button:not(:disabled) {
+  border-color: rgba(242, 202, 97, .9);
+  box-shadow: 0 4px 16px rgba(220, 169, 62, .22);
+}
+.ui-gold-theme .decision-options.stacked-panels.mage-ability-choice-options .mage-ability-choice-button:hover:not(:disabled) {
+  border-color: var(--gold-bright);
+  box-shadow: 0 7px 20px rgba(220, 169, 62, .3);
+}
+.ui-gold-theme .modal-close-button:hover,
+.ui-gold-theme .modal-close-button:focus-visible {
+  border-color: var(--gold);
+  color: var(--gold-bright);
+}
+
+/* Main menu surfaces use warm glass over the existing panorama. */
+.main-menu.ui-gold-theme {
+  background: linear-gradient(180deg, #292216 0%, #17140e 74%);
+}
+.main-menu.ui-gold-theme .main-menu__shade {
+  background:
+    linear-gradient(180deg, rgba(20, 16, 9, .12) 0%, rgba(21, 17, 10, .2) 22%, rgba(28, 22, 12, .78) 42%, #17140e 61%, #17140e 100%),
+    linear-gradient(90deg, rgba(20, 16, 9, .22) 0%, transparent 45%, rgba(20, 16, 9, .2) 100%);
+}
+.main-menu.ui-gold-theme .main-menu__panel {
+  border-color: rgba(226, 190, 112, .48);
+  background: linear-gradient(150deg, rgba(57, 45, 27, .94), rgba(29, 24, 16, .97));
+  box-shadow: 0 22px 60px rgba(0, 0, 0, .46), inset 0 1px 0 rgba(255, 231, 167, .1);
+}
+.main-menu.ui-gold-theme .main-menu__action {
+  border-color: rgba(220, 190, 130, .3);
+  background: rgba(48, 39, 25, .82);
+}
+.main-menu.ui-gold-theme .main-menu__action:hover {
+  border-color: rgba(255, 230, 154, .9);
+  background: rgba(69, 53, 29, .94);
+}
+.main-menu.ui-gold-theme .main-menu__action--primary {
+  border-color: rgba(242, 202, 97, .94);
+  background: var(--primary-button-gradient);
+  color: var(--primary-button-gradient-text);
+}
+.main-menu.ui-gold-theme .main-menu__action--primary:hover {
+  border-color: var(--gold-bright);
+  background: var(--primary-button-gradient-hover);
+}
+.main-menu.ui-gold-theme .main-menu__save-card { background: rgba(33, 27, 18, .72); }
+.main-menu.ui-gold-theme .main-menu__save-card:hover { background: rgba(73, 56, 29, .76); }
+.main-menu.ui-gold-theme .main-menu__update-area,
+.main-menu.ui-gold-theme .main-menu__release-item { background: rgba(33, 27, 18, .48); }
+.main-menu.ui-gold-theme .main-menu__save-topline strong,
+.main-menu.ui-gold-theme .main-menu__panel-heading h2,
+.main-menu.ui-gold-theme .main-menu__notes-title h3,
+.main-menu.ui-gold-theme .main-menu__release-item h3 { color: #f3ead6; }
+.main-menu.ui-gold-theme .main-menu__text-button,
+.main-menu.ui-gold-theme .main-menu__back-link,
+.main-menu.ui-gold-theme .main-menu__save-topline > span,
+.main-menu.ui-gold-theme .main-menu__save-load:focus-visible { outline-color: var(--gold); }
+
+/* Main menu keeps the gold interaction details on a warm surface. */
+.main-menu.ui-gold-theme .main-menu__panel {
+  border-color: rgba(242, 202, 97, .32);
+}
+.main-menu.ui-gold-theme .main-menu__action-icon {
+  border-color: rgba(242, 202, 97, .3);
+}
+.main-menu.ui-gold-theme .main-menu__action {
+  border-color: rgba(226, 207, 158, .28);
+}
+.main-menu.ui-gold-theme .main-menu__action:hover {
+  border-color: rgba(242, 202, 97, .88);
+  box-shadow: 0 12px 30px rgba(220, 169, 62, .14), 0 14px 30px rgba(0, 0, 0, .3);
+}
+.main-menu.ui-gold-theme .main-menu__action--primary {
+  border-color: rgba(242, 202, 97, .9);
+}
+.main-menu.ui-gold-theme .main-menu__action--primary:hover {
+  border-color: var(--gold-bright);
+}
+.main-menu.ui-gold-theme .main-menu__action-icon {
+  color: var(--gold-bright);
+}
+.main-menu.ui-gold-theme .main-menu__action--primary .main-menu__action-icon {
+  color: var(--primary-button-gradient-text);
+}
+.main-menu.ui-gold-theme .main-menu__version-card {
+  border-color: rgba(242, 202, 97, .32);
+  background: rgba(242, 202, 97, .075);
+}
+.main-menu.ui-gold-theme .main-menu__version-card strong {
+  color: #f5ebd4;
+}
+.main-menu.ui-gold-theme .main-menu__save-card {
+  border-color: rgba(226, 207, 158, .2);
+}
+.main-menu.ui-gold-theme .main-menu__update-area,
+.main-menu.ui-gold-theme .main-menu__release-item,
+.main-menu.ui-gold-theme .main-menu__release-footnote {
+  border-color: rgba(226, 207, 158, .16);
+}
+.main-menu.ui-gold-theme .main-menu__text-button,
+.main-menu.ui-gold-theme .main-menu__back-link,
+.main-menu.ui-gold-theme .main-menu__save-topline > span {
+  color: var(--gold);
+}
+.main-menu.ui-gold-theme .main-menu__text-button:hover,
+.main-menu.ui-gold-theme .main-menu__back-link:hover {
+  color: var(--gold-bright);
+}
+.main-menu.ui-gold-theme .main-menu__check-button.is-checking {
+  border-color: rgba(242, 202, 97, .9);
+  background: var(--primary-button-gradient);
+  color: var(--primary-button-gradient-text);
+}
+.main-menu.ui-gold-theme .main-menu__check-button,
+.main-menu.ui-gold-theme .main-menu__check-button.is-success {
+  border-color: rgba(242, 202, 97, .72);
+  background: var(--primary-button-gradient);
+  color: var(--primary-button-gradient-text);
+}
+.main-menu.ui-gold-theme .main-menu__save-select-all input,
+.main-menu.ui-gold-theme .main-menu__save-select input {
+  accent-color: var(--gold);
+}
+.main-menu.ui-gold-theme .main-menu__save-card:hover {
+  border-color: var(--gold);
+  background: rgba(242, 202, 97, .09);
+}
+.main-menu.ui-gold-theme .main-menu__save-load:focus-visible {
+  outline-color: var(--gold);
+}
+.main-menu.ui-gold-theme .main-menu__footer i {
+  background: var(--gold);
+  box-shadow: 0 0 9px rgba(242, 202, 97, .7);
+}
+
+/* Setup sections and their controls share the same warm glass palette. */
+.setup.ui-gold-theme {
+  background: #17140e;
+}
+.setup.ui-gold-theme::before {
+  background:
+    linear-gradient(180deg, rgba(22, 17, 9, .38), rgba(22, 17, 9, .78) 58%, #17140e),
+    url('../assets/main-menu-panorama.jpg') center 34% / cover no-repeat;
+}
+.setup.ui-gold-theme .setup-back-button {
+  border-color: rgba(226, 190, 112, .42);
+  background: rgba(36, 29, 18, .78);
+  color: #f0e8d7;
+}
+.setup.ui-gold-theme .setup-character-column,
+.setup.ui-gold-theme .market-setup {
+  border-color: rgba(226, 190, 112, .46);
+  background: linear-gradient(148deg, rgba(56, 44, 26, .94), rgba(31, 25, 16, .96));
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .34), inset 0 1px 0 rgba(255, 231, 167, .09);
+}
+.setup.ui-gold-theme .wave-tabs button {
+  border-color: rgba(197, 164, 96, .34);
+  background: rgba(42, 34, 21, .76);
+  color: #e9ddc2;
+}
+.setup.ui-gold-theme .wave-tabs button.active {
+  border-color: var(--gold);
+  background: rgba(242, 202, 97, .17);
+  color: #fff2cf;
+}
+.setup.ui-gold-theme .setup-field-label,
+.setup.ui-gold-theme .market-setup h2 { color: #f4ead2; }
+.setup.ui-gold-theme .setup-header p,
+.setup.ui-gold-theme .setup-hint { color: rgba(234, 222, 195, .75); }
+.setup.ui-gold-theme .setup-header .setup-design-kicker { color: var(--gold-bright); }
+.setup.ui-gold-theme .setup-start-button { box-shadow: 0 8px 24px rgba(220, 169, 62, .32); }
+
+.setup.ui-gold-theme .setup-character-column,
+.setup.ui-gold-theme .market-setup {
+  border-color: rgba(242, 202, 97, .46);
+}
+.setup.ui-gold-theme .setup-back-button:hover {
+  border-color: var(--gold);
+}
+.setup.ui-gold-theme .wave-tabs button {
+  border-color: rgba(226, 207, 158, .24);
+}
+.setup.ui-gold-theme .setup-start-button {
+  box-shadow: 0 8px 22px rgba(220, 169, 62, .3);
+}
+
+/* Board controls, card pickers, and debug tools share the same gold context. */
+.ui-gold-theme .breach-focus-button.effect-focus-target:hover,
+.ui-gold-theme .breach:has(.breach-token-wrap.decision-breach-target:hover) .breach-focus-button.effect-focus-target,
+.ui-gold-theme .breach .btn.small.effect-focus-target:hover:not(:disabled) {
+  border-color: var(--gold);
+  background: var(--gold-soft);
+  color: var(--gold-bright);
+}
+.app.ui-gold-theme .debug-panel {
+  --panel-2: #332c1e;
+  --border: #655638;
+  --muted: #c1b38f;
+  --text: #f0e8d5;
+  background: linear-gradient(150deg, #30291c, #1b1812);
+  border-color: var(--gold);
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .5), 0 0 0 var(--pixel-border-width) rgba(242, 202, 97, .2);
+}
+.app.ui-gold-theme .debug-card-filters .btn.on {
+  background: rgba(242, 202, 97, .14);
+}
+.app.ui-gold-theme .debug-card-option:hover {
+  background: rgba(242, 202, 97, .12);
+}
+.app.ui-gold-theme .debug-resize-handle:hover {
+  background-color: rgba(242, 202, 97, .14);
+}
+
+/* Game board surfaces use warm glass; card art and semantic resource colors stay intact. */
+.app.ui-gold-theme {
+  background-color: #17140e;
+  color: var(--text);
+}
+.app.ui-gold-theme :is(.nemesis-area, .player-area, .market-col, .log-col) {
+  background-color: var(--game-theme-panel-surface, rgba(42, 34, 21, .72));
+}
+.app.ui-gold-theme :is(.nemesis-play, .played-zone) {
+  background-color: var(--game-theme-zone-surface, rgba(63, 49, 28, .42));
+}
+.app.ui-gold-theme :is(.nemesis-info-bar, .pile-box, .deck-pile, .discard-pile, .player-specific-deck-pile.is-empty) {
+  border-color: var(--game-theme-zone-border, rgba(187, 151, 83, .42));
+  background-color: var(--game-theme-zone-surface-strong, rgba(34, 28, 18, .76));
+}
+.app.ui-gold-theme :is(.controls, .player-pile-count, .nemesis-pile-count) {
+  border-color: var(--game-theme-control-border, rgba(187, 151, 83, .38));
+  background-color: var(--game-theme-control-surface, rgba(39, 31, 19, .94));
+}
+.app.ui-gold-theme .pile {
+  background-color: var(--game-theme-pile-surface, #211c14);
+}
+.app.ui-gold-theme :is(.top-section, .player-area, .market-col, .log-col) {
+  border-color: var(--game-theme-panel-border, rgba(187, 151, 83, .22));
+}
+.app.ui-gold-theme :is(
+  .top-section,
+  .nemesis-info-bar,
+  .player-area,
+  .market-col,
+  .log-col,
+  .pile-box,
+  .deck-pile,
+  .discard-pile,
+  .player-specific-deck-pile.is-empty,
+  .controls,
+  .player-pile-count,
+  .nemesis-pile-count
+) { border-color: transparent; }
+.app.ui-gold-theme :is(.deck-pile.is-empty, .discard-pile.is-empty, .player-specific-deck-pile.is-empty) {
+  background-color: var(--game-theme-pile-surface, var(--panel-inset));
+}
+.app.ui-gold-theme .hpbar { background-color: #19150e; }
+.app.ui-gold-theme :is(.pile-label, .played-zone-heading, .panel-title) { color: #c6b58e; }
+
+/* Keep the comparison preview's original gold-family palettes intact. */
+.app.ui-gold-theme:is(.game-background-preview--aether, .game-background-theme--aether) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(230, 181, 82, .34), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(152, 99, 45, .28), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(128, 93, 43, .3), transparent 52%),
+    linear-gradient(145deg, #292317 0%, #17140e 56%, #21190f 100%);
+}
+.app.ui-gold-theme:is(.game-background-preview--violet, .game-background-theme--violet) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(204, 161, 87, .3), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(132, 91, 50, .26), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(105, 79, 44, .28), transparent 52%),
+    linear-gradient(145deg, #251e14 0%, #17140f 55%, #20180f 100%);
+}
+.app.ui-gold-theme:is(.game-background-preview--ember, .game-background-theme--ember) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(218, 151, 73, .32), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(151, 79, 41, .28), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(125, 70, 40, .24), transparent 52%),
+    linear-gradient(145deg, #281d14 0%, #17140f 57%, #21170f 100%);
+}
+.app.ui-gold-theme:is(.game-background-preview--jade, .game-background-theme--jade) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(184, 170, 91, .28), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(132, 111, 54, .25), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(108, 95, 43, .26), transparent 52%),
+    linear-gradient(145deg, #222115 0%, #17140e 55%, #1e1b10 100%);
+}
+.app.ui-gold-theme:is(.game-background-preview--moonlight, .game-background-theme--moonlight) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(237, 211, 142, .3), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(161, 133, 77, .25), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(128, 111, 69, .24), transparent 52%),
+    linear-gradient(145deg, #282317 0%, #17150f 56%, #211d13 100%);
+}
+
+/* Live board themes share the same glow placement and contrast hierarchy.
+   Gold remains the interaction accent while the table and glass panels change color. */
+.app.ui-gold-theme.game-background-theme--aether {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(94, 139, 220, .7), transparent 39%), radial-gradient(ellipse at 83% 74%, rgba(142, 91, 180, .55), transparent 42%), radial-gradient(ellipse at 50% 48%, rgba(54, 83, 126, .58), transparent 52%), linear-gradient(145deg, #182235 0%, #111725 56%, #21182a 100%);
+  --game-theme-panel-surface: rgba(23, 31, 47, .76);
+  --game-theme-zone-surface: rgba(37, 52, 77, .42);
+  --game-theme-zone-surface-strong: rgba(24, 31, 45, .78);
+  --game-theme-control-surface: rgba(32, 34, 47, .94);
+  --game-theme-pile-surface: #1a2231;
+  --game-theme-panel-border: rgba(121, 156, 219, .26);
+  --game-theme-zone-border: rgba(121, 156, 219, .44);
+  --game-theme-control-border: rgba(121, 156, 219, .38);
+}
+.app.ui-gold-theme.game-background-theme--violet {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(159, 107, 245, .62), transparent 39%), radial-gradient(ellipse at 83% 74%, rgba(191, 91, 190, .48), transparent 42%), radial-gradient(ellipse at 50% 48%, rgba(83, 62, 138, .48), transparent 52%), linear-gradient(145deg, #21172d 0%, #141522 55%, #1d172b 100%);
+  --game-theme-panel-surface: rgba(37, 25, 48, .78);
+  --game-theme-zone-surface: rgba(65, 39, 80, .42);
+  --game-theme-zone-surface-strong: rgba(35, 24, 44, .8);
+  --game-theme-control-surface: rgba(40, 29, 48, .95);
+  --game-theme-pile-surface: #251b30;
+  --game-theme-panel-border: rgba(182, 126, 221, .26);
+  --game-theme-zone-border: rgba(182, 126, 221, .42);
+  --game-theme-control-border: rgba(182, 126, 221, .36);
+}
+.app.ui-gold-theme.game-background-theme--jade {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(69, 187, 151, .56), transparent 39%), radial-gradient(ellipse at 83% 74%, rgba(72, 143, 179, .46), transparent 42%), radial-gradient(ellipse at 50% 48%, rgba(45, 110, 113, .44), transparent 52%), linear-gradient(145deg, #142522 0%, #111922 55%, #14252a 100%);
+  --game-theme-panel-surface: rgba(19, 40, 38, .78);
+  --game-theme-zone-surface: rgba(32, 69, 62, .42);
+  --game-theme-zone-surface-strong: rgba(19, 37, 36, .8);
+  --game-theme-control-surface: rgba(23, 43, 41, .95);
+  --game-theme-pile-surface: #192e2c;
+  --game-theme-panel-border: rgba(89, 185, 157, .24);
+  --game-theme-zone-border: rgba(89, 185, 157, .4);
+  --game-theme-control-border: rgba(89, 185, 157, .34);
+}
+.app.ui-gold-theme.game-background-theme--moonlight {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(196, 216, 244, .64), transparent 39%), radial-gradient(ellipse at 83% 74%, rgba(118, 151, 207, .48), transparent 42%), radial-gradient(ellipse at 50% 48%, rgba(111, 130, 180, .44), transparent 52%), linear-gradient(145deg, #192638 0%, #131a26 56%, #1a1c2b 100%);
+  --game-theme-panel-surface: rgba(29, 39, 54, .78);
+  --game-theme-zone-surface: rgba(47, 62, 86, .43);
+  --game-theme-zone-surface-strong: rgba(27, 36, 51, .8);
+  --game-theme-control-surface: rgba(31, 41, 56, .95);
+  --game-theme-pile-surface: #202b3c;
+  --game-theme-panel-border: rgba(169, 194, 231, .26);
+  --game-theme-zone-border: rgba(169, 194, 231, .42);
+  --game-theme-control-border: rgba(169, 194, 231, .36);
+}
+.app.ui-gold-theme.game-background-theme--snow {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(255, 255, 255, .96), transparent 40%), radial-gradient(ellipse at 83% 74%, rgba(198, 218, 237, .86), transparent 43%), radial-gradient(ellipse at 50% 48%, rgba(229, 236, 242, .72), transparent 53%), linear-gradient(145deg, #c9d2dc 0%, #909eac 55%, #b8c3ce 100%);
+  --game-theme-panel-surface: rgba(40, 47, 55, .84);
+  --game-theme-zone-surface: rgba(58, 68, 78, .48);
+  --game-theme-zone-surface-strong: rgba(35, 42, 50, .86);
+  --game-theme-control-surface: rgba(32, 38, 45, .97);
+  --game-theme-pile-surface: #2a3037;
+  --game-theme-panel-border: rgba(221, 231, 239, .34);
+  --game-theme-zone-border: rgba(221, 231, 239, .46);
+  --game-theme-control-border: rgba(221, 231, 239, .4);
+}
+.app.ui-gold-theme.game-background-theme--obsidian {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(139, 148, 163, .48), transparent 39%), radial-gradient(ellipse at 83% 74%, rgba(87, 97, 116, .42), transparent 42%), radial-gradient(ellipse at 50% 48%, rgba(104, 113, 129, .32), transparent 52%), linear-gradient(145deg, #16191f 0%, #0b0d11 56%, #191b20 100%);
+  --game-theme-panel-surface: rgba(15, 17, 21, .84);
+  --game-theme-zone-surface: rgba(33, 36, 42, .48);
+  --game-theme-zone-surface-strong: rgba(16, 18, 22, .88);
+  --game-theme-control-surface: rgba(19, 21, 25, .98);
+  --game-theme-pile-surface: #181a1f;
+  --game-theme-panel-border: rgba(151, 160, 174, .22);
+  --game-theme-zone-border: rgba(151, 160, 174, .36);
+  --game-theme-control-border: rgba(151, 160, 174, .3);
+}
+.app.ui-gold-theme.game-background-theme--ocean {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(71, 165, 221, .64), transparent 39%), radial-gradient(ellipse at 83% 74%, rgba(39, 112, 171, .54), transparent 42%), radial-gradient(ellipse at 50% 48%, rgba(35, 99, 146, .48), transparent 52%), linear-gradient(145deg, #142738 0%, #0d1723 56%, #112b3b 100%);
+  --game-theme-panel-surface: rgba(18, 39, 55, .79);
+  --game-theme-zone-surface: rgba(29, 63, 86, .46);
+  --game-theme-zone-surface-strong: rgba(17, 35, 50, .82);
+  --game-theme-control-surface: rgba(19, 42, 59, .96);
+  --game-theme-pile-surface: #172c3b;
+  --game-theme-panel-border: rgba(87, 174, 222, .26);
+  --game-theme-zone-border: rgba(87, 174, 222, .44);
+  --game-theme-control-border: rgba(87, 174, 222, .38);
+}
+.app.ui-gold-theme.game-background-theme--sunforge {
+  --game-theme-background: radial-gradient(ellipse at 12% 12%, rgba(241, 190, 77, .62), transparent 39%), radial-gradient(ellipse at 83% 74%, rgba(186, 113, 48, .45), transparent 42%), radial-gradient(ellipse at 50% 48%, rgba(140, 104, 43, .42), transparent 52%), linear-gradient(145deg, #2b2415 0%, #17140e 56%, #241b10 100%);
+  --game-theme-panel-surface: rgba(42, 34, 21, .74);
+  --game-theme-zone-surface: rgba(63, 49, 28, .42);
+  --game-theme-zone-surface-strong: rgba(34, 28, 18, .78);
+  --game-theme-control-surface: rgba(39, 31, 19, .95);
+  --game-theme-pile-surface: #211c14;
+  --game-theme-panel-border: rgba(187, 151, 83, .26);
+  --game-theme-zone-border: rgba(187, 151, 83, .44);
+  --game-theme-control-border: rgba(187, 151, 83, .38);
+}
+.app.ui-gold-theme:is(
+  .game-background-theme--aether,
+  .game-background-theme--violet,
+  .game-background-theme--jade,
+  .game-background-theme--moonlight,
+  .game-background-theme--snow,
+  .game-background-theme--obsidian,
+  .game-background-theme--ocean,
+  .game-background-theme--sunforge
+) { background-image: var(--game-theme-background); }
+
+.app.ui-gold-theme .game-background-preview-toolbar,
+.app.ui-gold-theme .game-background-preview-tuner {
+  border-color: rgba(226, 190, 112, .48);
+  background: rgba(34, 28, 18, .94);
+  color: var(--text);
+}
+.app.ui-gold-theme :is(.game-background-preview-toolbar select, .game-background-preview-tuner__reset) {
+  border-color: rgba(197, 164, 96, .42);
+  background-color: rgba(57, 45, 27, .7);
+  color: var(--text);
+}
+.app.ui-gold-theme .game-background-preview-tuner__range input[type='range'] { accent-color: var(--gold); }
+
+/* Setup controls share centered typography, fixed mat stages, and viewport-safe menus. */
+.setup.ui-gold-theme .setup-layout {
+  grid-template-columns: minmax(220px, clamp(220px, 20vw, 360px)) minmax(280px, clamp(320px, 26vw, 480px)) minmax(0, var(--market-panel-width));
+  justify-content: center;
+}
+.setup.ui-gold-theme .setup-mage-column {
+  --setup-entity-control-width: clamp(156px, calc((var(--setup-layout-height, 560px) - 270px) * .67), 286px);
+}
+.setup.ui-gold-theme .setup-nemesis-column {
+  --setup-entity-control-width: clamp(176px, calc((var(--setup-layout-height, 560px) - 195px) * .7), 360px);
+}
+.setup.ui-gold-theme .setup-mage-field > .setup-field-label,
+.setup.ui-gold-theme .setup-mage-field > .wave-tabs {
+  width: var(--setup-entity-control-width);
+  max-width: 100%;
+  align-self: center;
+}
+.setup.ui-gold-theme .setup-field-label {
+  display: block;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.setup.ui-gold-theme .setup-mage-field > .setup-field-label {
+  align-items: center;
+  color: #f0e8d7;
+  font-size: 13px;
+  text-align: center;
+}
+.setup.ui-gold-theme .setup-mage-field > .wave-tabs { justify-content: center; }
+.setup.ui-gold-theme .wave-tabs button:hover:not(:disabled),
+.setup.ui-gold-theme .wave-tabs button:focus-visible:not(:disabled) {
+  border-color: var(--gold-bright);
+  background: rgba(242, 202, 97, .15);
+  box-shadow: 0 0 0 2px rgba(242, 202, 97, .14);
+  color: #fff2cf;
+  outline: none;
+}
+.setup.ui-gold-theme .setup-selected-name {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 8px 12px;
+  border: 1px solid rgba(197, 164, 96, .48);
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgba(48, 39, 25, .94), rgba(28, 23, 15, .96));
+  color: #f0e8d7;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+.setup.ui-gold-theme .setup-mat-stage {
+  display: flex;
+  flex: 1 1 0;
+  width: 100%;
+  min-width: 0;
+  min-height: 0;
+  align-items: center;
+  justify-content: center;
+}
+.setup.ui-gold-theme .setup-mat-stage .mat-preview-button {
+  flex: 0 0 auto;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+}
+.setup.ui-gold-theme .setup-select-row--preview {
+  width: var(--setup-entity-control-width);
+  max-width: 100%;
+  margin-inline: auto;
+  align-items: center;
+  gap: 6px;
+}
+.setup.ui-gold-theme .setup-preview-select {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.setup.ui-gold-theme .setup-preview-select__trigger {
+  position: relative;
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 28px;
+  border: 1px solid rgba(197, 164, 96, .48);
+  border-radius: 7px;
+  background: linear-gradient(145deg, rgba(48, 39, 25, .94), rgba(28, 23, 15, .96));
+  color: #f0e8d7;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .14s ease, background .14s ease, box-shadow .14s ease;
+}
+.setup.ui-gold-theme .setup-difficulty-toggle { padding-inline: 18px; }
+.setup.ui-gold-theme .setup-preview-select__trigger > span:first-child {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.setup.ui-gold-theme .setup-preview-select__trigger:hover,
+.setup.ui-gold-theme .setup-preview-select.is-open .setup-preview-select__trigger,
+.setup.ui-gold-theme .setup-preview-select__trigger:focus-visible {
+  border-color: var(--gold-bright);
+  background: linear-gradient(145deg, rgba(67, 52, 29, .98), rgba(38, 30, 18, .98));
+  box-shadow: 0 0 0 2px rgba(242, 202, 97, .15), 0 5px 16px rgba(0, 0, 0, .24);
+  outline: none;
+}
+.setup.ui-gold-theme .setup-preview-select__chevron {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  border-right: 2px solid var(--gold);
+  border-bottom: 2px solid var(--gold);
+  transform: translateY(-6px) rotate(45deg);
+  transition: transform .14s ease;
+}
+.setup.ui-gold-theme .setup-preview-select.is-open .setup-preview-select__chevron {
+  transform: translateY(-2px) rotate(225deg);
+}
+.setup.ui-gold-theme .setup-preview-select__menu {
+  position: absolute;
+  z-index: 30;
+  right: auto;
+  bottom: calc(100% + 7px);
+  left: 0;
+  display: grid;
+  box-sizing: border-box;
+  width: max-content;
+  min-width: min(100%, 240px, calc(100vw - 24px));
+  max-width: min(240px, calc(100vw - 24px));
+  max-height: min(360px, calc(100dvh - 24px));
+  gap: 3px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 5px;
+  border: 1px solid rgba(226, 190, 112, .58);
+  border-radius: 9px;
+  background: linear-gradient(150deg, rgba(51, 40, 24, .98), rgba(29, 23, 15, .99));
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .48), inset 0 1px 0 rgba(255, 231, 167, .08);
+  scrollbar-color: #856b39 #211a11;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+.setup.ui-gold-theme .setup-preview-select__menu.is-open-down {
+  top: calc(100% + 7px);
+  bottom: auto;
+}
+.setup.ui-gold-theme .setup-preview-select__menu.is-align-right {
+  right: 0;
+  left: auto;
+}
+.setup.ui-gold-theme .setup-preview-select__option {
+  display: flex;
+  width: 100%;
+  min-width: 0;
+  min-height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: #e9ddc2;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .12s ease, background .12s ease, color .12s ease;
+}
+.setup.ui-gold-theme .setup-preview-select__option > span:first-child {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.setup.ui-gold-theme .setup-preview-select__option:hover:not(:disabled),
+.setup.ui-gold-theme .setup-preview-select__option:focus-visible:not(:disabled),
+.setup.ui-gold-theme .setup-preview-select__option.is-preview:not(:disabled) {
+  border-color: rgba(242, 202, 97, .58);
+  background: rgba(242, 202, 97, .15);
+  color: #fff2cf;
+  outline: none;
+}
+.setup.ui-gold-theme .setup-preview-select__option.is-current:not(.is-preview) {
+  background: rgba(242, 202, 97, .08);
+  color: var(--gold-bright);
+}
+.setup.ui-gold-theme .setup-preview-select__option:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+.setup.ui-gold-theme .setup-preview-select__selected-mark {
+  flex: 0 0 auto;
+  color: var(--gold-bright);
+  font-weight: 800;
+}
+.setup.ui-gold-theme .setup-nemesis-difficulty {
+  width: var(--setup-entity-control-width);
+  max-width: 100%;
+  align-items: center;
+  align-self: center;
+  color: #f0e8d7;
+  font-size: 13px;
+  text-align: center;
+}
+.setup.ui-gold-theme .setup-nemesis-difficulty .setup-preview-select { width: 100%; }
+.setup.ui-gold-theme .setup-mage-field:has(.setup-preview-select.is-open),
+.setup.ui-gold-theme .setup-nemesis-difficulty:has(.setup-preview-select.is-open) {
+  position: relative;
+  z-index: 12;
+}
+.setup.ui-gold-theme .market-setup:has(.market-template-select.is-open) {
+  position: relative;
+  z-index: 31;
+}
+
+.setup.ui-gold-theme .setup-random-button,
+.setup.ui-gold-theme .market-template-controls .btn {
+  height: 42px;
+  min-width: 58px;
+  box-sizing: border-box;
+  padding: 0 14px;
+  border-color: rgba(242, 202, 97, .9);
+  border-radius: 7px;
+  background: var(--primary-button-gradient);
+  box-shadow: 0 4px 12px rgba(220, 169, 62, .2);
+  color: var(--primary-button-gradient-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .01em;
+  line-height: 1.1;
+}
+.setup.ui-gold-theme .setup-random-button {
+  align-self: center;
+  min-width: 58px;
+}
+.setup.ui-gold-theme .market-template-controls {
+  align-items: center;
+  gap: 7px;
+}
+.setup.ui-gold-theme .market-template-select {
+  flex: 0 0 168px;
+  width: 168px;
+}
+.setup.ui-gold-theme .market-template-select .setup-preview-select__trigger {
+  min-width: 168px;
+  height: 42px;
+  box-sizing: border-box;
+  background: linear-gradient(145deg, rgba(48, 39, 25, .94), rgba(28, 23, 15, .96));
+}
+.setup.ui-gold-theme .market-template-select .setup-preview-select__trigger:hover,
+.setup.ui-gold-theme .market-template-select.is-open .setup-preview-select__trigger {
+  background: linear-gradient(145deg, rgba(67, 52, 29, .98), rgba(38, 30, 18, .98));
+}
+.setup.ui-gold-theme .market-template-select .setup-preview-select__menu {
+  right: 0;
+  left: auto;
+}
+.setup.ui-gold-theme .market-template-select .setup-preview-select__trigger:focus-visible {
+  outline: 2px solid rgba(242, 202, 97, .45);
+  outline-offset: 2px;
+}
+.setup.ui-gold-theme .setup-random-button:hover:not(:disabled),
+.setup.ui-gold-theme .market-template-controls .btn:hover:not(:disabled) {
+  border-color: var(--gold-bright);
+  background: var(--primary-button-gradient-hover);
+  box-shadow: 0 6px 16px rgba(220, 169, 62, .3);
+  color: var(--primary-button-gradient-text);
+}
+.setup.ui-gold-theme .setup-nemesis-difficulty {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: var(--setup-entity-control-width);
+  max-width: 100%;
+  align-items: center;
+  align-self: center;
+  color: #f0e8d7;
+  font-size: 13px;
+  text-align: center;
+}
+.setup.ui-gold-theme .setup-nemesis-difficulty > .setup-field-label {
+  width: 100%;
+  text-align: center;
+}
+.setup.ui-gold-theme .setup-nemesis-difficulty .setup-difficulty-toggle { width: 100%; }
+.setup.ui-gold-theme .market-template-select .setup-preview-select__trigger > span:first-child {
+  text-align: center;
+}
+.setup.ui-gold-theme .market-template-select .setup-preview-select__chevron { border-color: var(--gold); }
+.setup.ui-gold-theme .market-template-select .setup-preview-select__trigger:hover .setup-preview-select__chevron,
+.setup.ui-gold-theme .market-template-select.is-open .setup-preview-select__chevron {
+  border-color: var(--gold-bright);
+}
+.setup.ui-gold-theme .market-template-select .setup-preview-select__trigger > span:first-child { font-size: 15px; }
+.setup.ui-gold-theme .market-template-select .setup-preview-select__trigger { padding-inline: 28px; }
+.setup.ui-gold-theme .setup-selected-name:hover { border-color: rgba(197, 164, 96, .48); }
+@media (max-width: 1000px) {
+  .setup.ui-gold-theme .setup-layout {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    justify-content: stretch;
+  }
+}
+@media (max-width: 520px) {
+  .setup.ui-gold-theme .setup-layout { grid-template-columns: 1fr; }
+}

@@ -93,19 +93,28 @@
   --nemesis-mat-ratio: .75;
   --mage-radius: 12px;
   --mage-modal-radius: 40px;
-  --bg: #12151d;
-  --panel: #1b2030;
-  --panel-2: #232a3d;
-  --border: #2f3850;
+  --bg: #17140e;
+  --panel: #211c14;
+  --panel-2: #302719;
+  --panel-inset: #19150e;
+  --panel-raised: #392e1d;
+  --panel-glass: rgba(42, 34, 21, .84);
+  --panel-glass-strong: rgba(34, 28, 18, .94);
+  --border: #665638;
   --pixel-border-width: 2px;
-  --text: #dfe4f0;
-  --muted: #8b93a7;
-  --accent: #7aa2ff;
+  --text: #f0e8d7;
+  --muted: #b6a98f;
+  --accent: #f2ca61;
+  --primary-button-gradient: linear-gradient(110deg, #f8df88, #dfa93e);
+  --primary-button-gradient-hover: linear-gradient(110deg, #ffedac, #edc45d);
+  --primary-button-gradient-text: #281b08;
   /* Gameplay outlines use one color per meaning across every board zone. */
   --game-highlight-available: #9ece6a;
   --game-highlight-choice: #f2994a;
   --game-highlight-required: #e05252;
-  --game-highlight-context: #7aa2ff;
+  --game-highlight-context: #f2ca61;
+  --game-highlight-recall: #83bdff;
+  --charge-highlight: #83bdff;
   --game-highlight-width: 2px;
   --gem: #5ad1c5;
   --spell: #c678dd;
@@ -126,7 +135,9 @@
   --damage-target-mat-border-width: 3px;
   --damage-target-card-border-width: 2px;
   /* Global backdrop used by every modal overlay. Lower alpha shows more of the board. */
-  --overlay-backdrop: rgba(8, 10, 16, .38);
+  --overlay-backdrop: rgba(8, 8, 6, .32);
+  --modal-surface: rgba(35, 29, 19, .84);
+  --modal-border: rgba(242, 202, 97, .42);
   --overlay-in-duration: var(--transition-overlay);
   --modal-in-duration: var(--transition-modal);
   --modal-start-scale: .88;
@@ -154,6 +165,8 @@
   --z-save-confirm: 140;
   --z-card-preview: 610;
   --z-supply-decision: 620;
+  /* Flip scenes clear neighboring controls while preserving local stacking. */
+  --z-flip-active: 1200;
   /* Debug tools must sit above board cards and controls so every control is
      reachable, while remaining below supply decisions and exit confirmation. */
   --z-debug: 600;

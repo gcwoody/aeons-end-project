@@ -1,6 +1,8 @@
 @import './styles/tokens.css';
 @import './styles/interaction-highlights.css';
 @import './styles/base.css';
+@import './styles/game-backgrounds.css';
+@import './styles/main-menu.css';
 @import './styles/nemesis-area.css';
 @import './styles/market.css';
 @import './styles/player-board.css';
@@ -8,6 +10,7 @@
 @import './styles/card-surfaces.css';
 @import './styles/card-attachments.css';
 @import './styles/controls.css';
+@import './styles/game-theme-switcher.css';
 @import './styles/log.css';
 @import './styles/overlay.css';
 @import './styles/decisions.css';
@@ -18,6 +21,7 @@
 @import './styles/debug-panel.css';
 @import './styles/damage-feedback.css';
 @import './styles/card-flight.css';
+@import './styles/ui-gold-theme.css';
 
 /* Tab is a game shortcut, not board navigation. Hide browser focus rings on
    gameplay objects even when keyboard input follows a pointer click. */

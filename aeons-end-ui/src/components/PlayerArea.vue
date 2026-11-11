@@ -1284,6 +1284,7 @@ function finishPlayerTurnArrival(event: AnimationEvent) {
       :has-swap-zone="hasSwapZone"
       :has-develop-zone="hasDevelopZone"
       :is-discard="isDiscard"
+      :is-auto-discarding="state.discardAutoResolving"
       :swap-zone-owners="swapZoneDisplay"
       :played-cards="playedZoneDisplay"
       :discard-cards="discardZoneDisplay"

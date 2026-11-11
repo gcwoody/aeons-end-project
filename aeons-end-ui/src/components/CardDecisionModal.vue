@@ -676,8 +676,20 @@ function onDecisionKeydown(event: KeyboardEvent) {
   if (state.helpOpen || state.viewPile || state.exitPrompt || state.debugOpen) return
   if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select, [contenteditable="true"]')) return
 
-  const modalButtons = Array.from(modalEl.value?.querySelectorAll<HTMLButtonElement>('button') ?? [])
+  const dialog = modalEl.value?.isConnected
+    ? modalEl.value
+    : Array.from(document.querySelectorAll<HTMLElement>('.decision-overlay [role="dialog"]'))
+      .find(element => element.getClientRects().length > 0)
+  const modalButtons = Array.from(dialog?.querySelectorAll<HTMLButtonElement>('button') ?? [])
   const label = (button: HTMLButtonElement) => button.textContent?.replace(/\s+/g, ' ').trim().toLowerCase()
+  const availableButtons = modalButtons.filter(button =>
+    !button.disabled && button.getClientRects().length > 0 && !button.classList.contains('modal-close-button'))
+  if (availableButtons.length === 1) {
+    event.preventDefault()
+    if (event.repeat) return
+    availableButtons[0]!.click()
+    return
+  }
   const yesButton = modalButtons.find(button => label(button) === 'yes')
   const noButton = modalButtons.find(button => label(button) === 'no')
   if (yesButton && noButton) {

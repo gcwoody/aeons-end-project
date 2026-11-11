@@ -1462,6 +1462,7 @@ function resolvePendingDecision(
         return ['Invalid card choice']
       }
       resolution.selectedCardId = choice.cardId
+      resolution.selectedCardInstanceId = getPlayerCardInstanceZone(g, currentPlayerId, 'hand').instanceIds[choice.index]
       addRemainingEffects(resolution, [effect])
       return runEffectResolution(g, resolution)
     }
@@ -1670,7 +1671,9 @@ function resolvePendingDecision(
         selectedSpell.playerId !== effect.playerId ||
         selectedSpell.choice.zone !== 'hand' ||
         selectedSpell.choice.cardId !== effect.cardId ||
-        owner.hand[selectedSpell.choice.index] !== effect.cardId) {
+        owner.hand[selectedSpell.choice.index] !== effect.cardId ||
+        (effect.instanceId !== undefined &&
+          getPlayerCardInstanceZone(g, owner.id, 'hand').instanceIds[selectedSpell.choice.index] !== effect.instanceId)) {
         restore()
         return ['Confirm the same spell from the same ally hand']
       }
@@ -1678,16 +1681,27 @@ function resolvePendingDecision(
       return [`Confirmed ${getCard(effect.cardId).name} for another cast`, ...runEffectResolution(g, resolution)]
     }
     if (effect.kind === 'cast_spell_from_hand') {
-      if (selected.length !== 1 || selected[0]!.playerId === effectPlayerId(g, resolution) ||
-        getCard(selected[0]!.choice.cardId).type !== 'spell') {
+      const selectedSpell = selected[0]
+      if (selected.length !== 1 || !selectedSpell ||
+        selectedSpell.playerId === effectPlayerId(g, resolution) ||
+        selectedSpell.choice.zone !== 'hand' ||
+        getCard(selectedSpell.choice.cardId).type !== 'spell') {
         restore()
         return ['Choose exactly one spell from an ally hand']
       }
+      const instanceId = getPlayerCardInstanceZone(
+        g, selectedSpell.playerId, 'hand',
+      ).instanceIds[selectedSpell.choice.index]
+      if (!instanceId) {
+        restore()
+        return ['The selected ally spell is no longer in hand']
+      }
       addRemainingEffects(resolution, [{
         kind: 'cast_selected_spell_from_hand',
-        playerId: selected[0]!.playerId,
-        cardId: selected[0]!.choice.cardId,
+        playerId: selectedSpell.playerId,
+        cardId: selectedSpell.choice.cardId,
         remaining: Math.max(1, effect.times),
+        instanceId,
       }])
       return runEffectResolution(g, resolution)
     }

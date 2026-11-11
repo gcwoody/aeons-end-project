@@ -4,7 +4,7 @@
   padding: var(--space-4) var(--space-5);
   min-width: calc(var(--pile-card-width) - var(--space-1));
   cursor: pointer;
-  background: #171c2c;
+  background: var(--panel-inset);
   transition: transform var(--transition-card), border-color var(--transition-border);
   user-select: none;
   text-align: center;
@@ -101,7 +101,7 @@
   border-radius: var(--radius-card);
   overflow: hidden;
   box-shadow: 0 12px 24px rgba(0, 0, 0, .35);
-  background: #171c2c;
+  background: var(--panel-inset);
 }
 
 /* A spell drag owns the pointer. Other card surfaces must not react to
@@ -133,7 +133,7 @@ body.spell-dragging .card-hover-preview {
   z-index: var(--z-card-preview);
   overflow: hidden;
   border-radius: var(--radius-card);
-  background: #171c2c;
+  background: var(--panel-inset);
   box-shadow: 0 16px 34px rgba(0, 0, 0, .5);
   pointer-events: none;
   transform: translate(-50%, -50%);
@@ -171,12 +171,18 @@ body.spell-dragging .card-hover-preview {
   background: transparent;
 }
 .mage-modal-flip-scene {
+  position: relative;
+  z-index: 1;
   color: inherit;
   font: inherit;
   cursor: pointer;
   perspective: 1400px;
   overflow: visible;
 }
+.mage-modal-flip-scene:focus,
+.mage-modal-flip-scene:focus-within { z-index: var(--z-flip-active); }
+.overlay:has(.mage-modal-flip-scene:focus),
+.overlay:has(.setup-inspector-mat-scene:focus) { z-index: var(--z-flip-active); }
 .mage-modal-flip-card {
   display: block;
   position: relative;
@@ -200,7 +206,6 @@ body.spell-dragging .card-hover-preview {
 }
 .mage-modal-face--back { transform: rotateY(180deg); }
 .mage-modal-flip-scene:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
-.mage-modal-flip-scene:focus { z-index: 3; }
 .mage-modal-flip-scene.nemesis-mat-modal-frame .mage-modal-face {
   object-fit: contain;
   border-radius: var(--nemesis-mat-radius);
@@ -243,7 +248,7 @@ body.spell-dragging .card-hover-preview {
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--card-radius);
   overflow: hidden;
-  background: #151a29;
+  background: var(--panel-inset);
 }
 .nemesis-reveal-card:has(> img) { border: 0; }
 .nemesis-reveal-card img { display: block; width: 100%; height: 100%; object-fit: cover; }

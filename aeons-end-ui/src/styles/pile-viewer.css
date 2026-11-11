@@ -41,6 +41,8 @@
   max-width: 100%;
   justify-content: center;
 }
+.qu-form-pile-flip-scene { flex: 0 0 var(--large-card-width); width: var(--large-card-width); height: var(--large-card-height); padding: 0; border: 0; border-radius: var(--radius-card); background: transparent; }
+.qu-form-pile-flip-scene .mage-modal-image { border-radius: var(--radius-card); object-fit: cover; }
 .pile-row-label {
   align-self: center;
   justify-self: start;
@@ -56,7 +58,7 @@
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--card-radius);
   padding: 6px 12px;
-  background: #151a29;
+  background: rgba(17, 17, 14, .62);
   font-size: 13px;
   white-space: nowrap;
 }
@@ -89,7 +91,7 @@
 .pile-card.recall-card-action {
   cursor: pointer;
 }
-.recall-pile-hint { margin: 0 0 8px; color: var(--game-highlight-context); font-size: var(--font-size-small); }
+.recall-pile-hint { margin: 0 0 8px; color: var(--game-highlight-recall); font-size: var(--font-size-small); }
 
 @media (max-width: 520px) {
   .pile-row {

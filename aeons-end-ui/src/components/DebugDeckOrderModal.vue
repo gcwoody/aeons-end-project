@@ -91,7 +91,7 @@ const { draggingKey, onPointerDown } = usePointerReorder({
     <ModalCloseButton label="Close deck order editor" @close="emit('close')" />
     <h3 id="debug-deck-order-title">
       {{ displayMageName(player.mageType) }} Deck
-      <span class="muted">(top → bottom)</span>
+      <span v-if="cards.length !== 1" class="muted">(top → bottom)</span>
     </h3>
     <p class="debug-deck-order-hint">Drag a card onto another card to change the draw order.</p>
     <div v-if="cards.length === 0" class="empty">— empty —</div>

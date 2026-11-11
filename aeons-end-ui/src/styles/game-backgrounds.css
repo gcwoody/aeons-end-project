@@ -1,0 +1,212 @@
+/* Shared palette definitions for the live game and its comparison preview. */
+.app:is(.game-background-preview--aether, .game-background-theme--aether) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(94, 139, 220, .7), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(142, 91, 180, .55), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(54, 83, 126, .58), transparent 52%),
+    linear-gradient(145deg, #182235 0%, #111725 56%, #21182a 100%);
+}
+
+.app:is(.game-background-preview--violet, .game-background-theme--violet) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(159, 107, 245, .62), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(191, 91, 190, .48), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(83, 62, 138, .48), transparent 52%),
+    linear-gradient(145deg, #21172d 0%, #141522 55%, #1d172b 100%);
+}
+
+.app:is(.game-background-preview--ember, .game-background-theme--ember) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(235, 158, 78, .56), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(196, 82, 75, .46), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(151, 83, 98, .42), transparent 52%),
+    linear-gradient(145deg, #241b24 0%, #16151d 57%, #241923 100%);
+}
+
+.app:is(.game-background-preview--jade, .game-background-theme--jade) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(69, 187, 151, .56), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(72, 143, 179, .46), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(45, 110, 113, .44), transparent 52%),
+    linear-gradient(145deg, #142522 0%, #111922 55%, #14252a 100%);
+}
+
+.app:is(.game-background-preview--moonlight, .game-background-theme--moonlight) {
+  background-image:
+    radial-gradient(ellipse at 12% 12%, rgba(157, 197, 247, .54), transparent 39%),
+    radial-gradient(ellipse at 83% 74%, rgba(104, 139, 205, .44), transparent 42%),
+    radial-gradient(ellipse at 50% 48%, rgba(103, 117, 175, .38), transparent 52%),
+    linear-gradient(145deg, #192638 0%, #131a26 56%, #1a1c2b 100%);
+}
+
+.app.game-background-preview--custom {
+  background-image:
+    radial-gradient(ellipse at var(--custom-aether-x) var(--custom-aether-y), var(--custom-aether-core), transparent var(--custom-aether-spread)),
+    radial-gradient(ellipse at calc(100% - var(--custom-aether-x)) calc(100% - var(--custom-aether-y)), var(--custom-aether-echo), transparent var(--custom-aether-spread)),
+    linear-gradient(145deg, #182235 0%, #111725 56%, #21182a 100%);
+}
+
+.app:is(
+  .game-background-preview--aether,
+  .game-background-preview--violet,
+  .game-background-preview--ember,
+  .game-background-preview--jade,
+  .game-background-preview--moonlight,
+  .game-background-preview--custom,
+  .game-background-theme--aether,
+  .game-background-theme--violet,
+  .game-background-theme--ember,
+  .game-background-theme--jade,
+  .game-background-theme--moonlight
+) :is(.nemesis-area, .player-area, .market-col, .log-col) {
+  background-color: rgba(18, 23, 36, .52);
+}
+.app:is(
+  .game-background-preview--aether,
+  .game-background-preview--violet,
+  .game-background-preview--ember,
+  .game-background-preview--jade,
+  .game-background-preview--moonlight,
+  .game-background-preview--custom,
+  .game-background-theme--aether,
+  .game-background-theme--violet,
+  .game-background-theme--ember,
+  .game-background-theme--jade,
+  .game-background-theme--moonlight
+) .top-section {
+  /* Let Player Area's glass surface cover the separator completely. */
+  border-bottom-color: transparent;
+}
+.app:is(
+  .game-background-preview--aether,
+  .game-background-preview--violet,
+  .game-background-preview--ember,
+  .game-background-preview--jade,
+  .game-background-preview--moonlight,
+  .game-background-preview--custom,
+  .game-background-theme--aether,
+  .game-background-theme--violet,
+  .game-background-theme--ember,
+  .game-background-theme--jade,
+  .game-background-theme--moonlight
+) .player-area {
+  margin-top: calc(-1 * var(--pixel-border-width));
+}
+.app:is(
+  .game-background-preview--aether,
+  .game-background-preview--violet,
+  .game-background-preview--ember,
+  .game-background-preview--jade,
+  .game-background-preview--moonlight,
+  .game-background-preview--custom,
+  .game-background-theme--aether,
+  .game-background-theme--violet,
+  .game-background-theme--ember,
+  .game-background-theme--jade,
+  .game-background-theme--moonlight
+) :is(.nemesis-play, .played-zone) { background-color: rgba(29, 37, 53, .38); }
+
+.game-background-preview-toolbar {
+  position: fixed;
+  z-index: 20;
+  top: 8px;
+  left: 50%;
+  display: flex;
+  max-width: calc(100vw - 20px);
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 6px 9px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(187, 201, 235, .38);
+  border-radius: 8px;
+  background: rgba(8, 11, 18, .88);
+  box-shadow: 0 7px 24px rgba(0, 0, 0, .28);
+  color: #e8ebf2;
+  backdrop-filter: blur(10px);
+}
+
+.game-background-preview-toolbar label {
+  color: #d8c29a;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.game-background-preview-toolbar select {
+  min-width: 170px;
+  min-height: 30px;
+  padding: 4px 28px 4px 9px;
+  border: 1px solid rgba(187, 201, 235, .28);
+  border-radius: 5px;
+  background-color: rgba(255, 255, 255, .06);
+  color: #e8ebf2;
+  font: inherit;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.game-background-preview-toolbar select:hover { border-color: rgba(216, 194, 154, .8); }
+
+.game-background-preview-tuner {
+  position: fixed;
+  z-index: 21;
+  top: 52px;
+  left: 50%;
+  display: grid;
+  width: min(340px, calc(100vw - 20px));
+  grid-template-columns: 1fr 1fr;
+  gap: 9px 12px;
+  padding: 12px;
+  transform: translateX(-50%);
+  border: 1px solid rgba(187, 201, 235, .34);
+  border-radius: 8px;
+  background: rgba(8, 11, 18, .92);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .34);
+  color: #e8ebf2;
+  backdrop-filter: blur(12px);
+}
+.game-background-preview-tuner__colors { display: contents; }
+.game-background-preview-tuner__colors label {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e8ebf2;
+  font-size: 11px;
+}
+.game-background-preview-tuner__colors input[type='color'] {
+  width: 34px;
+  height: 26px;
+  padding: 2px;
+  border: 1px solid rgba(187, 201, 235, .35);
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+}
+.game-background-preview-tuner__range { display: grid; min-width: 0; gap: 3px; color: #e8ebf2; }
+.game-background-preview-tuner__range > span { display: flex; justify-content: space-between; gap: 8px; font-size: 10px; }
+.game-background-preview-tuner__range output { color: #c7d4f5; font-variant-numeric: tabular-nums; }
+.game-background-preview-tuner__range input[type='range'] { width: 100%; height: 14px; margin: 0; accent-color: #9ab5f5; cursor: ew-resize; }
+.game-background-preview-tuner__reset {
+  grid-column: 1 / -1;
+  justify-self: end;
+  padding: 4px 8px;
+  border: 1px solid rgba(187, 201, 235, .28);
+  border-radius: 5px;
+  background: rgba(255, 255, 255, .06);
+  color: #e8ebf2;
+  font: inherit;
+  font-size: 10px;
+  cursor: pointer;
+}
+.game-background-preview-tuner__reset:hover { border-color: rgba(216, 194, 154, .8); }
+
+@media (max-width: 560px) {
+  .game-background-preview-toolbar { gap: 6px; }
+  .game-background-preview-toolbar label { font-size: 9px; }
+  .game-background-preview-toolbar select { min-width: 145px; }
+  .game-background-preview-tuner { top: 48px; }
+}

@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, onBeforeUnmount } from 'vue'
+import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { getCard, MAGES } from '@engine/data'
 import { cardImageUrl, nemesisCardBackUrl, nemesisSpecificDeckBackUrl, playerCardBackUrl, playerDeckCardBackUrl, specificDeckBackUrl, specificDeckCardImageUrl, trinketDeckBackUrl } from '../card-images'
 import {
@@ -48,13 +48,15 @@ const title = computed(() => {
   if (state.viewPile === 'destroyed') return 'Destroyed Cards'
   return state.viewPile === 'deck' ? 'Deck' : 'Discard'
 })
-const orderLabel = computed(() => state.viewPile === 'player_cards_in_play' ? '(bottom → top)'
-  : state.viewPile === 'destroyed' ? '' : '(top → bottom)')
 const isSpecificDeck = computed(() => state.viewPile === 'specific_deck')
 const isTrinketDeck = computed(() => state.viewPile === 'trinket_deck')
+const isQuFormDeck = computed(() => isSpecificDeck.value && displayPlayer.value?.mageType === 'qu')
+const quFormPreviewSide = ref<'giver' | 'taker' | null>(null)
 const isCorruptionDeck = computed(() => state.viewPile === 'nemesis_specific'
   && state.game?.nemesis.type === 'crooked_mask')
-const isQuFormDeck = computed(() => isSpecificDeck.value && displayPlayer.value?.mageType === 'qu')
+watch(() => [state.viewPile, displayPlayer.value?.id, displayPlayer.value?.mageFormSide] as const, () => {
+  quFormPreviewSide.value = null
+})
 const isNemesisFaceDown = computed(() => state.viewPile === 'nemesis_deck'
   || (state.viewPile === 'nemesis_specific'
     && getNemesisPresentation(state.game?.nemesis.type ?? '').specificDeck.display !== 'face_up'))
@@ -88,6 +90,11 @@ const cards = computed(() => {
   if (state.viewPile === 'destroyed') return displayPlayer.value?.destroyedCards ?? []
   return state.viewPile === 'deck' ? displayPlayer.value?.deck ?? [] : displayPlayer.value?.discard ?? []
 })
+const orderLabel = computed(() => cards.value.length === 1 || state.viewPile === 'destroyed' ? ''
+  : state.viewPile === 'player_cards_in_play' ? '(bottom → top)' : '(top → bottom)')
+const isQuFormPreviewFlipped = computed(() =>
+  (quFormPreviewSide.value ?? displayPlayer.value?.mageFormSide ?? 'giver') === 'taker',
+)
 const recallActions = computed(() => state.viewPile === 'discard' && displayPlayer.value
   ? getRecallActionsForPlayer(displayPlayer.value.id)
   : [])
@@ -197,10 +204,27 @@ function cardBackImageAlt(cardId: string): string {
 }
 
 function specificCardImage(cardId: string): string | undefined {
+  const formSide = isQuFormDeck.value
+    ? quFormPreviewSide.value ?? displayPlayer.value?.mageFormSide
+    : displayPlayer.value?.mageFormSide
   return specificDeckCardImageUrl(
-    displayPlayer.value?.mageType ?? '', cardId, displayPlayer.value?.mageFormSide,
+    displayPlayer.value?.mageType ?? '', cardId, formSide,
   )
 }
+
+function specificCardImageAlt(cardId: string): string {
+  if (isQuFormDeck.value && cardId === 'qus_form_card') {
+    const formSide = quFormPreviewSide.value ?? displayPlayer.value?.mageFormSide ?? 'giver'
+    return `Qu's Form Card — ${formSide === 'taker' ? 'Taker' : 'Giver'} Form`
+  }
+  return getCard(cardId).name
+}
+
+function flipQuFormPreview() {
+  const currentSide = quFormPreviewSide.value ?? displayPlayer.value?.mageFormSide ?? 'giver'
+  quFormPreviewSide.value = currentSide === 'giver' ? 'taker' : 'giver'
+}
+
 </script>
 
 <template>
@@ -221,7 +245,7 @@ function specificCardImage(cardId: string): string | undefined {
       <ModalCloseButton label="Close pile viewer" @close="closePile" />
       <h3>
         {{ title }}
-        <span class="muted">{{ orderLabel }}</span>
+        <span v-if="orderLabel" class="muted">{{ orderLabel }}</span>
       </h3>
       <p v-if="recallActions.length > 0" class="recall-pile-hint">Click a blue highlighted card to activate its Recall effect.</p>
       <div v-if="cards.length === 0" class="empty">— empty —</div>
@@ -237,13 +261,36 @@ function specificCardImage(cardId: string): string | undefined {
         >
           <span v-if="usesRowLabels" class="pile-row-label">{{ rowLabel(gi) }}</span>
           <template v-for="(cid, i) in group" :key="cid + i">
-          <CardHoverPreview v-if="isFaceVisible(cid, cardIndexInPile(gi, i))" :card-id="cid" :image-url="isSpecificDeck ? specificCardImage(cid) : undefined">
+          <CardHoverPreview v-if="isFaceVisible(cid, cardIndexInPile(gi, i))" :card-id="cid" :image-url="isSpecificDeck ? specificCardImage(cid) : undefined" :image-alt="specificCardImageAlt(cid)">
+            <button
+              v-if="isQuFormDeck && cid === 'qus_form_card'"
+              type="button"
+              class="mage-modal-flip-scene qu-form-pile-flip-scene"
+              :aria-label="`Flip ${specificCardImageAlt(cid)}`"
+              @click.stop="flipQuFormPreview"
+            >
+              <span class="mage-modal-flip-card" :class="{ flipped: isQuFormPreviewFlipped }">
+                <img
+                  class="mage-modal-image mage-modal-face"
+                  :src="specificDeckCardImageUrl('qu', cid, 'giver')"
+                  alt="Qu's Form Card — Giver Form"
+                  draggable="false"
+                />
+                <img
+                  class="mage-modal-image mage-modal-face mage-modal-face--back"
+                  :src="specificDeckCardImageUrl('qu', cid, 'taker')"
+                  alt="Qu's Form Card — Taker Form"
+                  draggable="false"
+                />
+              </span>
+            </button>
             <CardSurface
+              v-else
               base-class="pile-card"
               :size="getCard(cid).type === 'mage_form' ? 'large' : 'pile'"
               :card-id="cid"
               :image-url="isSpecificDeck ? specificCardImage(cid) : undefined"
-              :image-alt="getCard(cid).name"
+              :image-alt="specificCardImageAlt(cid)"
               :class="{
                 'pile-card-image': cardImageUrl(cid),
                 'qu-form-pile-card': getCard(cid).type === 'mage_form',
@@ -254,7 +301,7 @@ function specificCardImage(cardId: string): string | undefined {
                 'game-highlight': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid) || recallActionAvailable(cardIndexInPile(gi, i), cid),
                 'game-highlight--available': isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid) && !playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid),
                 'game-highlight--required': playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid),
-                'game-highlight--context': recallActionAvailable(cardIndexInPile(gi, i), cid),
+                'game-highlight--recall': recallActionAvailable(cardIndexInPile(gi, i), cid),
                 'player-card-hover-feedback': (isPlayerCardsInPlay && playerCardActionAvailable(cardIndexInPile(gi, i), cid)) || playerCardEffectConfirmationAvailable(cardIndexInPile(gi, i), cid) || recallActionAvailable(cardIndexInPile(gi, i), cid),
               }"
               @click="selectPileCard(gi, i)"

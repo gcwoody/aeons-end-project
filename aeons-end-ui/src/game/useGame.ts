@@ -188,7 +188,7 @@ let resolveActiveActionCaptureCompletion: (() => void) | null = null
 const cardMotionQueue = createCardMotionQueue()
 const enqueueCardMotion = cardMotionQueue.enqueue
 const activeCardMoveClaims = new Set<string>()
-let automaticDecisionViewRestore: { returnPlayerId: PlayerId; autoSelectedPlayerId: PlayerId } | null = null
+let automaticDecisionViewRestore: { returnPlayerId: PlayerId } | null = null
 const HAND_DISCARD_EFFECT_KINDS = new Set([
   'discard_cards', 'draw_and_discard_cards', 'discard_noncorruption_cards',
   'discard_noncorruptions_and_gain_corruptions', 'discard_cards_collectively',
@@ -205,6 +205,7 @@ const state = reactive({
   prepTarget: null as number | null, // hand index of the spell being prepped
   selectedPlayer: '' as PlayerId,
   discardRemaining: [] as string[], // played cards not yet clicked during discard phase
+  discardAutoResolving: false,
   deckDisplayOverride: null as { playerId: PlayerId; cardId: string | null; count: number } | null,
   deckPileDisplayOverrides: {} as Partial<Record<PlayerId, { cardId: string | null; count: number }>>,
   cardPileDisplayOverrides: {} as CardPileDisplayOverrides,
@@ -305,8 +306,8 @@ function beginCardMotionBatch(): () => void {
 }
 
 let storedSaves: StoredSave[] = []
-// A newly started game must not become a save record until the player chooses
-// Save & Exit. Resumed games keep the existing auto-save behavior.
+// Every active game is kept current in localStorage so an accidental page close
+// does not discard the session. Resumed games continue updating their save.
 let autoSaveEnabled = false
 const undoStack: UndoSnapshot[] = []
 const MAX_UNDO = 50
@@ -406,10 +407,7 @@ function selectPlayerForDecision(id: PlayerId) {
   if (!automaticDecisionViewRestore) {
     automaticDecisionViewRestore = {
       returnPlayerId: activeTurnViewPlayerId() ?? state.selectedPlayer,
-      autoSelectedPlayerId: id,
     }
-  } else {
-    automaticDecisionViewRestore.autoSelectedPlayerId = id
   }
   state.selectedPlayer = id
   state.prepTarget = null
@@ -418,7 +416,6 @@ function restoreAutomaticDecisionViewIfSettled() {
   const restore = automaticDecisionViewRestore
   if (!restore || state.game?.pendingDecision || state.game?.pendingEffect) return
   automaticDecisionViewRestore = null
-  if (state.selectedPlayer !== restore.autoSelectedPlayerId) return
   const returnPlayerId = activeTurnViewPlayerId() ?? restore.returnPlayerId
   if (!state.game?.players.some(player => player.id === returnPlayerId)) return
   state.selectedPlayer = returnPlayerId
@@ -614,9 +611,13 @@ function saveCurrentGame(force = false) {
   save.undoStack = undoStack.map(cloneUndoSnapshot)
   persistStoredSaves()
 }
+function saveActiveGameOnPageHide() {
+  if (state.game) saveCurrentGame()
+}
+if (typeof window !== 'undefined') window.addEventListener('pagehide', saveActiveGameOnPageHide)
 storedSaves = readGameSaves(localStorage)
 syncSaveList()
-// Persist resumed games (and UI context) to localStorage on any change.
+// Persist active games (and UI context) to localStorage on any change.
 watch(
   () => (state.game ? JSON.stringify({
     game: state.game, phase: state.phase, selectedPlayer: state.selectedPlayer,
@@ -1374,6 +1375,7 @@ export function undo() {
   state.prepTarget = s.prepTarget
   state.selectedPlayer = s.selectedPlayer
   state.discardRemaining = [...s.discardRemaining]
+  state.discardAutoResolving = false
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
   state.cardPileDisplayOverrides = {}
@@ -1548,7 +1550,7 @@ export function newGame(
   state.cardMotionBatchActive = false
   clearDamageImpacts()
   state.activeSaveId = null
-  autoSaveEnabled = false
+  autoSaveEnabled = true
   state.autoEndWaitPending = false
   state.exitPrompt = false
   state.endTurnWarningVisible = false
@@ -1569,6 +1571,7 @@ export function newGame(
   state.prepTarget = null
   state.selectedPlayer = g.players[0]!.id
   state.discardRemaining = []
+  state.discardAutoResolving = false
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
   state.cardPileDisplayOverrides = {}
@@ -1585,12 +1588,17 @@ export function newGame(
   if (g.pendingDecision) {
     state.phase = 'casting'
     pushLog('Complete the setup choices before the first turn begins', 'info')
+    saveCurrentGame()
     return
   }
   startTurn(g)
+  state.phase = g.currentTurn === 'nemesis'
+    ? g.currentPhase === 'nemesis_draw' ? 'nemesis_draw' : 'nemesis_main'
+    : 'casting'
   // When Nemesis starts the game, let the turn token arrive first so its deck
   // is mounted before we capture the draw animation's origin.
   beginTurn(g.currentTurn === 'nemesis')
+  saveCurrentGame()
 }
 /** Reroll the nine slots for the Setup screen's semi-random market template. */
 export function rerollMarketTemplate() {
@@ -1628,6 +1636,7 @@ export function resumeGame(saveId?: string): boolean {
     clearPendingBoardHandFlights()
     state.pendingBoardCards = []
     state.discardRemaining = [...save.discardRemaining]
+    state.discardAutoResolving = false
     state.deckDisplayOverride = null
     state.deckPileDisplayOverrides = {}
     state.cardPileDisplayOverrides = {}
@@ -1790,6 +1799,7 @@ function resetToSetup() {
   state.pendingBoardCards = []
   state.prepTarget = null
   state.discardRemaining = []
+  state.discardAutoResolving = false
   state.deckDisplayOverride = null
   state.deckPileDisplayOverrides = {}
   state.cardPileDisplayOverrides = {}
@@ -1827,7 +1837,6 @@ export function closeHelp() {
   state.helpOpen = false
 }
 export function selectPlayer(id: PlayerId) {
-  clearAutomaticDecisionViewRestore()
   state.selectedPlayer = id
   state.prepTarget = null
 }
@@ -3672,7 +3681,6 @@ export async function activateAbility() {
     // temporarily opens that ally's board, return to the active Mage afterward.
     automaticDecisionViewRestore = {
       returnPlayerId: activeTurnPlayerId,
-      autoSelectedPlayerId: abilityOwnerId,
     }
   }
   const previous = beforeAction()
@@ -3690,6 +3698,7 @@ async function finalizeDraw() {
   if (!g) return
   const p = cp()
   state.discardRemaining = []
+  state.discardAutoResolving = false
   const handBeforeDraw = p.hand.length
   const messages = await trackAutomaticCardTransfers(() => resolveDrawPhase(g, p.id))
   if (sequence !== undoSequenceId || state.game !== g) return
@@ -3718,6 +3727,7 @@ async function finalizeDraw() {
 async function autoDiscardRemaining() {
   const sequence = undoSequenceId
   const game = state.game
+  state.discardAutoResolving = true
   state.cardMotionBatchActive = true
   const fallbackFlights: Array<CardFlightSnapshot | null> = []
   try {
@@ -3744,7 +3754,10 @@ async function autoDiscardRemaining() {
     await finalizeDraw()
   } finally {
     fallbackFlights.forEach(discardCardFlight)
-    if (sequence === undoSequenceId) state.cardMotionBatchActive = false
+    if (sequence === undoSequenceId) {
+      state.cardMotionBatchActive = false
+      state.discardAutoResolving = false
+    }
   }}
 /** Wave-specific artwork IDs for the basic Crystal and Spark represent the same cards. */function discardOrderIdentity(cardId: string): string {
   const card = getCard(cardId)
@@ -3860,11 +3873,13 @@ async function doEndTurn(
   if (areSameDiscardOrderCards(p.playedThisTurn)) {
     // Order is irrelevant, but each card still flies into the discard pile.
     state.discardRemaining = [...p.playedThisTurn]
+    state.discardAutoResolving = true
     state.phase = 'discard_order'
     void autoDiscardRemaining()
     return
   }
   state.discardRemaining = [...p.playedThisTurn]
+  state.discardAutoResolving = false
   state.phase = 'discard_order'
   // A manually started End Turn keeps a separate snapshot for Discard Order.
   // When auto-end follows another action, that action's snapshot should undo
@@ -4107,11 +4122,27 @@ export async function developCard(source: 'supply' | 'develop_zone', index: numb
   }
   maybeAutoEnd()
 }
-/** Return Recall cards currently available to the selected Mage. */
+/** Return Recall cards already represented in the visible discard pile. */
 export function getRecallActionsForPlayer(playerId: PlayerId = state.selectedPlayer) {
-  return state.game && state.phase === 'main'
-    ? engineGetRecallActions(state.game, playerId)
-    : []
+  if (!state.game || state.phase !== 'main') return []
+  const player = state.game.players.find(candidate => candidate.id === playerId)
+  if (!player) return []
+
+  const actions = engineGetRecallActions(state.game, playerId)
+  const pileMotion = state.cardPileDisplayOverrides[`player:${playerId}:discard`]
+  const discardDisplay = state.discardPileDisplayOverrides[playerId]
+  const legacyDisplay = state.discardTopDisplayOverride?.playerId === playerId
+    ? state.discardTopDisplayOverride
+    : null
+  const displayedCount = pileMotion?.count ?? discardDisplay?.count ??
+    legacyDisplay?.count ?? player.discard.length
+  // Rule state inserts an incoming card before its flight finishes. Discard
+  // pile display counts stay at the pre-arrival value until each flight lands,
+  // so the extra leading indices are not visible Recall targets yet.
+  const incomingCardCount = Math.max(0, player.discard.length - displayedCount)
+  return incomingCardCount === 0
+    ? actions
+    : actions.filter(action => action.discardIndex >= incomingCardCount)
 }
 /** Activate a Recall effect from the selected Mage's Discard pile. */
 export async function activateRecall(discardIndex: number, playerId: PlayerId = state.selectedPlayer) {

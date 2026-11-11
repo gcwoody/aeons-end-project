@@ -113,7 +113,7 @@
   height: 100%;
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--card-radius);
-  background: #151a29;
+  background: var(--panel-inset);
   overflow: hidden;
 }
 .nemesis-pile-placeholder {
@@ -124,14 +124,14 @@
   padding: 6px;
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--card-radius);
-  background: #151a29;
+  background: var(--panel-inset);
   color: var(--muted);
   font-size: 11px;
   font-weight: 700;
   line-height: 1.25;
   text-align: center;
 }
-.nemesis-pile-slot.is-unavailable .nemesis-pile-placeholder { background: rgba(21, 26, 41, .45); }
+.nemesis-pile-slot.is-unavailable .nemesis-pile-placeholder { background: rgba(25, 21, 14, .45); }
 .nemesis-pile-count {
   position: absolute;
   top: 4px;
@@ -139,7 +139,7 @@
   min-width: 20px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(11, 16, 32, .76);
+  background: rgba(25, 21, 14, .88);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -152,7 +152,7 @@
 .nemesis-pile-inspect:hover .nemesis-pile-placeholder { border-color: var(--accent); }
 .nemesis-pile-slot.is-empty .nemesis-pile-placeholder,
 .nemesis-pile-slot.is-empty .nemesis-pile-inspect:hover .nemesis-pile-placeholder { border-color: transparent; }
-.nemesis-pile-slot.is-empty .nemesis-pile-placeholder { background: #151A29; }
+.nemesis-pile-slot.is-empty .nemesis-pile-placeholder { background: var(--panel-inset); }
 .nemesis-section-title {
   color: var(--muted);
   font-size: 11px;
@@ -171,7 +171,7 @@
   overflow: hidden;
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--nemesis-mat-radius);
-  background: #151a29;
+  background: var(--panel-inset);
   padding: 0;
   cursor: pointer;
   color: inherit;
@@ -291,7 +291,7 @@
   min-height: 0;
   border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
-  background: #151a29;
+  background: var(--panel-inset);
   padding: 4px 8px;
   display: grid;
   grid-template-columns: minmax(0, var(--info-nemesis-share)) minmax(0, var(--info-turn-order-share)) minmax(0, var(--info-gravehold-share));
@@ -346,7 +346,7 @@
   flex: 1;
   border: var(--pixel-border-width) solid var(--border);
   border-radius: 8px;
-  background: #151a29;
+  background: var(--panel-inset);
   padding: 8px 10px;
   display: flex;
   flex-direction: column;
@@ -356,7 +356,7 @@
 .pile-count { font-size: 22px; font-weight: 700; }
 .pile-top { color: var(--spell); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.nemesis-play { flex: 1 1 auto; min-width: 0; min-height: 0; border: 0; border-radius: 8px; padding: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--nemesis-pile-gap); background: #20283a; overflow: visible; }
+.nemesis-play { flex: 1 1 auto; min-width: 0; min-height: 0; border: 0; border-radius: 8px; padding: 0; display: grid; grid-template-rows: repeat(2, minmax(0, 1fr)); gap: var(--nemesis-pile-gap); background: var(--panel); overflow: visible; }
 .nemesis-play-top { display: flex; min-width: 0; min-height: 0; align-items: center; justify-content: flex-start; gap: 10px; }
 .nemesis-play-row { min-width: 0; min-height: 0; }
 .nemesis-play-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 18px; }

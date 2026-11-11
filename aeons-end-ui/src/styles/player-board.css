@@ -44,7 +44,7 @@
 .char-btn .cn { grid-area: 1 / 2; font-weight: 700; text-transform: capitalize; }
 .char-btn .chp-status { grid-area: 1 / 3; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
 .char-btn .chp { color: var(--danger); font-size: 12px; font-weight: 700; }
-.char-btn .cch { grid-area: 2 / 2; color: var(--accent); font-size: 12px; }
+.char-btn .cch { grid-area: 2 / 2; color: var(--charge-highlight); font-size: 12px; }
 .char-btn .chand { grid-area: 2 / 3; color: var(--muted); font-size: 12px; }
 .char-btn .chand strong { color: var(--text); }
 .char-btn .status-change-bubbles,
@@ -125,7 +125,8 @@
   align-items: center;
   gap: 6px;
 }
-.breach:has(.breach-flip-scene) { z-index: var(--z-card-hover); }
+.breach-token-wrap:has(.breach-flip-scene) { z-index: var(--z-flip-active); }
+.breach:has(.breach-flip-scene) { z-index: var(--z-flip-active); }
 .breach.absent { visibility: hidden; pointer-events: none; }
 .breach-token-wrap {
   width: 100%;
@@ -359,7 +360,7 @@
 }
 .breach .btns .btn.small.effect-focus-target:hover:not(:disabled) {
   border-color: var(--game-highlight-context);
-  background: rgba(122, 162, 255, .14);
+  background: rgba(242, 202, 97, .14);
   color: var(--game-highlight-context);
 }
 

@@ -2,6 +2,7 @@
 import aetherIconUrl from '../../../image-database/common images/Aether.png'
 import knowledgeIconUrl from '../../../image-database/common images/Knowledge.png'
 import { aetherTokenImageUrl, pulseTokenImageUrl } from '../card-images'
+import GameThemeSwitcher from './GameThemeSwitcher.vue'
 
 interface PlayerControlSummary {
   id: string
@@ -212,6 +213,7 @@ const emit = defineEmits<{
         </span>
       </button>
       <button class="btn utility-icon-button help-button" aria-label="Open game help" @click="emit('toggle-help')">?</button>
+      <GameThemeSwitcher />
     </div>
   </div>
 </template>

@@ -82,7 +82,7 @@ export const THE_TERROR_IN_BRASS_NEMESIS_CARDS: Record<string, NemesisCardDef> =
           label: 'Remove a Nemesis token from the Armor Chart',
           condition: armorTokenPresent,
           autoSelectIfSoleAvailable: true,
-          effects: [{ kind: 'remove_sub_board_tokens', tokenId: 'nemesis', amount: 1, regionIds: armorTokenPresent.regionIds }],
+          effects: [{ kind: 'remove_sub_board_tokens', tokenId: 'nemesis', amount: 1, regionIds: armorTokenPresent.regionIds, selectByRegion: true }],
         },
         {
           id: 'damage_lowest_life_player',
@@ -128,7 +128,7 @@ export const THE_TERROR_IN_BRASS_NEMESIS_CARDS: Record<string, NemesisCardDef> =
     ...makeCard('feral_authority', 'Feral Authority', 'power', 3, { power: 1 }),
     nemesisEffects: powerResolved(
       unleash(2),
-      { kind: 'remove_sub_board_tokens', tokenId: 'nemesis', amount: 2, regionIds: armorTokenPresent.regionIds },
+      { kind: 'remove_sub_board_tokens', tokenId: 'nemesis', amount: 2, regionIds: armorTokenPresent.regionIds, selectByRegion: true },
     ),
   },
   regeneration: {

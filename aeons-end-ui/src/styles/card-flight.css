@@ -70,7 +70,7 @@
   overflow: hidden;
   border: 0;
   border-radius: var(--card-radius);
-  background: #151a29;
+  background: var(--panel-inset);
   will-change: transform;
   transform-origin: center;
 }

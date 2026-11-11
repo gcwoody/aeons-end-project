@@ -13,9 +13,11 @@
 }
 .overlay-card {
   position: relative;
-  background: var(--panel);
-  border: var(--pixel-border-width) solid var(--border);
+  background: var(--modal-surface, var(--panel));
+  border: var(--pixel-border-width) solid var(--modal-border, var(--border));
   border-radius: var(--radius-modal);
+  -webkit-backdrop-filter: blur(18px) saturate(125%);
+  backdrop-filter: blur(18px) saturate(125%);
   padding: var(--modal-padding);
   text-align: center;
   transform-origin: center center;

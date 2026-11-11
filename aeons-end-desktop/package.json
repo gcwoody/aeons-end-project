@@ -1,0 +1,65 @@
+{
+  "name": "aeons-end-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Windows desktop shell for Aeon's End Digital",
+  "main": "main.cjs",
+  "scripts": {
+    "dev": "node dev.mjs",
+    "start": "electron .",
+    "prepare:game": "npm --prefix ../aeons-end-ui run build:local-demo",
+    "package:win": "node build-win.mjs"
+  },
+  "build": {
+    "appId": "com.aeonsendigital.desktop",
+    "productName": "Aeon's End Digital",
+    "executableName": "AeonsEnd",
+    "directories": {
+      "output": "out"
+    },
+    "files": [
+      "main.cjs",
+      "package.json",
+      "assets/app-icon.ico"
+    ],
+    "extraResources": [
+      {
+        "from": "../local-demo-site",
+        "to": "local-demo-site",
+        "filter": [
+          "index.html",
+          "assets/**/*"
+        ]
+      },
+      {
+        "from": "../image-database",
+        "to": "image-database",
+        "filter": [
+          "**/*",
+          "!**/.cache/**",
+          "!**/__pycache__/**"
+        ]
+      },
+      {
+        "from": "../local-update-manifest.tsv",
+        "to": "local-update-manifest.tsv"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "dir",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/app-icon.ico",
+      "signExecutable": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^45.2.3",
+    "electron-builder": "^26.18.0"
+  }
+}

@@ -15,7 +15,7 @@
 .breach-focus-button.effect-focus-target:hover,
 .breach:has(.breach-token-wrap.decision-breach-target:hover) .breach-focus-button.effect-focus-target {
   border-color: var(--accent);
-  background: rgba(122, 162, 255, .14);
+  background: rgba(242, 202, 97, .14);
   color: var(--game-highlight-context);
 }
 

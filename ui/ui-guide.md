@@ -23,8 +23,10 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 | `BreachArtwork.vue` | Breach 棋盘图和预览共用方向、素材与旋转角度 |
 | `PlayerArea.vue` | 玩家区域的状态/交互协调 |
 | `PlayerBreachArea.vue`、`PlayerHandArea.vue`、`PlayerZoneArea.vue`、`PlayerControls.vue` | 玩家区域展示和输入 |
+| `GameThemeSwitcher.vue`、`game/useGameTheme.ts` | 对局主题选择；使用独立的本地设置记忆，并支持每局随机主题 |
 | `HandCardRow.vue` | 共用手牌卡槽、居中、滚动、稳定视觉身份与收拢动画；游戏和 Gallery 使用同一组件 |
 | `NemesisArea.vue`、`MarketPanel.vue`、`SetupScreen.vue` | Nemesis 区域、市场和开局设置 |
+| `MainMenu.vue` | 游戏设置前的主菜单：开始新局、读取本地存档、展示客户端版本和预览版更新公告 |
 | `MatPreviewButton.vue` | Setup 中按图片自然边界显示 Mage/Nemesis mat，并共用圆角和悬停边线 |
 | `ModalBase.vue` | 标准弹窗外壳、遮罩、拖动和关闭行为 |
 | `CenteredDecisionPrompt.vue` | 居中展示短提示，可选在文字下方展示大尺寸卡牌；弹窗外仍可点击棋盘目标 |
@@ -50,8 +52,9 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 - 有图片的卡牌默认不显示中性灰边框，直接显示完整卡面；选中、可操作和目标提示使用覆盖在卡面上的彩色边框，不能改变卡牌尺寸或压缩图片。只有空牌区、无图片占位和选择控件可以保留结构边框。Nemesis Mat 等非卡牌区域按各自规则处理。
 - 游戏对象的提示边框统一使用 `.game-highlight` 覆盖层（`::after`），再按语义加一个颜色类。它覆盖卡图、不改变尺寸；不要给卡牌、Breach 或 Nemesis 目标另写 `border`、`outline` 或 `box-shadow` 高亮。默认粗细由 `--game-highlight-width` 控制；Nemesis Mat 可保留单独的 3px 表面尺寸，普通卡牌和棋盘目标为 2px。
 - 高亮的玩家卡牌（包括手牌、玩家牌区、Recall 目标、市场卡牌、Mage-specific deck 顶牌、Breach 上的法术和 Supply 附属 Treasure）悬停时统一增加轻微的暗色覆盖，移开后恢复，不伴随位移。共享卡牌高亮层负责这项反馈；`.player-card-hover-feedback` 还用于没有彩色高亮、但当前可操作的手牌，以及 Discard Phase 中 Played Zone 里待弃的牌。悬停不改变高亮颜色或点击行为。
-- 高亮颜色按含义固定：`.game-highlight--available` 绿色，表示可购买/可激活/可执行；`.game-highlight--choice` 橙色，表示尚未选中的合法候选；`.game-highlight--selected` 红色，表示玩家已选中的候选，与 `.game-highlight--required`（必须执行的目标）共用红色；`.game-highlight--context` 蓝色，表示拖拽中的临时落点或悬停上下文。禁用项保持灰暗、不加彩色边框。键盘焦点环、普通按钮和空区域占位的结构边框不属于游戏目标高亮，可以保留自己的可访问性/控件样式。Gallery 的 `Card.States` 展示这五种语义。全局色值和粗细只在 `styles/tokens.css` 调整，覆盖层实现只在 `styles/interaction-highlights.css` 维护。
+- 高亮颜色按含义固定：`.game-highlight--available` 绿色，表示可购买/可激活/可执行；`.game-highlight--choice` 橙色，表示尚未选中的合法候选；`.game-highlight--selected` 红色，表示玩家已选中的候选，与 `.game-highlight--required`（必须执行的目标）共用红色；`.game-highlight--context` 金色，表示拖拽中的临时落点或悬停上下文；`.game-highlight--recall` 亮蓝色，保留 Recall 的专属语义。禁用项保持灰暗、不加彩色边框。键盘焦点环、普通按钮和空区域占位的结构边框不属于游戏目标高亮，可以保留自己的可访问性/控件样式。Gallery 的 `Card.States` 展示这五种语义。全局色值和粗细只在 `styles/tokens.css` 调整，覆盖层实现只在 `styles/interaction-highlights.css` 维护。
 - Setup 的 Mage/Nemesis mat 预览使用 `MatPreviewButton.vue`。按钮跟随图片自然比例收缩，图片与高亮覆盖层同边界、同圆角；不要把 `object-fit: contain` 留出的空白也圈进边线。
+- Setup 的 Mage/Nemesis 名称选择器使用金色自定义菜单并向上展开。鼠标悬停或键盘移动只临时预览对应 mat；点击选项才提交，点到选择器外关闭菜单并恢复已选 mat。选择器与 Reroll 控件组成的宽度应和下方 mat 对齐；各类 Reroll 使用相同的字体和悬停边框样式。
 - 图片与边框共存时，内侧圆角应贴合卡面，不能遮住边框或在角落留下空隙。
 - 市场 Supply pile 保持紧凑的 3×3 排列；视口变化时卡牌随可用高度缩放，不用弹性分配把列间距拉大。Nemesis Play 区域使用剩余横向空间。Supply pile 悬停不做上浮位移。
 - Nemesis Play 区域分为上下两行：下行显示 Minion、Power 等正常在场卡牌；上行从左至右显示被规则放置在场边的 Nemesis 卡牌（例如 Dark Conclusion 暂放在 Turn Order deck 旁）。上行中的在场 Minion 也显示生命标记和当前可执行效果提示。
@@ -68,9 +71,9 @@ UI Gallery：`http://127.0.0.1:5173/?ui-gallery=1`
 - 手牌中的 Spell 可直接点击并自动准备到最右侧仍可接收法术的 Breach；拖动 Spell 到指定 Breach 时直接准备，不播放飞入动画。
 - Conjure 展示的法术可点击并自动准备到最右侧候选 Breach，也可拖动到指定候选 Breach；选择仍由 Conjure 决策处理。
 - Breach 上附着的 Relic 放在 Breach 下层并露出卡牌下方；Focus/Open 按钮要在附着牌上层。垂直露出量只改 `--breach-attached-relic-offset-y`。
-- Focus 合法时，悬停 Breach 图或对应 Focus 按钮，都要同时把图和按钮边线临时变成蓝色；由 `board-pile-interactions.css` 的共享配对悬停规则处理。
+- Focus 合法时，悬停 Breach 图或对应 Focus 按钮，都要同时把图和按钮边线临时变成金色；由 `board-pile-interactions.css` 的共享配对悬停规则处理。
 
-Recall 可用时，弃牌堆顶牌及可触发的牌用蓝色上下文提示；打开弃牌堆后的操作说明也使用蓝色。Recall、Develop、Supply 购买/Develop 和其他可操作状态都通过统一覆盖层提示，不能挤占卡面空间。不要给牌堆增加整块矩形高亮或 hover 上浮。
+Recall 可用时，弃牌堆顶牌及可触发的牌用亮蓝色 Recall 提示；打开弃牌堆后的操作说明也使用亮蓝色。正在飞入弃牌堆的牌要等到飞行动画结束后才成为 Recall 高亮目标；如果原弃牌堆已有可触发的 Recall，原有提示保持显示。Recall、Develop、Supply 购买/Develop 和其他可操作状态都通过统一覆盖层提示，不能挤占卡面空间。不要给牌堆增加整块矩形高亮或 hover 上浮。
 
 ### 决策目标高亮
 
@@ -138,7 +141,7 @@ Destroy 使用引擎的 `destroy` 记录，无论来源是手牌、牌库、弃�
 - Power 卡的 To Discard 条件满足时高亮整张卡，点击卡牌触发；不显示常驻的独立 Discard 按钮。
 - 玩家在 Main Phase 首次点击 End Turn 且仍有合法操作时，保留现有内联提醒，同时用引擎的 `getMainPhaseActionHint` 显示一个具体操作说明，并短暂闪亮该操作位置。若操作属于另一位 Mage，先闪亮其 Control Bar 选择按钮；切换视角后再闪亮实际操作目标。此提示不新增弹窗，`canPlayerAct` 与提示必须共用同一引擎判断。
 - 决策弹窗内所有可用按钮（包括不在候选列表中的 Skip/Confirm）统一有悬停和按下颜色反馈，由 `.decision-overlay .btn` 与 `.decision-options button` 公共规则维护。
-- Reveal 类效果要让玩家看到实际揭示的卡牌，再按规则提供 Confirm 或选择操作。Conjure 使用专用流程：揭示牌暂时显示在手牌并以橙色选择提示标记；没有拖动时不高亮 Breach，开始拖动后合法 Breach 才显示蓝色临时落点提示。即使无合法目标，仍展示卡牌并提供 Skip。
+- Reveal 类效果要让玩家看到实际揭示的卡牌，再按规则提供 Confirm 或选择操作。Conjure 使用专用流程：揭示牌暂时显示在手牌并以橙色选择提示标记；没有拖动时不高亮 Breach，开始拖动后合法 Breach 才显示金色临时落点提示。即使无合法目标，仍展示卡牌并提供 Skip。
 - 需要选择 Breach 执行 Focus 效果时，合法目标显示橙色 Focus 按钮；按钮与 Breach 图提交同一决策，且不额外支付普通 Focus 费用。
 - 受伤/弃牌目标使用统一玩家选择按钮；伤害弹窗明确写出伤害量，弃牌弹窗显示需弃牌数量和随后抽牌数量（抽牌数为零时不写后续抽牌）。
 - Control Bar 的 Hand 数字在没有动效时读取真实的 `hand.length`；卡牌飞行期间只通过共用牌堆计数机制逐张显示变化。Conjure 揭示牌虽然暂时展示在手牌区域，仍不能加入 Hand 计数；获得到牌堆顶或弃牌堆不触发白色手牌增长气泡。白色气泡只反映真实手牌增加，蓝色气泡反映 Charge；正常回合补牌不产生手牌气泡，切换到对应 Mage 时清除其手牌提醒，撤销/恢复整个 GameState 时清除所有遗留增长提醒。
@@ -213,8 +216,11 @@ Played、Swap、Develop 等牌区使用引擎移动记录和实体卡 ID 对应�
 | `--z-card-flight-shield` / `--z-card-flight` | 630 / 640 | 飞行期间输入遮挡、卡牌动画副本 |
 | `--z-turn-token-arrival` | 645 | 放大后淡出的 Turn Order token |
 | `--z-exit` / `--z-damage-feedback` | 1000 / 1100 | 退出确认、全局受击反馈 |
+| `--z-flip-active` | 1200 | 当前交互的 3D 翻面场景 |
 
 大的 `z-index` 不能越过父元素创建的 stacking context，也不能逃过 `overflow: hidden/clip`。跨区域动画或提示需要时使用 Teleport/页面级固定层；不要只给子元素继续叠加更大的数字。Setup 的卡图预览只比 Setup 选牌窗口高一级。
+
+所有 3D 翻面场景都必须使用共享翻面类（`mage-modal-flip-scene`、`setup-inspector-mat-scene` 或 `breach-flip-scene`）。可交互翻面获得焦点时使用 `--z-flip-active`；翻面卡面的圆角由图片自身绘制，翻面场景不能设置 `overflow: hidden/clip`。如果动效位于滚动区或独立层叠上下文中，也要提升对应容器；只提高卡片子元素的 `z-index` 无法越过祖先容器。
 
 ## 7. 修改和验收
 

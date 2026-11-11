@@ -1625,8 +1625,11 @@ export function createEffectResolver(services: EffectResolutionServices) {
 
     if (effect.kind === 'cast_selected_spell_from_hand') {
       const owner = getPlayer(g, effect.playerId)
-      const index = owner.hand.indexOf(effect.cardId)
-      if (index < 0 || getCard(effect.cardId).type !== 'spell') {
+      const sourceHand = getPlayerCardInstanceZone(g, owner.id, 'hand')
+      const index = effect.instanceId
+        ? sourceHand.instanceIds.indexOf(effect.instanceId)
+        : sourceHand.cards.indexOf(effect.cardId)
+      if (index < 0 || sourceHand.cards[index] !== effect.cardId || getCard(effect.cardId).type !== 'spell') {
         messages.push('The selected ally spell is no longer in hand')
         continue
       }
@@ -1642,7 +1645,6 @@ export function createEffectResolver(services: EffectResolutionServices) {
       // so move the physical card to its owner's discard before resolving its
       // Cast text. This mirrors the timing used for spells cast from Breaches.
       const discardThisCast = effect.remaining <= 1
-      const sourceHand = getPlayerCardInstanceZone(g, owner.id, 'hand')
       let castInstanceId = sourceHand.instanceIds[index]
       if (discardThisCast) {
         const discard = getPlayerCardInstanceZone(g, owner.id, 'discard')
@@ -1683,6 +1685,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
           playerId: effect.playerId,
           cardId: effect.cardId,
           remaining: effect.remaining - 1,
+          instanceId: effect.instanceId,
           repeatConfirmation: true,
         } satisfies CardEffect] : []),
       ])
@@ -3420,6 +3423,7 @@ export function createEffectResolver(services: EffectResolutionServices) {
 
     if (effect.kind === 'play_card_from_hand') {
       const selectedId = resolution.selectedCardId
+      const selectedInstanceId = resolution.selectedCardInstanceId
       const candidates = getCardChoices(g, currentPlayerId, 'hand')
         .filter(choice => getCard(choice.cardId).type === effect.cardType)
       if (!selectedId) {
@@ -3434,13 +3438,16 @@ export function createEffectResolver(services: EffectResolutionServices) {
         return messages
       }
       resolution.selectedCardId = undefined
-      const handIndex = getPlayer(g, currentPlayerId).hand.indexOf(selectedId)
-      if (handIndex < 0 || getCard(selectedId).type !== effect.cardType) {
+      resolution.selectedCardInstanceId = undefined
+      const player = getPlayer(g, currentPlayerId)
+      const hand = getPlayerCardInstanceZone(g, player.id, 'hand')
+      const handIndex = selectedInstanceId
+        ? hand.instanceIds.indexOf(selectedInstanceId)
+        : hand.cards.indexOf(selectedId)
+      if (handIndex < 0 || hand.cards[handIndex] !== selectedId || getCard(selectedId).type !== effect.cardType) {
         messages.push('The selected card is no longer available')
         continue
       }
-      const player = getPlayer(g, currentPlayerId)
-      const hand = getPlayerCardInstanceZone(g, player.id, 'hand')
       const played = getPlayerCardInstanceZone(g, player.id, 'played_this_turn')
       const moved = moveCardBetweenZones(g, hand, handIndex, played, played.cards.length, 'play')
       if (!moved) {
@@ -3454,6 +3461,8 @@ export function createEffectResolver(services: EffectResolutionServices) {
           kind: 'play_card_instance', cardId: selectedId,
           destroyAfter: effect.destroy && index === times - 1,
           recordPlay: index === 0,
+          playerId: player.id,
+          instanceId: moved.instanceId,
         })
       }
       addRemainingEffects(resolution, instances)
@@ -3462,16 +3471,25 @@ export function createEffectResolver(services: EffectResolutionServices) {
 
     if (effect.kind === 'play_card_instance') {
       const card = getCard(effect.cardId)
+      const owner = getPlayer(g, effect.playerId ?? currentPlayerId)
+      const playedZone = getPlayerCardInstanceZone(g, owner.id, 'played_this_turn')
+      if (effect.instanceId && !playedZone.instanceIds.some((instanceId, index) =>
+        instanceId === effect.instanceId && playedZone.cards[index] === effect.cardId)) {
+        messages.push(`${card.name} left play; its remaining play and destroy effects are skipped`)
+        continue
+      }
       // Keep the physical card in the played area while its nested on-play
       // effects are resolving. This matters when the replay pauses for a
       // choice (for example Burning Opal) before Unstable Prism destroys it.
-      ensurePlayerCollections(p)
-      p.cardPlayCountsThisTurn[effect.cardId] = (p.cardPlayCountsThisTurn[effect.cardId] ?? 0) + 1
+      ensurePlayerCollections(owner)
+      owner.cardPlayCountsThisTurn[effect.cardId] = (owner.cardPlayCountsThisTurn[effect.cardId] ?? 0) + 1
       const restoreContext = captureEffectContext(resolution)
       const nested = matchingBlocks(effect.cardId, currentPlayerId, g, { kind: 'on_play' }, undefined,
         currentPlayerId, undefined, currentPlayerId).flatMap(block =>
         contextualizeCardEffectBlock(block, effect.cardId, currentPlayerId, currentPlayerId, restoreContext))
-      if (effect.destroyAfter) nested.push({ kind: 'destroy_played_card', cardId: effect.cardId, playerId: currentPlayerId })
+      if (effect.destroyAfter) nested.push({
+        kind: 'destroy_played_card', cardId: effect.cardId, playerId: owner.id, instanceId: effect.instanceId,
+      })
       addRemainingEffects(resolution, nested)
       messages.push(`Played ${card.name}`)
       continue
@@ -3480,12 +3498,15 @@ export function createEffectResolver(services: EffectResolutionServices) {
     if (effect.kind === 'destroy_played_card') {
       const owner = getPlayer(g,
         effect.playerId ?? resolution.sourceCardOwnerId ?? resolution.sourcePlayerId ?? currentPlayerId)
-      const index = [...owner.playedThisTurn].lastIndexOf(effect.cardId)
+      const played = getPlayerCardInstanceZone(g, owner.id, 'played_this_turn')
+      const index = effect.instanceId
+        ? played.instanceIds.findIndex((instanceId, cardIndex) =>
+          instanceId === effect.instanceId && played.cards[cardIndex] === effect.cardId)
+        : [...owner.playedThisTurn].lastIndexOf(effect.cardId)
       if (index < 0) {
         messages.push('Played card is no longer available to destroy')
         continue
       }
-      const played = getPlayerCardInstanceZone(g, owner.id, 'played_this_turn')
       destroyCardFromZone(g, played, index)
       messages.push(getCard(effect.cardId).returnToSwapZoneOnDestroy
         ? `${getCard(effect.cardId).name} returns to the Swap zone`

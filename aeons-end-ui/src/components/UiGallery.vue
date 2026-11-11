@@ -36,6 +36,21 @@ import { mageImageUrls } from '../mage-images'
 type GalleryModal = 'pile' | 'decision' | 'reveal' | 'instant-choice' | 'two-button' | 'token-amount' | 'turn-order' | 'centered-prompt' | 'centered-prompt-cards' | null
 
 const modal = ref<GalleryModal>(null)
+const previewCustomButtonBrightness = ref(false)
+const menuGradientBrightness = ref(20)
+function adjustGradientColor(color: readonly [number, number, number], amount: number): string {
+  const boundedAmount = Math.max(-40, Math.min(60, amount)) / 100
+  const channels = color.map(channel => boundedAmount >= 0
+    ? channel + (255 - channel) * boundedAmount
+    : channel * (1 + boundedAmount))
+  return `rgb(${channels.map(Math.round).join(', ')})`
+}
+const galleryGradientStyle = computed(() => ({
+  '--gallery-gradient-start': adjustGradientColor([122, 162, 255], menuGradientBrightness.value),
+  '--gallery-gradient-end': adjustGradientColor([93, 124, 190], menuGradientBrightness.value),
+  '--gallery-gradient-hover-start': adjustGradientColor([155, 183, 255], menuGradientBrightness.value),
+  '--gallery-gradient-hover-end': adjustGradientColor([120, 152, 219], menuGradientBrightness.value),
+}))
 const galleryModalEl = ref<HTMLElement | null>(null)
 const gallerySelectedCardKeys = ref<string[]>([])
 const galleryConfirmedCardNames = ref<string[]>([])
@@ -191,16 +206,43 @@ function reorderGalleryTurnOrder(keys: string[]) {
 </script>
 
 <template>
-  <main class="ui-gallery" data-ui-gallery>
+  <main class="ui-gallery" :class="{ 'ui-gallery--custom-button-brightness': previewCustomButtonBrightness }" :style="galleryGradientStyle" data-ui-gallery>
     <header class="ui-gallery-header">
       <div>
         <p class="ui-gallery-kicker">Aeon's End Digital · UI Gallery</p>
         <h1>Reusable UI Components</h1>
         <p class="ui-gallery-intro">
-          Development-only component catalogue. These fixtures do not modify a game state.
+          In-game gold buttons use the +20% gradient. Tune Gallery brightness to compare lighter and darker versions across piles and decisions.
         </p>
       </div>
-      <a class="btn" href="/">Exit Gallery</a>
+      <div class="ui-gallery-header-actions">
+        <div class="ui-gallery-gradient-controls">
+          <label class="ui-gallery-gradient-toggle">
+            <input v-model="previewCustomButtonBrightness" type="checkbox" aria-label="Apply custom brightness to Gallery buttons" />
+            <span>
+              <strong>Custom brightness</strong>
+              <small>Apply slider value in Gallery</small>
+            </span>
+          </label>
+          <label class="ui-gallery-brightness-control">
+            <span class="ui-gallery-brightness-heading">
+              <strong>Button brightness</strong>
+              <output>{{ menuGradientBrightness > 0 ? '+' : '' }}{{ menuGradientBrightness }}%</output>
+            </span>
+            <input
+              v-model.number="menuGradientBrightness"
+              type="range"
+              min="-40"
+              max="60"
+              step="5"
+              aria-label="Adjust gradient button brightness"
+              @input="previewCustomButtonBrightness = true"
+            />
+            <small>Dimmer ← original → brighter</small>
+          </label>
+        </div>
+        <a class="btn" href="/">Exit Gallery</a>
+      </div>
     </header>
 
     <section class="ui-gallery-section" data-gallery-section="hand-motion">
@@ -686,7 +728,7 @@ function reorderGalleryTurnOrder(keys: string[]) {
         <template v-else-if="modal === 'two-button'">
           <p class="ui-gallery-index">Decision.TwoButtonChoice · immediate decision</p>
           <h2>Choose one effect</h2>
-          <p class="ui-gallery-modal-hint">Two clear blue buttons for a single choice.</p>
+          <p class="ui-gallery-modal-hint">Two clear gold buttons for a single choice.</p>
           <TwoButtonChoice :options="galleryTwoButtonOptions" @select="confirmGalleryTwoButtonChoice" />
         </template>
         <template v-else-if="modal === 'token-amount'">
@@ -746,6 +788,34 @@ function reorderGalleryTurnOrder(keys: string[]) {
   max-width: 1440px;
   margin: 0 auto 28px;
 }
+.ui-gallery-header-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 10px; }
+.ui-gallery-gradient-controls {
+  display: grid;
+  min-width: 230px;
+  gap: 9px;
+  padding: 9px 11px;
+  border: var(--pixel-border-width) solid var(--border);
+  border-radius: var(--radius-control);
+  background: rgba(18, 21, 29, .72);
+}
+.ui-gallery-gradient-toggle {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-height: 24px;
+  color: var(--text);
+  cursor: pointer;
+}
+.ui-gallery-gradient-toggle input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); cursor: pointer; }
+.ui-gallery-gradient-toggle span { display: grid; gap: 2px; }
+.ui-gallery-gradient-toggle strong { font-size: 11px; font-weight: 650; }
+.ui-gallery-gradient-toggle small { color: var(--muted); font-size: 9px; }
+.ui-gallery-brightness-control { display: grid; gap: 3px; color: var(--text); }
+.ui-gallery-brightness-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ui-gallery-brightness-heading strong { font-size: 10px; font-weight: 650; }
+.ui-gallery-brightness-heading output { color: #c5d4ff; font-size: 10px; font-variant-numeric: tabular-nums; }
+.ui-gallery-brightness-control input[type='range'] { width: 100%; height: 14px; margin: 0; accent-color: var(--accent); cursor: ew-resize; }
+.ui-gallery-brightness-control small { color: var(--muted); font-size: 9px; }
 .ui-gallery-header h1,
 .ui-gallery-section h2,
 .ui-gallery-item h3 {
@@ -961,9 +1031,10 @@ function reorderGalleryTurnOrder(keys: string[]) {
   .ui-gallery { padding-inline: 10px; }
   .ui-gallery-header,
   .ui-gallery-section-heading { flex-direction: column; }
+  .ui-gallery-header-actions { justify-content: flex-start; }
   .ui-gallery-note { text-align: left; }
   .ui-gallery-grid-cards,
-  .ui-gallery-grid-zones { grid-template-columns: 1fr; }
+  .ui-gallery-grid-zones,
   .ui-gallery-section { padding: 12px; }
   .ui-gallery-modal-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .gallery-modal-reveal-card { width: min(42vw, 220px); height: auto; aspect-ratio: var(--card-aspect-ratio); }
@@ -977,6 +1048,28 @@ function reorderGalleryTurnOrder(keys: string[]) {
 .ui-gallery-modal { position: relative; width: min(900px, calc(100vw - 40px)); max-height: min(88vh, 720px); overflow: auto; padding: 52px 26px 26px; border: var(--pixel-border-width) solid var(--border); border-radius: 12px; background: var(--panel); text-align: center; }
 .ui-gallery-modal:focus { outline: none; }
 .ui-gallery-modal h2 { margin: 0 0 8px; }
+.ui-gallery--custom-button-brightness .btn.primary:not(:disabled) {
+  border-color: rgba(161, 188, 255, .8);
+  background: var(--primary-button-gradient);
+  background: linear-gradient(110deg, var(--gallery-gradient-start), var(--gallery-gradient-end));
+  box-shadow: 0 4px 16px rgba(93, 124, 190, .22);
+  color: var(--primary-button-gradient-text);
+}
+.ui-gallery--custom-button-brightness .btn.primary:hover:not(:disabled) {
+  border-color: #c9d8ff;
+  background: var(--primary-button-gradient-hover);
+  background: linear-gradient(110deg, var(--gallery-gradient-hover-start), var(--gallery-gradient-hover-end));
+}
+.ui-gallery--custom-button-brightness .decision-options.stacked-panels.mage-ability-choice-options .mage-ability-choice-button:not(:disabled) {
+  border-color: rgba(161, 188, 255, .8);
+  background: linear-gradient(110deg, var(--gallery-gradient-start), var(--gallery-gradient-end));
+  color: var(--primary-button-gradient-text);
+}
+.ui-gallery--custom-button-brightness .decision-options.stacked-panels.mage-ability-choice-options .mage-ability-choice-button:hover:not(:disabled) {
+  border-color: #c9d8ff;
+  background: linear-gradient(110deg, var(--gallery-gradient-hover-start), var(--gallery-gradient-hover-end));
+  filter: none;
+}
 .ui-gallery-modal-hint { margin: 0 0 14px; color: var(--muted); }
 .ui-gallery-modal-cards { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0 20px; }
 .ui-gallery-modal-actions { display: flex; justify-content: center; gap: 10px; }

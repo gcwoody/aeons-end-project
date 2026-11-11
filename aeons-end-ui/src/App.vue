@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, onBeforeUnmount, ref } from 'vue'
+import { computed, onMounted, onBeforeUnmount, ref, watch } from 'vue'
 import { useGame } from './game/useGame'
+import MainMenu from './components/MainMenu.vue'
 import SetupScreen from './components/SetupScreen.vue'
 import GameTopArea from './components/GameTopArea.vue'
 import MarketPanel from './components/MarketPanel.vue'
@@ -13,12 +14,13 @@ import DebugPanel from './components/DebugPanel.vue'
 import UiGallery from './components/UiGallery.vue'
 import ModalBase from './components/ModalBase.vue'
 import ModalCloseButton from './components/ModalCloseButton.vue'
+import { useGameTheme } from './game/useGameTheme'
 import { useModalDrag } from './game/useModalDrag'
 import { dismissTopmostOverlay } from './game/dismissible-overlays'
 
 const {
-  state, undo, toggleDebug, selectPlayer, openPile, closePile,
-  closeHelp, requestExit, cancelExit, saveAndExit, exitWithoutSaving, returnToMainMenu,
+  state, newGame, undo, toggleDebug, selectPlayer, openPile, closePile,
+  closeHelp, requestExit, cancelExit, returnToMainMenu,
   toMainPhase, requestEndTurn, resolveDecision, canRequestEndTurn, playAllGems,
   canConfirmRepeatedSpell, confirmRepeatedSpell,
 } = useGame()
@@ -26,8 +28,54 @@ const {
 const { modalEl: helpModalEl, modalStyle: helpModalStyle, dragging: helpDragging, startDrag: startHelpDrag } = useModalDrag()
 const { modalEl: exitModalEl, modalStyle: exitModalStyle, dragging: exitDragging, startDrag: startExitDrag } = useModalDrag()
 const { modalEl: gameoverModalEl, modalStyle: gameoverModalStyle, dragging: gameoverDragging, startDrag: startGameoverDrag } = useModalDrag()
-const isUiGallery = new URLSearchParams(window.location.search).get('ui-gallery') === '1'
+const routeParams = new URLSearchParams(window.location.search)
+const isUiGallery = routeParams.get('ui-gallery') === '1'
+const isGameBackgroundPreview = routeParams.get('board-bg-preview') === '1'
+const { activeTheme: gameBackgroundTheme, applyThemeForGameEntry } = useGameTheme()
+const gameBackgroundChoices = [
+  { id: 'original', label: 'Original' },
+  { id: 'aether', label: 'Aether Glow' },
+  { id: 'violet', label: 'Violet Rift' },
+  { id: 'ember', label: 'Ember Tide' },
+  { id: 'jade', label: 'Jade Pulse' },
+  { id: 'moonlight', label: 'Moonlight' },
+  { id: 'custom', label: 'Custom' },
+] as const
+type GameBackgroundChoice = typeof gameBackgroundChoices[number]['id']
+const selectedGameBackground = ref<GameBackgroundChoice>('aether')
+const customAetherCore = ref('#6f9cff')
+const customAetherEcho = ref('#9a68d2')
+const customAetherX = ref(52)
+const customAetherY = ref(45)
+const customAetherIntensity = ref(56)
+const customAetherSpread = ref(52)
+function colorWithAlpha(hex: string, alpha: number): string {
+  const value = hex.replace('#', '')
+  const channels = [0, 2, 4].map(index => Number.parseInt(value.slice(index, index + 2), 16))
+  return `rgba(${channels[0]}, ${channels[1]}, ${channels[2]}, ${alpha})`
+}
+const customAetherStyle = computed(() => ({
+  '--custom-aether-core': colorWithAlpha(customAetherCore.value, .08 + customAetherIntensity.value / 100 * .5),
+  '--custom-aether-echo': colorWithAlpha(customAetherEcho.value, .04 + customAetherIntensity.value / 100 * .32),
+  '--custom-aether-x': `${customAetherX.value}%`,
+  '--custom-aether-y': `${customAetherY.value}%`,
+  '--custom-aether-spread': `${customAetherSpread.value}%`,
+}))
+function resetCustomAether() {
+  customAetherCore.value = '#6f9cff'
+  customAetherEcho.value = '#9a68d2'
+  customAetherX.value = 52
+  customAetherY.value = 45
+  customAetherIntensity.value = 56
+  customAetherSpread.value = 52
+}
 const logVisible = ref(false)
+const launchScreen = ref<'main-menu' | 'setup'>('main-menu')
+
+watch(() => state.game, (game, previousGame) => {
+  if (game && !previousGame) applyThemeForGameEntry()
+  if (!game && previousGame) launchScreen.value = 'main-menu'
+})
 
 function setLogVisibility(visible: boolean) {
   logVisible.value = visible
@@ -283,14 +331,76 @@ function cycleDisplayedPlayer() {
   selectPlayer(players[nextIndex]!.id)
 }
 
-onMounted(() => window.addEventListener('keydown', onKeydown))
+onMounted(() => {
+  window.addEventListener('keydown', onKeydown)
+  if (state.game) applyThemeForGameEntry()
+  if (isGameBackgroundPreview && !state.game) {
+    // Give a direct preview URL a real board without touching the user's active tab or saved games.
+    newGame('mist', 'brama', 'rageborne', 'standard')
+  }
+})
 onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
 <template>
-  <UiGallery v-if="isUiGallery" />
-  <SetupScreen v-else-if="!state.game" />
-  <div v-else class="app" :class="{ 'card-motion-batch-active': state.cardMotionBatchActive, 'without-log': !logVisible }">
+  <UiGallery v-if="isUiGallery" class="ui-gold-theme" />
+  <MainMenu
+    v-else-if="!state.game && launchScreen === 'main-menu'"
+    class="ui-gold-theme"
+    @start-game="launchScreen = 'setup'"
+  />
+  <SetupScreen
+    v-else-if="!state.game"
+    class="ui-gold-theme"
+    @back-to-menu="launchScreen = 'main-menu'"
+  />
+  <div
+    v-else
+    class="app ui-gold-theme"
+    :class="[
+      { 'card-motion-batch-active': state.cardMotionBatchActive, 'without-log': !logVisible },
+      isGameBackgroundPreview ? 'game-background-preview' : '',
+      isGameBackgroundPreview
+        ? `game-background-preview--${selectedGameBackground}`
+        : `game-background-theme--${gameBackgroundTheme}`,
+    ]"
+    :style="isGameBackgroundPreview && selectedGameBackground === 'custom' ? customAetherStyle : undefined"
+  >
+    <div v-if="isGameBackgroundPreview" class="game-background-preview-toolbar">
+      <label for="game-background-choice">Board background</label>
+      <select id="game-background-choice" v-model="selectedGameBackground" aria-label="Select game background">
+        <option v-for="choice in gameBackgroundChoices" :key="choice.id" :value="choice.id">{{ choice.label }}</option>
+      </select>
+    </div>
+    <div v-if="isGameBackgroundPreview && selectedGameBackground === 'custom'" class="game-background-preview-tuner" aria-label="Custom Aether Glow controls">
+      <div class="game-background-preview-tuner__colors">
+        <label>
+          <span>Core color</span>
+          <input v-model="customAetherCore" type="color" aria-label="Aether core color" />
+        </label>
+        <label>
+          <span>Echo color</span>
+          <input v-model="customAetherEcho" type="color" aria-label="Aether echo color" />
+        </label>
+      </div>
+      <label class="game-background-preview-tuner__range">
+        <span><span>Glow X</span><output>{{ customAetherX }}%</output></span>
+        <input v-model.number="customAetherX" type="range" min="0" max="100" aria-label="Aether glow horizontal position" />
+      </label>
+      <label class="game-background-preview-tuner__range">
+        <span><span>Glow Y</span><output>{{ customAetherY }}%</output></span>
+        <input v-model.number="customAetherY" type="range" min="0" max="100" aria-label="Aether glow vertical position" />
+      </label>
+      <label class="game-background-preview-tuner__range">
+        <span><span>Intensity</span><output>{{ customAetherIntensity }}%</output></span>
+        <input v-model.number="customAetherIntensity" type="range" min="0" max="100" aria-label="Aether glow intensity" />
+      </label>
+      <label class="game-background-preview-tuner__range">
+        <span><span>Spread</span><output>{{ customAetherSpread }}%</output></span>
+        <input v-model.number="customAetherSpread" type="range" min="25" max="85" aria-label="Aether glow spread" />
+      </label>
+      <button class="game-background-preview-tuner__reset" type="button" @click="resetCustomAether">Reset controls</button>
+    </div>
     <div class="main-col">
       <div class="top-section">
         <GameTopArea class="top-main" />
@@ -334,7 +444,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
             <div class="help-row"><kbd>Tab</kbd><span>Cycle through the players shown on the board.</span></div>
             <div class="help-row"><kbd>Q</kbd><span>View the shown mage's deck.</span></div>
             <div class="help-row"><kbd>W</kbd><span>View the shown mage's discard pile.</span></div>
-            <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise confirm an available decision, a repeated spell cast, or a required player card, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
+            <div class="help-row"><kbd>Space</kbd><span>Choose Yes in a Yes/No decision; otherwise activate the only available decision button (including Skip), confirm a repeated spell cast or required player card, confirm a revealed Nemesis card, confirm completed divided damage allocation, resolve the highlighted Nemesis card, start Main Phase, or end the current Main Phase.</span></div>
           </div>
         </section>
 
@@ -358,10 +468,9 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKeydown))
       @panel-pointerdown="startExitDrag"
     >
         <h2>Exit Game?</h2>
-        <p class="exit-copy">Are you sure you want to exit this game?</p>
+        <p class="exit-copy">Your game is saved automatically as you play. You can resume it from the main menu.</p>
         <div class="overlay-actions">
-          <button class="btn" @click="exitWithoutSaving">Exit Without Saving</button>
-          <button class="btn primary" @click="saveAndExit">Save &amp; Exit</button>
+          <button class="btn primary" @click="returnToMainMenu">Return to Main Menu</button>
           <button class="btn" @click="cancelExit">Cancel</button>
         </div>
     </ModalBase>

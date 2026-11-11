@@ -145,7 +145,7 @@
 .debug-card-search { flex: 1; min-width: 0; height: 30px; padding: 5px 9px; }
 .debug-card-search-row > .btn { display: inline-flex; flex: 0 0 auto; align-items: center; justify-content: center; height: 30px; box-sizing: border-box; white-space: nowrap; }
 .debug-card-filters { display: flex; flex-wrap: wrap; gap: 5px; }
-.debug-card-filters .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(122, 162, 255, .12); }
+.debug-card-filters .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(242, 202, 97, .12); }
 .debug-card-groups { display: flex; flex-direction: column; gap: 9px; }
 .debug-card-group { display: flex; flex-direction: column; gap: 4px; }
 .debug-card-group-toggle { display: flex; align-items: center; gap: 7px; width: 100%; padding: 5px 7px; border: var(--pixel-border-width) solid var(--border); border-radius: 6px; background: var(--panel-2); color: var(--text); font: inherit; cursor: pointer; text-align: left; }
@@ -169,7 +169,7 @@
   cursor: pointer;
   text-align: left;
 }
-.debug-card-option:hover { --game-highlight-color: var(--game-highlight-context); background: rgba(122, 162, 255, .1); }
+.debug-card-option:hover { --game-highlight-color: var(--game-highlight-context); background: rgba(242, 202, 97, .1); }
 .debug-card-option.selected { --game-highlight-color: var(--game-highlight-choice); }
 .debug-card-option img, .debug-card-fallback {
   width: 100%;
@@ -209,4 +209,4 @@
   cursor: nwse-resize;
   opacity: .75;
 }
-.debug-resize-handle:hover { opacity: 1; background-color: rgba(122, 162, 255, .12); }
+.debug-resize-handle:hover { opacity: 1; background-color: rgba(242, 202, 97, .12); }

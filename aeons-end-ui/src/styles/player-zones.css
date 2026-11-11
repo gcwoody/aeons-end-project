@@ -144,7 +144,7 @@
   /* Reserve the former heading row so the card row keeps the same vertical position. */
   padding: 21px 7px 5px;
   overflow: visible;
-  background: #20283a;
+  background: var(--panel);
 }
 .deck-pile .label, .discard-pile .label {
   color: var(--muted);
@@ -256,7 +256,7 @@
 .deck-pile, .discard-pile {
   border: var(--pixel-border-width) solid var(--border);
   border-radius: 9px;
-  background: #151a29;
+  background: var(--panel-inset);
   padding: 8px;
   display: flex;
   flex-direction: column;
@@ -269,7 +269,7 @@
 .deck-pile.is-empty,
 .discard-pile.is-empty {
   border-color: transparent;
-  background: #151A29;
+  background: var(--panel-inset);
 }
 .deck-pile .count, .discard-pile .count { font-size: 26px; font-weight: 700; }
 .deck-pile .pile-count { color: var(--muted); font-size: 10px; }
@@ -297,7 +297,7 @@
 }
 .player-specific-deck-pile.is-empty {
   border-color: transparent;
-  background: #151A29;
+  background: var(--panel-inset);
 }
 .player-specific-deck-face-up {
   display: block;
@@ -318,7 +318,7 @@
   min-width: 20px;
   padding: 1px 6px;
   border-radius: 999px;
-  background: rgba(11, 16, 32, .7);
+  background: rgba(25, 21, 14, .9);
   color: #fff;
   font-size: 12px;
   font-weight: 700;
@@ -368,7 +368,7 @@
   object-fit: cover;
 }
 .player-discard-top-card {
-  background: #151a29;
+  background: var(--panel-inset);
   border: var(--pixel-border-width) solid var(--border);
   border-radius: var(--card-radius);
 }
@@ -469,7 +469,7 @@
   z-index: 3;
   padding: 2px 4px;
   border-radius: 4px;
-  background: rgba(18, 21, 29, .9);
+  background: rgba(25, 21, 14, .9);
   color: #fff;
   font-size: 10px;
   font-weight: 700;

@@ -61,6 +61,7 @@
 }
 
 .game-highlight--context { --game-highlight-color: var(--game-highlight-context); }
+.game-highlight--recall { --game-highlight-color: var(--game-highlight-recall); }
 .game-highlight--available { --game-highlight-color: var(--game-highlight-available); }
 .game-highlight--choice { --game-highlight-color: var(--game-highlight-choice); }
 .game-highlight--selected { --game-highlight-color: var(--game-highlight-required); }

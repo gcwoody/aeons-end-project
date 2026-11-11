@@ -33,6 +33,7 @@ defineProps<{
   hasSwapZone: boolean
   hasDevelopZone: boolean
   isDiscard: boolean
+  isAutoDiscarding: boolean
   swapZoneOwners: SwapZoneOwnerDisplay[]
   playedCards: ZoneCardDisplay[]
   discardCards: ZoneCardDisplay[]
@@ -135,7 +136,14 @@ onBeforeUnmount(() => {
                 size="mini"
                 class="clickable"
                 :data-discard-phase-card-index="card.index"
-                :class="[card.typeClass, 'game-highlight', 'game-highlight--choice', 'player-card-hover-feedback']"
+                :class="[
+                  card.typeClass,
+                  {
+                    'game-highlight': !isAutoDiscarding,
+                    'game-highlight--choice': !isAutoDiscarding,
+                    'player-card-hover-feedback': !isAutoDiscarding,
+                  },
+                ]"
                 @click="emit('click-discard-card', card.index)"
               />
             </CardHoverPreview>

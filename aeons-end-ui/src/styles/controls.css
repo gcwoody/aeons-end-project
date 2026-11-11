@@ -10,7 +10,7 @@
   gap: var(--control-gap);
   align-items: center;
   border-top: var(--pixel-border-width) solid transparent;
-  background: #20283a;
+  background: var(--panel);
   padding-top: var(--space-4);
   padding-bottom: var(--control-bar-bottom-padding);
   /* Stay above ordinary board content while hand hover cards remain above it;

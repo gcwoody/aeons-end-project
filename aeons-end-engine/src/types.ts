@@ -387,6 +387,8 @@ export interface PendingEffectResolution {
   revealedTopCard?: { playerId: PlayerId; cardId: string }
   /** Hand card selected for a play-card-from-hand effect. */
   selectedCardId?: string
+  /** Physical hand card selected for a play-card-from-hand effect. */
+  selectedCardInstanceId?: string
   /** Temporary player chosen for a multi-step Nemesis effect. */
   selectedActionPlayerId?: PlayerId
   /** Mage chosen to receive the first card during an Oracle Expunge. */
@@ -1120,13 +1122,15 @@ export type CardEffect =
       playerId: PlayerId
       cardId: string
       remaining: number
+      /** Physical card instance selected in the ally hand. */
+      instanceId?: string
       /** This cast is a repeat and waits for an explicit confirmation first. */
       repeatConfirmation?: boolean
       /** Set only after the player confirms this repeated hand spell. */
       repeatConfirmed?: boolean
     }
-  | { kind: 'play_card_instance'; cardId: string; destroyAfter: boolean; recordPlay?: boolean }
-  | { kind: 'destroy_played_card'; cardId: string; playerId?: PlayerId }
+  | { kind: 'play_card_instance'; cardId: string; destroyAfter: boolean; recordPlay?: boolean; playerId?: PlayerId; instanceId?: string }
+  | { kind: 'destroy_played_card'; cardId: string; playerId?: PlayerId; instanceId?: string }
   /** Remove a face-up Mage-specific card from the Player cards in play area. */
   | { kind: 'destroy_player_card_in_play'; cardId: string; playerId?: PlayerId }
   | { kind: 'lose_charge'; amount: number; target?: PlayerTargetScope; targetAvailability?: 'full_or_max' }
