@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string] $RepositoryRoot
 )
 
@@ -155,7 +155,16 @@ function ConvertTo-UpdateManifest([string] $content) {
   if ($lines.Length -lt 2) { throw 'The update manifest is empty or incomplete.' }
 
   $header = $lines[0].Split([char]9)
-  if ($header.Length -ne 3 -or $header[0] -ne 'AEONS_END_LOCAL_UPDATE' -or $header[1] -ne '1' -or $header[2] -notmatch '^[0-9a-f]{64}$') {
+  if ($header.Length -lt 3 -or $header[0] -ne 'AEONS_END_LOCAL_UPDATE' -or $header[2] -notmatch '^[0-9a-f]{64}$') {
+    throw 'The update manifest header is invalid.'
+  }
+  $buildTimeUtc = $null
+  if ($header[1] -eq '1' -and $header.Length -eq 3) {
+    $manifestFormatVersion = 1
+  } elseif ($header[1] -eq '2' -and $header.Length -eq 4 -and $header[3] -match '^[0-9]{14}$') {
+    $manifestFormatVersion = 2
+    $buildTimeUtc = [DateTime]::ParseExact($header[3], 'yyyyMMddHHmmss', [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::AssumeUniversal).ToUniversalTime()
+  } else {
     throw 'The update manifest header is invalid.'
   }
 
@@ -185,7 +194,7 @@ function ConvertTo-UpdateManifest([string] $content) {
 
   $body = [System.String]::Join("`n", $rows.ToArray()) + "`n"
   if ((Get-TextSha256 $body) -ne $header[2]) { throw 'The update manifest checksum is invalid.' }
-  return (New-Object PSObject -Property @{ Version = $header[2]; Entries = $entries; ByPath = $entryIndex })
+  return (New-Object PSObject -Property @{ Version = $header[2]; FormatVersion = $manifestFormatVersion; BuildTimeUtc = $buildTimeUtc; Entries = $entries; ByPath = $entryIndex })
 }
 
 function Get-EncodedPayloadUrl([string] $relativePath) {
@@ -225,27 +234,36 @@ function Restore-Changes($changes) {
       }
     } catch {
       $succeeded = $false
-      Write-Host "Could not restore $($change.RelativePath): $($_.Exception.Message)" -ForegroundColor Red
+      Write-Host "无法恢复文件 $($change.RelativePath)：$($_.Exception.Message)" -ForegroundColor Red
     }
   }
   return $succeeded
 }
 
 function Test-ExistingLocalServer {
-  $client = New-Object System.Net.Sockets.TcpClient
-  try {
-    $client.Connect([System.Net.IPAddress]::Loopback, 47381)
-    $stream = $client.GetStream()
-    $stream.ReadTimeout = 1000
-    $request = [System.Text.Encoding]::ASCII.GetBytes("GET /__aeons_end_local_server_check__ HTTP/1.1`r`nHost: 127.0.0.1`r`nConnection: close`r`n`r`n")
-    $stream.Write($request, 0, $request.Length)
-    $reader = New-Object -TypeName System.IO.StreamReader -ArgumentList $stream
-    return ($reader.ReadLine() -match '^HTTP/1\.1 204 ')
-  } catch {
-    return $false
-  } finally {
-    $client.Close()
+  $probes = @(
+    @{ Port = 47381; Path = '/__aeons_end_local_server_check__' },
+    @{ Port = 47382; Path = '/__aeons_end_desktop_check__' }
+  )
+  foreach ($probe in $probes) {
+    $client = New-Object System.Net.Sockets.TcpClient
+    try {
+      $client.Connect([System.Net.IPAddress]::Loopback, [int]$probe.Port)
+      $stream = $client.GetStream()
+      $stream.ReadTimeout = 1000
+      $request = [System.Text.Encoding]::ASCII.GetBytes("GET $($probe.Path) HTTP/1.1`r`nHost: 127.0.0.1`r`nConnection: close`r`n`r`n")
+      $stream.Write($request, 0, $request.Length)
+      $reader = New-Object -TypeName System.IO.StreamReader -ArgumentList $stream
+      if ($reader.ReadLine() -match '^HTTP/1\.1 204 ') {
+        $client.Close()
+        return $true
+      }
+    } catch {
+    } finally {
+      $client.Close()
+    }
   }
+  return $false
 }
 
 function Invoke-LocalUpdate {
@@ -253,10 +271,11 @@ function Invoke-LocalUpdate {
   $hasLocalImages = Test-Path -LiteralPath (Join-Path $script:RootPath 'image-database') -PathType Container
 
   try {
+    Write-Host '正在检查本地游戏文件和启动状态...' -ForegroundColor Cyan
     if (-not (Test-Path -LiteralPath $script:RootPath -PathType Container)) { throw 'The project folder could not be found.' }
     Assert-NoReparsePoints '' $true
     if (Test-ExistingLocalServer) {
-      Write-Host 'The local game is already running. Skipping this update check.' -ForegroundColor Green
+      Write-Host '检测到本地游戏已经运行，跳过本次更新检查。' -ForegroundColor Green
       return 0
     }
     Ensure-ContainedDirectory '.aeons-end-update'
@@ -265,15 +284,33 @@ function Invoke-LocalUpdate {
       $script:LockStream = [System.IO.File]::Open($script:LockPath, [System.IO.FileMode]::OpenOrCreate, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
     } catch {
       $script:FallbackAllowed = $false
-      throw 'Another updater is already running. Wait for it to finish, then run the launcher again.'
+      throw '另一个更新检查程序仍在运行，请稍后重新启动。'
     }
 
     try { [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]3072 } catch { }
     $script:Client = New-Object System.Net.WebClient
     $script:Client.Headers.Add('User-Agent', 'AeonsEndDigital-LocalUpdater/1.0')
+    Write-Host '正在连接 GitHub 更新源并读取版本清单...' -ForegroundColor Cyan
     $manifestBytes = $script:Client.DownloadData($script:RepositoryContentBaseUrl + '/local-update-manifest.tsv')
     if ($manifestBytes.Length -gt 4194304) { throw 'The update manifest is unexpectedly large.' }
     $remoteManifest = ConvertTo-UpdateManifest ([System.Text.Encoding]::UTF8.GetString($manifestBytes))
+
+    $packageManifest = $null
+    $packageManifestPath = Join-Path $script:RootPath 'local-update-manifest.tsv'
+    if (Test-Path -LiteralPath $packageManifestPath -PathType Leaf) {
+      try {
+        Assert-NoReparsePoints 'local-update-manifest.tsv' $true
+        $packageManifest = ConvertTo-UpdateManifest ([System.IO.File]::ReadAllText($packageManifestPath, [System.Text.Encoding]::UTF8))
+      } catch {
+        Write-Host '压缩包内的版本记录无法读取，将继续按旧版方式检查。' -ForegroundColor Yellow
+        $packageManifest = $null
+      }
+    }
+    if ($packageManifest -and $packageManifest.BuildTimeUtc -and
+      (-not $remoteManifest.BuildTimeUtc -or $remoteManifest.BuildTimeUtc -le $packageManifest.BuildTimeUtc)) {
+      Write-Host '更新源的版本不比压缩包内的版本新，保留本地游戏，不执行降级。' -ForegroundColor Green
+      return 0
+    }
 
     $previousManifest = $null
     if (Test-Path -LiteralPath $script:StatePath -PathType Leaf) {
@@ -281,11 +318,16 @@ function Invoke-LocalUpdate {
         Assert-NoReparsePoints '.aeons-end-update/installed-manifest.tsv' $true
         $previousManifest = ConvertTo-UpdateManifest ([System.IO.File]::ReadAllText($script:StatePath, [System.Text.Encoding]::UTF8))
       } catch {
-        Write-Host 'The saved update record is invalid. The updater will check the local files once.' -ForegroundColor Yellow
+        Write-Host '已保存的更新记录无法读取，将重新检查本地文件。' -ForegroundColor Yellow
         $previousManifest = $null
       }
     }
+    if (-not $previousManifest -and $packageManifest) {
+      $previousManifest = $packageManifest
+      Write-Host '已读取压缩包自带的本地版本记录。' -ForegroundColor DarkCyan
+    }
 
+    Write-Host ("正在比对本地文件（更新清单共 {0} 项）..." -f $remoteManifest.Entries.Count) -ForegroundColor Cyan
     $entriesToDownload = New-Object System.Collections.ArrayList
     $siteFilesToRemove = New-Object System.Collections.ArrayList
     if ($previousManifest -and $previousManifest.Version -eq $remoteManifest.Version) {
@@ -293,7 +335,7 @@ function Invoke-LocalUpdate {
         if ((Get-LocalEntryStatus $entry) -eq 'download') { [void]$entriesToDownload.Add($entry) }
       }
       if ($entriesToDownload.Count -eq 0) {
-        Write-Host 'Your local game is up to date.' -ForegroundColor Green
+        Write-Host '本地游戏已经是最新版本。' -ForegroundColor Green
         return 0
       }
     } else {
@@ -321,6 +363,11 @@ function Invoke-LocalUpdate {
     Ensure-ContainedDirectory '.aeons-end-update/staging'
     $stagePrefix = '.aeons-end-update/staging/'
     $downloadedCount = 0
+    if ($entriesToDownload.Count -gt 0) {
+      Write-Host ("发现 {0} 个文件需要更新，正在下载并校验..." -f $entriesToDownload.Count) -ForegroundColor Cyan
+    } else {
+      Write-Host '文件内容没有变化，正在更新本地版本记录...' -ForegroundColor Cyan
+    }
     foreach ($entry in $entriesToDownload) {
       $stageRelativePath = $stagePrefix + 'payload/' + $entry.RelativePath
       $stageFilePath = Get-ContainedPath $stageRelativePath
@@ -333,10 +380,18 @@ function Invoke-LocalUpdate {
         throw "The downloaded file did not pass verification: $($entry.RelativePath)"
       }
       $downloadedCount++
+      if ($downloadedCount -eq 1 -or $downloadedCount -eq $entriesToDownload.Count -or ($downloadedCount % 20) -eq 0) {
+        Write-Host ("更新进度：{0}/{1} 个文件" -f $downloadedCount, $entriesToDownload.Count) -ForegroundColor Cyan
+      }
     }
 
     $stagedStatePath = Join-Path $script:StagePath 'new-installed-manifest.tsv'
-    $stateText = 'AEONS_END_LOCAL_UPDATE' + "`t" + '1' + "`t" + $remoteManifest.Version + "`n"
+    if ($remoteManifest.FormatVersion -eq 2) {
+      $remoteBuildTime = $remoteManifest.BuildTimeUtc.ToString('yyyyMMddHHmmss', [Globalization.CultureInfo]::InvariantCulture)
+      $stateText = 'AEONS_END_LOCAL_UPDATE' + "`t" + '2' + "`t" + $remoteManifest.Version + "`t" + $remoteBuildTime + "`n"
+    } else {
+      $stateText = 'AEONS_END_LOCAL_UPDATE' + "`t" + '1' + "`t" + $remoteManifest.Version + "`n"
+    }
     foreach ($entry in $remoteManifest.Entries) {
       $stateText += 'F' + "`t" + $entry.Hash + "`t" + $entry.Size + "`t" + $entry.RelativePath + "`n"
     }
@@ -401,25 +456,25 @@ function Invoke-LocalUpdate {
       $rollbackSucceeded = Restore-Changes $changes
       if (-not $rollbackSucceeded) {
         $script:FallbackAllowed = $false
-        throw 'The update failed and rollback was incomplete. Do not launch the local game; restore the project from its original ZIP.'
+        throw '更新失败且回滚未能完成。请勿启动游戏，请重新解压原始压缩包。'
       }
       throw
     }
 
     Remove-ContainedTree '.aeons-end-update/staging'
     if ($downloadedCount -gt 0) {
-      Write-Host "Updated $downloadedCount file(s)." -ForegroundColor Green
+      Write-Host ("更新完成，共更新 {0} 个文件。" -f $downloadedCount) -ForegroundColor Green
     } else {
-      Write-Host 'Your local game is up to date.' -ForegroundColor Green
+      Write-Host '本地游戏已经是最新版本。' -ForegroundColor Green
     }
     return 0
   } catch {
-    Write-Host "The automatic update could not be completed: $($_.Exception.Message)" -ForegroundColor Yellow
+    Write-Host '自动更新检查未能完成。' -ForegroundColor Yellow
     if ($script:FallbackAllowed -and $hasLocalSite -and $hasLocalImages) {
-      Write-Host 'Starting the installed local version. It will try updating again next time.' -ForegroundColor Yellow
+      Write-Host '将使用压缩包中已有的本地游戏启动；下次启动时会重新检查。' -ForegroundColor Yellow
       return 0
     }
-    Write-Host 'No complete local version is available. Connect to the internet and run the launcher again, or download the full project ZIP.' -ForegroundColor Red
+    Write-Host '未找到完整的本地游戏文件。请联网后重新启动，或重新下载完整压缩包。' -ForegroundColor Red
     return 1
   } finally {
     if ($script:Client) { $script:Client.Dispose() }

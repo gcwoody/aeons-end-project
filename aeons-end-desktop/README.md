@@ -1,28 +1,34 @@
-# Windows Desktop Client
+# Windows Desktop Client and Share Archive
 
-This is the Windows 10/11 desktop launcher for Aeon's End Digital. The current portable prototype opens the locally packaged game in an Electron window. It does not yet check for or install game updates.
+This is the Windows 10/11 desktop client plus a portable browser launcher for Windows 7. `npm run package:share` creates one ZIP archive with both launchers at its root and one shared copy of the game and image files. Electron is built as a single portable executable, so its runtime DLLs are not scattered through the extracted folder.
 
-## Build
+## Build the share archive
 
-From the repository root, build the local game site and then package the desktop client:
+From `aeons-end-desktop/` on Windows, run:
 
 ```powershell
-cd aeons-end-ui
-npm run build:local-demo
-
-cd ..\aeons-end-desktop
 npm ci
-npm run package:win
+npm run package:share
 ```
 
-The Windows x64 output is written to `out/win-unpacked/`.
+The command builds the local game, packages the Electron shell, assembles the dual-launcher folder, and creates:
 
-## Launch and distribute
+```text
+out/Aeons-End-Digital-Windows-x64.zip
+```
 
-- Double-click `out/win-unpacked/AeonsEnd.exe` to launch the game. Its executable icon and the Electron window icon use `assets/app-icon.ico`, generated from `assets/cover.png`.
-- Keep the complete `win-unpacked` directory together. The executable depends on the adjacent `resources/`, local game site, and image database; do not distribute only `AeonsEnd.exe`.
-- To share a portable build, compress the complete `win-unpacked` directory and have players extract it to a writable folder before launching it.
-- The current executable is unsigned. Windows may identify it as an unknown publisher.
+The archive root contains `AeonsEnd.exe`, `Play Aeon's End Demo.cmd`, `START-HERE.txt`, the launcher scripts, `local-demo-site/`, and `image-database/`. The Electron runtime is packed into the single executable. Images are included once and shared by both launch methods. Test-time `profile/` data is deliberately excluded from the archive.
+
+## Player instructions
+
+1. Extract the entire ZIP to a writable folder. Do not launch files from inside the ZIP preview. For Windows 7, use a short path such as `C:\Games\AeonsEnd` and avoid deeply nested folders.
+2. On Windows 10/11, double-click `AeonsEnd.exe` to open the local Electron game window.
+3. On Windows 7, double-click `Play Aeon's End Demo.cmd` to check/download changed game files and open the local game in the browser. Keep its command window open while playing.
+4. The CMD updater follows the `friend-preview` branch on GitHub. The local manifest includes its build time; a legacy or older remote manifest cannot replace a newer packaged game. If GitHub is unreachable but a complete local game is present, the launcher starts that copy. To publish future CMD updates, rebuild the local game and commit the generated `local-demo-site/` and version 2 `local-update-manifest.tsv` to `friend-preview`.
+
+Both launchers use the files in the extracted folder. Keep the complete folder together. Electron saves its local browser profile under `profile/` beside `AeonsEnd.exe`; preserve that directory when replacing the executable to retain saves. The browser launcher stores saves in the selected browser under the stable local address.
+
+The Windows executable is unsigned, so Windows may show an unknown-publisher or SmartScreen warning.
 
 ## Update the icon
 

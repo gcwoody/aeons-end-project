@@ -10,7 +10,11 @@ const APP_ORIGIN = `http://${APP_HOST}:${APP_PORT}`
 const DEV_URL = process.env.AEONS_END_DEV_URL || ''
 const projectRoot = process.env.AEONS_END_PROJECT_ROOT || path.resolve(__dirname, '..')
 const appIconPath = path.join(__dirname, 'assets', 'app-icon.ico')
-const gameRoot = app.isPackaged ? process.resourcesPath : projectRoot
+// The shareable archive keeps one shared copy of the game files next to the
+// executable. The Win7 CMD launcher and this Electron client use that same
+// copy, avoiding a second 370+ MB image database inside resources/.
+const portableRoot = process.env.PORTABLE_EXECUTABLE_DIR || path.dirname(process.execPath)
+const gameRoot = app.isPackaged ? portableRoot : projectRoot
 const siteRoot = path.join(gameRoot, 'local-demo-site')
 const imageRoot = path.join(gameRoot, 'image-database')
 
@@ -24,7 +28,7 @@ if (!appLock) app.quit()
 if (appLock) {
   if (process.platform === 'win32') app.setAppUserModelId(APP_ID)
   const profileRoot = app.isPackaged
-    ? path.join(path.dirname(process.execPath), 'profile')
+    ? path.join(portableRoot, 'profile')
     : path.join(__dirname, '.dev-profile')
   fs.mkdirSync(profileRoot, { recursive: true })
   app.setPath('userData', profileRoot)

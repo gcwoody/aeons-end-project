@@ -87,7 +87,8 @@ async function main() {
 
   const body = `${rows.join('\n')}\n`
   const version = createHash('sha256').update(body, 'utf8').digest('hex')
-  const manifest = `AEONS_END_LOCAL_UPDATE\t1\t${version}\n${body}`
+  const builtAt = new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)
+  const manifest = `AEONS_END_LOCAL_UPDATE\t2\t${version}\t${builtAt}\n${body}`
   writeFileSync(outputPath, manifest, 'utf8')
   process.stdout.write(`Wrote ${rows.length} update entries to ${outputPath}\n`)
 }

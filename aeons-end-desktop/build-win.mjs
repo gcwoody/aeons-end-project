@@ -15,7 +15,7 @@ if (!process.env.ELECTRON_MIRROR && npmRegistry.includes('npmmirror.com')) {
   process.stdout.write('Using the Electron mirror because npm is configured to use npmmirror.\n')
 }
 
-const buildProcess = spawn(process.execPath, [electronBuilderCli, '--win', 'dir', '--x64'], {
+const buildProcess = spawn(process.execPath, [electronBuilderCli, '--win', 'portable', '--x64'], {
   cwd: desktopRoot,
   stdio: 'inherit',
   windowsHide: true,

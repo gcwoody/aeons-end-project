@@ -1,4 +1,4 @@
-param(
+﻿param(
   [switch] $NoOpenBrowser,
   [string] $RepositoryRoot
 )
@@ -15,11 +15,11 @@ $address = [System.Net.IPAddress]::Loopback
 $baseUrl = "http://127.0.0.1:$port/"
 
 if (-not (Test-Path -LiteralPath (Join-Path $siteRoot 'index.html'))) {
-  Write-Host 'The local game files are missing. Download and extract the complete friend-preview ZIP first.' -ForegroundColor Red
+  Write-Host '缺少本地游戏网页文件。请先完整解压游戏压缩包。' -ForegroundColor Red
   exit 1
 }
 if (-not (Test-Path -LiteralPath $imageRoot -PathType Container)) {
-  Write-Host 'The image-database folder is missing. Download and extract the complete friend-preview ZIP first.' -ForegroundColor Red
+  Write-Host '缺少图片资源文件夹。请先完整解压游戏压缩包。' -ForegroundColor Red
   exit 1
 }
 
@@ -106,13 +106,13 @@ try {
     exit 0
   }
 
-  Write-Host "Port $port is already in use. Close the program using that port and try again." -ForegroundColor Red
+  Write-Host "本地端口 $port 已被占用。请关闭占用该端口的程序后重试。" -ForegroundColor Red
   exit 1
 }
 
-Write-Host "Starting Aeon's End Digital Demo..." -ForegroundColor Cyan
-Write-Host "Opening $baseUrl"
-Write-Host 'Keep this window open while you play. Close it to stop the local game server.'
+Write-Host '正在启动 Aeon''s End Digital 本地游戏...' -ForegroundColor Cyan
+Write-Host "正在打开浏览器：$baseUrl"
+Write-Host '游玩期间请保持此窗口开启；关闭窗口会停止本地游戏服务。'
 if (-not $NoOpenBrowser) { Start-Process $baseUrl }
 
 try {
