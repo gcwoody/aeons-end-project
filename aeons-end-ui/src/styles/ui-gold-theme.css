@@ -508,7 +508,7 @@
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
-  cursor: pointer;
+  cursor: default;
   user-select: none;
 }
 .setup.ui-gold-theme .setup-mat-stage {
@@ -732,6 +732,8 @@
 .setup.ui-gold-theme .market-template-select .setup-preview-select__menu {
   right: 0;
   left: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
 }
 .setup.ui-gold-theme .market-template-select .setup-preview-select__trigger:focus-visible {
   outline: 2px solid rgba(242, 202, 97, .45);

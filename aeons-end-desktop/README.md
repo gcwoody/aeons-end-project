@@ -30,6 +30,8 @@ Both launchers use the files in the extracted folder. Keep the complete folder t
 
 The Windows executable is unsigned, so Windows may show an unknown-publisher or SmartScreen warning.
 
+For the repeatable update and release steps, see [RELEASE-MAINTENANCE.md](RELEASE-MAINTENANCE.md).
+
 ## Update the icon
 
 Replace `assets/cover.png`, then run this from `aeons-end-desktop/` in Windows PowerShell:
